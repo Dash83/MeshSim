@@ -1,6 +1,12 @@
 [package]
 name = "mesh_simulator"
 version = "0.1.0"
-authors = ["Dash83 <caballeromarco@gmail.com>"]
+authors = ["Marco Caballero <marco.caballero@cl.cam.ac.uk>"]
+repository = "https://github.com/Dash83/mesh_simulator.git"
+homepage = "https://github.com/Dash83/mesh_simulator.git"
+license = "Copyright"
+readme = "README.md"
+documentation = "https://github.com/Dash83/mesh_simulator"
+description = "Simulation platform for a mesh network."
 
 [dependencies]

@@ -1,3 +1,8 @@
+extern crate mesh_simulator;
+use mesh_simulator::master;
+
 fn main() {
-    println!("Hello, world!");
+    let master = master::Master{workers : vec![]};
+
+    println!("Master created");
 }
