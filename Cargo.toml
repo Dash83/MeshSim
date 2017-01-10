@@ -1,0 +1,6 @@
+[package]
+name = "mesh_simulator"
+version = "0.1.0"
+authors = ["Dash83 <caballeromarco@gmail.com>"]
+
+[dependencies]
