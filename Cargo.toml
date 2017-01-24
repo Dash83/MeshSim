@@ -10,3 +10,4 @@ documentation = "https://github.com/Dash83/mesh_simulator"
 description = "Simulation platform for a mesh network."
 
 [dependencies]
+crossbeam = "0.2"
