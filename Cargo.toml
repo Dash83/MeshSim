@@ -11,3 +11,10 @@ description = "Simulation platform for a mesh network."
 
 [dependencies]
 crossbeam = "0.2"
+rand = "*"
+nanomsg = "0.6"
+rustc-serialize = "0.3"
+serde_derive = "*"
+serde = "*"
+serde_cbor = "*"
+clap = "2.19.0"

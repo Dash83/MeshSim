@@ -3,20 +3,44 @@
 //! in the Mesh deployment.
 //! The worker process has the following responsibilities:
 //!   1. Receive the test run-time parameters.
-//!   2. Initiliazed all the specified radios with the determined transport.
+//!   2. Initiliazed all the specified radios with the determined endpoint.
 //!   3. Introduce itself to the group, wait for response.
 //!   4. Keep a list of peers for each radio (and one overall list).
 //!   5. Send messages to any of those peers as required.
 //!   6. Progagate messages receives from other peers that are not destined to itself.
 
 
+//#![deny(missing_docs,
+//        missing_debug_implementations, missing_copy_implementations,
+//        trivial_casts, trivial_numeric_casts,
+//        unsafe_code,
+//        unstable_features,
+//        unused_import_braces, unused_qualifications)]
+
 // Lint options for this module
 #![deny(missing_docs,
-        missing_debug_implementations, missing_copy_implementations,
         trivial_casts, trivial_numeric_casts,
         unsafe_code,
         unstable_features,
         unused_import_braces, unused_qualifications)]
+
+extern crate rand;
+extern crate nanomsg;
+extern crate rustc_serialize;
+extern crate serde_cbor;
+extern crate serde;
+
+
+use std::iter;
+use std::io::{Read, Write};
+use std::collections::HashMap;
+use self::rand::{OsRng, Rng};
+use self::nanomsg::{Socket, Protocol};
+use self::rustc_serialize::base64::*;
+use self::serde_cbor::ser::*;
+use self::serde_cbor::de::*;
+use self::serde_cbor::de::Deserializer;
+use self::serde::{Deserialize, Serialize};
 
 
 // *****************************
@@ -37,59 +61,65 @@
 // ********** Structs **********
 // *****************************
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 enum MessageType {
-    Join,
-    Ack,
-    Data,
+    Join(JoinMessage),
+    Ack(AckMessage),
+    Data(DataMessage),
 }
 
 /// Worker struct.
 /// Main struct for the worker module. Must be created via the ::new(Vec<Param>) method.
 /// 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Worker {
-    /// Optional name for a worker. Used only for debug purposes.
-    pub name: String, 
+    /// List of radios the worker uses for wireless communication.
+    pub radios : Vec<Radio>,
+    /// The known neighbors of this worker.
+    pub peers : Vec<Peer>,
+    ///Peer object describing this worker.
+    pub me : Peer,
 }
 
 /// Peer struct.
 /// Defines the public identity of a node in the mesh.
 /// 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Peer {
     /// Public key of the peer. It's considered it's public address.
     pub public_key: String, 
     /// Friendly name of the peer. 
     pub name : String,
 }
+  
+/// Trait that must be implemented for all message types.
+pub trait Message {}
 
 /// The type of message passed as payload for Join messages.
 /// The actual message is not required at this point, but used for future compatibility.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct JoinMessage {
-    /// Optional name for a peer. Used only for debug purposes.
-    name : String,
+    sender: Peer,
 }
 
-/// General message structured passed between workers when communicating. Depending on the
-/// message type, a corresponding payload must be used.
-#[derive(Debug)]
-pub struct Message<T> {
-     sender : Peer,
-     recipient : Peer,
-     payload : T,
-     mtype : MessageType,
-
+/// Ack message used to reply to Join messages
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AckMessage {
+    sender: Peer,
+    neighbors : Vec<Peer>,
 }
+
+/// General purposes data message for the network
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DataMessage;
 
 /// Represents a radio used by the work to send a message to the network.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Radio {
     //socket : whatever socket type
-    /// The transport used for the socket. In this version of the software,
+    /// The endpoint used for the socket. In this version of the software,
     /// it's the pipe used for this radio.
-    transport : String,
+    endpoint : String,
     /// Interference parameter used by the test. Sets a number of millisecs
     /// as base value for delay of messages. The actual delay for message sending 
     /// will be a a percentage between the constants MESSAGE_DELAY_LOW and MESSAGE_DELAY_HIGH
@@ -98,7 +128,7 @@ pub struct Radio {
     /// between (0 and 1] of probability that the message sent by this worker will
     /// not reach its destination.
     reliability : f32,
-
+    //socket : Socket,
 }
 
 //impl Message<MessageType> {
@@ -116,23 +146,148 @@ pub struct Radio {
 //}
 
 impl Radio {
-    /// Send a Worker::Message over the transport implemented by the current Radio.
-    pub fn send<T>(&self, msg : Message<T>) -> Result<String, String> {
+    /// Send a Worker::Message over the endpoint implemented by the current Radio.
+    pub fn send<T: Message>(&self, msg : T, destination: &Peer) -> Result<String, String> {
+        let mut socket = Socket::new(Protocol::Push).unwrap();
+        let endpoint = format!("ipc:///tmp/{}.ipc", destination.public_key);
+        socket.connect(&endpoint);
+
         Ok(String::new())
     }
 
     /// Constructor for new Radios
-    pub fn new(trans : String, interf : u32, rel: f32) -> Radio {
-        Radio{ transport : trans, interference : interf, reliability : rel }
+    pub fn new() -> Radio {
+        Radio{ endpoint : String::from(""), 
+               interference : 0,
+               reliability : 1.0 }
     }
 }
 
 impl Worker {
-    
-    /// TODO: Add documentation for method when implementing it.
-    pub fn start(&self) -> Result<String, String> {
-        unimplemented!()
+
+    /// The main function of the worker. The functions performs the following 3 functions:
+    /// 1. Starts up all radios.
+    /// 2. Joins the network.
+    /// 3. It starts to listen for messages of the network on all endpoints
+    ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
+    pub fn start(&mut self) -> Result<String, String> {        
+        //First, turn on radios.
+        //self.start_radios();
+        let mut socket = Socket::new(Protocol::Pull).unwrap();
+        let endpoint = &self.radios[0].endpoint.clone();
+        socket.bind(&endpoint);
+
+        //Next, join the network
+        self.join_network();
+
+        //Now start listening for messages
+        let mut buffer = Vec::new();
+
+        //Now listen for messages
+        loop {
+            match socket.read_to_end(&mut buffer) {
+                Ok(bytes_read) => {
+                    self.handle_message(&buffer);
+                },
+                Err(err) => {
+                        println!("{} has failed with error {}", self.me.name, err);
+                    }
+            }
+        }
+        Ok(format!("{} has stopped working", self.me.name).to_string())
+
     }
+
+    /// Default constructor for Worker strucutre. Assigns it the name Default_Worker
+    /// and an empty radio vector.
+    pub fn new(name: String) -> Worker {
+        //Vector of 32 bytes set to 0
+        let mut key : Vec<u8>= iter::repeat(0u8).take(32).collect();
+        //Fill the key bytes with random generated numbers
+        let mut gen = OsRng::new().expect("Failed to get OS random generator");
+        gen.fill_bytes(&mut key[..]);
+        let mut radio = Radio::new();
+        radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_base64(STANDARD)).to_string();
+        Worker{ radios: vec![radio], 
+                peers: Vec::new(), 
+                me: Peer{ name : name, public_key : key.to_base64(STANDARD).to_string()} }
+    }
+
+    fn handle_message(&mut self, data : &Vec<u8>) {
+        let msg_type : Result<MessageType, _> = from_reader(&data[..]);
+        let msg_type = msg_type.unwrap();
+
+        match msg_type {
+            MessageType::Join(msg) => {
+                self.process_join_message(msg);
+            },
+            MessageType::Ack(msg) => {
+                 self.process_ack_message(msg);
+            },
+            MessageType::Data(msg) => { },
+        }
+    }
+
+    fn join_network(&self) {
+        let mut socket = Socket::new(Protocol::Push).unwrap();
+        
+        for r in &self.radios {
+            //Send messge to each Peer reachable by this radio
+            for p in &self.peers {
+                let msg = JoinMessage { sender : self.me.clone()};
+                r.send(msg, p);
+            }
+
+        }
+    }
+
+    // fn start_radios(&mut self) {
+    //     //Need to create a socket for each radio and endpoint
+    //     //For now, we just use the first radio.
+    //     //self.radios[0].socket = Socket::new(Protocol::Pull).unwrap();
+    //     let endpoint = &self.radios[0].endpoint.clone();
+    //     self.radios[0].socket.bind(&endpoint);
+    // }
+
+    fn process_join_message(&mut self, msg : JoinMessage) {
+        println!("Received JOIN message from {:?}", msg.sender);
+        //Add new node to membership list
+        self.peers.push(msg.sender.clone());
+
+        //Respond with ACK 
+        //Need to responde through the same radio we used to receive this.
+        // For now just use default radio.
+        let ack_msg = AckMessage{sender: self.me.clone(), neighbors : self.peers.clone()};
+        self.radios[0].send(ack_msg, &msg.sender);
+    }
+
+    fn process_ack_message(&mut self, msg: AckMessage)
+    {
+        for p in msg.neighbors {
+            // TODO: check the peer doesn't already exist
+            self.peers.push(p);
+        }
+    }
+
+    /// This method is not parte of the oficial interface. Since the nodes have no way to
+    /// discover each other without a shared mediuem (wifi-direct broadcast) they can never
+    /// build the mesh while in simulated mode. This method is used to bootstrap the mesh.
+    /// All new nodes need at least 1 peer to be introduced into the network.
+    pub fn add_peers(&mut self, peers : Vec<Peer>) {
+        for p in peers {
+            self.peers.push(p);
+        }
+        
+    }
+
+}
+
+impl Message for JoinMessage {
+     
+}
+
+impl Message for AckMessage {
+     
 }
 
 // *****************************
@@ -149,7 +304,7 @@ impl Worker {
 mod tests {
     use super::*;
 
-    static TRANSPORT1: &'static str = "ipc:///tmp/transport1.ipc";
+    static endpoint1: &'static str = "ipc:///tmp/endpoint1.ipc";
 
     //**** Message unit tests ****
     #[ignore]
@@ -159,14 +314,15 @@ mod tests {
     }
 
     //**** Radio unit tests ****
-    #[test]
-    fn create_empty_radio() {
-        let r1 = Radio{ transport : TRANSPORT1.to_string(), interference : 0, reliability: 1.0 };
-        let r2 = Radio::new(TRANSPORT1.to_string(), 0, 1.0);
-        assert_eq!(r1.transport, r2.transport);
-        assert_eq!(r1.interference, r2.interference);
-        assert_eq!(r1.reliability, r2.reliability);
-    }
+    //#[test]
+    //fn create_empty_radio() {
+    //    let r1 = Radio{ endpoint : endpoint1.to_string(), interference : 0, reliability: 1.0 };
+    //    let mut r2 = Radio::new();
+    //    r2.endpoint = String::from(endpoint1);
+    //    assert_eq!(r1.endpoint, r2.endpoint);
+    //    assert_eq!(r1.interference, r2.interference);
+    //    assert_eq!(r1.reliability, r2.reliability);
+    //}
 
     //**** Peer unit tests ****
     //**** Worker unit tests ****

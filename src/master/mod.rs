@@ -12,70 +12,88 @@
 
 // Lint options for this module
 #![deny(missing_docs,
-        missing_debug_implementations, missing_copy_implementations,
         trivial_casts, trivial_numeric_casts,
         unsafe_code,
         unstable_features,
         unused_import_braces, unused_qualifications)]
 
 // ****** Dependencies ******
-extern crate crossbeam;
+extern crate serde;
+extern crate serde_cbor;
+extern crate rustc_serialize;
 
-use ::worker::Worker;
-use std::thread;
-use std::sync::Arc;
+use ::worker::{Peer, Worker};
+use std::process::{Command, Child};
+use std::collections::HashMap;
+use self::serde_cbor::ser::*;
+use self::serde_cbor::de::*;
+use self::rustc_serialize::base64::*;
 
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
 /// The master should always be created using the ::new(TestSpec) method.
-#[derive(Debug)]
+//#[derive(Debug)]
 pub struct Master {
     /// Vector of worker processes the Master controls.
-    pub workers : Vec<Worker>
+    pub workers : HashMap<String, Child>,
 }
 
 impl Master {
+    /// Constructor for the struct.
+    pub fn new() -> Master {
+        Master{ workers : HashMap::new()}
+    }
+
     /// Adds a single worker to the worker vector with a specified name.
-    fn add_worker(&mut self, name : String) {
-        self.workers.push(Worker{ name: name})
-    }
+    pub fn add_worker(&mut self, worker : Worker) {
+        let worker_name = worker.me.name.clone();
+        let worker_data : Vec<u8> = to_vec(&worker).unwrap();
+        let worker_data_encoded = worker_data.to_base64(STANDARD);
+        let mut command = Command::new("./worker_cli");
+        command.arg("--Worker_Object");
+        command.arg(format!("{}", worker_data_encoded));
+        println!("Starting worker process {}", worker_name);
+        let child = command.spawn();
 
-    /// Adds a ```num amount of workers to the worker vector.
-    /// All workers will be named according the pattern ```name_patternN, where N is a number between 0 and ```num.
-    fn add_workers(&mut self, num: usize, name_pattern: String) {
-        for i in 0..num {
-            self.add_worker(name_pattern.clone() + &i.to_string());
+        match child {
+            Ok(c) => { 
+                self.workers.insert(worker_name, c);
+            },
+            Err(e) => { 
+                println!("Failed to start child process with error {}", e);
+            },
         }
-    }
-
-    /// Calls the method start() on all workers.
-    //fn run_test(&mut self) {
-    //    let data = Arc::new(&self.workers);
-    //    let mut handles = vec![];
-
-    //    for i in 0..self.workers.len() {
-    //        let local_data = data.clone();
-    //        let b = thread::Builder::new().name(local_data[i].name.clone());
-    //        handles.push(b.spawn(move || {
-    //            local_data[i].start();
-    //        }));
-    //    }
-    //}
-    
-    fn run_test(&mut self) -> Result<String, String> {
-        let mut handles = vec![];
-
-        crossbeam::scope(|scope| {
-            for worker in &self.workers {
-                let handle = scope.spawn(move || {
-                    worker.start();
-                });
-                handles.push(handle)
-            }
-        });
         
-        for h in handles {
-            h.join();
+    }
+    
+    // fn start_test(&mut self) -> Result<String, String> {
+    //     //let mut handles = vec![];
+
+    //     //crossbeam::scope(|scope| {
+    //     //    for worker in &self.workers {
+    //     //        let handle = scope.spawn(move || {
+    //     //            worker.start();
+    //     //        });
+    //     //        handles.push(handle)
+    //     //    }
+    //     //});
+    //     let mut w1 = Worker::new("Worker1".to_string());
+    //     let mut w2 = Worker::new("Worker2".to_string());
+    //     w2.add_peers(vec![w1.me.clone()]);
+    //     self.add_worker(w1);
+    //     self.add_worker(w2);
+
+    //     for mut c in &mut self.workers {
+    //         c.wait();
+    //     }
+    //     Ok("All workers finished succesfully".to_string())
+    // }
+
+    /// Exported method used by clients of Master. Should be the last method called on any tests
+    /// in order to wait for the processes to run.
+    pub fn wait_for_workers(&mut self) -> Result<String, String> {
+        for c in self.workers.values_mut() {
+            c.wait();
         }
         Ok("All workers finished succesfully".to_string())
     }
@@ -97,35 +115,13 @@ mod tests {
         panic!("test failed!");
     }
 
-    //**** Create master with 1 worker ****
-    #[test]
-    fn create_master_one_worker() {
-        let mut master = Master{ workers : vec![] };
-        master.add_worker("The worker".to_string());
-        assert_eq!("The worker", master.workers[0].name);
-    }
-
-    //**** Create master with 10 workers ****
-    #[test]
-    fn create_master_ten_workers() {
-        let mut master = Master{ workers : vec![] };
-        master.add_workers(10, "Worker".to_string());
-
-        let mut i = 0;
-        for w in master.workers {
-            assert_eq!("Worker".to_string() + &i.to_string(), w.name);
-            i += 1;
-        }
-    }
-
     //**** Create master with 10 workers and start them ****
     #[test]
-    #[ignore]
     fn run_ten_workers() {
         let mut master = Master{ workers : vec![] };
         master.add_workers(10, "Worker".to_string());
 
-        assert_eq!("All workers finished succesfully", master.run_test().unwrap());
+        assert_eq!("All workers finished succesfully", master.start_test().unwrap());
     }
 
     //**** Create master with 10 workers and kill 1 ****
