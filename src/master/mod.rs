@@ -22,11 +22,10 @@ extern crate serde;
 extern crate serde_cbor;
 extern crate rustc_serialize;
 
-use ::worker::{Peer, Worker};
+use ::worker::Worker;
 use std::process::{Command, Child};
 use std::collections::HashMap;
 use self::serde_cbor::ser::*;
-use self::serde_cbor::de::*;
 use self::rustc_serialize::base64::*;
 
 /// Master struct.
@@ -93,7 +92,7 @@ impl Master {
     /// in order to wait for the processes to run.
     pub fn wait_for_workers(&mut self) -> Result<String, String> {
         for c in self.workers.values_mut() {
-            c.wait();
+            let _ = c.wait();
         }
         Ok("All workers finished succesfully".to_string())
     }

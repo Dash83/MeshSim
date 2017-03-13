@@ -33,14 +33,12 @@ extern crate serde;
 
 use std::iter;
 use std::io::{Read, Write};
-use std::collections::HashMap;
 use self::rand::{OsRng, Rng};
 use self::nanomsg::{Socket, Protocol};
 use self::rustc_serialize::base64::*;
-use self::serde_cbor::ser::*;
 use self::serde_cbor::de::*;
-use self::serde_cbor::de::Deserializer;
-use self::serde::{Deserialize, Serialize};
+use self::serde_cbor::ser::*;
+use self::serde::Serialize;
 
 
 // *****************************
@@ -147,12 +145,27 @@ pub struct Radio {
 
 impl Radio {
     /// Send a Worker::Message over the endpoint implemented by the current Radio.
-    pub fn send<T: Message>(&self, msg : T, destination: &Peer) -> Result<String, String> {
+    pub fn send<T: Message + Serialize>(&self, msg : T, destination: &Peer) {
         let mut socket = Socket::new(Protocol::Push).unwrap();
         let endpoint = format!("ipc:///tmp/{}.ipc", destination.public_key);
-        socket.connect(&endpoint);
+        
+        match socket.connect(&endpoint) {
+            Ok(_) => { },
+            Err(e) => {
+                let err_str = format!("Failed to connect to socket with error {}", e);
+                println!("{}", err_str);
+                return
+            },
+        }
 
-        Ok(String::new())
+        let data = to_vec(&msg).unwrap();
+        match socket.write_all(&data) {
+            Ok(_) => { },
+            Err(e) => { 
+                println!("Failed to write data to socket with error: {}", e);
+            },
+        }
+
     }
 
     /// Constructor for new Radios
@@ -170,12 +183,17 @@ impl Worker {
     /// 2. Joins the network.
     /// 3. It starts to listen for messages of the network on all endpoints
     ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
-    pub fn start(&mut self) -> Result<String, String> {        
+    pub fn start(&mut self) {        
         //First, turn on radios.
         //self.start_radios();
         let mut socket = Socket::new(Protocol::Pull).unwrap();
         let endpoint = &self.radios[0].endpoint.clone();
-        socket.bind(&endpoint);
+        match socket.bind(&endpoint) {
+            Ok(_) => { },
+            Err(e) => {
+                println!("Failed to bind socket to endpoint {}. Error: {}", endpoint, e);
+            },
+        }
 
         //Next, join the network
         self.join_network();
@@ -186,7 +204,7 @@ impl Worker {
         //Now listen for messages
         loop {
             match socket.read_to_end(&mut buffer) {
-                Ok(bytes_read) => {
+                Ok(_) => {
                     self.handle_message(&buffer);
                 },
                 Err(err) => {
@@ -194,7 +212,6 @@ impl Worker {
                     }
             }
         }
-        Ok(format!("{} has stopped working", self.me.name).to_string())
 
     }
 
@@ -224,18 +241,16 @@ impl Worker {
             MessageType::Ack(msg) => {
                  self.process_ack_message(msg);
             },
-            MessageType::Data(msg) => { },
+            MessageType::Data(_) => { },
         }
     }
 
     fn join_network(&self) {
-        let mut socket = Socket::new(Protocol::Push).unwrap();
-        
         for r in &self.radios {
             //Send messge to each Peer reachable by this radio
             for p in &self.peers {
                 let msg = JoinMessage { sender : self.me.clone()};
-                r.send(msg, p);
+                let _ = r.send(msg, p);
             }
 
         }
@@ -258,7 +273,7 @@ impl Worker {
         //Need to responde through the same radio we used to receive this.
         // For now just use default radio.
         let ack_msg = AckMessage{sender: self.me.clone(), neighbors : self.peers.clone()};
-        self.radios[0].send(ack_msg, &msg.sender);
+        let _ = self.radios[0].send(ack_msg, &msg.sender);
     }
 
     fn process_ack_message(&mut self, msg: AckMessage)

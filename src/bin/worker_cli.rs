@@ -4,12 +4,11 @@ extern crate rustc_serialize;
 extern crate serde;
 extern crate serde_cbor;
 
-use mesh_simulator::worker::{Worker, Peer};
+use mesh_simulator::worker::{Worker};
 use clap::{Arg, App};
 use rustc_serialize::base64::*;
 use std::process;
 use serde_cbor::de::*;
-use serde_cbor::Error;
 
 const ARG_CONFIG : &'static str = "config";
 const ARG_WORKER_OBJ : &'static str = "worker_obj";
@@ -50,7 +49,6 @@ fn main() {
                           .get_matches();
 
     //Obtain individual arguments
-    let config_file = matches.value_of(ARG_CONFIG);
     let worker_data = matches.value_of(ARG_WORKER_OBJ);
     let proc_name = matches.value_of(ARG_PROC_NAME).unwrap_or("MeshWorker");
 

@@ -4,13 +4,9 @@ extern crate rustc_serialize;
 extern crate serde;
 extern crate serde_cbor;
 
-use mesh_simulator::worker::{Worker, Peer};
+use mesh_simulator::worker::{Worker};
 use mesh_simulator::master::*;
 use clap::{Arg, App};
-use rustc_serialize::base64::*;
-use std::process;
-use serde_cbor::de::*;
-use serde_cbor::Error;
 use std::str::FromStr;
 
 const ARG_CONFIG : &'static str = "config";
@@ -31,9 +27,9 @@ impl FromStr for MeshTests {
     }
 }
 
-fn test_BasicTest() {
+fn test_basic_test() {
     let mut master = Master::new();
-    let mut w1 = Worker::new("Worker1".to_string());
+    let w1 = Worker::new("Worker1".to_string());
     let mut w2 = Worker::new("Worker2".to_string());
     w2.add_peers(vec![w1.me.clone()]);
 
@@ -42,7 +38,7 @@ fn test_BasicTest() {
 
     match master.wait_for_workers() {
         Ok(_) => println!("Finished successfully."),
-        Err(e) => println!("Master failed with process"),
+        Err(e) => println!("Master failed to wait for children processes with error {}", e),
     }
 }
 
@@ -66,7 +62,6 @@ fn main() {
                           .get_matches();
 
     //Obtain individual arguments
-    let config_file = matches.value_of(ARG_CONFIG);
     let test_str = matches.value_of(ARG_TEST);
 
     match test_str {
@@ -74,7 +69,7 @@ fn main() {
             let selected_test = data.parse::<MeshTests>().unwrap();
             match selected_test {
                 MeshTests::BasicTest => { 
-                    test_BasicTest();
+                    test_basic_test();
                 },
             }
         },
