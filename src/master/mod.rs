@@ -51,7 +51,9 @@ impl Master {
         let mut command = Command::new("./worker_cli");
         command.arg("--Worker_Object");
         command.arg(format!("{}", worker_data_encoded));
-        println!("Starting worker process {}", worker_name);
+        command.arg("--Process_Name");
+        command.arg(format!("{}", worker_name));
+        info!("Starting worker process {}", worker_name);
         let child = command.spawn();
 
         match child {
@@ -59,7 +61,7 @@ impl Master {
                 self.workers.insert(worker_name, c);
             },
             Err(e) => { 
-                println!("Failed to start child process with error {}", e);
+                error!("Failed to start child process with error {}", e);
             },
         }
         

@@ -1,6 +1,6 @@
 [package]
 name = "mesh_simulator"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Marco Caballero <marco.caballero@cl.cam.ac.uk>"]
 repository = "https://github.com/Dash83/mesh_simulator.git"
 homepage = "https://github.com/Dash83/mesh_simulator.git"
@@ -18,3 +18,9 @@ serde_derive = "*"
 serde = "*"
 serde_cbor = "*"
 clap = "2.19.0"
+slog = "1.5"
+slog-stream = "1.2.0"
+slog-term = "1.5.0"
+slog-json = "1.2.1"
+slog-stdlog = "1.1.0"
+log = "0.3.7"
