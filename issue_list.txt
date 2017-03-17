@@ -1,5 +1,0 @@
-*Add ::new method to worker
-*Add ::new method to radio
-*Add logging http://sfackler.github.io/log4rs/doc/v0.5.2/log4rs/
-
-

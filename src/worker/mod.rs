@@ -30,7 +30,6 @@ extern crate rustc_serialize;
 extern crate serde_cbor;
 extern crate serde;
 
-
 use std::iter;
 use std::io::{Read, Write};
 use self::rand::{OsRng, Rng};
@@ -38,7 +37,6 @@ use self::nanomsg::{Socket, Protocol};
 use self::rustc_serialize::base64::*;
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
-use self::serde::Serialize;
 
 
 // *****************************
@@ -59,10 +57,16 @@ use self::serde::Serialize;
 // ********** Structs **********
 // *****************************
 
+/// This enum represents the types of network messages supported in the protocol as well as the
+/// data associated with them. For each message type, an associated struct will be created to represent 
+/// all the data needed to operate on such message.
 #[derive(Debug, Serialize, Deserialize)]
-enum MessageType {
+pub enum MessageType {
+    ///Message that a peer sends to join the network.
     Join(JoinMessage),
+    ///Reply to a JOIN message sent from a current member of the network.
     Ack(AckMessage),
+    ///General data message to be sent to a given member of the network.
     Data(DataMessage),
 }
 
@@ -145,24 +149,28 @@ pub struct Radio {
 
 impl Radio {
     /// Send a Worker::Message over the endpoint implemented by the current Radio.
-    pub fn send<T: Message + Serialize>(&self, msg : T, destination: &Peer) {
+    pub fn send(&self, msg : MessageType, destination: &Peer) {
         let mut socket = Socket::new(Protocol::Push).unwrap();
         let endpoint = format!("ipc:///tmp/{}.ipc", destination.public_key);
         
         match socket.connect(&endpoint) {
-            Ok(_) => { },
+            Ok(_) => { 
+                info!("Connected to endpoint.");
+            },
             Err(e) => {
-                let err_str = format!("Failed to connect to socket with error {}", e);
-                println!("{}", err_str);
+                error!("Failed to connect to socket with error {}", e);
                 return
             },
         }
 
+        info!("Sending message to {:?}.", destination);
         let data = to_vec(&msg).unwrap();
         match socket.write_all(&data) {
-            Ok(_) => { },
+            Ok(_) => { 
+                info!("Message sent successfully.");
+            },
             Err(e) => { 
-                println!("Failed to write data to socket with error: {}", e);
+                error!("Failed to write data to socket with error: {}", e);
             },
         }
 
@@ -191,7 +199,8 @@ impl Worker {
         match socket.bind(&endpoint) {
             Ok(_) => { },
             Err(e) => {
-                println!("Failed to bind socket to endpoint {}. Error: {}", endpoint, e);
+                error!("Failed to bind socket to endpoint {}. Error: {}", endpoint, e);
+                return
             },
         }
 
@@ -202,13 +211,15 @@ impl Worker {
         let mut buffer = Vec::new();
 
         //Now listen for messages
+        info!("Listening for messages.");
         loop {
             match socket.read_to_end(&mut buffer) {
                 Ok(_) => {
+                    info!("Message received");
                     self.handle_message(&buffer);
                 },
                 Err(err) => {
-                        println!("{} has failed with error {}", self.me.name, err);
+                        error!("{} has failed with error {}", self.me.name, err);
                     }
             }
         }
@@ -249,7 +260,8 @@ impl Worker {
         for r in &self.radios {
             //Send messge to each Peer reachable by this radio
             for p in &self.peers {
-                let msg = JoinMessage { sender : self.me.clone()};
+                let data = JoinMessage { sender : self.me.clone()};
+                let msg = MessageType::Join(data);
                 let _ = r.send(msg, p);
             }
 
@@ -265,19 +277,21 @@ impl Worker {
     // }
 
     fn process_join_message(&mut self, msg : JoinMessage) {
-        println!("Received JOIN message from {:?}", msg.sender);
+        info!("Received JOIN message from {:?}", msg.sender);
         //Add new node to membership list
         self.peers.push(msg.sender.clone());
 
         //Respond with ACK 
         //Need to responde through the same radio we used to receive this.
         // For now just use default radio.
-        let ack_msg = AckMessage{sender: self.me.clone(), neighbors : self.peers.clone()};
+        let data = AckMessage{sender: self.me.clone(), neighbors : self.peers.clone()};
+        let ack_msg = MessageType::Ack(data);
         let _ = self.radios[0].send(ack_msg, &msg.sender);
     }
 
     fn process_ack_message(&mut self, msg: AckMessage)
     {
+        info!("Received ACK message from {:?}", msg.sender);
         for p in msg.neighbors {
             // TODO: check the peer doesn't already exist
             self.peers.push(p);
