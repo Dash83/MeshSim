@@ -14,75 +14,167 @@ extern crate log;
 
 use mesh_simulator::worker::{Worker};
 use mesh_simulator::master::*;
-use clap::{Arg, App};
+use mesh_simulator::master;
+use clap::{Arg, App, ArgMatches};
 use std::str::FromStr;
 use std::thread;
 use slog::DrainExt;
 use std::fs::OpenOptions;
+use std::io;
+use std::error;
+use std::fmt;
 
 const ARG_CONFIG : &'static str = "config";
 const ARG_TEST : &'static str = "test";
+const ARG_WORK_DIR : &'static str = "work_dir";
+
+const ERROR_LOG_INITIALIZATION : i32 = 1;
+const ERROR_EXECUTION_FAILURE : i32 = 2;
+
+#[derive(Debug)]
+enum CLIError {
+    SetLogger(log::SetLoggerError),
+    IO(io::Error),
+    Master(master::MasterError),
+    TestParsing(String),
+}
 
 enum MeshTests {
     BasicTest,
 }
 
 impl FromStr for MeshTests {
-    type Err = ();
+    type Err = CLIError;
 
-    fn from_str(s : &str) -> Result<MeshTests, ()> {
+    fn from_str(s : &str) -> Result<MeshTests, CLIError> {
         match s {
             "BasicTest" => Ok(MeshTests::BasicTest),
-            _ => Err(()),
+            _ => Err(CLIError::TestParsing("Unsupported test".to_string())),
         }
     }
 }
 
-fn init_logger(proc_name : Option<String>, working_dir : Option<String> ) { 
-    let working_dir = match working_dir {
+impl error::Error for CLIError {
+    fn description(&self) -> &str {
+        match *self {
+            CLIError::SetLogger(ref err) => err.description(),
+            CLIError::IO(ref err) => err.description(),
+            CLIError::Master(ref err) => err.description(),
+            CLIError::TestParsing(ref err_str) => err_str,
+        }
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            CLIError::SetLogger(ref err) => Some(err),
+            CLIError::IO(ref err) => Some(err),
+            CLIError::Master(ref err) => Some(err),
+            CLIError::TestParsing(_) => None,
+        }
+    }
+}
+
+impl fmt::Display for CLIError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            CLIError::SetLogger(ref err) => write!(f, "SetLogger error: {}", err),
+            CLIError::IO(ref err) => write!(f, "IO error: {}", err),
+            CLIError::Master(ref err) => write!(f, "Error in Master layer: {}", err),
+            CLIError::TestParsing(ref err_str) => write!(f, "Error parsing test: {}", err_str),
+        }
+    }
+
+}
+
+impl From<io::Error> for CLIError {
+    fn from(err : io::Error) -> CLIError {
+        CLIError::IO(err)
+    }
+}
+
+impl From<log::SetLoggerError> for CLIError {
+    fn from(err : log::SetLoggerError) -> CLIError {
+        CLIError::SetLogger(err)
+    }
+}
+
+impl From<master::MasterError> for CLIError {
+    fn from(err : master::MasterError) -> CLIError {
+        CLIError::Master(err)
+    }
+}
+
+
+fn init_logger(matches : &ArgMatches) -> Result<(), CLIError> { 
+    let working_dir_arg = matches.value_of(ARG_WORK_DIR);
+
+    let working_dir = match working_dir_arg {
         Some(dir) => dir,
-        None => ".".to_string(),
+        //TODO: If no working dir parameter is passed, read from config file before defaulting to "."
+        None => ".",
     };
+    let log_dir = working_dir.to_string() + "/log";
+    let pn = "MeshMaster".to_string();
+    let log_file_name = log_dir + "/" + &pn + ".log";
 
-     let pn = match proc_name {
-        Some(pn) => pn,
-        None => "MeshMaster".to_string(),
-    };
-    let log_file_name = working_dir + "/" + &pn + ".log";
-
-    let log_file = OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .truncate(false)
-                    .open(log_file_name).unwrap();
+    let log_file = try!(OpenOptions::new()
+                        .create(true)
+                        .write(true)
+                        .truncate(false)
+                        .open(log_file_name));
     
     let console_drain = slog_term::streamer().build();
     let file_drain = slog_stream::stream(log_file, slog_json::default());
     let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!());
-    slog_stdlog::set_logger(logger).unwrap();
+    try!(slog_stdlog::set_logger(logger));
+
+    Ok(())
 } 
 
-fn test_basic_test() {
+fn test_basic_test() -> Result<(), CLIError> {
     info!("Running BasicTest");
     let mut master = Master::new();
     let w1 = Worker::new("Worker1".to_string());
     let mut w2 = Worker::new("Worker2".to_string());
     w2.add_peers(vec![w1.me.clone()]);
 
-    master.add_worker(w1);
+    try!(master.add_worker(w1));
     //Super fucking hacky. It seems the order for process start is not that deterministic.
     //TODO: Find a way to address this.
     thread::sleep(std::time::Duration::from_millis(1000)); 
-    master.add_worker(w2);
+    try!(master.add_worker(w2));
 
     match master.wait_for_workers() {
         Ok(_) => info!("Finished successfully."),
         Err(e) => error!("Master failed to wait for children processes with error {}", e),
     }
+    Ok(())
+}
+
+fn print_usage() {
+
+}
+
+fn run(matches : ArgMatches) -> Result<(), CLIError> {
+    let test_str = matches.value_of(ARG_TEST);
+
+    match test_str {
+        Some(data) => { 
+            let selected_test = try!(data.parse::<MeshTests>());
+            match selected_test {
+                MeshTests::BasicTest => try!(test_basic_test()),
+            }
+        },
+        None => { 
+            //Print usage / Test_list
+            print_usage();
+        },
+    }
+    Ok(())
 }
 
 fn main() {
-    //Build CLI interface
+        //Build CLI interface
     let matches = App::new("Master_cli")
                           .version("0.1")
                           .author("Marco Caballero <marco.caballero@cl.cam.ac.uk>")
@@ -98,26 +190,21 @@ fn main() {
                                 .value_name("TEST_NAME")
                                 .help("Name of the test to be run.")
                                 .takes_value(true))
+                          .arg(Arg::with_name(ARG_WORK_DIR)
+                                .short("dir")
+                                .value_name("work_dir")
+                                .help("Operating directory for the program, where results and logs will be placed.")
+                                .takes_value(true))
                           .get_matches();
 
-    //Obtain individual arguments
-    let test_str = matches.value_of(ARG_TEST);
+    if let Err(ref e) = init_logger(&matches) {
+        //Since we failed to initialize the logger, all we can do is log to stdout and exit with a different error code.
+        println!("master_cli failed with the following error: {}", e);
+        ::std::process::exit(ERROR_LOG_INITIALIZATION);
+    }
 
-    //TODO: This is a temporary hack (lol?) for setting the log folder while I introduce support for config files.
-    let log_dir = "./log".to_string(); 
-    init_logger(None, Some(log_dir));
-
-    match test_str {
-        Some(data) => { 
-            let selected_test = data.parse::<MeshTests>().unwrap();
-            match selected_test {
-                MeshTests::BasicTest => { 
-                    test_basic_test();
-                },
-            }
-        },
-        None => { 
-            //Print usage / Test_list
-        },
+    if let Err(ref e) = run(matches) {
+        error!("master_cli failed with the following error: {}", e);
+        ::std::process::exit(ERROR_EXECUTION_FAILURE);
     }
 }

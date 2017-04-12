@@ -37,7 +37,9 @@ use self::nanomsg::{Socket, Protocol};
 use self::rustc_serialize::base64::*;
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
-
+use std::error;
+use std::fmt;
+use std::io;
 
 // *****************************
 // ********** Traits **********
@@ -56,6 +58,64 @@ use self::serde_cbor::ser::*;
 // *****************************
 // ********** Structs **********
 // *****************************
+
+/// Error type for all possible errors generated in the Worker module.
+#[derive(Debug)]
+pub enum WorkerError {
+    ///Error while serializing data with Serde.
+    Serialization(serde_cbor::Error),
+    ///Error while using the Nanomsg network library.
+    Nanomsg(nanomsg::Error),
+    ///Error while performing IO operations.
+    IO(io::Error),
+}
+
+impl fmt::Display for WorkerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            WorkerError::Serialization(ref err) => write!(f, "Serialization error: {}", err),
+            WorkerError::Nanomsg(ref err) => write!(f, "Network error: {}", err),
+            WorkerError::IO(ref err) => write!(f, "IO error: {}", err),
+        }
+    }
+
+}
+
+impl error::Error for WorkerError {
+    fn description(&self) -> &str {
+        match *self {
+            WorkerError::Serialization(ref err) => err.description(),
+            WorkerError::Nanomsg(ref err) => err.description(),
+            WorkerError::IO(ref err) => err.description(),
+        }
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            WorkerError::Serialization(ref err) => Some(err),
+            WorkerError::Nanomsg(ref err) => Some(err),
+            WorkerError::IO(ref err) => Some(err),
+        }
+    }
+}
+
+impl From<serde_cbor::Error> for WorkerError {
+    fn from(err : serde_cbor::Error) -> WorkerError {
+        WorkerError::Serialization(err)
+    }
+}
+
+impl From<nanomsg::Error> for WorkerError {
+    fn from(err : nanomsg::Error) -> WorkerError {
+        WorkerError::Nanomsg(err)
+    }
+}
+
+impl From<io::Error> for WorkerError {
+    fn from(err : io::Error) -> WorkerError {
+        WorkerError::IO(err)
+    }
+}
 
 /// This enum represents the types of network messages supported in the protocol as well as the
 /// data associated with them. For each message type, an associated struct will be created to represent 
@@ -149,31 +209,19 @@ pub struct Radio {
 
 impl Radio {
     /// Send a Worker::Message over the endpoint implemented by the current Radio.
-    pub fn send(&self, msg : MessageType, destination: &Peer) {
-        let mut socket = Socket::new(Protocol::Push).unwrap();
+    pub fn send(&self, msg : MessageType, destination: &Peer) -> Result<(), WorkerError> {
+        let mut socket = try!(Socket::new(Protocol::Push));
         let endpoint = format!("ipc:///tmp/{}.ipc", destination.public_key);
         
-        match socket.connect(&endpoint) {
-            Ok(_) => { 
-                info!("Connected to endpoint.");
-            },
-            Err(e) => {
-                error!("Failed to connect to socket with error {}", e);
-                return
-            },
-        }
+        try!(socket.connect(&endpoint));
+        info!("Connected to endpoint.");
 
         info!("Sending message to {:?}.", destination);
-        let data = to_vec(&msg).unwrap();
-        match socket.write_all(&data) {
-            Ok(_) => { 
-                info!("Message sent successfully.");
-            },
-            Err(e) => { 
-                error!("Failed to write data to socket with error: {}", e);
-            },
-        }
+        let data = try!(to_vec(&msg));
+        try!(socket.write_all(&data));
+        info!("Message sent successfully.");
 
+        Ok(())
     }
 
     /// Constructor for new Radios
@@ -191,18 +239,13 @@ impl Worker {
     /// 2. Joins the network.
     /// 3. It starts to listen for messages of the network on all endpoints
     ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
-    pub fn start(&mut self) {        
+    pub fn start(&mut self) -> Result<(), WorkerError> {        
         //First, turn on radios.
         //self.start_radios();
-        let mut socket = Socket::new(Protocol::Pull).unwrap();
+        let mut socket = try!(Socket::new(Protocol::Pull));
         let endpoint = &self.radios[0].endpoint.clone();
-        match socket.bind(&endpoint) {
-            Ok(_) => { },
-            Err(e) => {
-                error!("Failed to bind socket to endpoint {}. Error: {}", endpoint, e);
-                return
-            },
-        }
+        try!(socket.bind(&endpoint));
+        info!("Successfully bound to endpoint {}", endpoint);
 
         //Next, join the network
         self.join_network();
@@ -213,15 +256,9 @@ impl Worker {
         //Now listen for messages
         info!("Listening for messages.");
         loop {
-            match socket.read_to_end(&mut buffer) {
-                Ok(_) => {
-                    info!("Message received");
-                    self.handle_message(&buffer);
-                },
-                Err(err) => {
-                        error!("{} has failed with error {}", self.me.name, err);
-                    }
-            }
+            try!(socket.read_to_end(&mut buffer));
+            info!("Message received");
+            try!(self.handle_message(&buffer));
         }
 
     }
@@ -241,9 +278,9 @@ impl Worker {
                 me: Peer{ name : name, public_key : key.to_base64(STANDARD).to_string()} }
     }
 
-    fn handle_message(&mut self, data : &Vec<u8>) {
+    fn handle_message(&mut self, data : &Vec<u8>) -> Result<(), WorkerError> {
         let msg_type : Result<MessageType, _> = from_reader(&data[..]);
-        let msg_type = msg_type.unwrap();
+        let msg_type = try!(msg_type);
 
         match msg_type {
             MessageType::Join(msg) => {
@@ -254,6 +291,7 @@ impl Worker {
             },
             MessageType::Data(_) => { },
         }
+        Ok(())
     }
 
     fn join_network(&self) {
