@@ -24,6 +24,9 @@ extern crate rustc_serialize;
 
 use ::worker::Worker;
 use std::process::{Command, Child};
+use std::io;
+use std::error;
+use std::fmt;
 use std::collections::HashMap;
 use self::serde_cbor::ser::*;
 use self::rustc_serialize::base64::*;
@@ -37,34 +40,82 @@ pub struct Master {
     pub workers : HashMap<String, Child>,
 }
 
+/// The error type for the Master. Each variant encapsules the underlying reason for failure.
+#[derive(Debug)]
+pub enum MasterError {
+    /// Errors generated when serializing data using serde.
+    Serialization(serde_cbor::Error),
+    /// Errors generated when doing IO operations.
+    IO(io::Error),
+}
+
+impl From<serde_cbor::Error> for MasterError {
+    fn from(err : serde_cbor::Error) -> MasterError {
+        MasterError::Serialization(err)
+    }
+}
+
+impl From<io::Error> for MasterError {
+    fn from(err : io::Error) -> MasterError {
+        MasterError::IO(err)
+    }
+}
+
+impl fmt::Display for MasterError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            MasterError::Serialization(ref err) => write!(f, "Serialization error: {}", err),
+            MasterError::IO(ref err) => write!(f, "IO error: {}", err),
+        }
+    }
+
+}
+
+impl error::Error for MasterError {
+    fn description(&self) -> &str {
+        match *self {
+            MasterError::Serialization(ref err) => err.description(),
+            MasterError::IO(ref err) => err.description(),
+        }
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            MasterError::Serialization(ref err) => Some(err),
+            MasterError::IO(ref err) => Some(err),
+        }
+    }
+}
+
+
 impl Master {
     /// Constructor for the struct.
     pub fn new() -> Master {
         Master{ workers : HashMap::new()}
     }
 
-    /// Adds a single worker to the worker vector with a specified name.
-    pub fn add_worker(&mut self, worker : Worker) {
+    /// Adds a single worker to the worker vector with a specified name and starts the worker process
+    pub fn add_worker(&mut self, worker : Worker) -> Result<(), MasterError> {
+        //Cloning the worker name to pass it as a CLI argument
         let worker_name = worker.me.name.clone();
-        let worker_data : Vec<u8> = to_vec(&worker).unwrap();
+
+        //Serializing the worker data to be passed to the worker CLI
+        let worker_data : Vec<u8> = try!(to_vec(&worker));
         let worker_data_encoded = worker_data.to_base64(STANDARD);
+
+        //Constructing the external process call
         let mut command = Command::new("./worker_cli");
         command.arg("--Worker_Object");
         command.arg(format!("{}", worker_data_encoded));
         command.arg("--Process_Name");
         command.arg(format!("{}", worker_name));
-        info!("Starting worker process {}", worker_name);
-        let child = command.spawn();
 
-        match child {
-            Ok(c) => { 
-                self.workers.insert(worker_name, c);
-            },
-            Err(e) => { 
-                error!("Failed to start child process with error {}", e);
-            },
-        }
-        
+        //Starting the worker process
+        info!("Starting worker process {}", worker_name);
+        let child = try!(command.spawn());
+        self.workers.insert(worker_name, child);
+
+        Ok(())
     }
     
     // fn start_test(&mut self) -> Result<String, String> {
