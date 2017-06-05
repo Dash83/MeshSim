@@ -15,7 +15,7 @@ extern crate log;
 use mesh_simulator::worker::{Worker};
 use mesh_simulator::worker;
 use clap::{Arg, App, ArgMatches};
-use rustc_serialize::base64::*;
+use rustc_serialize::hex::*;
 use serde_cbor::de::*;
 use slog::DrainExt;
 use std::fs::OpenOptions;
@@ -97,7 +97,7 @@ impl From<worker::WorkerError> for CLIError {
 }
 
 fn decode_worker_data<'a>(arg : &'a str) -> Result<Worker, serde_cbor::Error> {
-    let e : Vec<u8> = arg.as_bytes().from_base64().unwrap();
+    let e : Vec<u8> = arg.from_hex().unwrap();
     let obj : Result<Worker, _> = from_reader(&e[..]);
     obj
 }
@@ -182,12 +182,12 @@ fn main() {
     //Initialize logger
     if let Err(ref e) = init_logger(&matches) {
         //Since we failed to initialize the logger, all we can do is log to stdout and exit with a different error code.
-        println!("master_cli failed with the following error: {}", e);
+        println!("worker_cli failed with the following error: {}", e);
         ::std::process::exit(ERROR_LOG_INITIALIZATION);
     }
 
     if let Err(ref e) = run(matches) {
-        error!("master_cli failed with the following error: {}", e);
+        error!("worker_cli failed with the following error: {}", e);
         ::std::process::exit(ERROR_EXECUTION_FAILURE);
     }
 }

@@ -41,6 +41,7 @@ enum CLIError {
 
 enum MeshTests {
     BasicTest,
+    SixNodeTest,
 }
 
 impl FromStr for MeshTests {
@@ -49,6 +50,7 @@ impl FromStr for MeshTests {
     fn from_str(s : &str) -> Result<MeshTests, CLIError> {
         match s {
             "BasicTest" => Ok(MeshTests::BasicTest),
+            "SixNodeTest" => Ok(MeshTests::SixNodeTest),
             _ => Err(CLIError::TestParsing("Unsupported test".to_string())),
         }
     }
@@ -120,7 +122,7 @@ fn init_logger(matches : &ArgMatches) -> Result<(), CLIError> {
     let log_file = try!(OpenOptions::new()
                         .create(true)
                         .write(true)
-                        .truncate(false)
+                        .truncate(true)
                         .open(log_file_name));
     
     let console_drain = slog_term::streamer().build();
@@ -141,8 +143,54 @@ fn test_basic_test() -> Result<(), CLIError> {
     try!(master.add_worker(w1));
     //Super fucking hacky. It seems the order for process start is not that deterministic.
     //TODO: Find a way to address this.
-    thread::sleep(std::time::Duration::from_millis(1000)); 
+    thread::sleep(std::time::Duration::from_millis(2000)); 
     try!(master.add_worker(w2));
+
+    match master.wait_for_workers() {
+        Ok(_) => info!("Finished successfully."),
+        Err(e) => error!("Master failed to wait for children processes with error {}", e),
+    }
+    Ok(())
+}
+
+/// This test creates 
+fn test_six_node_test() -> Result<(), CLIError> {
+    info!("Running BasicTest");
+    let mut master = Master::new();
+    let w1 = Worker::new("Worker1".to_string());
+   
+    let mut w2 = Worker::new("Worker2".to_string());
+    w2.add_peers(vec![w1.me.clone()]);
+   
+    let mut w3 = Worker::new("Worker3".to_string());
+    w3.add_peers(vec![w2.me.clone()]);
+
+    let mut w4 = Worker::new("Worker4".to_string());
+    w4.add_peers(vec![w3.me.clone()]);
+
+    let mut w5 = Worker::new("Worker5".to_string());
+    w5.add_peers(vec![w4.me.clone()]);
+
+    let mut w6 = Worker::new("Worker6".to_string());
+    w6.add_peers(vec![w5.me.clone()]);
+
+    try!(master.add_worker(w1));
+    //Super fucking hacky. It seems the order for process start is not that deterministic.
+    //TODO: Find a way to address this.
+    thread::sleep(std::time::Duration::from_millis(2000)); 
+    try!(master.add_worker(w2));
+
+    thread::sleep(std::time::Duration::from_millis(2000)); 
+    try!(master.add_worker(w3));
+
+    thread::sleep(std::time::Duration::from_millis(2000)); 
+    try!(master.add_worker(w4));
+
+    thread::sleep(std::time::Duration::from_millis(2000)); 
+    try!(master.add_worker(w5));
+
+    thread::sleep(std::time::Duration::from_millis(2000)); 
+    try!(master.add_worker(w6));
 
     match master.wait_for_workers() {
         Ok(_) => info!("Finished successfully."),
@@ -163,6 +211,7 @@ fn run(matches : ArgMatches) -> Result<(), CLIError> {
             let selected_test = try!(data.parse::<MeshTests>());
             match selected_test {
                 MeshTests::BasicTest => try!(test_basic_test()),
+                MeshTests::SixNodeTest => try!(test_six_node_test())
             }
         },
         None => { 

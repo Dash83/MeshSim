@@ -34,7 +34,7 @@ use std::iter;
 use std::io::{Read, Write};
 use self::rand::{OsRng, Rng};
 use self::nanomsg::{Socket, Protocol};
-use self::rustc_serialize::base64::*;
+use self::rustc_serialize::hex::*;
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
 use std::error;
@@ -272,10 +272,10 @@ impl Worker {
         let mut gen = OsRng::new().expect("Failed to get OS random generator");
         gen.fill_bytes(&mut key[..]);
         let mut radio = Radio::new();
-        radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_base64(STANDARD)).to_string();
+        radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_hex()).to_string();
         Worker{ radios: vec![radio], 
                 peers: Vec::new(), 
-                me: Peer{ name : name, public_key : key.to_base64(STANDARD).to_string()} }
+                me: Peer{ name : name, public_key : key.to_hex().to_string()} }
     }
 
     fn handle_message(&mut self, data : &Vec<u8>) -> Result<(), WorkerError> {
@@ -332,6 +332,7 @@ impl Worker {
         info!("Received ACK message from {:?}", msg.sender);
         for p in msg.neighbors {
             // TODO: check the peer doesn't already exist
+            info!("Adding peer {:?} to list.", p);
             self.peers.push(p);
         }
     }
