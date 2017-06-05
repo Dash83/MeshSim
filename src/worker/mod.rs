@@ -214,9 +214,9 @@ impl Radio {
         let endpoint = format!("ipc:///tmp/{}.ipc", destination.public_key);
         
         try!(socket.connect(&endpoint));
-        info!("Connected to endpoint.");
+        //info!("Connected to endpoint.");
 
-        info!("Sending message to {:?}.", destination);
+        info!("Sending message to {:?}.", destination.name);
         let data = try!(to_vec(&msg));
         try!(socket.write_all(&data));
         info!("Message sent successfully.");
@@ -245,19 +245,17 @@ impl Worker {
         let mut socket = try!(Socket::new(Protocol::Pull));
         let endpoint = &self.radios[0].endpoint.clone();
         try!(socket.bind(&endpoint));
-        info!("Successfully bound to endpoint {}", endpoint);
+        //info!("Successfully bound to endpoint {}", endpoint);
 
         //Next, join the network
         self.join_network();
 
-        //Now start listening for messages
-        let mut buffer = Vec::new();
-
         //Now listen for messages
         info!("Listening for messages.");
         loop {
+            let mut buffer = Vec::new();
             try!(socket.read_to_end(&mut buffer));
-            info!("Message received");
+            //info!("Message received");
             try!(self.handle_message(&buffer));
         }
 
@@ -315,24 +313,24 @@ impl Worker {
     // }
 
     fn process_join_message(&mut self, msg : JoinMessage) {
-        info!("Received JOIN message from {:?}", msg.sender);
-        //Add new node to membership list
-        self.peers.push(msg.sender.clone());
-
+        info!("Received JOIN message from {:?}", msg.sender.name);
         //Respond with ACK 
         //Need to responde through the same radio we used to receive this.
         // For now just use default radio.
         let data = AckMessage{sender: self.me.clone(), neighbors : self.peers.clone()};
         let ack_msg = MessageType::Ack(data);
         let _ = self.radios[0].send(ack_msg, &msg.sender);
+
+        //Add new node to membership list
+        self.peers.push(msg.sender.clone());
     }
 
     fn process_ack_message(&mut self, msg: AckMessage)
     {
-        info!("Received ACK message from {:?}", msg.sender);
+        info!("Received ACK message from {:?}", msg.sender.name);
         for p in msg.neighbors {
             // TODO: check the peer doesn't already exist
-            info!("Adding peer {:?} to list.", p);
+            info!("Adding peer {:?} to list.", p.name);
             self.peers.push(p);
         }
     }

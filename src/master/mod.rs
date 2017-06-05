@@ -98,7 +98,6 @@ impl Master {
     pub fn add_worker(&mut self, worker : Worker) -> Result<(), MasterError> {
         //Cloning the worker name to pass it as a CLI argument
         let worker_name = worker.me.name.clone();
-        let worker_pk = worker.me.public_key.clone();
 
         //Serializing the worker data to be passed to the worker CLI
         let worker_data : Vec<u8> = try!(to_vec(&worker));
@@ -112,7 +111,7 @@ impl Master {
         command.arg(format!("{}", worker_name));
 
         //Starting the worker process
-        info!("Starting worker process {}, public key {}", worker_name, worker_pk);
+        info!("Starting worker process {}", worker_name);
         let child = try!(command.spawn());
         self.workers.insert(worker_name, child);
 

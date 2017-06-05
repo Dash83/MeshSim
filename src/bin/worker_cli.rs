@@ -117,7 +117,7 @@ fn init_logger(matches : &ArgMatches) -> Result<(), CLIError>  {
     let log_file = try!(OpenOptions::new()
                         .create(true)
                         .write(true)
-                        .truncate(false)
+                        .truncate(true)
                         .open(log_file_name));
     
     let console_drain = slog_term::streamer().build();
