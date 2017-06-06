@@ -40,6 +40,7 @@ use self::serde_cbor::ser::*;
 use std::error;
 use std::fmt;
 use std::io;
+use std::fs;
 
 // *****************************
 // ********** Traits **********
@@ -190,7 +191,8 @@ pub struct Radio {
     /// between (0 and 1] of probability that the message sent by this worker will
     /// not reach its destination.
     reliability : f32,
-    //socket : Socket,
+    ///Broadcast group for this radio. Only used in simulated mode.
+    pub broadcast_groups : Vec<String>,
 }
 
 //impl Message<MessageType> {
@@ -228,7 +230,29 @@ impl Radio {
     pub fn new() -> Radio {
         Radio{ endpoint : String::from(""), 
                interference : 0,
-               reliability : 1.0 }
+               reliability : 1.0,
+               broadcast_groups : vec![] }
+    }
+
+    ///Function for adding broadcast groups in simulated mode
+    pub fn add_bcast_group(&mut self, group: String) {
+        self.broadcast_groups.push(group);
+    }
+
+    ///Function for scanning for nearby peers.
+    pub fn scan_for_peers(&self) ->  Result<Vec<String>, WorkerError> {
+        let mut peers = vec![];
+        info!("Scanning for nearby peers...");
+        for group in &self.broadcast_groups {
+            let paths = fs::read_dir(format!("//tmp/{}", group)).unwrap();
+            for path in paths {
+                let peer = path.unwrap().file_name();
+                let peer_name = peer.to_str().unwrap();
+                peers.push(String::from(peer_name));
+            }
+        }
+        
+        Ok(peers)
     }
 }
 
@@ -248,6 +272,9 @@ impl Worker {
         //info!("Successfully bound to endpoint {}", endpoint);
 
         //Next, join the network
+        let peers : Vec<String> = try!(self.radios[0].scan_for_peers());
+        let num = peers.len() - self.radios[0].broadcast_groups.len();
+        info!("Found {} peers!", num);
         self.join_network();
 
         //Now listen for messages
