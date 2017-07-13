@@ -34,12 +34,13 @@ use std::iter;
 use std::io::{Read, Write};
 use self::rand::{OsRng, Rng};
 use self::nanomsg::{Socket, Protocol};
-use self::rustc_serialize::base64::*;
+use self::rustc_serialize::hex::*;
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
 use std::error;
 use std::fmt;
 use std::io;
+use std::fs;
 
 // *****************************
 // ********** Traits **********
@@ -190,7 +191,8 @@ pub struct Radio {
     /// between (0 and 1] of probability that the message sent by this worker will
     /// not reach its destination.
     reliability : f32,
-    //socket : Socket,
+    ///Broadcast group for this radio. Only used in simulated mode.
+    pub broadcast_groups : Vec<String>,
 }
 
 //impl Message<MessageType> {
@@ -214,9 +216,9 @@ impl Radio {
         let endpoint = format!("ipc:///tmp/{}.ipc", destination.public_key);
         
         try!(socket.connect(&endpoint));
-        info!("Connected to endpoint.");
+        //info!("Connected to endpoint.");
 
-        info!("Sending message to {:?}.", destination);
+        info!("Sending message to {:?}.", destination.name);
         let data = try!(to_vec(&msg));
         try!(socket.write_all(&data));
         info!("Message sent successfully.");
@@ -228,7 +230,29 @@ impl Radio {
     pub fn new() -> Radio {
         Radio{ endpoint : String::from(""), 
                interference : 0,
-               reliability : 1.0 }
+               reliability : 1.0,
+               broadcast_groups : vec![] }
+    }
+
+    ///Function for adding broadcast groups in simulated mode
+    pub fn add_bcast_group(&mut self, group: String) {
+        self.broadcast_groups.push(group);
+    }
+
+    ///Function for scanning for nearby peers.
+    pub fn scan_for_peers(&self) ->  Result<Vec<String>, WorkerError> {
+        let mut peers = vec![];
+        info!("Scanning for nearby peers...");
+        for group in &self.broadcast_groups {
+            let paths = fs::read_dir(format!("//tmp/{}", group)).unwrap();
+            for path in paths {
+                let peer = path.unwrap().file_name();
+                let peer_name = peer.to_str().unwrap();
+                peers.push(String::from(peer_name));
+            }
+        }
+        
+        Ok(peers)
     }
 }
 
@@ -245,19 +269,20 @@ impl Worker {
         let mut socket = try!(Socket::new(Protocol::Pull));
         let endpoint = &self.radios[0].endpoint.clone();
         try!(socket.bind(&endpoint));
-        info!("Successfully bound to endpoint {}", endpoint);
+        //info!("Successfully bound to endpoint {}", endpoint);
 
         //Next, join the network
+        let peers : Vec<String> = try!(self.radios[0].scan_for_peers());
+        let num = peers.len() - self.radios[0].broadcast_groups.len();
+        info!("Found {} peers!", num);
         self.join_network();
-
-        //Now start listening for messages
-        let mut buffer = Vec::new();
 
         //Now listen for messages
         info!("Listening for messages.");
         loop {
+            let mut buffer = Vec::new();
             try!(socket.read_to_end(&mut buffer));
-            info!("Message received");
+            //info!("Message received");
             try!(self.handle_message(&buffer));
         }
 
@@ -272,10 +297,10 @@ impl Worker {
         let mut gen = OsRng::new().expect("Failed to get OS random generator");
         gen.fill_bytes(&mut key[..]);
         let mut radio = Radio::new();
-        radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_base64(STANDARD)).to_string();
+        radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_hex()).to_string();
         Worker{ radios: vec![radio], 
                 peers: Vec::new(), 
-                me: Peer{ name : name, public_key : key.to_base64(STANDARD).to_string()} }
+                me: Peer{ name : name, public_key : key.to_hex().to_string()} }
     }
 
     fn handle_message(&mut self, data : &Vec<u8>) -> Result<(), WorkerError> {
@@ -315,23 +340,24 @@ impl Worker {
     // }
 
     fn process_join_message(&mut self, msg : JoinMessage) {
-        info!("Received JOIN message from {:?}", msg.sender);
-        //Add new node to membership list
-        self.peers.push(msg.sender.clone());
-
+        info!("Received JOIN message from {:?}", msg.sender.name);
         //Respond with ACK 
         //Need to responde through the same radio we used to receive this.
         // For now just use default radio.
         let data = AckMessage{sender: self.me.clone(), neighbors : self.peers.clone()};
         let ack_msg = MessageType::Ack(data);
         let _ = self.radios[0].send(ack_msg, &msg.sender);
+
+        //Add new node to membership list
+        self.peers.push(msg.sender.clone());
     }
 
     fn process_ack_message(&mut self, msg: AckMessage)
     {
-        info!("Received ACK message from {:?}", msg.sender);
+        info!("Received ACK message from {:?}", msg.sender.name);
         for p in msg.neighbors {
             // TODO: check the peer doesn't already exist
+            info!("Adding peer {:?} to list.", p.name);
             self.peers.push(p);
         }
     }

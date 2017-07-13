@@ -29,7 +29,7 @@ use std::error;
 use std::fmt;
 use std::collections::HashMap;
 use self::serde_cbor::ser::*;
-use self::rustc_serialize::base64::*;
+use self::rustc_serialize::hex::*;
 
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
@@ -101,7 +101,7 @@ impl Master {
 
         //Serializing the worker data to be passed to the worker CLI
         let worker_data : Vec<u8> = try!(to_vec(&worker));
-        let worker_data_encoded = worker_data.to_base64(STANDARD);
+        let worker_data_encoded = worker_data.to_hex();
 
         //Constructing the external process call
         let mut command = Command::new("./worker_cli");
