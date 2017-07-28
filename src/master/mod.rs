@@ -167,15 +167,6 @@ mod tests {
         panic!("test failed!");
     }
 
-    //**** Create master with 10 workers and start them ****
-    #[test]
-    fn run_ten_workers() {
-        let mut master = Master{ workers : vec![] };
-        master.add_workers(10, "Worker".to_string());
-
-        assert_eq!("All workers finished succesfully", master.start_test().unwrap());
-    }
-
     //**** Create master with 10 workers and kill 1 ****
     #[ignore]
     #[test]

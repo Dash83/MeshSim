@@ -195,6 +195,23 @@ pub struct Radio {
     pub broadcast_groups : Vec<String>,
 }
 
+/// Operation modes for the worker.
+#[derive(Debug, Deserialize, PartialEq)]
+pub enum OperationMode {
+    /// Simulated: The worker process is part of a simulated environment, running as one of many processes in the same machine.
+    Simulated,
+    /// Device: The worker is running on the actual hardware and has access to the radio transmitters.
+    Device,
+}
+
+impl fmt::Display for OperationMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+        // or, alternatively:
+        // fmt::Debug::fmt(self, f)
+    }
+}
+
 //impl Message<MessageType> {
 //    pub fn new(mtype: MessageType) -> Message<MessageType> {
 //        match mtype {
