@@ -41,6 +41,7 @@ use std::error;
 use std::fmt;
 use std::io;
 use std::fs;
+use std::str::FromStr;
 
 // *****************************
 // ********** Traits **********
@@ -69,6 +70,9 @@ pub enum WorkerError {
     Nanomsg(nanomsg::Error),
     ///Error while performing IO operations.
     IO(io::Error),
+    ///Error configuring the worker.
+    Configuration(String),
+
 }
 
 impl fmt::Display for WorkerError {
@@ -77,6 +81,7 @@ impl fmt::Display for WorkerError {
             WorkerError::Serialization(ref err) => write!(f, "Serialization error: {}", err),
             WorkerError::Nanomsg(ref err) => write!(f, "Network error: {}", err),
             WorkerError::IO(ref err) => write!(f, "IO error: {}", err),
+            WorkerError::Configuration(ref err) => write!(f, "Configuration error: {}", err),            
         }
     }
 
@@ -88,6 +93,7 @@ impl error::Error for WorkerError {
             WorkerError::Serialization(ref err) => err.description(),
             WorkerError::Nanomsg(ref err) => err.description(),
             WorkerError::IO(ref err) => err.description(),
+            WorkerError::Configuration(ref err) => err.as_str(),
         }
     }
 
@@ -96,6 +102,7 @@ impl error::Error for WorkerError {
             WorkerError::Serialization(ref err) => Some(err),
             WorkerError::Nanomsg(ref err) => Some(err),
             WorkerError::IO(ref err) => Some(err),
+            WorkerError::Configuration(_) => None,
         }
     }
 }
@@ -212,6 +219,18 @@ impl fmt::Display for OperationMode {
     }
 }
 
+impl FromStr for OperationMode {
+    type Err = WorkerError;
+
+    fn from_str(s: &str) -> Result<OperationMode, WorkerError> {
+        let u = s.to_uppercase();
+        match u.as_str() {
+            "SIMULATED" => Ok(OperationMode::Simulated),
+            "DEVICE" => Ok(OperationMode::Device),
+            _ => Err(WorkerError::Configuration("Unsupported operation mode.".to_string()))
+        }
+    }
+}
 //impl Message<MessageType> {
 //    pub fn new(mtype: MessageType) -> Message<MessageType> {
 //        match mtype {
