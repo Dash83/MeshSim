@@ -1,0 +1,8 @@
+worker_name = "worker124"
+random_seed = 3487164817
+work_dir = "/home/marco/src/meshsim"
+operation_mode = "Simulated"
+reliability = 1
+delay = 0
+scan_interval = 2000
+broadcast_group = ["bc_group1"]
