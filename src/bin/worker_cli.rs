@@ -147,7 +147,7 @@ struct WorkerConfig {
     work_dir : String,
     random_seed : u32,
     operation_mode : worker::OperationMode,
-    broadcast_group : Option<String>,
+    broadcast_group : Option<Vec<String>>,
     reliability : Option<f64>,
     delay : Option<u32>,
     scan_interval : Option<u32>,
@@ -159,7 +159,7 @@ impl WorkerConfig {
                      work_dir : ".".to_string(),
                      random_seed : 12345, 
                      operation_mode : worker::OperationMode::Simulated,
-                     broadcast_group : Some("group1".to_string()),
+                     broadcast_group : Some(vec!("group1".to_string())),
                      reliability : Some(1.0),
                      delay : Some(0),
                      scan_interval : Some(2000)
@@ -205,15 +205,13 @@ fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIE
     let log_dir = std::path::Path::new(log_dir_name.as_str());
     
     if !log_dir.exists() {
-        try!(OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(log_dir_name.as_str()));
+        try!(std::fs::create_dir(log_dir));
     }
 
     let mut log_dir_buf = log_dir.to_path_buf();
-    log_dir_buf.set_file_name(format!("{}{}", worker_name, ".log"));
+    //log_dir_buf.set_file_name(format!("{}{}", worker_name, ".log"));
+    log_dir_buf.push(format!("{}{}", worker_name, ".log"));
+    
     //At this point the log folder has been created, so the path should be valid.
     let log_file_name = log_dir_buf.to_str().unwrap();
 
@@ -292,7 +290,7 @@ fn create_default_conf_file() -> Result<String, CLIError> {
     write!(file, "reliability = {}\n", reliability)?;
     write!(file, "delay = {}\n", delay)?;
     write!(file, "scan_interval = {}\n", scan_interval)?;
-    write!(file, "broadcast_group = \"{}\"\n", broadcast_group)?;
+    write!(file, "broadcast_group = [\"{}\"]\n", broadcast_group)?;
 
     //mock_file.flush().expect("Error flusing toml file to disk.");
     Ok(file_path.to_string())
@@ -309,9 +307,9 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                                 .help("Configuration file for the worker.")
                                 .takes_value(true))
                           .arg(Arg::with_name(ARG_WORKER_NAME)
-                                .short("name")
+                                .short("worker")
                                 .value_name("NAME")
-                                .long("process_name")
+                                .long("worker_name")
                                 .help("Friendly name for this worker.")
                                 .takes_value(true))
                           .arg(Arg::with_name(ARG_OPERATION_MODE)
@@ -321,7 +319,6 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                                 .help("Should the worker operte in DEVICE or SIMULATED mode?")
                                 .takes_value(true))
                           .arg(Arg::with_name(ARG_NETWORK_RELIABILITY)
-                                .short("reliability")
                                 .value_name("RELIABILITY")
                                 .long("reliability")
                                 .help("Used in SIMULATED mode. How reliable will be the packet delivery of this node [0-1.0]")
@@ -338,15 +335,15 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                                 .long("scan_interval")
                                 .help("Interval in ms for the worker to scan for nearby peers.")
                                 .takes_value(true))
-                          .arg(Arg::with_name(ARG_SCAN_INTERVAL)
-                                .short("scan")
-                                .value_name("INTERVAL")
-                                .long("scan_interval")
-                                .help("Interval in ms for the worker to scan for nearby peers.")
+                          .arg(Arg::with_name(ARG_NETWORK_DELAY)
+                                .value_name("TIME")
+                                .long("network_delay")
+                                .help("Artificial network delay.")
                                 .takes_value(true))
                           .arg(Arg::with_name(ARG_WORK_DIR)
                                 .short("dir")
-                                .value_name("work_dir")
+                                .long("work_dir")
+                                .value_name("DIR")
                                 .help("Operating directory for the program, where results and logs will be placed.")
                                 .takes_value(true))
                           .get_matches()
@@ -427,17 +424,14 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
             Err(_) => { /*We do nothing*/ },
         }
     }
-    
+
     Ok(())
 }
 
 /// The init process performs all initialization required for the worker_cli.
 /// It performs 3 main tasks: read the configuration file, process the command line parameters,
 /// and initialize the logger.
-fn init() -> Result<WorkerConfig, CLIError> {
-    //Get the CLI parameters
-    let matches = get_cli_parameters();
-
+fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
     //Read the configuration file.
     let mut current_dir = try!(env::current_dir());
     let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
@@ -457,8 +451,11 @@ fn init() -> Result<WorkerConfig, CLIError> {
 }
 
 fn main() {
+    //Get the CLI parameters
+    let matches = get_cli_parameters();
+
     //Initialization
-    let config = init().unwrap_or_else(|e| {
+    let config = init(&matches).unwrap_or_else(|e| {
                             println!("worker_cli failed with the following error: {}", e);
                             ::std::process::exit(ERROR_INITIALIZATION);
                         });
@@ -499,7 +496,7 @@ mod worker_cli_tests {
             reliability = 1.0
             delay = 0
             scan_interval = 2000
-            broadcast_group = "bcast_g1"
+            broadcast_group = ["bcast_g1", "bcast_g2"]
         "#;
         let mut file_path = env::temp_dir();
         file_path.push("sample.toml");
@@ -513,7 +510,8 @@ mod worker_cli_tests {
 
         //Asserting the returns struct matches the expected values of the sample file.
         let mut mock_config = WorkerConfig::new();
-        mock_config.broadcast_group = Some("bcast_g1".to_string());
+        mock_config.broadcast_group = Some(vec!("bcast_g1".to_string(),
+                                                "bcast_g2".to_string()));
         mock_config.delay = Some(0);
         mock_config.operation_mode = worker::OperationMode::Simulated;
         mock_config.random_seed = 12345;
@@ -583,7 +581,7 @@ mod worker_cli_tests {
     fn test_worker_config_new() {
         let obj = WorkerConfig::new();
 
-        assert_eq!(obj.broadcast_group, Some("group1".to_string()));
+        assert_eq!(obj.broadcast_group, Some(vec!("group1".to_string())));
         assert_eq!(obj.delay, Some(0));
         assert_eq!(obj.operation_mode, worker::OperationMode::Simulated);
         assert_eq!(obj.random_seed, 12345);
