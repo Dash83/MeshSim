@@ -40,8 +40,9 @@ use self::serde_cbor::ser::*;
 use std::error;
 use std::fmt;
 use std::io;
-use std::fs;
+use std::fs::{OpenOptions, File, self};
 use std::str::FromStr;
+use std;
 
 // *****************************
 // ********** Traits **********
@@ -491,6 +492,29 @@ impl WorkerConfig {
     
         obj
     }
+
+    ///Writes the current configuration object to a formatted configuration file, that can be passed to
+    ///the worker_cli binary.
+    pub fn write_to_file<'a>(&self, dir : &'a str, file_name : &'a str) -> Result<String, WorkerError> {
+    //Create configuration file
+    let file_path = format!("{}{}{}", dir, std::path::MAIN_SEPARATOR, file_name);
+    let mut file = try!(File::create(&file_path));
+    let groups = self.broadcast_groups.as_ref().cloned().unwrap_or(Vec::new());
+
+    //Write content to file
+    //file.write(sample_toml_str.as_bytes()).expect("Error writing to toml file.");
+    write!(file, "worker_name = \"{}\"\n", self.worker_name)?;
+    write!(file, "random_seed = {}\n", self.random_seed)?;
+    write!(file, "work_dir = \"{}\"\n", self.work_dir)?;
+    write!(file, "operation_mode = \"{}\"\n", self.operation_mode)?;
+    write!(file, "reliability = {}\n", self.reliability.unwrap_or(1f64))?;
+    write!(file, "delay = {}\n", self.delay.unwrap_or(0u32))?;
+    write!(file, "scan_interval = {}\n", self.scan_interval.unwrap_or(1000u32))?;
+    write!(file, "broadcast_groups = {:?}\n", groups)?;
+
+    //file.flush().expect("Error flusing toml file to disk.");
+    Ok(file_path.to_string())
+}
 }
 
 // *****************************

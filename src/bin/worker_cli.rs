@@ -238,38 +238,6 @@ fn load_conf_file<'a>(file_path : &'a str) -> Result<WorkerConfig, CLIError> {
     //WorkerConfig::new()
 }
 
-fn create_default_conf_file() -> Result<String, CLIError> {
-    //Create configuration values
-    let mut rng = try!(rand::os::OsRng::new());
-    let worker_name = format!("worker{}", rng.gen::<u8>());
-    let random_seed : u32 = rng.gen();
-    let cur_dir = try!(env::current_dir());
-    let work_dir = cur_dir.to_str().expect("Invalid directory path.");
-    let operation_mode = worker::OperationMode::Simulated;
-    let broadcast_group = "bc_group1";
-    let reliability = 1.0;
-    let delay = 0;
-    let scan_interval = 2000;
-
-    //Create configuration file
-    let file_path = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, CONFIG_FILE_NAME);
-    let mut file = try!(File::create(&file_path));
-
-    //Write content to file
-    //file.write(sample_toml_str.as_bytes()).expect("Error writing to toml file.");
-    write!(file, "worker_name = \"{}\"\n", worker_name)?;
-    write!(file, "random_seed = {}\n", random_seed)?;
-    write!(file, "work_dir = \"{}\"\n", work_dir)?;
-    write!(file, "operation_mode = \"{}\"\n", operation_mode)?;
-    write!(file, "reliability = {}\n", reliability)?;
-    write!(file, "delay = {}\n", delay)?;
-    write!(file, "scan_interval = {}\n", scan_interval)?;
-    write!(file, "broadcast_group = [\"{}\"]\n", broadcast_group)?;
-
-    //mock_file.flush().expect("Error flusing toml file to disk.");
-    Ok(file_path.to_string())
-}
-
 fn get_cli_parameters<'a>() -> ArgMatches<'a> {
     App::new("Worker_cli").version(VERSION)
                           .author("Marco Caballero <marco.caballero@cl.cam.ac.uk>")
