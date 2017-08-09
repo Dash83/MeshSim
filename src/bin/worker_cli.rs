@@ -16,7 +16,7 @@ extern crate toml;
 extern crate serde_derive;
 extern crate rand;
 
-use mesh_simulator::worker::{Worker};
+use mesh_simulator::worker::{Worker, WorkerConfig};
 use mesh_simulator::worker;
 use clap::{Arg, App, ArgMatches};
 use slog::DrainExt;
@@ -141,32 +141,6 @@ impl From<toml::de::Error> for CLIError {
 // *****************************************
 // ************* Data types ****************
 // *****************************************
-#[derive(Debug, Deserialize, PartialEq)]
-struct WorkerConfig {
-    worker_name : String,
-    work_dir : String,
-    random_seed : u32,
-    operation_mode : worker::OperationMode,
-    broadcast_group : Option<Vec<String>>,
-    reliability : Option<f64>,
-    delay : Option<u32>,
-    scan_interval : Option<u32>,
-}
-
-impl WorkerConfig {
-    pub fn new() -> WorkerConfig {
-        WorkerConfig{worker_name : "worker1".to_string(),
-                     work_dir : ".".to_string(),
-                     random_seed : 12345, 
-                     operation_mode : worker::OperationMode::Simulated,
-                     broadcast_group : Some(vec!("group1".to_string())),
-                     reliability : Some(1.0),
-                     delay : Some(0),
-                     scan_interval : Some(2000)
-                    }
-    }
-}
-
 #[derive(Debug)]
 enum Commands {
     ///This is the main command that worker_cli whould execute most times.
@@ -231,7 +205,7 @@ fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIE
 fn run(config : WorkerConfig) -> Result<(), CLIError> {
     //Obtain individual arguments
     //let worker_data = matches.value_of(ARG_WORKER_OBJ);
-    let worker_name = config.worker_name;
+    //let worker_name = config.worker_name;
     
     /*
     let mut obj = match worker_data {
@@ -246,7 +220,7 @@ fn run(config : WorkerConfig) -> Result<(), CLIError> {
 
     };
     */
-   let mut obj =  Worker::new(worker_name.to_string());
+   let mut obj =  config.create_worker();
    try!(obj.start());
    Ok(())
 }
@@ -374,7 +348,7 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
     }
 
     if config.operation_mode == worker::OperationMode::Simulated && 
-        (config.broadcast_group.is_none() || config.broadcast_group.as_ref().unwrap().is_empty()) { 
+        (config.broadcast_groups.is_none() || config.broadcast_groups.as_ref().unwrap().is_empty()) { 
                 error!("Simulated_mode operation requires at least one non-null broadcast group.");
                 return Err(CLIError::Configuration("Simulated_mode operation requires at least one non-null broadcast group.".to_string()))
     }
@@ -496,7 +470,7 @@ mod worker_cli_tests {
             reliability = 1.0
             delay = 0
             scan_interval = 2000
-            broadcast_group = ["bcast_g1", "bcast_g2"]
+            broadcast_groups = ["bcast_g1", "bcast_g2"]
         "#;
         let mut file_path = env::temp_dir();
         file_path.push("sample.toml");
@@ -510,7 +484,7 @@ mod worker_cli_tests {
 
         //Asserting the returns struct matches the expected values of the sample file.
         let mut mock_config = WorkerConfig::new();
-        mock_config.broadcast_group = Some(vec!("bcast_g1".to_string(),
+        mock_config.broadcast_groups = Some(vec!("bcast_g1".to_string(),
                                                 "bcast_g2".to_string()));
         mock_config.delay = Some(0);
         mock_config.operation_mode = worker::OperationMode::Simulated;
@@ -581,7 +555,7 @@ mod worker_cli_tests {
     fn test_worker_config_new() {
         let obj = WorkerConfig::new();
 
-        assert_eq!(obj.broadcast_group, Some(vec!("group1".to_string())));
+        assert_eq!(obj.broadcast_groups, Some(vec!("group1".to_string())));
         assert_eq!(obj.delay, Some(0));
         assert_eq!(obj.operation_mode, worker::OperationMode::Simulated);
         assert_eq!(obj.random_seed, 12345);

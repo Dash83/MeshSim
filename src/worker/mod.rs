@@ -138,19 +138,6 @@ pub enum MessageType {
     Data(DataMessage),
 }
 
-/// Worker struct.
-/// Main struct for the worker module. Must be created via the ::new(Vec<Param>) method.
-/// 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Worker {
-    /// List of radios the worker uses for wireless communication.
-    pub radios : Vec<Radio>,
-    /// The known neighbors of this worker.
-    pub peers : Vec<Peer>,
-    ///Peer object describing this worker.
-    pub me : Peer,
-}
-
 /// Peer struct.
 /// Defines the public identity of a node in the mesh.
 /// 
@@ -190,20 +177,20 @@ pub struct Radio {
     /// The endpoint used for the socket. In this version of the software,
     /// it's the pipe used for this radio.
     endpoint : String,
-    /// Interference parameter used by the test. Sets a number of millisecs
+    /// delay parameter used by the test. Sets a number of millisecs
     /// as base value for delay of messages. The actual delay for message sending 
     /// will be a a percentage between the constants MESSAGE_DELAY_LOW and MESSAGE_DELAY_HIGH
-    interference : u32,
+    delay : u32,
     /// Reliability parameter used by the test. Sets a number of percentage
     /// between (0 and 1] of probability that the message sent by this worker will
     /// not reach its destination.
-    reliability : f32,
+    reliability : f64,
     ///Broadcast group for this radio. Only used in simulated mode.
     pub broadcast_groups : Vec<String>,
 }
 
 /// Operation modes for the worker.
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum OperationMode {
     /// Simulated: The worker process is part of a simulated environment, running as one of many processes in the same machine.
     Simulated,
@@ -265,7 +252,7 @@ impl Radio {
     /// Constructor for new Radios
     pub fn new() -> Radio {
         Radio{ endpoint : String::from(""), 
-               interference : 0,
+               delay : 0,
                reliability : 1.0,
                broadcast_groups : vec![] }
     }
@@ -290,6 +277,28 @@ impl Radio {
         
         Ok(peers)
     }
+}
+
+/// Worker struct.
+/// Main struct for the worker module. Must be created via the ::new(Vec<Param>) method.
+/// 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Worker {
+    /// List of radios the worker uses for wireless communication.
+    pub radios : Vec<Radio>,
+    /// The known neighbors of this worker.
+    pub peers : Vec<Peer>,
+    ///Peer object describing this worker.
+    pub me : Peer,
+    ///Directory for the worker to operate. Must have RW access to it. Operational files and 
+    ///log files will be written here.
+    work_dir : String,
+    ///Random seed used for all RNG operations.
+    random_seed : u32,
+    ///Simulated or Device operation.
+    operation_mode : OperationMode,
+    ///How often (ms) should the worker scan for new peers.
+    scan_interval : u32,
 }
 
 impl Worker {
@@ -326,18 +335,26 @@ impl Worker {
 
     /// Default constructor for Worker strucutre. Assigns it the name Default_Worker
     /// and an empty radio vector.
-    pub fn new(name: String) -> Worker {
+    pub fn new() -> Worker {
         //Vector of 32 bytes set to 0
         let mut key : Vec<u8>= iter::repeat(0u8).take(32).collect();
         //Fill the key bytes with random generated numbers
-        let mut gen = OsRng::new().expect("Failed to get OS random generator");
-        gen.fill_bytes(&mut key[..]);
+        //let mut gen = OsRng::new().expect("Failed to get OS random generator");
+        //gen.fill_bytes(&mut key[..]);
         let mut radio = Radio::new();
-        radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_hex()).to_string();
+        //radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_hex()).to_string();
         Worker{ radios: vec![radio], 
                 peers: Vec::new(), 
-                me: Peer{ name : name, public_key : key.to_hex().to_string()} }
+                me: Peer{ name : String::new(), public_key : key.to_hex().to_string()},
+                operation_mode : OperationMode::Simulated,
+                random_seed : 0u32,
+                scan_interval : 1000u32,
+                work_dir : String::new() }
     }
+
+    //pub fn new() -> Worker {
+
+    //}
 
     fn handle_message(&mut self, data : &Vec<u8>) -> Result<(), WorkerError> {
         let msg_type : Result<MessageType, _> = from_reader(&data[..]);
@@ -419,6 +436,63 @@ impl Message for AckMessage {
      
 }
 
+/// Configuration for a worker object. This struct encapsulates several of the properties
+/// of a worker. Its use is for the external interfaces of the worker module. This facilitates
+/// that an external client such as worker_cli can create WorkerConfig objects from CLI parameters
+/// or configuration files and pass the configuration around, leaving the actual construction of
+/// the worker object to the worker module.
+#[derive(Debug, Deserialize, PartialEq)]
+pub struct WorkerConfig {
+    ///Name of the worker.
+    pub worker_name : String,
+    ///Directory for the worker to operate. Must have RW access to it. Operational files and 
+    ///log files will be written here.
+    pub work_dir : String,
+    ///Random seed used for all RNG operations.
+    pub random_seed : u32,
+    ///Simulated or Device operation.
+    pub operation_mode : OperationMode,
+    ///The broadcast groups this worker belongs to. Ignored in device mode.
+    pub broadcast_groups : Option<Vec<String>>,
+    ///Simulated mode only. How likely ([0-1]) are packets to reach their destination.
+    pub reliability : Option<f64>,
+    ///Simulated mode only. Artificial delay (in ms) introduced to the network packets of this node.
+    pub delay : Option<u32>,
+    ///How often (ms) should the worker scan for new peers.
+    pub scan_interval : Option<u32>,
+    
+}
+
+impl WorkerConfig {
+    ///Creates a new configuration for a Worker with default settings.
+    pub fn new() -> WorkerConfig {
+        WorkerConfig{worker_name : "worker1".to_string(),
+                     work_dir : ".".to_string(),
+                     random_seed : 12345, 
+                     operation_mode : OperationMode::Simulated,
+                     broadcast_groups : Some(vec!("group1".to_string())),
+                     reliability : Some(1.0),
+                     delay : Some(0),
+                     scan_interval : Some(2000)
+                    }
+    }
+
+    ///Creates a new Worker object configured with the values of this configuration object.
+    pub fn create_worker(self) -> Worker {
+        let mut obj = Worker::new();
+        obj.me.name = self.worker_name;
+        obj.work_dir = self.work_dir;
+        obj.random_seed = self.random_seed;
+        obj.operation_mode = self.operation_mode;
+        obj.radios[0].broadcast_groups = self.broadcast_groups.unwrap_or(obj.radios[0].broadcast_groups.clone());
+        obj.radios[0].reliability = self.reliability.unwrap_or(obj.radios[0].reliability);
+        obj.radios[0].delay = self.delay.unwrap_or(obj.radios[0].delay);
+        obj.scan_interval = self.scan_interval.unwrap_or(obj.scan_interval);
+    
+        obj
+    }
+}
+
 // *****************************
 // ******* End structs *********
 // *****************************
@@ -445,11 +519,11 @@ mod tests {
     //**** Radio unit tests ****
     //#[test]
     //fn create_empty_radio() {
-    //    let r1 = Radio{ endpoint : endpoint1.to_string(), interference : 0, reliability: 1.0 };
+    //    let r1 = Radio{ endpoint : endpoint1.to_string(), delay : 0, reliability: 1.0 };
     //    let mut r2 = Radio::new();
     //    r2.endpoint = String::from(endpoint1);
     //    assert_eq!(r1.endpoint, r2.endpoint);
-    //    assert_eq!(r1.interference, r2.interference);
+    //    assert_eq!(r1.delay, r2.delay);
     //    assert_eq!(r1.reliability, r2.reliability);
     //}
 
