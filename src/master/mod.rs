@@ -176,14 +176,12 @@ mod tests {
     use super::*;
 
     //**** Create master with 0 workers ****
-    #[ignore]
     #[test]
     fn create_empty_master() {
         panic!("test failed!");
     }
 
     //**** Create master with 10 workers and kill 1 ****
-    #[ignore]
     #[test]
     fn create_master_ten_children_kill_one() {
         panic!("test failed!");

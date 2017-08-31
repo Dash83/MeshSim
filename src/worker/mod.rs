@@ -29,10 +29,11 @@ extern crate nanomsg;
 extern crate rustc_serialize;
 extern crate serde_cbor;
 extern crate serde;
+extern crate byteorder;
 
 use std::iter;
 use std::io::{Read, Write};
-use self::rand::{OsRng, Rng};
+use self::rand::{Rng, SeedableRng, StdRng};
 use self::nanomsg::{Socket, Protocol};
 use self::rustc_serialize::hex::*;
 use self::serde_cbor::de::*;
@@ -43,6 +44,9 @@ use std::io;
 use std::fs::{OpenOptions, File, self};
 use std::str::FromStr;
 use std;
+use self::byteorder::{NativeEndian, WriteBytesExt};
+use std::path::{Path, PathBuf, Component};
+use std::collections::HashSet;
 
 // *****************************
 // ********** Traits **********
@@ -264,17 +268,45 @@ impl Radio {
     }
 
     ///Function for scanning for nearby peers.
-    pub fn scan_for_peers(&self) ->  Result<Vec<String>, WorkerError> {
-        let mut peers = vec![];
-        info!("Scanning for nearby peers...");
-        for group in &self.broadcast_groups {
-            let paths = fs::read_dir(format!("//tmp/{}", group)).unwrap();
-            for path in paths {
-                let peer = path.unwrap().file_name();
-                let peer_name = peer.to_str().unwrap();
-                peers.push(String::from(peer_name));
+    pub fn scan_for_peers(&self) ->  Result<HashSet<String>, WorkerError> {
+        let mut peers = HashSet::new();
+
+        //Obtain parent directory of broadcast groups
+        //This process is cumbersome since the full path needs to be reconstructed
+        //since the endpoint path starts with ipc:
+        let mut parent_dir = Path::new(&self.endpoint).to_path_buf();
+        parent_dir.pop(); //bcast group for main endpoint
+        parent_dir.pop(); //bcast group parent directory
+        let mut components = parent_dir.components();
+        let _ = components.next();
+        let mut parent_dir = PathBuf::new();
+        parent_dir.push("/");
+        for c in components {
+            match c {
+                Component::Normal(d) => parent_dir.push(d),
+                _ => {},
             }
         }
+
+        info!("Scanning for nearby peers...");
+        for group in &self.broadcast_groups {
+            let dir = format!("{}{}{}", parent_dir.display(), std::path::MAIN_SEPARATOR, group);
+            debug!("Scanning {}", dir);
+            if Path::new(&dir).is_dir() {
+                for path in fs::read_dir(dir)? {
+                    let peer = try!(path);
+                    let peer_name = peer.file_name();
+                    let peer_name = peer_name.to_str().unwrap_or("");
+                    if !peer_name.is_empty() {
+                        peers.insert(String::from(peer_name));
+                    }
+                }
+            }
+        }
+        //Remove self from peers
+        let own_key = Path::new(&self.endpoint).file_name().unwrap();
+        let own_key = own_key.to_str().unwrap_or("").to_string();
+        peers.remove(&own_key);
         
         Ok(peers)
     }
@@ -310,17 +342,21 @@ impl Worker {
     /// 3. It starts to listen for messages of the network on all endpoints
     ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
     pub fn start(&mut self) -> Result<(), WorkerError> {        
-        //First, turn on radios.
-        //self.start_radios();
+        //Init the worker
+        self.init();
+        debug!("Finished initializing.");
+
+        //Bind listening socket
         let mut socket = try!(Socket::new(Protocol::Pull));
+        debug!("Successfully created socket");
         let endpoint = &self.radios[0].endpoint.clone();
         try!(socket.bind(&endpoint));
-        //info!("Successfully bound to endpoint {}", endpoint);
+        debug!("Successfully bound to endpoint {}", endpoint);
 
         //Next, join the network
-        let peers : Vec<String> = try!(self.radios[0].scan_for_peers());
-        let num = peers.len() - self.radios[0].broadcast_groups.len();
-        info!("Found {} peers!", num);
+        let peers : HashSet<String> = try!(self.radios[0].scan_for_peers());
+        //let num = peers.len() - self.radios[0].broadcast_groups.len();
+        //info!("Found {} peers!", num);
         self.join_network();
 
         //Now listen for messages
@@ -416,15 +452,83 @@ impl Worker {
         }
     }
 
-    /// This method is not parte of the oficial interface. Since the nodes have no way to
-    /// discover each other without a shared mediuem (wifi-direct broadcast) they can never
-    /// build the mesh while in simulated mode. This method is used to bootstrap the mesh.
-    /// All new nodes need at least 1 peer to be introduced into the network.
-    pub fn add_peers(&mut self, peers : Vec<Peer>) {
-        for p in peers {
-            self.peers.push(p);
+    fn init(&mut self) -> Result<(), WorkerError> {
+        //Create the key-pair for the worker.
+        //For now, just filling with random 32 bytes.
+        let mut random_bytes = vec![];
+        let _ = random_bytes.write_u32::<NativeEndian>(self.random_seed);
+        let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
+        let mut gen = StdRng::from_seed(randomness.as_slice());
+        let mut key = self.me.public_key.from_hex().unwrap();
+        gen.fill_bytes(&mut key[..]);
+        self.me.public_key = key.to_hex().to_string();
+
+        //Make sure the required directories are there and writable or create them.
+        //check log dir is there
+        let mut dir = try!(std::fs::canonicalize(&self.work_dir));
+        debug!("Work dir: {}", dir.display());
+        dir.push("log"); //Dir is work_dir/log
+        if !dir.exists() {
+            //Create log dir
+            try!(std::fs::create_dir(dir.as_path()));
+            info!("Created dir file {} ", dir.as_path().display());
         }
-        
+        dir.pop(); //Dir is work_dir
+
+        //check bcast_groups dir is there
+        dir.push("bcast_groups"); //Dir is work_dir/bcast_groups
+        if !dir.exists() {
+            //Create bcast_groups dir
+            try!(std::fs::create_dir(dir.as_path()));
+            info!("Created dir file {} ", dir.as_path().display());
+        }
+
+        //check current group dir is there
+        let mut main_endpoint = String::new();
+        let groups = self.radios[0].broadcast_groups.clone();
+        for group in groups.iter() {
+            dir.push(&group); //Dir is work_dir/bcast_groups/&group
+            
+            //Does broadcast group exist?
+            if !dir.exists() {
+                //Create group dir
+                try!(std::fs::create_dir(dir.as_path()));
+                info!("Created dir file {} ", dir.as_path().display());
+            }
+
+            //Create endpoint or symlink for this worker
+            if main_endpoint.is_empty() {
+                main_endpoint = format!("{}/{}.ipc", dir.as_path().display(), self.me.public_key);
+                if Path::new(&main_endpoint).exists() {
+                    //Pipe already exists
+                    dir.pop(); //Dir is work_dir/bcast_groups
+                    continue;
+                }
+                let _ = try!(File::create(&main_endpoint));
+                debug!("Pipe file {} created.", &main_endpoint);
+                //main_endpoint = format!("ipc://{}", pipe_name);
+                //debug!("Radio endpoint set to {}.", &main_endpoint);
+                self.radios[0].endpoint = format!("ipc://{}", main_endpoint);
+            } else {
+                let linked_endpoint = format!("{}/{}.ipc", dir.as_path().display(), self.me.public_key);
+                if Path::new(&linked_endpoint).exists() {
+                    //Pipe already exists
+                    dir.pop(); //Dir is work_dir/bcast_groups
+                    continue;
+                }
+                let _ = try!(std::os::unix::fs::symlink(&main_endpoint, &linked_endpoint));
+                debug!("Pipe file {} created.", &linked_endpoint);
+            }
+            
+            dir.pop();
+
+        }
+
+        //TODO: What else is necessary for init?
+        //Configure radio and initialize peer list
+        //radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_hex()).to_string();
+
+        Ok(())
     }
 
 }
@@ -485,7 +589,7 @@ impl WorkerConfig {
         obj.work_dir = self.work_dir;
         obj.random_seed = self.random_seed;
         obj.operation_mode = self.operation_mode;
-        obj.radios[0].broadcast_groups = self.broadcast_groups.unwrap_or(obj.radios[0].broadcast_groups.clone());
+        obj.radios[0].broadcast_groups = self.broadcast_groups.unwrap_or(vec![]);
         obj.radios[0].reliability = self.reliability.unwrap_or(obj.radios[0].reliability);
         obj.radios[0].delay = self.delay.unwrap_or(obj.radios[0].delay);
         obj.scan_interval = self.scan_interval.unwrap_or(obj.scan_interval);
@@ -531,29 +635,228 @@ impl WorkerConfig {
 mod tests {
     use super::*;
 
-    static endpoint1: &'static str = "ipc:///tmp/endpoint1.ipc";
-
     //**** Message unit tests ****
-    #[ignore]
+
+
+    //**** Peer unit tests ****
+    
+
+    //Unit test for: create_default_conf_file
+    // #[test]
+    // fn test_create_default_conf_file() {
+    //     let file_path = create_default_conf_file().unwrap();
+    //     let md = fs::metadata(file_path).unwrap();
+    //     assert!(md.is_file());
+    //     assert!(md.len() > 0);
+    // }
+    
+    //**** Worker unit tests ****
+    //Unit test for: Worker::new
     #[test]
-    fn dummy_test() {
-        panic!("test failed!");
+    fn test_worker_new() {
+        unimplemented!();
+    }
+
+    //Unit test for: Worker::init
+    #[test]
+    fn test_worker_init() {
+        let mut config = WorkerConfig::new();
+        config.work_dir = String::from("/tmp");
+        let mut w = config.create_worker();
+        w.radios[0].broadcast_groups.push(String::from("group2"));
+        let res = w.init();
+
+        //Check result is not error
+        assert!(res.is_ok());
+
+        //Check the key is valid
+        
+        //Check the dirs have been created
+        assert!(Path::new("/tmp/log").exists());
+        assert!(Path::new("/tmp/bcast_groups").exists());
+        assert!(Path::new("/tmp/bcast_groups/group1").exists());
+        assert!(Path::new("/tmp/bcast_groups/group2").exists());
+
+        //Check the endpoints have been created.
+        let endpoint = format!("/tmp/bcast_groups/group1/{}.ipc", w.me.public_key);
+        // Checking /tmp/bcast_groups/group1/[key].ipc exists
+        assert!(Path::new(&endpoint).exists());
+
+        let link = format!("/tmp/bcast_groups/group2/{}.ipc", w.me.public_key);
+        // Checking /tmp/bcast_groups/group2/[key].ipc exists
+        assert!(Path::new(&link).exists());
+        
+    }
+
+    //Unit test for: Worker::handle_message
+    #[test]
+    fn test_worker_handle_message() {
+        unimplemented!();
+    }
+
+    //Unit test for: Worker::join_network
+    #[test]
+    fn test_worker_join_network() {
+        unimplemented!();
+    }
+
+    //Unit test for: Worker::process_join_message
+    #[test]
+    fn test_worker_process_join_message() {
+        unimplemented!();
     }
 
     //**** Radio unit tests ****
-    //#[test]
-    //fn create_empty_radio() {
-    //    let r1 = Radio{ endpoint : endpoint1.to_string(), delay : 0, reliability: 1.0 };
-    //    let mut r2 = Radio::new();
-    //    r2.endpoint = String::from(endpoint1);
-    //    assert_eq!(r1.endpoint, r2.endpoint);
-    //    assert_eq!(r1.delay, r2.delay);
-    //    assert_eq!(r1.reliability, r2.reliability);
-    //}
+    //Unit test for: Radio::send
+    #[test]
+    fn test_radio_send() {
+        unimplemented!();
+    }
 
-    //**** Peer unit tests ****
-    //**** Worker unit tests ****
+    //Unit test for: Radio::new
+    #[test]
+    fn test_radio_new() {
+        unimplemented!();
+    }
 
+    //Unit test for: Radio::add_bcast_group
+    #[test]
+    fn test_radio_add_bcast_group() {
+        unimplemented!();
+    }
+
+    //Unit test for: Radio::scan_for_peers
+    #[test]
+    fn test_radio_scan_for_peers() {
+        let mut radio = Radio::new();
+        //3 phony groups
+        radio.add_bcast_group(String::from("group1"));
+        radio.add_bcast_group(String::from("group2"));
+        radio.add_bcast_group(String::from("group3"));
+
+        //Create dirs
+        let mut dir = Path::new("/tmp/scan_bcast_groups").to_path_buf();
+        if !dir.exists() {
+            let _ = fs::create_dir(&dir).unwrap();
+        } else {
+            //Directory structure exists. Possibly from an earlier test run.
+            //Delete all directory content to ensure deterministic test results.
+            let _ = fs::remove_dir_all(&dir).unwrap();
+            let _ = fs::create_dir(&dir).unwrap();
+        }
+
+        dir.push("group1"); // /tmp/bcast_groups/group1
+        if !dir.exists() {
+            let _ = fs::create_dir(&dir).unwrap();
+        }
+
+        dir.pop();
+        dir.push("group2"); // /tmp/bcast_groups/group1
+        if !dir.exists() {
+            let _ = fs::create_dir(&dir).unwrap();
+        }
+
+        dir.pop();
+        dir.push("group3"); // /tmp/bcast_groups/group1
+        if !dir.exists() {
+            let _ = fs::create_dir(&dir).unwrap();
+        }
+
+        //Create endpoint and links for this radio.
+        let key_str = create_random_key();
+        //Create the pipe
+        let pipe = format!("/tmp/scan_bcast_groups/group1/{}.ipc", key_str);
+        radio.endpoint = format!("ipc://{}", &pipe);
+        File::create(&pipe);
+        //Create link in group 2
+        let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", key_str);
+        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
+        //Create link in group 3
+        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", key_str);
+        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
+
+        //Create endpoint and links for radio #2.
+        let other_key_str = create_random_key();
+        //Create the pipe
+        let pipe = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
+        File::create(&pipe);
+        //Create link in group 2
+        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
+        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
+        //Create link in group 3
+        let link = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
+        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
+
+        //Create endpoint and links for radio #3.
+        let other_key_str = create_random_key();
+        //Create the pipe
+        let pipe = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
+        File::create(&pipe);
+        //Create link in group 2
+        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
+        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
+        //Create link in group 3
+        let link = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
+        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
+
+        //Create endpoint and links for radio #4.
+        let other_key_str = create_random_key();
+        //Create the pipe
+        let pipe = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
+        File::create(&pipe);
+        //Create link in group 2
+        let link = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
+        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
+        //Create link in group 3
+        let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
+        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
+
+        //Create endpoint and links for radio #5.
+        let other_key_str = create_random_key();
+        //Create the pipe
+        let pipe = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
+        File::create(&pipe);
+        //Create link in group 2
+        let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
+        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
+        //Create link in group 3
+        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
+        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
+
+        //Scan for peers. Should find 4 peers in total.
+        let peers : HashSet<String> = radio.scan_for_peers().unwrap();
+
+        assert_eq!(peers.len(), 4);
+    }
+
+    //**** WorkerConfig unit tests ****
+    //Unit test for: WorkerConfig::new
+    #[test]
+    fn test_workerconfig_new() {
+        unimplemented!();
+    }
+
+    //Unit test for: WorkerConfig::create_worker
+    #[test]
+    fn test_workerconfig_create_worker() {
+        unimplemented!();
+    }
+
+    //Unit test for: WorkerConfig::create_worker
+    #[test]
+    fn test_workerconfig_write_to_file() {
+        unimplemented!();
+    }
+
+    //**** Utility functions ****
+    //Used for creating keys that can be endpoints of other workers.
+    fn create_random_key() -> String {
+        let mut random_bytes : Vec<u8> = vec![];
+        let mut rng = rand::thread_rng();
+        let mut key = [0u8; 32];
+        rng.fill_bytes(&mut key[..]);
+        key.to_hex().to_string()
+    }
 }
 
 // *****************************

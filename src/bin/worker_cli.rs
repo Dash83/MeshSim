@@ -27,6 +27,7 @@ use std::error;
 use std::env;
 use rand::Rng;
 use std::str::FromStr;
+use std::path::Path;
 
 const ARG_CONFIG : &'static str = "config";
 const ARG_WORKER_NAME : &'static str = "worker_name";
@@ -176,7 +177,7 @@ fn decode_worker_data<'a>(arg : &'a str) -> Result<Worker, serde_cbor::Error> {
 fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIError>  { 
     //let log_dir = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "log");
     let log_dir_name = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "log");
-    let log_dir = std::path::Path::new(log_dir_name.as_str());
+    let log_dir = Path::new(log_dir_name.as_str());
     
     if !log_dir.exists() {
         try!(std::fs::create_dir(log_dir));
@@ -417,15 +418,6 @@ mod worker_cli_tests {
     use std::io::{Write};
     use std::env;
 
-    //Unit test for: create_default_conf_file
-    #[test]
-    fn test_create_default_conf_file() {
-        let file_path = create_default_conf_file().unwrap();
-        let md = fs::metadata(file_path).unwrap();
-        assert!(md.is_file());
-        assert!(md.len() > 0);
-    }
-
     //Unit test for: load_conf_file
     #[test]
     fn test_load_conf_file() {
@@ -465,7 +457,7 @@ mod worker_cli_tests {
         assert_eq!(mock_config, config);
     }
 
-    //Unit test for: create_default_conf_file
+    //Unit test for: init_logger
     #[test]
     fn test_init_logger() {
         let worker_name = "test_worker";
