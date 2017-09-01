@@ -41,7 +41,7 @@ use self::serde_cbor::ser::*;
 use std::error;
 use std::fmt;
 use std::io;
-use std::fs::{OpenOptions, File, self};
+use std::fs::{File, self};
 use std::str::FromStr;
 use std;
 use self::byteorder::{NativeEndian, WriteBytesExt};
@@ -146,7 +146,7 @@ pub enum MessageType {
 /// Peer struct.
 /// Defines the public identity of a node in the mesh.
 /// 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct Peer {
     /// Public key of the peer. It's considered it's public address.
     pub public_key: String, 
@@ -168,7 +168,7 @@ pub struct JoinMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AckMessage {
     sender: Peer,
-    neighbors : Vec<Peer>,
+    neighbors : HashSet<Peer>,
 }
 
 /// General purposes data message for the network
@@ -268,8 +268,9 @@ impl Radio {
     }
 
     ///Function for scanning for nearby peers.
-    pub fn scan_for_peers(&self) ->  Result<HashSet<String>, WorkerError> {
+    pub fn scan_for_peers(&self) ->  Result<HashSet<Peer>, WorkerError> {
         let mut peers = HashSet::new();
+        let own_key = extract_endpoint_key(&self.endpoint);
 
         //Obtain parent directory of broadcast groups
         //This process is cumbersome since the full path needs to be reconstructed
@@ -294,19 +295,22 @@ impl Radio {
             debug!("Scanning {}", dir);
             if Path::new(&dir).is_dir() {
                 for path in fs::read_dir(dir)? {
-                    let peer = try!(path);
-                    let peer_name = peer.file_name();
-                    let peer_name = peer_name.to_str().unwrap_or("");
-                    if !peer_name.is_empty() {
-                        peers.insert(String::from(peer_name));
+                    let peer_file = try!(path);
+                    let peer_file = peer_file.file_name();
+                    let peer_file = peer_file.to_str().unwrap_or("");
+                    let peer_key = extract_endpoint_key(&peer_file);
+                    if !peer_key.is_empty() && peer_key != own_key {
+                        debug!("Found {}!", &peer_key);
+                        let peer = Peer{name : String::from(""), public_key : String::from(peer_key)};
+                        peers.insert(peer);
                     }
                 }
             }
         }
         //Remove self from peers
-        let own_key = Path::new(&self.endpoint).file_name().unwrap();
-        let own_key = own_key.to_str().unwrap_or("").to_string();
-        peers.remove(&own_key);
+        //let own_key = Path::new(&self.endpoint).file_name().unwrap();
+        //let own_key = own_key.to_str().unwrap_or("").to_string();
+        //peers.remove(&own_key);
         
         Ok(peers)
     }
@@ -315,12 +319,12 @@ impl Radio {
 /// Worker struct.
 /// Main struct for the worker module. Must be created via the ::new(Vec<Param>) method.
 /// 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Worker {
     /// List of radios the worker uses for wireless communication.
     pub radios : Vec<Radio>,
     /// The known neighbors of this worker.
-    pub peers : Vec<Peer>,
+    pub peers : HashSet<Peer>,
     ///Peer object describing this worker.
     pub me : Peer,
     ///Directory for the worker to operate. Must have RW access to it. Operational files and 
@@ -343,7 +347,7 @@ impl Worker {
     ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
     pub fn start(&mut self) -> Result<(), WorkerError> {        
         //Init the worker
-        self.init();
+        let _ = try!(self.init());
         debug!("Finished initializing.");
 
         //Bind listening socket
@@ -354,7 +358,7 @@ impl Worker {
         debug!("Successfully bound to endpoint {}", endpoint);
 
         //Next, join the network
-        let peers : HashSet<String> = try!(self.radios[0].scan_for_peers());
+        self.peers = try!(self.radios[0].scan_for_peers());
         //let num = peers.len() - self.radios[0].broadcast_groups.len();
         //info!("Found {} peers!", num);
         self.join_network();
@@ -374,14 +378,14 @@ impl Worker {
     /// and an empty radio vector.
     pub fn new() -> Worker {
         //Vector of 32 bytes set to 0
-        let mut key : Vec<u8>= iter::repeat(0u8).take(32).collect();
+        let key : Vec<u8>= iter::repeat(0u8).take(32).collect();
         //Fill the key bytes with random generated numbers
         //let mut gen = OsRng::new().expect("Failed to get OS random generator");
         //gen.fill_bytes(&mut key[..]);
-        let mut radio = Radio::new();
+        let radio = Radio::new();
         //radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_hex()).to_string();
         Worker{ radios: vec![radio], 
-                peers: Vec::new(), 
+                peers: HashSet::new(), 
                 me: Peer{ name : String::new(), public_key : key.to_hex().to_string()},
                 operation_mode : OperationMode::Simulated,
                 random_seed : 0u32,
@@ -439,7 +443,7 @@ impl Worker {
         let _ = self.radios[0].send(ack_msg, &msg.sender);
 
         //Add new node to membership list
-        self.peers.push(msg.sender.clone());
+        self.peers.insert(msg.sender.clone());
     }
 
     fn process_ack_message(&mut self, msg: AckMessage)
@@ -448,7 +452,7 @@ impl Worker {
         for p in msg.neighbors {
             // TODO: check the peer doesn't already exist
             info!("Adding peer {:?} to list.", p.name);
-            self.peers.push(p);
+            self.peers.insert(p);
         }
     }
 
@@ -500,9 +504,8 @@ impl Worker {
             if main_endpoint.is_empty() {
                 main_endpoint = format!("{}/{}.ipc", dir.as_path().display(), self.me.public_key);
                 if Path::new(&main_endpoint).exists() {
-                    //Pipe already exists
-                    dir.pop(); //Dir is work_dir/bcast_groups
-                    continue;
+                    //Pipe already exists. Needs to be destroyed or Nanomsg fails to bind the socket.
+                    try!(fs::remove_file(&main_endpoint));
                 }
                 let _ = try!(File::create(&main_endpoint));
                 debug!("Pipe file {} created.", &main_endpoint);
@@ -520,7 +523,7 @@ impl Worker {
                 debug!("Pipe file {} created.", &linked_endpoint);
             }
             
-            dir.pop();
+            dir.pop(); //Dir is work_dir/bcast_groups
 
         }
 
@@ -571,9 +574,11 @@ pub struct WorkerConfig {
 impl WorkerConfig {
     ///Creates a new configuration for a Worker with default settings.
     pub fn new() -> WorkerConfig {
+        let mut rng = rand::thread_rng();
+        let seed = rng.next_u32();
         WorkerConfig{worker_name : "worker1".to_string(),
                      work_dir : ".".to_string(),
-                     random_seed : 12345, 
+                     random_seed : seed, 
                      operation_mode : OperationMode::Simulated,
                      broadcast_groups : Some(vec!("group1".to_string())),
                      reliability : Some(1.0),
@@ -625,6 +630,13 @@ impl WorkerConfig {
 // ******* End structs *********
 // *****************************
 
+fn extract_endpoint_key<'a>(endpoint : &'a str) -> String {
+    let own_key = Path::new(endpoint).file_stem();
+    if own_key.is_none() {
+        return String::from("");
+    }
+    own_key.unwrap().to_str().unwrap_or("").to_string()
+}
 
 // *****************************
 // ********** Tests ************
@@ -767,7 +779,7 @@ mod tests {
         //Create the pipe
         let pipe = format!("/tmp/scan_bcast_groups/group1/{}.ipc", key_str);
         radio.endpoint = format!("ipc://{}", &pipe);
-        File::create(&pipe);
+        File::create(&pipe).unwrap();
         //Create link in group 2
         let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", key_str);
         let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
@@ -779,7 +791,7 @@ mod tests {
         let other_key_str = create_random_key();
         //Create the pipe
         let pipe = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
-        File::create(&pipe);
+        File::create(&pipe).unwrap();
         //Create link in group 2
         let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
         let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
@@ -791,7 +803,7 @@ mod tests {
         let other_key_str = create_random_key();
         //Create the pipe
         let pipe = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
-        File::create(&pipe);
+        File::create(&pipe).unwrap();
         //Create link in group 2
         let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
         let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
@@ -803,7 +815,7 @@ mod tests {
         let other_key_str = create_random_key();
         //Create the pipe
         let pipe = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
-        File::create(&pipe);
+        File::create(&pipe).unwrap();
         //Create link in group 2
         let link = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
         let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
@@ -815,7 +827,7 @@ mod tests {
         let other_key_str = create_random_key();
         //Create the pipe
         let pipe = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
-        File::create(&pipe);
+        File::create(&pipe).unwrap();
         //Create link in group 2
         let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
         let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
@@ -824,16 +836,25 @@ mod tests {
         let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
 
         //Scan for peers. Should find 4 peers in total.
-        let peers : HashSet<String> = radio.scan_for_peers().unwrap();
+        let peers : HashSet<Peer> = radio.scan_for_peers().unwrap();
 
         assert_eq!(peers.len(), 4);
     }
 
     //**** WorkerConfig unit tests ****
-    //Unit test for: WorkerConfig::new
+    //Unit test for: WorkerConfig_new
     #[test]
     fn test_workerconfig_new() {
-        unimplemented!();
+        let obj = WorkerConfig::new();
+
+        assert_eq!(obj.broadcast_groups, Some(vec!("group1".to_string())));
+        assert_eq!(obj.delay, Some(0));
+        assert_eq!(obj.operation_mode, OperationMode::Simulated);
+        assert_eq!(obj.random_seed, 12345);
+        assert_eq!(obj.reliability, Some(1.0));
+        assert_eq!(obj.scan_interval, Some(2000));
+        assert_eq!(obj.work_dir, ".".to_string());
+        assert_eq!(obj.worker_name, "worker1".to_string());
     }
 
     //Unit test for: WorkerConfig::create_worker
@@ -847,11 +868,23 @@ mod tests {
     fn test_workerconfig_write_to_file() {
         unimplemented!();
     }
+    //Unit test for: WorkerConfig_new
+    #[test]
+    fn test_worker_config_new() {
+        let obj = WorkerConfig::new();
 
+        assert_eq!(obj.broadcast_groups, Some(vec!("group1".to_string())));
+        assert_eq!(obj.delay, Some(0));
+        assert_eq!(obj.operation_mode, OperationMode::Simulated);
+        assert_eq!(obj.random_seed, 12345);
+        assert_eq!(obj.reliability, Some(1.0));
+        assert_eq!(obj.scan_interval, Some(2000));
+        assert_eq!(obj.work_dir, ".".to_string());
+        assert_eq!(obj.worker_name, "worker1".to_string());
+    }
     //**** Utility functions ****
     //Used for creating keys that can be endpoints of other workers.
     fn create_random_key() -> String {
-        let mut random_bytes : Vec<u8> = vec![];
         let mut rng = rand::thread_rng();
         let mut key = [0u8; 32];
         rng.fill_bytes(&mut key[..]);

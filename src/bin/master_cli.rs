@@ -23,7 +23,6 @@ use std::fs::OpenOptions;
 use std::io;
 use std::error;
 use std::fmt;
-use std::fs::File;
 
 const ARG_CONFIG : &'static str = "config";
 const ARG_TEST : &'static str = "test";
@@ -139,10 +138,11 @@ fn test_basic_test() -> Result<(), CLIError> {
     let mut master = Master::new();
     let mut cfg1 = WorkerConfig::new();
     cfg1.worker_name = "Worker1".to_string();
+    cfg1.work_dir = String::from("/tmp");
 
     let mut cfg2 = WorkerConfig::new();
     cfg2.worker_name = "Worker2".to_string();
-
+    cfg2.work_dir = String::from("/tmp");
 
     try!(master.add_worker(cfg1));
     //Super fucking hacky. It seems the order for process start is not that deterministic.

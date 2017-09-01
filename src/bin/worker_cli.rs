@@ -12,20 +12,17 @@ extern crate slog_stdlog;
 #[macro_use]
 extern crate log;
 extern crate toml;
-#[macro_use]
-extern crate serde_derive;
 extern crate rand;
 
-use mesh_simulator::worker::{Worker, WorkerConfig};
+use mesh_simulator::worker::{WorkerConfig};
 use mesh_simulator::worker;
 use clap::{Arg, App, ArgMatches};
 use slog::DrainExt;
 use std::fs::{OpenOptions, File, self};
-use std::io::{self, Write, Read};
+use std::io::{self, Read};
 use std::fmt;
 use std::error;
 use std::env;
-use rand::Rng;
 use std::str::FromStr;
 use std::path::Path;
 
@@ -414,7 +411,7 @@ fn main() {
 #[cfg(test)]
 mod worker_cli_tests {
     use super::*;
-    use std::fs::{self, File};
+    use std::fs::{File};
     use std::io::{Write};
     use std::env;
 
@@ -476,15 +473,6 @@ mod worker_cli_tests {
         panic!("test failed!");
     }
 
-    //Unit test for: decode_worker_data
-    //This test will likely never be needed as the function it tests will be deprecated.
-    #[test]
-    #[ignore]
-    fn test_decode_worker_data() {
-
-        panic!("test failed!");
-    }
-
     //Unit test for: validate_config
     #[test]
     fn test_validate_config() {
@@ -508,20 +496,5 @@ mod worker_cli_tests {
         //let name = matches.value_of(ARG_WORKER_NAME).expect("Worker_name was not provided.");
 
         unimplemented!()
-    }
-    
-    //Unit test for: WorkerConfig_new
-    #[test]
-    fn test_worker_config_new() {
-        let obj = WorkerConfig::new();
-
-        assert_eq!(obj.broadcast_groups, Some(vec!("group1".to_string())));
-        assert_eq!(obj.delay, Some(0));
-        assert_eq!(obj.operation_mode, worker::OperationMode::Simulated);
-        assert_eq!(obj.random_seed, 12345);
-        assert_eq!(obj.reliability, Some(1.0));
-        assert_eq!(obj.scan_interval, Some(2000));
-        assert_eq!(obj.work_dir, ".".to_string());
-        assert_eq!(obj.worker_name, "worker1".to_string());
     }
 }

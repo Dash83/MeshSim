@@ -28,8 +28,6 @@ use std::io;
 use std::error;
 use std::fmt;
 use std::collections::HashMap;
-use self::serde_cbor::ser::*;
-use self::rustc_serialize::hex::*;
 
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
@@ -173,7 +171,6 @@ impl Master {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     //**** Create master with 0 workers ****
     #[test]
