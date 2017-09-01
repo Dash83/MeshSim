@@ -10,7 +10,6 @@ documentation = "https://github.com/Dash83/mesh_simulator"
 description = "Simulation platform for a mesh network."
 
 [dependencies]
-crossbeam = "0.2"
 rand = "0.3.15"
 nanomsg = "0.6"
 rustc-serialize = "0.3"
@@ -25,3 +24,4 @@ slog-json = "1.2.1"
 slog-stdlog = "1.1.0"
 log = "0.3.7"
 toml = "0.4.2"
+byteorder = "1.0.0"

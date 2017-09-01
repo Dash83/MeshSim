@@ -12,21 +12,19 @@ extern crate slog_stdlog;
 #[macro_use]
 extern crate log;
 extern crate toml;
-#[macro_use]
-extern crate serde_derive;
 extern crate rand;
 
-use mesh_simulator::worker::{Worker};
+use mesh_simulator::worker::{WorkerConfig};
 use mesh_simulator::worker;
 use clap::{Arg, App, ArgMatches};
 use slog::DrainExt;
 use std::fs::{OpenOptions, File, self};
-use std::io::{self, Write, Read};
+use std::io::{self, Read};
 use std::fmt;
 use std::error;
 use std::env;
-use rand::Rng;
 use std::str::FromStr;
+use std::path::Path;
 
 const ARG_CONFIG : &'static str = "config";
 const ARG_WORKER_NAME : &'static str = "worker_name";
@@ -141,32 +139,6 @@ impl From<toml::de::Error> for CLIError {
 // *****************************************
 // ************* Data types ****************
 // *****************************************
-#[derive(Debug, Deserialize, PartialEq)]
-struct WorkerConfig {
-    worker_name : String,
-    work_dir : String,
-    random_seed : u32,
-    operation_mode : worker::OperationMode,
-    broadcast_group : Option<Vec<String>>,
-    reliability : Option<f64>,
-    delay : Option<u32>,
-    scan_interval : Option<u32>,
-}
-
-impl WorkerConfig {
-    pub fn new() -> WorkerConfig {
-        WorkerConfig{worker_name : "worker1".to_string(),
-                     work_dir : ".".to_string(),
-                     random_seed : 12345, 
-                     operation_mode : worker::OperationMode::Simulated,
-                     broadcast_group : Some(vec!("group1".to_string())),
-                     reliability : Some(1.0),
-                     delay : Some(0),
-                     scan_interval : Some(2000)
-                    }
-    }
-}
-
 #[derive(Debug)]
 enum Commands {
     ///This is the main command that worker_cli whould execute most times.
@@ -202,7 +174,7 @@ fn decode_worker_data<'a>(arg : &'a str) -> Result<Worker, serde_cbor::Error> {
 fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIError>  { 
     //let log_dir = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "log");
     let log_dir_name = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "log");
-    let log_dir = std::path::Path::new(log_dir_name.as_str());
+    let log_dir = Path::new(log_dir_name.as_str());
     
     if !log_dir.exists() {
         try!(std::fs::create_dir(log_dir));
@@ -231,7 +203,7 @@ fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIE
 fn run(config : WorkerConfig) -> Result<(), CLIError> {
     //Obtain individual arguments
     //let worker_data = matches.value_of(ARG_WORKER_OBJ);
-    let worker_name = config.worker_name;
+    //let worker_name = config.worker_name;
     
     /*
     let mut obj = match worker_data {
@@ -246,7 +218,7 @@ fn run(config : WorkerConfig) -> Result<(), CLIError> {
 
     };
     */
-   let mut obj =  Worker::new(worker_name.to_string());
+   let mut obj =  config.create_worker();
    try!(obj.start());
    Ok(())
 }
@@ -262,38 +234,6 @@ fn load_conf_file<'a>(file_path : &'a str) -> Result<WorkerConfig, CLIError> {
     let configuration : WorkerConfig = try!(toml::from_str(&file_content));
     Ok(configuration)
     //WorkerConfig::new()
-}
-
-fn create_default_conf_file() -> Result<String, CLIError> {
-    //Create configuration values
-    let mut rng = try!(rand::os::OsRng::new());
-    let worker_name = format!("worker{}", rng.gen::<u8>());
-    let random_seed : u32 = rng.gen();
-    let cur_dir = try!(env::current_dir());
-    let work_dir = cur_dir.to_str().expect("Invalid directory path.");
-    let operation_mode = worker::OperationMode::Simulated;
-    let broadcast_group = "bc_group1";
-    let reliability = 1.0;
-    let delay = 0;
-    let scan_interval = 2000;
-
-    //Create configuration file
-    let file_path = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, CONFIG_FILE_NAME);
-    let mut file = try!(File::create(&file_path));
-
-    //Write content to file
-    //file.write(sample_toml_str.as_bytes()).expect("Error writing to toml file.");
-    write!(file, "worker_name = \"{}\"\n", worker_name)?;
-    write!(file, "random_seed = {}\n", random_seed)?;
-    write!(file, "work_dir = \"{}\"\n", work_dir)?;
-    write!(file, "operation_mode = \"{}\"\n", operation_mode)?;
-    write!(file, "reliability = {}\n", reliability)?;
-    write!(file, "delay = {}\n", delay)?;
-    write!(file, "scan_interval = {}\n", scan_interval)?;
-    write!(file, "broadcast_group = [\"{}\"]\n", broadcast_group)?;
-
-    //mock_file.flush().expect("Error flusing toml file to disk.");
-    Ok(file_path.to_string())
 }
 
 fn get_cli_parameters<'a>() -> ArgMatches<'a> {
@@ -374,7 +314,7 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
     }
 
     if config.operation_mode == worker::OperationMode::Simulated && 
-        (config.broadcast_group.is_none() || config.broadcast_group.as_ref().unwrap().is_empty()) { 
+        (config.broadcast_groups.is_none() || config.broadcast_groups.as_ref().unwrap().is_empty()) { 
                 error!("Simulated_mode operation requires at least one non-null broadcast group.");
                 return Err(CLIError::Configuration("Simulated_mode operation requires at least one non-null broadcast group.".to_string()))
     }
@@ -471,18 +411,9 @@ fn main() {
 #[cfg(test)]
 mod worker_cli_tests {
     use super::*;
-    use std::fs::{self, File};
+    use std::fs::{File};
     use std::io::{Write};
     use std::env;
-
-    //Unit test for: create_default_conf_file
-    #[test]
-    fn test_create_default_conf_file() {
-        let file_path = create_default_conf_file().unwrap();
-        let md = fs::metadata(file_path).unwrap();
-        assert!(md.is_file());
-        assert!(md.len() > 0);
-    }
 
     //Unit test for: load_conf_file
     #[test]
@@ -496,7 +427,7 @@ mod worker_cli_tests {
             reliability = 1.0
             delay = 0
             scan_interval = 2000
-            broadcast_group = ["bcast_g1", "bcast_g2"]
+            broadcast_groups = ["bcast_g1", "bcast_g2"]
         "#;
         let mut file_path = env::temp_dir();
         file_path.push("sample.toml");
@@ -510,7 +441,7 @@ mod worker_cli_tests {
 
         //Asserting the returns struct matches the expected values of the sample file.
         let mut mock_config = WorkerConfig::new();
-        mock_config.broadcast_group = Some(vec!("bcast_g1".to_string(),
+        mock_config.broadcast_groups = Some(vec!("bcast_g1".to_string(),
                                                 "bcast_g2".to_string()));
         mock_config.delay = Some(0);
         mock_config.operation_mode = worker::OperationMode::Simulated;
@@ -523,7 +454,7 @@ mod worker_cli_tests {
         assert_eq!(mock_config, config);
     }
 
-    //Unit test for: create_default_conf_file
+    //Unit test for: init_logger
     #[test]
     fn test_init_logger() {
         let worker_name = "test_worker";
@@ -539,15 +470,6 @@ mod worker_cli_tests {
     #[test]
     #[ignore]
     fn test_run() {
-        panic!("test failed!");
-    }
-
-    //Unit test for: decode_worker_data
-    //This test will likely never be needed as the function it tests will be deprecated.
-    #[test]
-    #[ignore]
-    fn test_decode_worker_data() {
-
         panic!("test failed!");
     }
 
@@ -574,20 +496,5 @@ mod worker_cli_tests {
         //let name = matches.value_of(ARG_WORKER_NAME).expect("Worker_name was not provided.");
 
         unimplemented!()
-    }
-    
-    //Unit test for: WorkerConfig_new
-    #[test]
-    fn test_worker_config_new() {
-        let obj = WorkerConfig::new();
-
-        assert_eq!(obj.broadcast_group, Some(vec!("group1".to_string())));
-        assert_eq!(obj.delay, Some(0));
-        assert_eq!(obj.operation_mode, worker::OperationMode::Simulated);
-        assert_eq!(obj.random_seed, 12345);
-        assert_eq!(obj.reliability, Some(1.0));
-        assert_eq!(obj.scan_interval, Some(2000));
-        assert_eq!(obj.work_dir, ".".to_string());
-        assert_eq!(obj.worker_name, "worker1".to_string());
     }
 }

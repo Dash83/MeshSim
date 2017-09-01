@@ -12,7 +12,7 @@ extern crate slog_stdlog;
 #[macro_use]
 extern crate log;
 
-use mesh_simulator::worker::{Worker};
+use mesh_simulator::worker::{WorkerConfig};
 use mesh_simulator::master::*;
 use mesh_simulator::master;
 use clap::{Arg, App, ArgMatches};
@@ -23,7 +23,6 @@ use std::fs::OpenOptions;
 use std::io;
 use std::error;
 use std::fmt;
-use std::fs::File;
 
 const ARG_CONFIG : &'static str = "config";
 const ARG_TEST : &'static str = "test";
@@ -137,61 +136,73 @@ fn init_logger(matches : &ArgMatches) -> Result<(), CLIError> {
 fn test_basic_test() -> Result<(), CLIError> {
     info!("Running BasicTest");
     let mut master = Master::new();
-    let w1 = Worker::new("Worker1".to_string());
-    let mut w2 = Worker::new("Worker2".to_string());
-    w2.add_peers(vec![w1.me.clone()]);
+    let mut cfg1 = WorkerConfig::new();
+    cfg1.worker_name = "Worker1".to_string();
+    cfg1.work_dir = String::from("/tmp");
 
-    try!(master.add_worker(w1));
+    let mut cfg2 = WorkerConfig::new();
+    cfg2.worker_name = "Worker2".to_string();
+    cfg2.work_dir = String::from("/tmp");
+
+    try!(master.add_worker(cfg1));
     //Super fucking hacky. It seems the order for process start is not that deterministic.
     //TODO: Find a way to address this.
     thread::sleep(std::time::Duration::from_millis(2000)); 
-    try!(master.add_worker(w2));
+    try!(master.add_worker(cfg2));
 
     match master.wait_for_workers() {
         Ok(_) => info!("Finished successfully."),
         Err(e) => error!("Master failed to wait for children processes with error {}", e),
     }
+    
     Ok(())
 }
 
 /// This test creates 
 fn test_six_node_test() -> Result<(), CLIError> {
+    /*
     info!("Running BasicTest");
     let mut master = Master::new();
-    let mut w1 = Worker::new("Worker1".to_string());
+    let mut w1 = Worker::new();
+    w1.me.name = "Worker1".to_string();
     
     w1.radios[0].add_bcast_group(String::from("Group1"));
     File::create("//tmp/Group1/Worker1")?;
 
-    let mut w2 = Worker::new("Worker2".to_string());
+    let mut w2 = Worker::new();
+    w2.me.name = "Worker2".to_string();
     w2.add_peers(vec![w1.me.clone()]);
     w2.radios[0].add_bcast_group(String::from("Group1"));
     w2.radios[0].add_bcast_group(String::from("Group2"));
     File::create("//tmp/Group1/Worker2")?;
     File::create("//tmp/Group2/Worker2")?;
 
-    let mut w3 = Worker::new("Worker3".to_string());
+    let mut w3 = Worker::new();
+    w3.me.name = "Worker3".to_string();
     w3.add_peers(vec![w2.me.clone()]);
     w3.radios[0].add_bcast_group(String::from("Group2"));
     w3.radios[0].add_bcast_group(String::from("Group3"));
     File::create("//tmp/Group2/Worker3")?;
     File::create("//tmp/Group3/Worker3")?;
 
-    let mut w4 = Worker::new("Worker4".to_string());
+    let mut w4 = Worker::new();
+    w4.me.name = "Worker4".to_string();
     w4.add_peers(vec![w3.me.clone()]);
     w4.radios[0].add_bcast_group(String::from("Group3"));
     w4.radios[0].add_bcast_group(String::from("Group4"));
     File::create("//tmp/Group3/Worker4")?;
     File::create("//tmp/Group4/Worker4")?;
 
-    let mut w5 = Worker::new("Worker5".to_string());
+    let mut w5 = Worker::new();
+    w5.me.name = "Worker5".to_string();
     w5.add_peers(vec![w4.me.clone()]);
     w5.radios[0].add_bcast_group(String::from("Group4"));
     w5.radios[0].add_bcast_group(String::from("Group5"));
     File::create("//tmp/Group4/Worker5")?;
     File::create("//tmp/Group5/Worker5")?;
 
-    let mut w6 = Worker::new("Worker6".to_string());
+    let mut w6 = Worker::new();
+    w6.me.name = "Worker6".to_string();
     w6.add_peers(vec![w5.me.clone()]);
     w6.radios[0].add_bcast_group(String::from("Group5"));
     File::create("//tmp/Group5/Worker6")?;
@@ -218,11 +229,8 @@ fn test_six_node_test() -> Result<(), CLIError> {
         Ok(_) => info!("Finished successfully."),
         Err(e) => error!("Master failed to wait for children processes with error {}", e),
     }
+    */
     Ok(())
-}
-
-fn print_usage() {
-
 }
 
 fn run(matches : ArgMatches) -> Result<(), CLIError> {
@@ -237,8 +245,6 @@ fn run(matches : ArgMatches) -> Result<(), CLIError> {
             }
         },
         None => { 
-            //Print usage / Test_list
-            print_usage();
         },
     }
     Ok(())
