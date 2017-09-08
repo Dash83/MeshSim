@@ -119,7 +119,7 @@ impl Master {
         debug!("Writing config file {}.", file_name);
         let mut file_dir = try!(env::current_dir());
         file_dir.push(&file_name);
-        let config_file = try!(config.write_to_file(file_dir));
+        let config_file = try!(config.write_to_file(file_dir.as_path()));
 
         //Constructing the external process call
         let mut command = Command::new("./worker_cli");

@@ -19,10 +19,12 @@ use clap::{Arg, App, ArgMatches};
 use std::str::FromStr;
 use std::thread;
 use slog::DrainExt;
-use std::fs::OpenOptions;
+use std::fs::{OpenOptions};
+use std::path::Path;
 use std::io;
 use std::error;
 use std::fmt;
+use std::env;
 
 const ARG_CONFIG : &'static str = "config";
 const ARG_TEST : &'static str = "test";
@@ -107,17 +109,17 @@ impl From<master::MasterError> for CLIError {
 }
 
 
-fn init_logger(matches : &ArgMatches) -> Result<(), CLIError> { 
-    let working_dir_arg = matches.value_of(ARG_WORK_DIR);
+fn init_logger(work_dir : &Path) -> Result<(), CLIError> {
+    let mut log_dir_buf = work_dir.to_path_buf();
+    log_dir_buf.push("log");
+    
+    if !log_dir_buf.exists() {
+        try!(std::fs::create_dir(log_dir_buf.as_path()));
+    }
 
-    let working_dir = match working_dir_arg {
-        Some(dir) => dir,
-        //TODO: If no working dir parameter is passed, read from config file before defaulting to "."
-        None => ".",
-    };
-    let log_dir = working_dir.to_string() + "/log";
-    let pn = "MeshMaster".to_string();
-    let log_file_name = log_dir + "/" + &pn + ".log";
+    log_dir_buf.push("MeshMaster.log");
+    //At this point the log folder has been created, so the path should be valid.
+    let log_file_name = log_dir_buf.to_str().unwrap();
 
     let log_file = try!(OpenOptions::new()
                         .create(true)
@@ -250,32 +252,56 @@ fn run(matches : ArgMatches) -> Result<(), CLIError> {
     Ok(())
 }
 
-fn main() {
-        //Build CLI interface
-    let matches = App::new("Master_cli")
-                          .version("0.1")
-                          .author("Marco Caballero <marco.caballero@cl.cam.ac.uk>")
-                          .about("CLI interface to the Master object from the mesh simulator system")
-                          .arg(Arg::with_name(ARG_CONFIG)
-                                .short("c")
-                                .long("config")
-                                .value_name("FILE")
-                                .help("Sets a custom configuration file for the worker.")
-                                .takes_value(true))
-                          .arg(Arg::with_name(ARG_TEST)
-                                .short("test")
-                                .value_name("TEST_NAME")
-                                .help("Name of the test to be run.")
-                                .takes_value(true))
-                          .arg(Arg::with_name(ARG_WORK_DIR)
-                                .short("dir")
-                                .value_name("work_dir")
-                                .help("Operating directory for the program, where results and logs will be placed.")
-                                .takes_value(true))
-                          .get_matches();
+fn init(matches : &ArgMatches) -> Result<(), CLIError> {
+    //Read the configuration file.
+    // let mut current_dir = try!(env::current_dir());
+    // let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
+    //     //No configuration file was passed. Look for default option: current_dir + default name.
+    //      current_dir.push(CONFIG_FILE_NAME);
+    //      current_dir.to_str().expect("No configuration file was provided and current directory is not readable.")
+    // });
+    // let mut configuration = try!(load_conf_file(config_file_path));
+    
+    //Initialize logger
+    let work_dir = try!(env::current_dir());
+    try!(init_logger(work_dir.as_path()));
 
-    if let Err(ref e) = init_logger(&matches) {
-        //Since we failed to initialize the logger, all we can do is log to stdout and exit with a different error code.
+    //Validate the current configuration
+    //try!(validate_config(&mut configuration, &matches));
+
+    Ok(())
+}
+
+fn get_cli_parameters<'a>() -> ArgMatches<'a> {
+    App::new("Master_cli")
+            .version("0.1")
+            .author("Marco Caballero <marco.caballero@cl.cam.ac.uk>")
+            .about("CLI interface to the Master object from the mesh simulator system")
+            .arg(Arg::with_name(ARG_CONFIG)
+                .short("c")
+                .long("config")
+                .value_name("FILE")
+                .help("Sets a custom configuration file for the worker.")
+                .takes_value(true))
+            .arg(Arg::with_name(ARG_TEST)
+                .short("test")
+                .value_name("TEST_NAME")
+                .help("Name of the test to be run.")
+                .takes_value(true))
+            .arg(Arg::with_name(ARG_WORK_DIR)
+                .short("dir")
+                .value_name("work_dir")
+                .help("Operating directory for the program, where results and logs will be placed.")
+                .takes_value(true))
+            .get_matches()
+}
+
+fn main() {
+    //Build CLI interface
+    let matches = get_cli_parameters();
+
+    if let Err(ref e) = init(&matches) {
+        //Since we failed before initializing the logger, all we can do is log to stdout and exit with a different error code.
         println!("master_cli failed with the following error: {}", e);
         ::std::process::exit(ERROR_LOG_INITIALIZATION);
     }

@@ -604,7 +604,7 @@ impl WorkerConfig {
 
     ///Writes the current configuration object to a formatted configuration file, that can be passed to
     ///the worker_cli binary.
-    pub fn write_to_file<P: AsRef<Path>>(&self, file_path : P) -> Result<String, WorkerError> {
+    pub fn write_to_file(&self, file_path : &Path) -> Result<String, WorkerError> {
     //Create configuration file
     //let file_path = format!("{}{}{}", dir, std::path::MAIN_SEPARATOR, file_name);
     let mut file = try!(File::create(&file_path));
@@ -622,7 +622,7 @@ impl WorkerConfig {
     write!(file, "broadcast_groups = {:?}\n", groups)?;
 
     //file.flush().expect("Error flusing toml file to disk.");
-    let file_name = format!("{}", file_path.to_string());
+    let file_name = format!("{}", file_path.display());
     Ok(file_name)
 }
 }
