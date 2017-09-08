@@ -28,6 +28,7 @@ use std::io;
 use std::error;
 use std::fmt;
 use std::collections::HashMap;
+use std::env;
 
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
@@ -115,7 +116,10 @@ impl Master {
         //let worker_data_encoded = worker_data.to_hex();
         //Create the configuration file for the worker_cli
         let file_name = format!("{}.toml", &worker_name);
-        let config_file = try!(config.write_to_file(&self.work_dir, &file_name));
+        debug!("Writing config file {}.", file_name);
+        let mut file_dir = try!(env::current_dir());
+        file_dir.push(&file_name);
+        let config_file = try!(config.write_to_file(file_dir.as_path()));
 
         //Constructing the external process call
         let mut command = Command::new("./worker_cli");
