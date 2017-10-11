@@ -195,7 +195,7 @@ pub struct AckMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataMessage;
 
-/// Represents a radio used by the work to send a message to the network.
+/// Represents a radio used by the worker to send a message to the network.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Radio {
     //socket : whatever socket type
@@ -406,7 +406,7 @@ impl Worker {
             service.service_type = String::from(DNS_SERVICE_TYPE);
             service.port = DNS_SERVICE_PORT;
             service.txt_records.push(format!("PUBLIC_KEY={}", self.me.public_key));
-            
+            service.txt_records.push(format!("NAME={}", self.me.name));
             try!(self.radios[0].publish_service(service));
         }
 
@@ -749,11 +749,14 @@ impl WorkerConfig {
         obj.work_dir = self.work_dir;
         obj.random_seed = self.random_seed;
         obj.operation_mode = self.operation_mode;
+        if obj.operation_mode == OperationMode::Device {
+            obj.radios[0].endpoint = format!("tcp://*:{}", DNS_SERVICE_PORT);
+        }
         obj.radios[0].broadcast_groups = self.broadcast_groups.unwrap_or(vec![]);
         obj.radios[0].reliability = self.reliability.unwrap_or(obj.radios[0].reliability);
         obj.radios[0].delay = self.delay.unwrap_or(obj.radios[0].delay);
         obj.scan_interval = self.scan_interval.unwrap_or(obj.scan_interval);
-    
+        
         obj
     }
 
