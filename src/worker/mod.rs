@@ -47,6 +47,16 @@ use std;
 use self::byteorder::{NativeEndian, WriteBytesExt};
 use std::path::{Path, PathBuf, Component};
 use std::collections::HashSet;
+use std::process::{Command, Stdio};
+
+// *****************************
+// ********** Globals **********
+// *****************************
+const DNS_SERVICE_NAME : &'static str = "meshsim";
+const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
+const DNS_SERVICE_PORT : u16 = 23456;
+
+
 
 // *****************************
 // ********** Traits **********
@@ -152,8 +162,18 @@ pub struct Peer {
     pub public_key: String, 
     /// Friendly name of the peer. 
     pub name : String,
+    ///MulticastDNS record that was transmitted by the peer.
+    pub service_record : ServiceRecord,
 }
-  
+
+impl Peer {
+    ///Empty constructor for the Peer struct.
+    pub fn new() -> Peer {
+        Peer{   public_key : String::from(""),
+                name : String::from(""),
+                service_record : ServiceRecord::new() }
+    }
+}
 /// Trait that must be implemented for all message types.
 pub trait Message {}
 
@@ -192,6 +212,53 @@ pub struct Radio {
     reliability : f64,
     ///Broadcast group for this radio. Only used in simulated mode.
     pub broadcast_groups : Vec<String>,
+}
+
+///Struct to represent DNS TXT records for advertising the meshsim service and obtain records from peers.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct ServiceRecord {
+    ///The service name.
+    service_name : String,
+    ///The service type.
+    service_type : String,
+    ///Name of the host advertising the service.
+    host_name : String,
+    ///Address of the host.
+    address : String,
+    ///What kind of address? (IPv4/IPv6) 
+    address_type : String,
+    ///Port in which the service is listening.
+    port : u16,
+    ///Associated TXT records with this record.
+    txt_records : Vec<String>,
+}
+
+impl ServiceRecord {
+    ///Creates a new empty record
+    pub fn new() -> ServiceRecord {
+        ServiceRecord{  service_name : String::from(""),
+                        service_type: String::from(""), 
+                        host_name : String::from(""), 
+                        address : String::from(""), 
+                        address_type : String::from(""), 
+                        port : 0,
+                        txt_records : Vec::new() }
+    }
+
+    ///Return the TXT record value that matches the provided key. The key and values are separated by the '=' symbol on 
+    ///service registration.
+    pub fn get_txt_record<'a>(&self, key : &'a str) -> Option<String> {
+        for t in &self.txt_records {
+            //Check record is in KEY=VALUE form.
+            let tokens = t.split('=').collect::<Vec<&str>>();
+            if tokens.len() == 2 && tokens[0] == key {
+                //Found the request record 
+                return Some(String::from(tokens[1]))
+            }
+        }
+
+        None
+    }
 }
 
 /// Operation modes for the worker.
@@ -267,53 +334,28 @@ impl Radio {
         self.broadcast_groups.push(group);
     }
 
-    ///Function for scanning for nearby peers.
-    pub fn scan_for_peers(&self) ->  Result<HashSet<Peer>, WorkerError> {
-        let mut peers = HashSet::new();
-        let own_key = extract_endpoint_key(&self.endpoint);
+    ///Publishes the service using the mDNS protocol so other devices can discover it.
+    pub fn publish_service(&self, service : ServiceRecord) -> Result<(), WorkerError> {
+        //Constructing the external process call
+        let mut command = Command::new("avahi-publish");
+        command.arg("-s");
+        command.arg(service.service_name);
+        command.arg(service.service_type);
+        command.arg(service.port.to_string());
 
-        //Obtain parent directory of broadcast groups
-        //This process is cumbersome since the full path needs to be reconstructed
-        //since the endpoint path starts with ipc:
-        let mut parent_dir = Path::new(&self.endpoint).to_path_buf();
-        parent_dir.pop(); //bcast group for main endpoint
-        parent_dir.pop(); //bcast group parent directory
-        let mut components = parent_dir.components();
-        let _ = components.next();
-        let mut parent_dir = PathBuf::new();
-        parent_dir.push("/");
-        for c in components {
-            match c {
-                Component::Normal(d) => parent_dir.push(d),
-                _ => {},
-            }
+        for r in service.txt_records {
+            command.arg(format!(r"{}", r));
         }
 
-        info!("Scanning for nearby peers...");
-        for group in &self.broadcast_groups {
-            let dir = format!("{}{}{}", parent_dir.display(), std::path::MAIN_SEPARATOR, group);
-            debug!("Scanning {}", dir);
-            if Path::new(&dir).is_dir() {
-                for path in fs::read_dir(dir)? {
-                    let peer_file = try!(path);
-                    let peer_file = peer_file.file_name();
-                    let peer_file = peer_file.to_str().unwrap_or("");
-                    let peer_key = extract_endpoint_key(&peer_file);
-                    if !peer_key.is_empty() && peer_key != own_key {
-                        debug!("Found {}!", &peer_key);
-                        let peer = Peer{name : String::from(""), public_key : String::from(peer_key)};
-                        peers.insert(peer);
-                    }
-                }
-            }
-        }
-        //Remove self from peers
-        //let own_key = Path::new(&self.endpoint).file_name().unwrap();
-        //let own_key = own_key.to_str().unwrap_or("").to_string();
-        //peers.remove(&own_key);
-        
-        Ok(peers)
+        info!("Registering service with command: {:?}", command);
+
+        //Starting the worker process
+        let mut child = try!(command.spawn());
+        info!("Process {} started.", child.id());
+
+        Ok(())
     }
+
 }
 
 /// Worker struct.
@@ -357,8 +399,19 @@ impl Worker {
         try!(socket.bind(&endpoint));
         debug!("Successfully bound to endpoint {}", endpoint);
 
+        //Now advertise the service to be discoverable by peers. (device mode only)
+        if self.operation_mode == OperationMode::Device {
+            let mut service = ServiceRecord::new();
+            service.service_name = String::from(DNS_SERVICE_NAME);
+            service.service_type = String::from(DNS_SERVICE_TYPE);
+            service.port = DNS_SERVICE_PORT;
+            service.txt_records.push(format!("PUBLIC_KEY={}", self.me.public_key));
+            
+            try!(self.radios[0].publish_service(service));
+        }
+
         //Next, join the network
-        self.peers = try!(self.radios[0].scan_for_peers());
+        self.peers = try!(self.scan_for_peers(&(self.radios[0])));
         //let num = peers.len() - self.radios[0].broadcast_groups.len();
         //info!("Found {} peers!", num);
         self.join_network();
@@ -386,16 +439,118 @@ impl Worker {
         //radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_hex()).to_string();
         Worker{ radios: vec![radio], 
                 peers: HashSet::new(), 
-                me: Peer{ name : String::new(), public_key : key.to_hex().to_string()},
+                me: Peer{ name : String::new(), public_key : key.to_hex().to_string(), service_record : ServiceRecord::new()},
                 operation_mode : OperationMode::Simulated,
                 random_seed : 0u32,
                 scan_interval : 1000u32,
                 work_dir : String::new() }
     }
 
-    //pub fn new() -> Worker {
+    ///Function for scanning for nearby peers. Scanning method depends on Operation_Mode.
+    pub fn scan_for_peers(&self, radio : &Radio) ->  Result<HashSet<Peer>, WorkerError> {
+        let mut peers = HashSet::new();
+        
+        if self.operation_mode == OperationMode::Simulated {
+            debug!("Scanning for peers in simulated_mode.");
+            peers = try!(self.simulated_scan_for_peers(&radio));
+        } else {
+            debug!("Scanning for peers in device_mode.");
+            peers = try!(self.device_scan_for_peers(&radio));
+        }
 
-    //}
+        Ok(peers)
+    }
+
+    fn device_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
+        let mut peers = HashSet::new();
+
+        //Constructing the external process call
+        let mut command = Command::new("avahi-browse");
+        command.arg("-r");
+        command.arg("-p");
+        command.arg("-t");
+        command.arg("_http._tcp");
+        println!("Starting worker with command: {:?}", command);
+
+        //Starting the worker process
+        let mut child = try!(command.stdout(Stdio::piped()).spawn());
+        let mut exit_status = child.wait().unwrap();
+
+        if exit_status.success() {
+            let mut buffer = String::new();
+            let mut output = child.stdout.unwrap();
+            output.read_to_string(&mut buffer)?;
+            //println!("Output was: {}", buffer);
+
+            for l in buffer.lines() {
+                let tokens : Vec<&str> = l.split(';').collect();
+                if tokens.len() > 6 {
+                    //println!("{:?}", tokens);
+                    let serv = ServiceRecord{ service_name : String::from(tokens[3]),
+                                            service_type: String::from(tokens[4]), 
+                                            host_name : String::from(tokens[6]), 
+                                            address : String::from(tokens[7]), 
+                                            address_type : String::from(tokens[2]), 
+                                            port : u16::from_str_radix(tokens[8], 10).unwrap(),
+                                            txt_records : Vec::new() };
+                    
+                    let mut p = Peer::new();
+                    //TODO: Deconstruct these Options in a classier way. If not, might as well return emptry string on failure.
+                    p.public_key = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from(""));
+                    p.name = serv.get_txt_record("NAME").unwrap_or(String::from(""));
+                    p.service_record = serv;
+                    peers.insert(p);
+                }
+            }
+        }
+        Ok(peers)
+    }
+
+    fn simulated_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
+        let mut peers = HashSet::new();
+        let own_key = extract_endpoint_key(&radio.endpoint);
+
+        //Obtain parent directory of broadcast groups
+        //This process is cumbersome since the full path needs to be reconstructed
+        //since the endpoint path starts with ipc:
+        let mut parent_dir = Path::new(&radio.endpoint).to_path_buf();
+        parent_dir.pop(); //bcast group for main endpoint
+        parent_dir.pop(); //bcast group parent directory
+        let mut components = parent_dir.components();
+        let _ = components.next();
+        let mut parent_dir = PathBuf::new();
+        parent_dir.push("/");
+        for c in components {
+            match c {
+                Component::Normal(d) => parent_dir.push(d),
+                _ => {},
+            }
+        }
+
+        info!("Scanning for nearby peers...");
+        for group in &radio.broadcast_groups {
+            let dir = format!("{}{}{}", parent_dir.display(), std::path::MAIN_SEPARATOR, group);
+            debug!("Scanning {}", dir);
+            if Path::new(&dir).is_dir() {
+                for path in fs::read_dir(dir)? {
+                    let peer_file = try!(path);
+                    let peer_file = peer_file.file_name();
+                    let peer_file = peer_file.to_str().unwrap_or("");
+                    let peer_key = extract_endpoint_key(&peer_file);
+                    if !peer_key.is_empty() && peer_key != own_key {
+                        debug!("Found {}!", &peer_key);
+                        let peer = Peer{name : String::from(""), public_key : String::from(peer_key), service_record : ServiceRecord::new()};
+                        peers.insert(peer);
+                    }
+                }
+            }
+        }
+        //Remove self from peers
+        //let own_key = Path::new(&self.endpoint).file_name().unwrap();
+        //let own_key = own_key.to_str().unwrap_or("").to_string();
+        //peers.remove(&own_key);
+        Ok(peers)
+    }
 
     fn handle_message(&mut self, data : &Vec<u8>) -> Result<(), WorkerError> {
         let msg_type : Result<MessageType, _> = from_reader(&data[..]);
