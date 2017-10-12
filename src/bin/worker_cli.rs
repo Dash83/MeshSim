@@ -387,6 +387,7 @@ fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
 
     //Validate the current configuration
     try!(validate_config(&mut configuration, &matches));
+    debug!("Config: {:?}", configuration);
 
     Ok(configuration)
 }
