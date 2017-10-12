@@ -162,6 +162,8 @@ pub struct Peer {
     pub public_key: String, 
     /// Friendly name of the peer. 
     pub name : String,
+    ///Endpoint at which the peer is listening for messages.
+    pub endpoint : String,
     ///MulticastDNS record that was transmitted by the peer.
     pub service_record : ServiceRecord,
 }
@@ -171,7 +173,23 @@ impl Peer {
     pub fn new() -> Peer {
         Peer{   public_key : String::from(""),
                 name : String::from(""),
+                endpoint : String::from(""),
                 service_record : ServiceRecord::new() }
+    }
+
+    ///Function used to get the endpoint required to communicate with this Peer.
+    pub fn get_endpoint(&self) -> String {
+        let mut endpoint = String::new();
+
+        if self.service_record.address.is_empty() {
+            //Operating in simulated mode
+            endpoint = format!("ipc:///tmp/{}.ipc", self.public_key);
+        } else {
+            //Operating in device mode
+            endpoint = format!("tcp://{}:{}", self.service_record.address, DNS_SERVICE_PORT);
+        }
+
+        endpoint
     }
 }
 /// Trait that must be implemented for all message types.
@@ -308,12 +326,12 @@ impl Radio {
     /// Send a Worker::Message over the endpoint implemented by the current Radio.
     pub fn send(&self, msg : MessageType, destination: &Peer) -> Result<(), WorkerError> {
         let mut socket = try!(Socket::new(Protocol::Push));
-        let endpoint = format!("ipc:///tmp/{}.ipc", destination.public_key);
+        //let endpoint = destination.get_endpoint();
         
-        try!(socket.connect(&endpoint));
+        try!(socket.connect(&destination.endpoint));
         //info!("Connected to endpoint.");
 
-        info!("Sending message to {:?}.", destination.name);
+        info!("Sending message to {}.", destination.endpoint);
         let data = try!(to_vec(&msg));
         try!(socket.write_all(&data));
         info!("Message sent successfully.");
@@ -437,9 +455,11 @@ impl Worker {
         //gen.fill_bytes(&mut key[..]);
         let radio = Radio::new();
         //radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_hex()).to_string();
+        let mut me = Peer::new();
+        me.public_key = key.to_hex().to_string();
         Worker{ radios: vec![radio], 
                 peers: HashSet::new(), 
-                me: Peer{ name : String::new(), public_key : key.to_hex().to_string(), service_record : ServiceRecord::new()},
+                me: me,
                 operation_mode : OperationMode::Simulated,
                 random_seed : 0u32,
                 scan_interval : 1000u32,
@@ -469,8 +489,8 @@ impl Worker {
         command.arg("-r");
         command.arg("-p");
         command.arg("-t");
+        command.arg("-l");
         command.arg("_http._tcp");
-        println!("Starting worker with command: {:?}", command);
 
         //Starting the worker process
         let mut child = try!(command.stdout(Stdio::piped()).spawn());
@@ -480,12 +500,10 @@ impl Worker {
             let mut buffer = String::new();
             let mut output = child.stdout.unwrap();
             output.read_to_string(&mut buffer)?;
-            //println!("Output was: {}", buffer);
 
             for l in buffer.lines() {
                 let tokens : Vec<&str> = l.split(';').collect();
                 if tokens.len() > 6 {
-                    //println!("{:?}", tokens);
                     let serv = ServiceRecord{ service_name : String::from(tokens[3]),
                                             service_type: String::from(tokens[4]), 
                                             host_name : String::from(tokens[6]), 
@@ -494,12 +512,16 @@ impl Worker {
                                             port : u16::from_str_radix(tokens[8], 10).unwrap(),
                                             txt_records : Vec::new() };
                     
-                    let mut p = Peer::new();
-                    //TODO: Deconstruct these Options in a classier way. If not, might as well return emptry string on failure.
-                    p.public_key = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from(""));
-                    p.name = serv.get_txt_record("NAME").unwrap_or(String::from(""));
-                    p.service_record = serv;
-                    peers.insert(p);
+                    if serv.service_name == DNS_SERVICE_NAME {
+                        //Found a Peer
+                        let mut p = Peer::new();
+                        //TODO: Deconstruct these Options in a classier way. If not, might as well return emptry string on failure.
+                        p.public_key = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from(""));
+                        p.name = serv.get_txt_record("NAME").unwrap_or(String::from(""));
+                        p.endpoint = format!("tcp://{}:{}", serv.address, DNS_SERVICE_PORT);
+                        p.service_record = serv;
+                        peers.insert(p);
+                    }
                 }
             }
         }
@@ -534,12 +556,15 @@ impl Worker {
             if Path::new(&dir).is_dir() {
                 for path in fs::read_dir(dir)? {
                     let peer_file = try!(path);
-                    let peer_file = peer_file.file_name();
+                    let peer_file = peer_file.path();
                     let peer_file = peer_file.to_str().unwrap_or("");
                     let peer_key = extract_endpoint_key(&peer_file);
                     if !peer_key.is_empty() && peer_key != own_key {
                         debug!("Found {}!", &peer_key);
-                        let peer = Peer{name : String::from(""), public_key : String::from(peer_key), service_record : ServiceRecord::new()};
+                        let peer = Peer{name : String::from(""), 
+                                        public_key : String::from(peer_key), 
+                                        endpoint : String::from(peer_file),
+                                        service_record : ServiceRecord::new()};
                         peers.insert(peer);
                     }
                 }
@@ -634,57 +659,55 @@ impl Worker {
         }
         dir.pop(); //Dir is work_dir
 
-        //check bcast_groups dir is there
-        dir.push("bcast_groups"); //Dir is work_dir/bcast_groups
-        if !dir.exists() {
-            //Create bcast_groups dir
-            try!(std::fs::create_dir(dir.as_path()));
-            info!("Created dir file {} ", dir.as_path().display());
-        }
-
-        //check current group dir is there
-        let mut main_endpoint = String::new();
-        let groups = self.radios[0].broadcast_groups.clone();
-        for group in groups.iter() {
-            dir.push(&group); //Dir is work_dir/bcast_groups/&group
-            
-            //Does broadcast group exist?
+        if self.operation_mode == OperationMode::Simulated {
+            //check bcast_groups dir is there
+            dir.push("bcast_groups"); //Dir is work_dir/bcast_groups
             if !dir.exists() {
-                //Create group dir
+                //Create bcast_groups dir
                 try!(std::fs::create_dir(dir.as_path()));
                 info!("Created dir file {} ", dir.as_path().display());
             }
 
-            //Create endpoint or symlink for this worker
-            if main_endpoint.is_empty() {
-                main_endpoint = format!("{}/{}.ipc", dir.as_path().display(), self.me.public_key);
-                if Path::new(&main_endpoint).exists() {
-                    //Pipe already exists. Needs to be destroyed or Nanomsg fails to bind the socket.
-                    try!(fs::remove_file(&main_endpoint));
+            //check current group dir is there
+            let mut main_endpoint = String::new();
+            let groups = self.radios[0].broadcast_groups.clone();
+            for group in groups.iter() {
+                dir.push(&group); //Dir is work_dir/bcast_groups/&group
+                
+                //Does broadcast group exist?
+                if !dir.exists() {
+                    //Create group dir
+                    try!(std::fs::create_dir(dir.as_path()));
+                    info!("Created dir file {} ", dir.as_path().display());
                 }
-                let _ = try!(File::create(&main_endpoint));
-                debug!("Pipe file {} created.", &main_endpoint);
-                //main_endpoint = format!("ipc://{}", pipe_name);
-                //debug!("Radio endpoint set to {}.", &main_endpoint);
-                self.radios[0].endpoint = format!("ipc://{}", main_endpoint);
-            } else {
-                let linked_endpoint = format!("{}/{}.ipc", dir.as_path().display(), self.me.public_key);
-                if Path::new(&linked_endpoint).exists() {
-                    //Pipe already exists
-                    dir.pop(); //Dir is work_dir/bcast_groups
-                    continue;
+
+                //Create endpoint or symlink for this worker
+                if main_endpoint.is_empty() {
+                    main_endpoint = format!("{}/{}.ipc", dir.as_path().display(), self.me.public_key);
+                    if Path::new(&main_endpoint).exists() {
+                        //Pipe already exists. Needs to be destroyed or Nanomsg fails to bind the socket.
+                        try!(fs::remove_file(&main_endpoint));
+                    }
+                    let _ = try!(File::create(&main_endpoint));
+                    debug!("Pipe file {} created.", &main_endpoint);
+                    //main_endpoint = format!("ipc://{}", pipe_name);
+                    //debug!("Radio endpoint set to {}.", &main_endpoint);
+                    self.radios[0].endpoint = format!("ipc://{}", main_endpoint);
+                } else {
+                    let linked_endpoint = format!("{}/{}.ipc", dir.as_path().display(), self.me.public_key);
+                    if Path::new(&linked_endpoint).exists() {
+                        //Pipe already exists
+                        dir.pop(); //Dir is work_dir/bcast_groups
+                        continue;
+                    }
+                    let _ = try!(std::os::unix::fs::symlink(&main_endpoint, &linked_endpoint));
+                    debug!("Pipe file {} created.", &linked_endpoint);
                 }
-                let _ = try!(std::os::unix::fs::symlink(&main_endpoint, &linked_endpoint));
-                debug!("Pipe file {} created.", &linked_endpoint);
+                
+                dir.pop(); //Dir is work_dir/bcast_groups
+
             }
-            
-            dir.pop(); //Dir is work_dir/bcast_groups
-
         }
-
-        //TODO: What else is necessary for init?
-        //Configure radio and initialize peer list
-        //radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_hex()).to_string();
 
         Ok(())
     }
