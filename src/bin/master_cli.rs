@@ -149,7 +149,7 @@ fn test_basic_test() -> Result<(), CLIError> {
     try!(master.add_worker(cfg1));
     //Super fucking hacky. It seems the order for process start is not that deterministic.
     //TODO: Find a way to address this.
-    thread::sleep(std::time::Duration::from_millis(2000)); 
+    thread::sleep(std::time::Duration::from_millis(4000)); 
     try!(master.add_worker(cfg2));
 
     match master.wait_for_workers() {
@@ -179,11 +179,11 @@ fn test_six_node_test() -> Result<(), CLIError> {
     try!(master.add_worker(cfg1));
     //Super fucking hacky. It seems the order for process start is not that deterministic.
     //TODO: Find a way to address this.
-    thread::sleep(std::time::Duration::from_millis(2000)); 
+    thread::sleep(std::time::Duration::from_millis(4000)); 
     try!(master.add_worker(cfg2));
     //Super fucking hacky. It seems the order for process start is not that deterministic.
     //TODO: Find a way to address this.
-    thread::sleep(std::time::Duration::from_millis(2000)); 
+    thread::sleep(std::time::Duration::from_millis(4000)); 
     try!(master.add_worker(cfg3));
 
     match master.wait_for_workers() {

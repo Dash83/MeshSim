@@ -213,24 +213,6 @@ pub struct AckMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataMessage;
 
-/// Represents a radio used by the worker to send a message to the network.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Radio {
-    //socket : whatever socket type
-    /// The endpoint used for the socket. In this version of the software,
-    /// it's the pipe used for this radio.
-    endpoint : String,
-    /// delay parameter used by the test. Sets a number of millisecs
-    /// as base value for delay of messages. The actual delay for message sending 
-    /// will be a a percentage between the constants MESSAGE_DELAY_LOW and MESSAGE_DELAY_HIGH
-    delay : u32,
-    /// Reliability parameter used by the test. Sets a number of percentage
-    /// between (0 and 1] of probability that the message sent by this worker will
-    /// not reach its destination.
-    reliability : f64,
-    ///Broadcast group for this radio. Only used in simulated mode.
-    pub broadcast_groups : Vec<String>,
-}
 
 ///Struct to represent DNS TXT records for advertising the meshsim service and obtain records from peers.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
@@ -322,6 +304,21 @@ impl FromStr for OperationMode {
   //  
 //}
 
+/// Represents a radio used by the worker to send a message to the network.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Radio {
+    /// delay parameter used by the test. Sets a number of millisecs
+    /// as base value for delay of messages. The actual delay for message sending 
+    /// will be a a percentage between the constants MESSAGE_DELAY_LOW and MESSAGE_DELAY_HIGH
+    delay : u32,
+    /// Reliability parameter used by the test. Sets a number of percentage
+    /// between (0 and 1] of probability that the message sent by this worker will
+    /// not reach its destination.
+    reliability : f64,
+    ///Broadcast group for this radio. Only used in simulated mode.
+    pub broadcast_groups : Vec<String>,
+}
+
 impl Radio {
     /// Send a Worker::Message over the endpoint implemented by the current Radio.
     pub fn send(&self, msg : MessageType, destination: &Peer) -> Result<(), WorkerError> {
@@ -343,8 +340,7 @@ impl Radio {
 
     /// Constructor for new Radios
     pub fn new() -> Radio {
-        Radio{ endpoint : String::from(""), 
-               delay : 0,
+        Radio{ delay : 0,
                reliability : 1.0,
                broadcast_groups : vec![] }
     }
@@ -415,9 +411,8 @@ impl Worker {
         //Bind listening socket
         let mut socket = try!(Socket::new(Protocol::Pull));
         debug!("Successfully created socket");
-        let endpoint = &self.radios[0].endpoint.clone();
-        try!(socket.bind(&endpoint));
-        debug!("Successfully bound to endpoint {}", endpoint);
+        try!(socket.bind(&self.me.endpoint));
+        debug!("Successfully bound to endpoint {}", &self.me.endpoint);
 
         //Now advertise the service to be discoverable by peers. (device mode only)
         if self.operation_mode == OperationMode::Device {
@@ -532,12 +527,11 @@ impl Worker {
 
     fn simulated_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
         let mut peers = HashSet::new();
-        let own_key = extract_endpoint_key(&radio.endpoint);
 
         //Obtain parent directory of broadcast groups
         //This process is cumbersome since the full path needs to be reconstructed
         //since the endpoint path starts with ipc:
-        let mut parent_dir = Path::new(&radio.endpoint).to_path_buf();
+        let mut parent_dir = Path::new(&self.me.endpoint).to_path_buf();
         parent_dir.pop(); //bcast group for main endpoint
         parent_dir.pop(); //bcast group parent directory
         let mut components = parent_dir.components();
@@ -560,7 +554,7 @@ impl Worker {
                     let peer_file = peer_file.path();
                     let peer_file = peer_file.to_str().unwrap_or("");
                     let peer_key = extract_endpoint_key(&peer_file);
-                    if !peer_key.is_empty() && peer_key != own_key {
+                    if !peer_key.is_empty() && peer_key != self.me.public_key {
                         debug!("Found {}!", &peer_key);
                         let endpoint = format!("ipc://{}", peer_file);
                         let peer = Peer{name : String::from(""), 
@@ -702,7 +696,7 @@ impl Worker {
                     debug!("Pipe file {} created.", &main_endpoint);
                     //main_endpoint = format!("ipc://{}", pipe_name);
                     //debug!("Radio endpoint set to {}.", &main_endpoint);
-                    self.radios[0].endpoint = format!("ipc://{}", main_endpoint);
+                    self.me.endpoint = format!("ipc://{}", main_endpoint);
                 } else {
                     let linked_endpoint = format!("{}/{}.ipc", dir.as_path().display(), self.me.public_key);
                     if Path::new(&linked_endpoint).exists() {
@@ -787,10 +781,8 @@ impl WorkerConfig {
         obj.random_seed = self.random_seed;
         obj.operation_mode = self.operation_mode;
         if obj.operation_mode == OperationMode::Device {
-            obj.radios[0].endpoint = format!("tcp://*:{}", DNS_SERVICE_PORT);
             obj.me.endpoint = format!("tcp://*:{}", DNS_SERVICE_PORT);
         } else {
-            obj.radios[0].endpoint = format!("ipc://{}/{}.ipc", obj.work_dir, obj.me.public_key);
             obj.me.endpoint = format!("ipc://{}/{}/{}.ipc", obj.work_dir, SIMULATED_SCAN_DIR, obj.me.public_key);
         }
         obj.radios[0].broadcast_groups = self.broadcast_groups.unwrap_or(vec![]);
@@ -940,11 +932,11 @@ mod tests {
     //Unit test for: Radio::scan_for_peers
     #[test]
     fn test_radio_scan_for_peers() {
-        let mut radio = Radio::new();
+        let mut worker = Worker::new();
         //3 phony groups
-        radio.add_bcast_group(String::from("group1"));
-        radio.add_bcast_group(String::from("group2"));
-        radio.add_bcast_group(String::from("group3"));
+        worker.radios[0].add_bcast_group(String::from("group1"));
+        worker.radios[0].add_bcast_group(String::from("group2"));
+        worker.radios[0].add_bcast_group(String::from("group3"));
 
         //Create dirs
         let mut dir = Path::new("/tmp/scan_bcast_groups").to_path_buf();
@@ -978,7 +970,7 @@ mod tests {
         let key_str = create_random_key();
         //Create the pipe
         let pipe = format!("/tmp/scan_bcast_groups/group1/{}.ipc", key_str);
-        radio.endpoint = format!("ipc://{}", &pipe);
+        worker.radios[0].endpoint = format!("ipc://{}", &pipe);
         File::create(&pipe).unwrap();
         //Create link in group 2
         let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", key_str);
@@ -1036,7 +1028,7 @@ mod tests {
         let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
 
         //Scan for peers. Should find 4 peers in total.
-        let peers : HashSet<Peer> = radio.scan_for_peers().unwrap();
+        let peers : HashSet<Peer> = worker.scan_for_peers(&worker.radios[0]).unwrap();
 
         assert_eq!(peers.len(), 4);
     }

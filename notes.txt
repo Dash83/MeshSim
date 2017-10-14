@@ -6,3 +6,30 @@ https://en.wikipedia.org/wiki/SRV_record
 
 #Raspberry Pi + Rust
 https://hackernoon.com/compiling-rust-for-the-raspberry-pi-49fdcd7df658
+
+
+#Current Problems
+##Cross compilation fails.
+###Possible Solutions
+    *Remove nanomsg dependency
+    *Install nanomsg cross-compiled library
+    *Compile on the RPI every time.
+##Network operations fail some times.
+###Possible Solutions
+    *Change network library
+        *Would also fix cross-compile issues.
+        *No guarantee it will fix things.
+        *Might be too late/difficult to do.
+    *Keep debugging the code until a fix is found.
+        *Frustrating, but should be effective.
+        *I don't know where to start. The calls my code makes are succesful.
+##Can't developt on my Mac
+    *This is a major problem, since I won't finish here and I need to keep coding while on the trip.
+###Possible Solutions
+    *Change avahi for bonjour when on Mac (horrible idea, but possible).
+    *Setup VM to compile and run examples on Mac.
+    
+#Missing features for demo
+##Fully functioning network capabilities.
+##Coding the protocol that will be displayed.
+##Outputting data I can show.

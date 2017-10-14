@@ -221,7 +221,7 @@ fn run(config : WorkerConfig) -> Result<(), CLIError> {
     };
     */
    let mut obj =  config.create_worker();
-   //debug!("Worker Obj: {:?}", obj);
+   debug!("Worker Obj: {:?}", obj);
    try!(obj.start());
    Ok(())
 }
