@@ -55,7 +55,7 @@ use std::process::{Command, Stdio};
 const DNS_SERVICE_NAME : &'static str = "meshsim";
 const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT : u16 = 23456;
-
+const SIMULATED_SCAN_DIR : &'static str = "bcast_groups";
 
 
 // *****************************
@@ -177,20 +177,20 @@ impl Peer {
                 service_record : ServiceRecord::new() }
     }
 
-    ///Function used to get the endpoint required to communicate with this Peer.
-    pub fn get_endpoint(&self) -> String {
-        let mut endpoint = String::new();
+    // ///Function used to get the endpoint required to communicate with this Peer.
+    // pub fn get_endpoint(&self) -> String {
+    //     let mut endpoint = String::new();
 
-        if self.service_record.address.is_empty() {
-            //Operating in simulated mode
-            endpoint = format!("ipc:///tmp/{}.ipc", self.public_key);
-        } else {
-            //Operating in device mode
-            endpoint = format!("tcp://{}:{}", self.service_record.address, DNS_SERVICE_PORT);
-        }
+    //     if self.service_record.address.is_empty() {
+    //         //Operating in simulated mode
+    //         endpoint = format!("ipc:///tmp/{}.ipc", self.public_key);
+    //     } else {
+    //         //Operating in device mode
+    //         endpoint = format!("tcp://{}:{}", self.service_record.address, DNS_SERVICE_PORT);
+    //     }
 
-        endpoint
-    }
+    //     endpoint
+    // }
 }
 /// Trait that must be implemented for all message types.
 pub trait Message {}
@@ -214,7 +214,7 @@ pub struct AckMessage {
 pub struct DataMessage;
 
 /// Represents a radio used by the worker to send a message to the network.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Radio {
     //socket : whatever socket type
     /// The endpoint used for the socket. In this version of the software,
@@ -280,7 +280,7 @@ impl ServiceRecord {
 }
 
 /// Operation modes for the worker.
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub enum OperationMode {
     /// Simulated: The worker process is part of a simulated environment, running as one of many processes in the same machine.
     Simulated,
@@ -327,6 +327,8 @@ impl Radio {
     pub fn send(&self, msg : MessageType, destination: &Peer) -> Result<(), WorkerError> {
         let mut socket = try!(Socket::new(Protocol::Push));
         //let endpoint = destination.get_endpoint();
+        debug!("Send: msg: {:?}", msg);
+        debug!("Send: desintation: {:?}", destination);
         
         try!(socket.connect(&destination.endpoint));
         //info!("Connected to endpoint.");
@@ -379,7 +381,7 @@ impl Radio {
 /// Worker struct.
 /// Main struct for the worker module. Must be created via the ::new(Vec<Param>) method.
 /// 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Worker {
     /// List of radios the worker uses for wireless communication.
     pub radios : Vec<Radio>,
@@ -471,10 +473,10 @@ impl Worker {
         let mut peers = HashSet::new();
         
         if self.operation_mode == OperationMode::Simulated {
-            debug!("Scanning for peers in simulated_mode.");
+            //debug!("Scanning for peers in simulated_mode.");
             peers = try!(self.simulated_scan_for_peers(&radio));
         } else {
-            debug!("Scanning for peers in device_mode.");
+            //debug!("Scanning for peers in device_mode.");
             peers = try!(self.device_scan_for_peers(&radio));
         }
 
@@ -552,7 +554,6 @@ impl Worker {
         info!("Scanning for nearby peers...");
         for group in &radio.broadcast_groups {
             let dir = format!("{}{}{}", parent_dir.display(), std::path::MAIN_SEPARATOR, group);
-            debug!("Scanning {}", dir);
             if Path::new(&dir).is_dir() {
                 for path in fs::read_dir(dir)? {
                     let peer_file = try!(path);
@@ -561,9 +562,10 @@ impl Worker {
                     let peer_key = extract_endpoint_key(&peer_file);
                     if !peer_key.is_empty() && peer_key != own_key {
                         debug!("Found {}!", &peer_key);
+                        let endpoint = format!("ipc://{}", peer_file);
                         let peer = Peer{name : String::from(""), 
                                         public_key : String::from(peer_key), 
-                                        endpoint : String::from(peer_file),
+                                        endpoint : endpoint,
                                         service_record : ServiceRecord::new()};
                         peers.insert(peer);
                     }
@@ -597,6 +599,7 @@ impl Worker {
         for r in &self.radios {
             //Send messge to each Peer reachable by this radio
             for p in &self.peers {
+                debug!("Sending join message to {}", p.public_key);
                 let data = JoinMessage { sender : self.me.clone()};
                 let msg = MessageType::Join(data);
                 let _ = r.send(msg, p);
@@ -620,7 +623,11 @@ impl Worker {
         // For now just use default radio.
         let data = AckMessage{sender: self.me.clone(), neighbors : self.peers.clone()};
         let ack_msg = MessageType::Ack(data);
-        let _ = self.radios[0].send(ack_msg, &msg.sender);
+        debug!("Sending ACK message to {}.", msg.sender.name);
+        match self.radios[0].send(ack_msg, &msg.sender) {
+            Ok(_) => debug!("ACK message sent"),
+            Err(e) => error!("ACK message failed to be sent. Error:{}", e),
+        };
 
         //Add new node to membership list
         self.peers.insert(msg.sender.clone());
@@ -660,6 +667,9 @@ impl Worker {
         dir.pop(); //Dir is work_dir
 
         if self.operation_mode == OperationMode::Simulated {
+            //Set my own endpoint
+            self.me.endpoint = format!("ipc://{}/{}/{}.ipc", self.work_dir, SIMULATED_SCAN_DIR, self.me.public_key);
+
             //check bcast_groups dir is there
             dir.push("bcast_groups"); //Dir is work_dir/bcast_groups
             if !dir.exists() {
@@ -707,7 +717,11 @@ impl Worker {
                 dir.pop(); //Dir is work_dir/bcast_groups
 
             }
+        } else {
+            //Set TCP endpoint
+            self.me.endpoint = format!("tcp://*:{}", DNS_SERVICE_PORT);
         }
+
 
         Ok(())
     }
@@ -774,6 +788,10 @@ impl WorkerConfig {
         obj.operation_mode = self.operation_mode;
         if obj.operation_mode == OperationMode::Device {
             obj.radios[0].endpoint = format!("tcp://*:{}", DNS_SERVICE_PORT);
+            obj.me.endpoint = format!("tcp://*:{}", DNS_SERVICE_PORT);
+        } else {
+            obj.radios[0].endpoint = format!("ipc://{}/{}.ipc", obj.work_dir, obj.me.public_key);
+            obj.me.endpoint = format!("ipc://{}/{}/{}.ipc", obj.work_dir, SIMULATED_SCAN_DIR, obj.me.public_key);
         }
         obj.radios[0].broadcast_groups = self.broadcast_groups.unwrap_or(vec![]);
         obj.radios[0].reliability = self.reliability.unwrap_or(obj.radios[0].reliability);

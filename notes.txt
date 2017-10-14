@@ -1,0 +1,8 @@
+#DNS & DNS-SD Resources
+https://en.wikipedia.org/wiki/TXT_record
+https://tools.ietf.org/html/rfc2782
+https://en.wikipedia.org/wiki/SRV_record
+
+
+#Raspberry Pi + Rust
+https://hackernoon.com/compiling-rust-for-the-raspberry-pi-49fdcd7df658
