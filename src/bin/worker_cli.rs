@@ -53,6 +53,7 @@ const ERROR_EXECUTION_FAILURE : i32 = 1;
 const ERROR_INITIALIZATION : i32 = 2;
 
 
+
 // *****************************************
 // ************ Module Errors **************
 // *****************************************
@@ -195,7 +196,8 @@ fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIE
     
     let console_drain = slog_term::streamer().build();
     let file_drain = slog_stream::stream(log_file, slog_json::default());
-    let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!());
+    let process_name = String::from(worker_name);
+    let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!("Process" => process_name));
     try!(slog_stdlog::set_logger(logger));
     Ok(())
 } 
@@ -219,6 +221,7 @@ fn run(config : WorkerConfig) -> Result<(), CLIError> {
     };
     */
    let mut obj =  config.create_worker();
+   debug!("Worker Obj: {:?}", obj);
    try!(obj.start());
    Ok(())
 }
@@ -386,6 +389,7 @@ fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
 
     //Validate the current configuration
     try!(validate_config(&mut configuration, &matches));
+    debug!("Config: {:?}", configuration);
 
     Ok(configuration)
 }

@@ -149,7 +149,7 @@ fn test_basic_test() -> Result<(), CLIError> {
     try!(master.add_worker(cfg1));
     //Super fucking hacky. It seems the order for process start is not that deterministic.
     //TODO: Find a way to address this.
-    thread::sleep(std::time::Duration::from_millis(2000)); 
+    thread::sleep(std::time::Duration::from_millis(4000)); 
     try!(master.add_worker(cfg2));
 
     match master.wait_for_workers() {
@@ -162,6 +162,34 @@ fn test_basic_test() -> Result<(), CLIError> {
 
 /// This test creates 
 fn test_six_node_test() -> Result<(), CLIError> {
+    info!("Running SixNodeTest");
+    let mut master = Master::new();
+    let mut cfg1 = WorkerConfig::new();
+    cfg1.worker_name = "Worker1".to_string();
+    cfg1.work_dir = String::from("/tmp");
+
+    let mut cfg2 = WorkerConfig::new();
+    cfg2.worker_name = "Worker2".to_string();
+    cfg2.work_dir = String::from("/tmp");
+
+    let mut cfg3 = WorkerConfig::new();
+    cfg3.worker_name = "Worker3".to_string();
+    cfg3.work_dir = String::from("/tmp");
+
+    try!(master.add_worker(cfg1));
+    //Super fucking hacky. It seems the order for process start is not that deterministic.
+    //TODO: Find a way to address this.
+    thread::sleep(std::time::Duration::from_millis(4000)); 
+    try!(master.add_worker(cfg2));
+    //Super fucking hacky. It seems the order for process start is not that deterministic.
+    //TODO: Find a way to address this.
+    thread::sleep(std::time::Duration::from_millis(4000)); 
+    try!(master.add_worker(cfg3));
+
+    match master.wait_for_workers() {
+        Ok(_) => info!("Finished successfully."),
+        Err(e) => error!("Master failed to wait for children processes with error {}", e),
+    }
     /*
     info!("Running BasicTest");
     let mut master = Master::new();
