@@ -48,6 +48,7 @@ use self::byteorder::{NativeEndian, WriteBytesExt};
 use std::path::{Path, PathBuf, Component};
 use std::collections::HashSet;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 
 // *****************************
 // ********** Globals **********
@@ -56,7 +57,7 @@ const DNS_SERVICE_NAME : &'static str = "meshsim";
 const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT : u16 = 23456;
 const SIMULATED_SCAN_DIR : &'static str = "bcast_groups";
-
+const GOSSIP_FACTOR : f32 = 0.25; //25% of the peer list.
 
 // *****************************
 // ********** Traits **********
@@ -151,6 +152,10 @@ pub enum MessageType {
     Ack(AckMessage),
     ///General data message to be sent to a given member of the network.
     Data(DataMessage),
+    ///Hearbeat message to check on the health of a peer.
+    Heartbeat(HeartbeatMessage),
+    ///Alive message, which is a response to the heartbeat message.
+    Alive(AliveMessage),
 }
 
 /// Peer struct.
@@ -206,13 +211,26 @@ pub struct JoinMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AckMessage {
     sender: Peer,
-    neighbors : HashSet<Peer>,
+    global_peer_list : HashSet<Peer>,
 }
 
 /// General purposes data message for the network
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataMessage;
 
+/// Heartbeat message used to check on the status of nearby peers.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HeartbeatMessage {
+    sender: Peer,
+    global_peer_list : HashSet<Peer>,
+}
+
+/// Response message to the heartbeat message.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AliveMessage {
+    sender: Peer,
+    global_peer_list : HashSet<Peer>,
+}
 
 ///Struct to represent DNS TXT records for advertising the meshsim service and obtain records from peers.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
@@ -382,7 +400,7 @@ pub struct Worker {
     /// List of radios the worker uses for wireless communication.
     pub radios : Vec<Radio>,
     /// The known neighbors of this worker.
-    pub peers : HashSet<Peer>,
+    pub nearby_peers : HashSet<Peer>,
     ///Peer object describing this worker.
     pub me : Peer,
     ///Directory for the worker to operate. Must have RW access to it. Operational files and 
@@ -394,6 +412,11 @@ pub struct Worker {
     operation_mode : OperationMode,
     ///How often (ms) should the worker scan for new peers.
     scan_interval : u32,
+    ///The list of all known active members of the network. They might not all be in broadcast
+    ///range of this worker.
+    pub global_peer_list : Arc<Mutex<HashSet<Peer>>>, //Membership protocol structure.
+    ///The list of peers suspected to be dead/out of range.
+    suspected_list : Arc<Mutex<Vec<Peer>>>,
 }
 
 impl Worker {
@@ -426,10 +449,10 @@ impl Worker {
         }
 
         //Next, join the network
-        self.peers = try!(self.scan_for_peers(&(self.radios[0])));
+        self.nearby_peers = try!(self.scan_for_peers(&(self.radios[0])));
         //let num = peers.len() - self.radios[0].broadcast_groups.len();
         //info!("Found {} peers!", num);
-        self.join_network();
+        self.send_join_message();
 
         //Now listen for messages
         info!("Listening for messages.");
@@ -454,13 +477,21 @@ impl Worker {
         //radio.endpoint = format!("ipc:///tmp/{}.ipc", key.to_hex()).to_string();
         let mut me = Peer::new();
         me.public_key = key.to_hex().to_string();
+        //Global peer list
+        let ps : HashSet<Peer> = HashSet::new();
+        let gpl = Arc::new(Mutex::new(ps));
+        //Suspected peer list
+        let sp : Vec<Peer> = Vec::new();
+        let sl = Arc::new(Mutex::new(sp));
         Worker{ radios: vec![radio], 
-                peers: HashSet::new(), 
+                nearby_peers: HashSet::new(), 
                 me: me,
                 operation_mode : OperationMode::Simulated,
                 random_seed : 0u32,
                 scan_interval : 1000u32,
-                work_dir : String::new() }
+                work_dir : String::new(),
+                global_peer_list : gpl,
+                suspected_list : sl }
     }
 
     ///Function for scanning for nearby peers. Scanning method depends on Operation_Mode.
@@ -491,7 +522,7 @@ impl Worker {
 
         //Starting the worker process
         let mut child = try!(command.stdout(Stdio::piped()).spawn());
-        let mut exit_status = child.wait().unwrap();
+        let exit_status = child.wait().unwrap();
 
         if exit_status.success() {
             let mut buffer = String::new();
@@ -584,15 +615,26 @@ impl Worker {
             MessageType::Ack(msg) => {
                  self.process_ack_message(msg);
             },
+            MessageType::Heartbeat(msg) => {
+                self.process_heartbeat_message(msg);
+            },
+            MessageType::Alive(msg) => {
+                self.process_alive_message(msg);
+            }
             MessageType::Data(_) => { },
         }
         Ok(())
     }
 
-    fn join_network(&self) {
+    /// The first message of the protocol. 
+    /// When to send: At start-up, after doing a scan of nearby peers.
+    /// Receiver: All Nearby peers.
+    /// Payload: Self Peer object.
+    /// Actions: None.
+    fn send_join_message(&self) {
         for r in &self.radios {
             //Send messge to each Peer reachable by this radio
-            for p in &self.peers {
+            for p in &self.nearby_peers {
                 debug!("Sending join message to {}", p.public_key);
                 let data = JoinMessage { sender : self.me.clone()};
                 let msg = MessageType::Join(data);
@@ -602,38 +644,181 @@ impl Worker {
         }
     }
 
-    // fn start_radios(&mut self) {
-    //     //Need to create a socket for each radio and endpoint
-    //     //For now, we just use the first radio.
-    //     //self.radios[0].socket = Socket::new(Protocol::Pull).unwrap();
-    //     let endpoint = &self.radios[0].endpoint.clone();
-    //     self.radios[0].socket.bind(&endpoint);
-    // }
-
+    /// A response to a new peer joining the network.
+    /// When to send: After receiving a join message.
+    /// Sender: A new peer in range joining the network.
+    /// Payload: Global peer list.
+    /// Actions:
+    ///   1. Add sender to global membership list and nearby peer list.
+    ///   2. Construct an ACK message and reply with it.
     fn process_join_message(&mut self, msg : JoinMessage) {
         info!("Received JOIN message from {:?}", msg.sender.name);
+        //Add new node to nearby peer list
+        self.nearby_peers.insert(msg.sender.clone());
+        //Obtain a reference to our current GPL.
+        let gpl = self.global_peer_list.clone();
+        //Obtain a lock to the underlying data.
+        let mut gpl = gpl.lock().unwrap();
+        gpl.insert(msg.sender.clone());
+
         //Respond with ACK 
         //Need to responde through the same radio we used to receive this.
         // For now just use default radio.
-        let data = AckMessage{sender: self.me.clone(), neighbors : self.peers.clone()};
+        let data = AckMessage{sender: self.me.clone(), global_peer_list : self.nearby_peers.clone()};
         let ack_msg = MessageType::Ack(data);
         debug!("Sending ACK message to {}.", msg.sender.name);
         match self.radios[0].send(ack_msg, &msg.sender) {
             Ok(_) => debug!("ACK message sent"),
             Err(e) => error!("ACK message failed to be sent. Error:{}", e),
         };
-
-        //Add new node to membership list
-        self.peers.insert(msg.sender.clone());
     }
 
+    /// The final part of the protocol's initial handshake
+    /// When to send: After receiving an ACK message.
+    /// Sender: A peer in the network that received a JOIN message.
+    /// Payload: Global peer list.
+    /// Actions:
+    ///   1. Add the difference between the payload and current GPL to the GPL.
     fn process_ack_message(&mut self, msg: AckMessage)
     {
         info!("Received ACK message from {:?}", msg.sender.name);
-        for p in msg.neighbors {
-            // TODO: check the peer doesn't already exist
+        //Obtain a reference to our current GPL.
+        let gpl = self.global_peer_list.clone();
+        //Obtain a lock to the underlying data.
+        let mut gpl = gpl.lock().unwrap();
+
+        //This worker just started, but might be getting an ACK message from many
+        //nearby peers. Diff the incoming set with the current set using an outer join.
+        let gpl_snapshot = gpl.clone();
+        for p in msg.global_peer_list.difference(&gpl_snapshot) {
             info!("Adding peer {:?} to list.", p.name);
-            self.peers.insert(p);
+            gpl.insert(p.clone());
+        }
+    }
+
+    /// A message that is sent periodically to a given amount of members
+    /// of the nearby list to check if they are still alive.
+    /// When to send: After the heartbeat timer expires.
+    /// Receiver: Random member of the nearby peer list.
+    /// Payload: Global peer list.
+    /// Actions: 
+    ///   1. Add the sent peers to the suspected list.
+    fn send_heartbeat_message(&self) {
+        //Get the RNG
+        let mut random_bytes = vec![];
+        let _ = random_bytes.write_u32::<NativeEndian>(self.random_seed);
+        let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
+        let mut gen = StdRng::from_seed(randomness.as_slice());
+
+        //Will contact a given amount of current number of nearby peers.
+        let num_of_peers = self.nearby_peers.len() as f32 * GOSSIP_FACTOR;
+        let num_of_peers = num_of_peers.ceil() as u32;
+
+        //Get a handle and lock on the suspected peer list.
+        let spl = self.suspected_list.clone();
+        let mut spl = spl.lock().unwrap();
+
+        //Get a handle and lock of the GPL
+        let gpl = self.global_peer_list.clone();
+        let mut gpl = gpl.lock().unwrap();
+
+        //Get a copy of the GPL for iteration and selecting the random peers.
+        let mut gpl_iter = gpl.clone();
+        let mut gpl_iter = gpl_iter.iter();
+        for i in 0..num_of_peers {
+            let selection : usize = gen.next_u32() as usize % self.nearby_peers.len();
+            let mut j = 0;
+            while j < selection {
+                gpl_iter.next();
+                j += 1;
+            }
+            //The chosen peer
+            let recipient = gpl_iter.next().unwrap();
+
+            //Add the suspected peer to the suspected list.
+            spl.push(recipient.clone());
+
+            let gpl_snapshot = gpl.clone();
+            let data = HeartbeatMessage{ sender : self.me.clone(),
+                                        global_peer_list : gpl_snapshot};
+            let msg = MessageType::Heartbeat(data);
+            info!("Sending a Heartbear message to {}", recipient.public_key);
+            self.radios[0].send(msg, recipient);
+        }
+    }
+
+    /// A response to a heartbeat message.
+    /// When to send: After receiving a heartbeat message.
+    /// Sender: A nearby peer in range.
+    /// Payload: Global peer list.
+    /// Actions:
+    ///   1. Construct an alive message with this peer's GPL and send it.
+    ///   2. Add the difference between the senders GPL and this GPL.
+    fn process_heartbeat_message(&self, msg : HeartbeatMessage) {
+        //The sender is asking if I'm alive. Before responding, let's take a look at their GPL
+        //Obtain a reference to our current GPL.
+        let gpl = self.global_peer_list.clone();
+        //Obtain a lock to the underlying data.
+        let mut gpl = gpl.lock().unwrap();
+
+        //Diff the incoming set with the current set using an outer join.
+        let gpl_snapshot = gpl.clone();
+        for p in msg.global_peer_list.difference(&gpl_snapshot) {
+            info!("Adding peer {:?} to list.", p.name);
+            gpl.insert(p.clone());
+        }
+
+        //Now construct and send an alive message to prove we are alive.
+        let data = AliveMessage{ sender : self.me.clone(),
+                                 global_peer_list : gpl.clone()};
+        let alive_msg = MessageType::Alive(data);
+        self.radios[0].send(alive_msg, &msg.sender);
+    }
+
+    /// The final part of the heartbeat-alive part of the protocol. If this message is 
+    /// received, it means a peer to which we sent a heartbeat message is still alive.
+    /// Sender: A nearby peer in range that received a heartbeat message from this peer.
+    /// Payload: Global peer list.
+    /// Actions:
+    ///   1. Add the difference between the senders GPL and this GPL.
+    ///   2. Remove the sender from the list of suspected dead peers.
+    fn process_alive_message(&self, msg : AliveMessage) {
+        //Get a handle and lock on the suspected peer list.
+        let spl = self.suspected_list.clone();
+        let mut spl = spl.lock().unwrap();
+        //Find the index of the element to remove.
+        let mut index : i32 = -1;
+        let mut j = 0;
+        let spl_iter = spl.clone();
+        let mut spl_iter = spl_iter.iter();
+        for p in spl_iter {
+            if *p == msg.sender {
+                index = j;
+                break; //Found the element
+            }
+            j += 1;
+        }
+        //Remove the sender from the suspected list.
+        if index > 0 {
+            let index = index as usize;
+            spl.remove(index);
+        } else {
+            //Received an alive message from a peer that was not in the list.
+            //In that case, ignore and return.
+            warn!("Received ALIVE message from {} that was not in the spl", msg.sender.public_key);
+            return;
+        }
+
+        //Obtain a reference to our current GPL.
+        let gpl = self.global_peer_list.clone();
+        //Obtain a lock to the underlying data.
+        let mut gpl = gpl.lock().unwrap();
+
+        //Diff the incoming set with the current set using an outer join.
+        let gpl_snapshot = gpl.clone();
+        for p in msg.global_peer_list.difference(&gpl_snapshot) {
+            info!("Adding peer {:?} to list.", p.name);
+            gpl.insert(p.clone());
         }
     }
 
@@ -796,26 +981,26 @@ impl WorkerConfig {
     ///Writes the current configuration object to a formatted configuration file, that can be passed to
     ///the worker_cli binary.
     pub fn write_to_file(&self, file_path : &Path) -> Result<String, WorkerError> {
-    //Create configuration file
-    //let file_path = format!("{}{}{}", dir, std::path::MAIN_SEPARATOR, file_name);
-    let mut file = try!(File::create(&file_path));
-    let groups = self.broadcast_groups.as_ref().cloned().unwrap_or(Vec::new());
+        //Create configuration file
+        //let file_path = format!("{}{}{}", dir, std::path::MAIN_SEPARATOR, file_name);
+        let mut file = try!(File::create(&file_path));
+        let groups = self.broadcast_groups.as_ref().cloned().unwrap_or(Vec::new());
 
-    //Write content to file
-    //file.write(sample_toml_str.as_bytes()).expect("Error writing to toml file.");
-    write!(file, "worker_name = \"{}\"\n", self.worker_name)?;
-    write!(file, "random_seed = {}\n", self.random_seed)?;
-    write!(file, "work_dir = \"{}\"\n", self.work_dir)?;
-    write!(file, "operation_mode = \"{}\"\n", self.operation_mode)?;
-    write!(file, "reliability = {}\n", self.reliability.unwrap_or(1f64))?;
-    write!(file, "delay = {}\n", self.delay.unwrap_or(0u32))?;
-    write!(file, "scan_interval = {}\n", self.scan_interval.unwrap_or(1000u32))?;
-    write!(file, "broadcast_groups = {:?}\n", groups)?;
+        //Write content to file
+        //file.write(sample_toml_str.as_bytes()).expect("Error writing to toml file.");
+        write!(file, "worker_name = \"{}\"\n", self.worker_name)?;
+        write!(file, "random_seed = {}\n", self.random_seed)?;
+        write!(file, "work_dir = \"{}\"\n", self.work_dir)?;
+        write!(file, "operation_mode = \"{}\"\n", self.operation_mode)?;
+        write!(file, "reliability = {}\n", self.reliability.unwrap_or(1f64))?;
+        write!(file, "delay = {}\n", self.delay.unwrap_or(0u32))?;
+        write!(file, "scan_interval = {}\n", self.scan_interval.unwrap_or(1000u32))?;
+        write!(file, "broadcast_groups = {:?}\n", groups)?;
 
-    //file.flush().expect("Error flusing toml file to disk.");
-    let file_name = format!("{}", file_path.display());
-    Ok(file_name)
-}
+        //file.flush().expect("Error flusing toml file to disk.");
+        let file_name = format!("{}", file_path.display());
+        Ok(file_name)
+    }
 }
 
 // *****************************
@@ -900,7 +1085,7 @@ mod tests {
 
     //Unit test for: Worker::join_network
     #[test]
-    fn test_worker_join_network() {
+    fn test_worker_send_join_message() {
         unimplemented!();
     }
 
