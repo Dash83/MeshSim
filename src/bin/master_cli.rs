@@ -176,15 +176,36 @@ fn test_six_node_test() -> Result<(), CLIError> {
     cfg3.worker_name = "Worker3".to_string();
     cfg3.work_dir = String::from("/tmp");
 
+    let mut cfg4 = WorkerConfig::new();
+    cfg4.worker_name = "Worker4".to_string();
+    cfg4.work_dir = String::from("/tmp");
+
+    let mut cfg5 = WorkerConfig::new();
+    cfg5.worker_name = "Worker5".to_string();
+    cfg5.work_dir = String::from("/tmp");
+
+    let mut cfg6 = WorkerConfig::new();
+    cfg6.worker_name = "Worker6".to_string();
+    cfg6.work_dir = String::from("/tmp");
+    
     try!(master.add_worker(cfg1));
+
     //Super fucking hacky. It seems the order for process start is not that deterministic.
     //TODO: Find a way to address this.
     thread::sleep(std::time::Duration::from_millis(4000)); 
     try!(master.add_worker(cfg2));
-    //Super fucking hacky. It seems the order for process start is not that deterministic.
-    //TODO: Find a way to address this.
+
     thread::sleep(std::time::Duration::from_millis(4000)); 
     try!(master.add_worker(cfg3));
+
+    thread::sleep(std::time::Duration::from_millis(4000)); 
+    try!(master.add_worker(cfg4));
+
+    thread::sleep(std::time::Duration::from_millis(4000)); 
+    try!(master.add_worker(cfg5));
+
+    thread::sleep(std::time::Duration::from_millis(4000)); 
+    try!(master.add_worker(cfg6));
 
     match master.wait_for_workers() {
         Ok(_) => info!("Finished successfully."),

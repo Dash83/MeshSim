@@ -221,7 +221,7 @@ fn run(config : WorkerConfig) -> Result<(), CLIError> {
     };
     */
    let mut obj =  config.create_worker();
-   debug!("Worker Obj: {:?}", obj);
+   //debug!("Worker Obj: {:?}", obj);
    try!(obj.start());
    Ok(())
 }
@@ -389,7 +389,7 @@ fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
 
     //Validate the current configuration
     try!(validate_config(&mut configuration, &matches));
-    debug!("Config: {:?}", configuration);
+    //debug!("Config: {:?}", configuration);
 
     Ok(configuration)
 }
