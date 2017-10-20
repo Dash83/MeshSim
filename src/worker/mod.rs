@@ -342,13 +342,13 @@ impl Radio {
     pub fn send(&self, msg : MessageType, destination: &Peer) -> Result<(), WorkerError> {
         let mut socket = try!(Socket::new(Protocol::Push));
         //let endpoint = destination.get_endpoint();
-        debug!("Send: msg: {:?}", msg);
-        debug!("Send: desintation: {:?}", destination);
+       // debug!("Send: msg: {:?}", msg);
+       // debug!("Send: destination: {:?}", destination);
         
         try!(socket.connect(&destination.endpoint));
         //info!("Connected to endpoint.");
 
-        info!("Sending message to {}.", destination.endpoint);
+        //info!("Sending message to {}, endpoint {}.", destination.name, destination.endpoint);
         let data = try!(to_vec(&msg));
         try!(socket.write_all(&data));
         info!("Message sent successfully.");
@@ -429,18 +429,18 @@ impl Worker {
     pub fn start(&mut self) -> Result<(), WorkerError> {        
         //Init the worker
         let _ = try!(self.init());
-        debug!("Finished initializing.");
+        info!("Finished initializing.");
 
         //Bind listening socket
         let mut socket = try!(Socket::new(Protocol::Pull));
-        debug!("Successfully created socket");
+        //debug!("Successfully created socket");
         try!(socket.bind(&self.me.endpoint));
-        debug!("Successfully bound to endpoint {}", &self.me.endpoint);
+        //debug!("Successfully bound to endpoint {}", &self.me.endpoint);
 
         //Now advertise the service to be discoverable by peers. (device mode only)
         if self.operation_mode == OperationMode::Device {
             let mut service = ServiceRecord::new();
-            service.service_name = String::from(DNS_SERVICE_NAME);
+            service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.me.name);
             service.service_type = String::from(DNS_SERVICE_TYPE);
             service.port = DNS_SERVICE_PORT;
             service.txt_records.push(format!("PUBLIC_KEY={}", self.me.public_key));
@@ -540,14 +540,15 @@ impl Worker {
                                             port : u16::from_str_radix(tokens[8], 10).unwrap(),
                                             txt_records : Vec::new() };
                     
-                    if serv.service_name == DNS_SERVICE_NAME {
+                    if serv.service_name.starts_with(DNS_SERVICE_NAME) {
                         //Found a Peer
                         let mut p = Peer::new();
                         //TODO: Deconstruct these Options in a classier way. If not, might as well return emptry string on failure.
-                        p.public_key = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from(""));
-                        p.name = serv.get_txt_record("NAME").unwrap_or(String::from(""));
+                        p.public_key = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from("(NO_KEY)"));
+                        p.name = serv.get_txt_record("NAME").unwrap_or(String::from("(NO_NAME)"));
                         p.endpoint = format!("tcp://{}:{}", serv.address, DNS_SERVICE_PORT);
                         p.service_record = serv;
+                        info!("Found peer {}, endpoint {}", p.name, p.endpoint);
                         peers.insert(p);
                     }
                 }
@@ -586,7 +587,7 @@ impl Worker {
                     let peer_file = peer_file.to_str().unwrap_or("");
                     let peer_key = extract_endpoint_key(&peer_file);
                     if !peer_key.is_empty() && peer_key != self.me.public_key {
-                        debug!("Found {}!", &peer_key);
+                        info!("Found {}!", &peer_key);
                         let endpoint = format!("ipc://{}", peer_file);
                         let peer = Peer{name : String::from(""), 
                                         public_key : String::from(peer_key), 
@@ -635,7 +636,7 @@ impl Worker {
         for r in &self.radios {
             //Send messge to each Peer reachable by this radio
             for p in &self.nearby_peers {
-                debug!("Sending join message to {}", p.public_key);
+                info!("Sending join message to {}, endpoint {}", p.name, p.public_key);
                 let data = JoinMessage { sender : self.me.clone()};
                 let msg = MessageType::Join(data);
                 let _ = r.send(msg, p);
@@ -652,7 +653,7 @@ impl Worker {
     ///   1. Add sender to global membership list and nearby peer list.
     ///   2. Construct an ACK message and reply with it.
     fn process_join_message(&mut self, msg : JoinMessage) {
-        info!("Received JOIN message from {:?}", msg.sender.name);
+        info!("Received JOIN message from {}, endpoint {}", msg.sender.name, msg.sender.endpoint);
         //Add new node to nearby peer list
         self.nearby_peers.insert(msg.sender.clone());
         //Obtain a reference to our current GPL.
@@ -666,9 +667,9 @@ impl Worker {
         // For now just use default radio.
         let data = AckMessage{sender: self.me.clone(), global_peer_list : self.nearby_peers.clone()};
         let ack_msg = MessageType::Ack(data);
-        debug!("Sending ACK message to {}.", msg.sender.name);
+        info!("Sending ACK message to {}, endpoint {}", msg.sender.name, msg.sender.endpoint);
         match self.radios[0].send(ack_msg, &msg.sender) {
-            Ok(_) => debug!("ACK message sent"),
+            Ok(_) => info!("ACK message sent"),
             Err(e) => error!("ACK message failed to be sent. Error:{}", e),
         };
     }
@@ -681,7 +682,7 @@ impl Worker {
     ///   1. Add the difference between the payload and current GPL to the GPL.
     fn process_ack_message(&mut self, msg: AckMessage)
     {
-        info!("Received ACK message from {:?}", msg.sender.name);
+        info!("Received ACK message from {}, endpoint {}", msg.sender.name, msg.sender.endpoint);
         //Obtain a reference to our current GPL.
         let gpl = self.global_peer_list.clone();
         //Obtain a lock to the underlying data.
@@ -691,7 +692,7 @@ impl Worker {
         //nearby peers. Diff the incoming set with the current set using an outer join.
         let gpl_snapshot = gpl.clone();
         for p in msg.global_peer_list.difference(&gpl_snapshot) {
-            info!("Adding peer {:?} to list.", p.name);
+            info!("Adding peer {}/{} to list.", p.name, p.public_key);
             gpl.insert(p.clone());
         }
     }
@@ -742,7 +743,7 @@ impl Worker {
             let data = HeartbeatMessage{ sender : self.me.clone(),
                                         global_peer_list : gpl_snapshot};
             let msg = MessageType::Heartbeat(data);
-            info!("Sending a Heartbear message to {}", recipient.public_key);
+            info!("Sending a Heartbeat message to {}, endpoint {}", recipient.name, recipient.endpoint);
             self.radios[0].send(msg, recipient);
         }
     }
@@ -755,6 +756,7 @@ impl Worker {
     ///   1. Construct an alive message with this peer's GPL and send it.
     ///   2. Add the difference between the senders GPL and this GPL.
     fn process_heartbeat_message(&self, msg : HeartbeatMessage) {
+        info!("Received Heartbeat message from {}, endpoint {}", msg.sender.name, msg.sender.endpoint);
         //The sender is asking if I'm alive. Before responding, let's take a look at their GPL
         //Obtain a reference to our current GPL.
         let gpl = self.global_peer_list.clone();
@@ -764,7 +766,7 @@ impl Worker {
         //Diff the incoming set with the current set using an outer join.
         let gpl_snapshot = gpl.clone();
         for p in msg.global_peer_list.difference(&gpl_snapshot) {
-            info!("Adding peer {:?} to list.", p.name);
+            info!("Adding peer {}/{} to list.", p.name, p.public_key);
             gpl.insert(p.clone());
         }
 
@@ -783,6 +785,7 @@ impl Worker {
     ///   1. Add the difference between the senders GPL and this GPL.
     ///   2. Remove the sender from the list of suspected dead peers.
     fn process_alive_message(&self, msg : AliveMessage) {
+        info!("Received Alive message from {}, endpoint {}", msg.sender.name, msg.sender.endpoint);
         //Get a handle and lock on the suspected peer list.
         let spl = self.suspected_list.clone();
         let mut spl = spl.lock().unwrap();
@@ -805,7 +808,7 @@ impl Worker {
         } else {
             //Received an alive message from a peer that was not in the list.
             //In that case, ignore and return.
-            warn!("Received ALIVE message from {} that was not in the spl", msg.sender.public_key);
+            warn!("Received ALIVE message from {}, endpoint {}, that was not in the spl", msg.sender.name, msg.sender.endpoint);
             return;
         }
 
@@ -817,7 +820,7 @@ impl Worker {
         //Diff the incoming set with the current set using an outer join.
         let gpl_snapshot = gpl.clone();
         for p in msg.global_peer_list.difference(&gpl_snapshot) {
-            info!("Adding peer {:?} to list.", p.name);
+            info!("Adding peer {}/{} to list.", p.name, p.public_key);
             gpl.insert(p.clone());
         }
     }
@@ -836,12 +839,12 @@ impl Worker {
         //Make sure the required directories are there and writable or create them.
         //check log dir is there
         let mut dir = try!(std::fs::canonicalize(&self.work_dir));
-        debug!("Work dir: {}", dir.display());
+        //debug!("Work dir: {}", dir.display());
         dir.push("log"); //Dir is work_dir/log
         if !dir.exists() {
             //Create log dir
             try!(std::fs::create_dir(dir.as_path()));
-            info!("Created dir file {} ", dir.as_path().display());
+            //info!("Created dir file {} ", dir.as_path().display());
         }
         dir.pop(); //Dir is work_dir
 
@@ -854,7 +857,7 @@ impl Worker {
             if !dir.exists() {
                 //Create bcast_groups dir
                 try!(std::fs::create_dir(dir.as_path()));
-                info!("Created dir file {} ", dir.as_path().display());
+                //info!("Created dir file {} ", dir.as_path().display());
             }
 
             //check current group dir is there
@@ -867,7 +870,7 @@ impl Worker {
                 if !dir.exists() {
                     //Create group dir
                     try!(std::fs::create_dir(dir.as_path()));
-                    info!("Created dir file {} ", dir.as_path().display());
+                    //info!("Created dir file {} ", dir.as_path().display());
                 }
 
                 //Create endpoint or symlink for this worker
@@ -878,7 +881,7 @@ impl Worker {
                         try!(fs::remove_file(&main_endpoint));
                     }
                     let _ = try!(File::create(&main_endpoint));
-                    debug!("Pipe file {} created.", &main_endpoint);
+                    //debug!("Pipe file {} created.", &main_endpoint);
                     //main_endpoint = format!("ipc://{}", pipe_name);
                     //debug!("Radio endpoint set to {}.", &main_endpoint);
                     self.me.endpoint = format!("ipc://{}", main_endpoint);
@@ -890,7 +893,7 @@ impl Worker {
                         continue;
                     }
                     let _ = try!(std::os::unix::fs::symlink(&main_endpoint, &linked_endpoint));
-                    debug!("Pipe file {} created.", &linked_endpoint);
+                    //debug!("Pipe file {} created.", &linked_endpoint);
                 }
                 
                 dir.pop(); //Dir is work_dir/bcast_groups
@@ -1116,6 +1119,7 @@ mod tests {
 
     //Unit test for: Radio::scan_for_peers
     #[test]
+    /*
     fn test_radio_scan_for_peers() {
         let mut worker = Worker::new();
         //3 phony groups
@@ -1217,6 +1221,7 @@ mod tests {
 
         assert_eq!(peers.len(), 4);
     }
+    */
 
     //**** WorkerConfig unit tests ****
     //Unit test for: WorkerConfig_new
@@ -1259,6 +1264,18 @@ mod tests {
         assert_eq!(obj.work_dir, ".".to_string());
         assert_eq!(obj.worker_name, "worker1".to_string());
     }
+
+    //**** ServiceRecord unit tests ****
+    //Unit test for get get_txt_record
+    #[test]
+    fn test_get_txt_record() {
+        let mut record = ServiceRecord::new();
+        record.txt_records.push(String::from("NAME=Worker1"));
+
+        assert_eq!(String::from("Worker1"), record.get_txt_record("NAME").unwrap());
+    }
+
+
     //**** Utility functions ****
     //Used for creating keys that can be endpoints of other workers.
     fn create_random_key() -> String {
