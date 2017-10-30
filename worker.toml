@@ -1,0 +1,9 @@
+worker_name = "Worker1"
+random_seed = 12345
+work_dir = "."
+operation_mode = "Simulated"
+reliability = 1.0
+delay = 0
+scan_interval = 2000
+broadcast_groups = ["bcast_g1"]
+

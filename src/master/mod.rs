@@ -22,14 +22,13 @@ extern crate serde;
 extern crate serde_cbor;
 extern crate rustc_serialize;
 
-use ::worker::Worker;
+use ::worker::*;
 use std::process::{Command, Child};
 use std::io;
 use std::error;
 use std::fmt;
 use std::collections::HashMap;
-use self::serde_cbor::ser::*;
-use self::rustc_serialize::hex::*;
+use std::env;
 
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
@@ -38,6 +37,7 @@ use self::rustc_serialize::hex::*;
 pub struct Master {
     /// Vector of worker processes the Master controls.
     pub workers : HashMap<String, Child>,
+    work_dir : String,
 }
 
 /// The error type for the Master. Each variant encapsules the underlying reason for failure.
@@ -47,6 +47,8 @@ pub enum MasterError {
     Serialization(serde_cbor::Error),
     /// Errors generated when doing IO operations.
     IO(io::Error),
+    ///Errors generated in the worker module.
+    Worker(::worker::WorkerError),
 }
 
 impl From<serde_cbor::Error> for MasterError {
@@ -61,11 +63,18 @@ impl From<io::Error> for MasterError {
     }
 }
 
+impl From<::worker::WorkerError> for MasterError {
+    fn from(err : ::worker::WorkerError) -> MasterError {
+        MasterError::Worker(err)
+    }
+}
+
 impl fmt::Display for MasterError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             MasterError::Serialization(ref err) => write!(f, "Serialization error: {}", err),
             MasterError::IO(ref err) => write!(f, "IO error: {}", err),
+            MasterError::Worker(ref err) => write!(f, "Worker error: {}", err),
         }
     }
 
@@ -76,6 +85,7 @@ impl error::Error for MasterError {
         match *self {
             MasterError::Serialization(ref err) => err.description(),
             MasterError::IO(ref err) => err.description(),
+            MasterError::Worker(ref err) => err.description(),
         }
     }
 
@@ -83,6 +93,7 @@ impl error::Error for MasterError {
         match *self {
             MasterError::Serialization(ref err) => Some(err),
             MasterError::IO(ref err) => Some(err),
+            MasterError::Worker(ref err) => Some(err),
         }
     }
 }
@@ -91,27 +102,33 @@ impl error::Error for MasterError {
 impl Master {
     /// Constructor for the struct.
     pub fn new() -> Master {
-        Master{ workers : HashMap::new()}
+        Master{ workers : HashMap::new(),
+                work_dir : String::from(".") }
     }
 
     /// Adds a single worker to the worker vector with a specified name and starts the worker process
-    pub fn add_worker(&mut self, worker : Worker) -> Result<(), MasterError> {
+    pub fn add_worker(&mut self, config : WorkerConfig) -> Result<(), MasterError> {
         //Cloning the worker name to pass it as a CLI argument
-        let worker_name = worker.me.name.clone();
+        let worker_name = config.worker_name.clone();
 
         //Serializing the worker data to be passed to the worker CLI
-        let worker_data : Vec<u8> = try!(to_vec(&worker));
-        let worker_data_encoded = worker_data.to_hex();
+        //let worker_data : Vec<u8> = try!(to_vec(&worker));
+        //let worker_data_encoded = worker_data.to_hex();
+        //Create the configuration file for the worker_cli
+        let file_name = format!("{}.toml", &worker_name);
+        debug!("Writing config file {}.", file_name);
+        let mut file_dir = try!(env::current_dir());
+        file_dir.push(&file_name);
+        let config_file = try!(config.write_to_file(file_dir.as_path()));
 
         //Constructing the external process call
         let mut command = Command::new("./worker_cli");
-        command.arg("--Worker_Object");
-        command.arg(format!("{}", worker_data_encoded));
-        command.arg("--Process_Name");
-        command.arg(format!("{}", worker_name));
+        command.arg("--config");
+        command.arg(format!("{}", config_file));
+        //debug!("Starting worker with command: {:?}", command.);
 
         //Starting the worker process
-        info!("Starting worker process {}", worker_name);
+        info!("Starting worker process {}", &worker_name);
         let child = try!(command.spawn());
         self.workers.insert(worker_name, child);
 
@@ -158,26 +175,14 @@ impl Master {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     //**** Create master with 0 workers ****
-    #[ignore]
     #[test]
     fn create_empty_master() {
         panic!("test failed!");
     }
 
-    //**** Create master with 10 workers and start them ****
-    #[test]
-    fn run_ten_workers() {
-        let mut master = Master{ workers : vec![] };
-        master.add_workers(10, "Worker".to_string());
-
-        assert_eq!("All workers finished succesfully", master.start_test().unwrap());
-    }
-
     //**** Create master with 10 workers and kill 1 ****
-    #[ignore]
     #[test]
     fn create_master_ten_children_kill_one() {
         panic!("test failed!");
