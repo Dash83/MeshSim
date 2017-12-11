@@ -25,7 +25,6 @@
         unused_import_braces, unused_qualifications)]
 
 extern crate rand;
-extern crate nanomsg;
 extern crate rustc_serialize;
 extern crate serde_cbor;
 extern crate serde;
@@ -34,7 +33,6 @@ extern crate byteorder;
 use std::iter;
 use std::io::{Read, Write};
 use self::rand::{Rng, SeedableRng, StdRng};
-//use self::nanomsg::{Socket, Protocol};
 use self::rustc_serialize::hex::*;
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
@@ -45,7 +43,7 @@ use std::fs::{File, self};
 use std::str::FromStr;
 use std;
 use self::byteorder::{NativeEndian, WriteBytesExt};
-use std::path::{Path, PathBuf, Component};
+use std::path::Path;
 use std::collections::HashSet;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -84,8 +82,6 @@ const GOSSIP_FACTOR : f32 = 0.25; //25% of the peer list.
 pub enum WorkerError {
     ///Error while serializing data with Serde.
     Serialization(serde_cbor::Error),
-    ///Error while using the Nanomsg network library.
-    Nanomsg(nanomsg::Error),
     ///Error while performing IO operations.
     IO(io::Error),
     ///Error configuring the worker.
@@ -97,7 +93,6 @@ impl fmt::Display for WorkerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             WorkerError::Serialization(ref err) => write!(f, "Serialization error: {}", err),
-            WorkerError::Nanomsg(ref err) => write!(f, "Network error: {}", err),
             WorkerError::IO(ref err) => write!(f, "IO error: {}", err),
             WorkerError::Configuration(ref err) => write!(f, "Configuration error: {}", err),            
         }
@@ -109,7 +104,6 @@ impl error::Error for WorkerError {
     fn description(&self) -> &str {
         match *self {
             WorkerError::Serialization(ref err) => err.description(),
-            WorkerError::Nanomsg(ref err) => err.description(),
             WorkerError::IO(ref err) => err.description(),
             WorkerError::Configuration(ref err) => err.as_str(),
         }
@@ -118,7 +112,6 @@ impl error::Error for WorkerError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             WorkerError::Serialization(ref err) => Some(err),
-            WorkerError::Nanomsg(ref err) => Some(err),
             WorkerError::IO(ref err) => Some(err),
             WorkerError::Configuration(_) => None,
         }
@@ -128,12 +121,6 @@ impl error::Error for WorkerError {
 impl From<serde_cbor::Error> for WorkerError {
     fn from(err : serde_cbor::Error) -> WorkerError {
         WorkerError::Serialization(err)
-    }
-}
-
-impl From<nanomsg::Error> for WorkerError {
-    fn from(err : nanomsg::Error) -> WorkerError {
-        WorkerError::Nanomsg(err)
     }
 }
 
@@ -380,7 +367,7 @@ impl Radio {
         info!("Registering service with command: {:?}", command);
 
         //Starting the worker process
-        let mut child = try!(command.spawn());
+        let child = try!(command.spawn());
         info!("Process {} started.", child.id());
 
         Ok(())
@@ -427,17 +414,16 @@ impl Worker {
         let _ = try!(self.init());
         info!("Finished initializing.");
 
-        //Start listening for messages
-        //TODO: move this to another thread.
-        let _ = try!(self.start_listener());
-
         //Do protocol initialization
         //TODO: move this to another thread.
         //Next, join the network
-        //self.nearby_peers = try!(self.scan_for_peers(&(self.radios[0])));
-        //let num = peers.len() - self.radios[0].broadcast_groups.len();
-        //info!("Found {} peers!", num);
-        //self.send_join_message();
+        self.nearby_peers = try!(self.scan_for_peers(&(self.radios[0])));
+        info!("Found {} peers!", self.nearby_peers.len());
+        self.send_join_message();
+
+        //Start listening for messages
+        //TODO: move this to another thread. This should be started before any protocol messages go out.
+        let _ = try!(self.start_listener());
 
         //TODO: Start required timers on their own threads.
 
@@ -454,7 +440,6 @@ impl Worker {
         //let mut gen = OsRng::new().expect("Failed to get OS random generator");
         //gen.fill_bytes(&mut key[..]);
         let radio = Radio::new();
-        //radio.address = format!("ipc:///tmp/{}.ipc", key.to_hex()).to_string();
         let mut me = Peer::new();
         me.public_key = key.to_hex().to_string();
         //Global peer list
@@ -475,18 +460,17 @@ impl Worker {
     }
 
     ///Function for scanning for nearby peers. Scanning method depends on Operation_Mode.
-    pub fn scan_for_peers(&self, radio : &Radio) ->  Result<HashSet<Peer>, WorkerError> {
-        let mut peers = HashSet::new();
-        
-        if self.operation_mode == OperationMode::Simulated {
-            //debug!("Scanning for peers in simulated_mode.");
-            peers = try!(self.simulated_scan_for_peers(&radio));
-        } else {
-            //debug!("Scanning for peers in device_mode.");
-            peers = try!(self.device_scan_for_peers(&radio));
+    pub fn scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
+        match self.operation_mode {
+            OperationMode::Simulated => { 
+                //debug!("Scanning for peers in simulated_mode.");
+                self.simulated_scan_for_peers(&radio)
+            },
+            OperationMode::Device => {
+                //debug!("Scanning for peers in device_mode.");
+                self.device_scan_for_peers(&radio)
+            },
         }
-
-        Ok(peers)
     }
 
     fn device_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
@@ -542,23 +526,12 @@ impl Worker {
         let mut peers = HashSet::new();
 
         //Obtain parent directory of broadcast groups
-        //This process is cumbersome since the full path needs to be reconstructed
-        //since the address path starts with ipc:
         let mut parent_dir = Path::new(&self.me.address).to_path_buf();
-        parent_dir.pop(); //bcast group for main address
-        parent_dir.pop(); //bcast group parent directory
-        let mut components = parent_dir.components();
-        let _ = components.next();
-        let mut parent_dir = PathBuf::new();
-        parent_dir.push("/");
-        for c in components {
-            match c {
-                Component::Normal(d) => parent_dir.push(d),
-                _ => {},
-            }
-        }
+        let _ = parent_dir.pop(); //bcast group for main address
+        let _ = parent_dir.pop(); //bcast group parent directory
 
         info!("Scanning for nearby peers...");
+        debug!("Scanning in dir {}", parent_dir.display());
         for group in &radio.broadcast_groups {
             let dir = format!("{}{}{}", parent_dir.display(), std::path::MAIN_SEPARATOR, group);
             if Path::new(&dir).is_dir() {
@@ -721,12 +694,12 @@ impl Worker {
 
         //Get a handle and lock of the GPL
         let gpl = self.global_peer_list.clone();
-        let mut gpl = gpl.lock().unwrap();
+        let gpl = gpl.lock().unwrap();
 
         //Get a copy of the GPL for iteration and selecting the random peers.
-        let mut gpl_iter = gpl.clone();
+        let gpl_iter = gpl.clone();
         let mut gpl_iter = gpl_iter.iter();
-        for i in 0..num_of_peers {
+        for _i in 0..num_of_peers {
             let selection : usize = gen.next_u32() as usize % self.nearby_peers.len();
             let mut j = 0;
             while j < selection {
@@ -744,7 +717,7 @@ impl Worker {
                                         global_peer_list : gpl_snapshot};
             let msg = MessageType::Heartbeat(data);
             info!("Sending a Heartbeat message to {}, address {}", recipient.name, recipient.address);
-            self.radios[0].send(msg, recipient);
+            let _res = self.radios[0].send(msg, recipient);
         }
     }
 
@@ -793,7 +766,7 @@ impl Worker {
         let mut index : i32 = -1;
         let mut j = 0;
         let spl_iter = spl.clone();
-        let mut spl_iter = spl_iter.iter();
+        let spl_iter = spl_iter.iter();
         for p in spl_iter {
             if *p == msg.sender {
                 index = j;
@@ -878,12 +851,11 @@ impl Worker {
                 if main_address.is_empty() {
                     main_address = format!("{}/{}.socket", dir.as_path().display(), self.me.public_key);
                     if Path::new(&main_address).exists() {
-                        //Pipe already exists. Needs to be destroyed or Nanomsg fails to bind the socket.
+                        //Pipe already exists.
                         try!(fs::remove_file(&main_address));
                     }
                     let _ = try!(File::create(&main_address));
                     //debug!("Pipe file {} created.", &main_address);
-                    //main_address = format!("ipc://{}", pipe_name);
                     //debug!("Radio address set to {}.", &main_address);
                     self.me.address = format!("{}", main_address);
                 } else {
@@ -923,7 +895,7 @@ impl Worker {
     }
 
     fn start_listener_simulated(&mut self) -> Result<(), WorkerError> {
-        let mut listener = try!(UnixListener::bind(&self.me.address));
+        let listener = try!(UnixListener::bind(&self.me.address));
 
         //Now listen for messages
         info!("Listening for messages.");
@@ -941,7 +913,7 @@ impl Worker {
     }
 
     fn start_listener_device(&mut self) -> Result<(), WorkerError> {
-        let mut listener = try!(TcpListener::bind(&self.me.address));
+        let listener = try!(TcpListener::bind(&self.me.address));
         debug!("Listening in address: {}", &self.me.address);
 
         //Now advertise the service to be discoverable by peers.
@@ -967,14 +939,6 @@ impl Worker {
         }
         Ok(())
     }
-}
-
-impl Message for JoinMessage {
-     
-}
-
-impl Message for AckMessage {
-     
 }
 
 /// Configuration for a worker object. This struct encapsulates several of the properties
@@ -1007,11 +971,9 @@ pub struct WorkerConfig {
 impl WorkerConfig {
     ///Creates a new configuration for a Worker with default settings.
     pub fn new() -> WorkerConfig {
-        let mut rng = rand::thread_rng();
-        let seed = rng.next_u32();
         WorkerConfig{worker_name : "worker1".to_string(),
                      work_dir : ".".to_string(),
-                     random_seed : seed, 
+                     random_seed : 0, //The random seed itself doesn't need to be random. Also, that makes testing more difficult.
                      operation_mode : OperationMode::Simulated,
                      broadcast_groups : Some(vec!("group1".to_string())),
                      reliability : Some(1.0),
@@ -1106,7 +1068,9 @@ mod tests {
     //Unit test for: Worker::new
     #[test]
     fn test_worker_new() {
-        unimplemented!();
+        let w = Worker::new();
+        let w_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [] }], nearby_peers: {}, me: Peer { public_key: \"0000000000000000000000000000000000000000000000000000000000000000\", name: \"\", address: \"\", address_type: Simulated }, work_dir: \"\", random_seed: 0, operation_mode: Simulated, scan_interval: 1000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
+        assert_eq!(format!("{:?}", w), String::from(w_display));
     }
 
     //Unit test for: Worker::init
@@ -1120,65 +1084,69 @@ mod tests {
 
         //Check result is not error
         assert!(res.is_ok());
-
-        //Check the key is valid
-        
-        //Check the dirs have been created
-        assert!(Path::new("/tmp/log").exists());
-        assert!(Path::new("/tmp/bcast_groups").exists());
-        assert!(Path::new("/tmp/bcast_groups/group1").exists());
-        assert!(Path::new("/tmp/bcast_groups/group2").exists());
-
-        //Check the addresss have been created.
-        let address = format!("/tmp/bcast_groups/group1/{}.ipc", w.me.public_key);
-        // Checking /tmp/bcast_groups/group1/[key].ipc exists
-        assert!(Path::new(&address).exists());
-
-        let link = format!("/tmp/bcast_groups/group2/{}.ipc", w.me.public_key);
-        // Checking /tmp/bcast_groups/group2/[key].ipc exists
-        assert!(Path::new(&link).exists());
-        
     }
 
     //Unit test for: Worker::handle_message
+    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
+    //so I don't know how to mock that out in rust.
+    /*
     #[test]
     fn test_worker_handle_message() {
         unimplemented!();
     }
+    */
 
     //Unit test for: Worker::join_network
+    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
+    //so I don't know how to mock that out in rust.
+    /*
     #[test]
     fn test_worker_send_join_message() {
         unimplemented!();
     }
+    */
 
     //Unit test for: Worker::process_join_message
+    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
+    //so I don't know how to mock that out in rust.
+    /*
     #[test]
     fn test_worker_process_join_message() {
         unimplemented!();
     }
+    */
 
     //**** Radio unit tests ****
     //Unit test for: Radio::send
+    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
+    //so I don't know how to mock that out in rust.
+    /*
     #[test]
     fn test_radio_send() {
         unimplemented!();
     }
+    */
 
     //Unit test for: Radio::new
     #[test]
     fn test_radio_new() {
-        unimplemented!();
+        let radio = Radio::new();
+        let radio_string = "Radio { delay: 0, reliability: 1, broadcast_groups: [] }";
+
+        assert_eq!(format!("{:?}", radio), String::from(radio_string));
     }
 
     //Unit test for: Radio::add_bcast_group
     #[test]
     fn test_radio_add_bcast_group() {
-        unimplemented!();
+        let mut radio = Radio::new();
+        radio.add_bcast_group(String::from("group1"));
+
+        assert_eq!(radio.broadcast_groups, vec![String::from("group1")]);
     }
 
     //Unit test for: Radio::scan_for_peers
-    #[test]
+    //#[test]
     /*
     fn test_radio_scan_for_peers() {
         let mut worker = Worker::new();
@@ -1292,7 +1260,7 @@ mod tests {
         assert_eq!(obj.broadcast_groups, Some(vec!("group1".to_string())));
         assert_eq!(obj.delay, Some(0));
         assert_eq!(obj.operation_mode, OperationMode::Simulated);
-        assert_eq!(obj.random_seed, 12345);
+        assert_eq!(obj.random_seed, 0);
         assert_eq!(obj.reliability, Some(1.0));
         assert_eq!(obj.scan_interval, Some(2000));
         assert_eq!(obj.work_dir, ".".to_string());
@@ -1302,27 +1270,25 @@ mod tests {
     //Unit test for: WorkerConfig::create_worker
     #[test]
     fn test_workerconfig_create_worker() {
-        unimplemented!();
+        //test_workerconfig_new and test_worker_new already test the correct instantiation of WorkerConfig and Worker.
+        //Just make sure thing function translates a WorkerConfig correctly into a Worker.
+        let conf = WorkerConfig::new();
+        let worker = conf.create_worker();
+        let default_worker_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [\"group1\"] }], nearby_peers: {}, me: Peer { public_key: \"0000000000000000000000000000000000000000000000000000000000000000\", name: \"worker1\", address: \"./bcast_groups/0000000000000000000000000000000000000000000000000000000000000000.socket\", address_type: Simulated }, work_dir: \".\", random_seed: 0, operation_mode: Simulated, scan_interval: 2000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
+        assert_eq!(format!("{:?}", worker), String::from(default_worker_display));
     }
 
     //Unit test for: WorkerConfig::create_worker
     #[test]
     fn test_workerconfig_write_to_file() {
-        unimplemented!();
-    }
-    //Unit test for: WorkerConfig_new
-    #[test]
-    fn test_worker_config_new() {
-        let obj = WorkerConfig::new();
+        let config = WorkerConfig::new();
+        let mut path = std::env::temp_dir();
+        path.push("worker.toml");
 
-        assert_eq!(obj.broadcast_groups, Some(vec!("group1".to_string())));
-        assert_eq!(obj.delay, Some(0));
-        assert_eq!(obj.operation_mode, OperationMode::Simulated);
-        assert_eq!(obj.random_seed, 12345);
-        assert_eq!(obj.reliability, Some(1.0));
-        assert_eq!(obj.scan_interval, Some(2000));
-        assert_eq!(obj.work_dir, ".".to_string());
-        assert_eq!(obj.worker_name, "worker1".to_string());
+        let val = config.write_to_file(&path).expect("Could not write configuration file.");
+        assert_eq!(val, format!("{}", path.display()));
+        assert!(path.exists());
+
     }
 
     //**** ServiceRecord unit tests ****

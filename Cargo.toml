@@ -11,7 +11,6 @@ description = "Simulation platform for a mesh network."
 
 [dependencies]
 rand = "0.3.15"
-nanomsg = "0.6"
 rustc-serialize = "0.3"
 serde_derive = "1.0.10"
 serde = "1.0.10"
