@@ -21,7 +21,7 @@ On solution 2
 ##Cross compilation fails.
 ####Possible Solutions
 1. Remove nanomsg dependency
-2. Install nanomsg cross-compiled library
+~~2. Install nanomsg cross-compiled library~~
 3. Compile on the RPI every time.
  
 #Fixed Problems
