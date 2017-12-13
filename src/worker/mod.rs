@@ -29,6 +29,8 @@ extern crate rustc_serialize;
 extern crate serde_cbor;
 extern crate serde;
 extern crate byteorder;
+extern crate pnet;
+extern crate ipnetwork;
 
 use std::iter;
 use std::io::{Read, Write};
@@ -308,6 +310,8 @@ pub struct Radio {
     reliability : f64,
     ///Broadcast group for this radio. Only used in simulated mode.
     pub broadcast_groups : Vec<String>,
+    ///Name of the network interface that maps to this Radio object.
+    pub radio_name : String,
 }
 
 impl Radio {
@@ -343,7 +347,8 @@ impl Radio {
     pub fn new() -> Radio {
         Radio{ delay : 0,
                reliability : 1.0,
-               broadcast_groups : vec![] }
+               broadcast_groups : vec![],
+               radio_name : String::from("") }
     }
 
     ///Function for adding broadcast groups in simulated mode
@@ -373,6 +378,26 @@ impl Radio {
         Ok(())
     }
 
+    ///Get the public address of the OS-NIC that maps to this Radio object.
+    ///It will return the first IPv4 address from a NIC that exactly matches the name.
+    pub fn get_radio_address<'a>(name : &'a str) -> Result<String, WorkerError> {
+        use self::pnet::datalink;
+        use self::ipnetwork;
+
+        for iface in datalink::interfaces() {
+            if &iface.name == name {
+                for address in iface.ips {
+                    match address {
+                        ipnetwork::IpNetwork::V4(addr) => {
+                            return Ok(addr.ip().to_string())
+                        },
+                        ipnetwork::IpNetwork::V6(_) => { /*Only using IPv4 for the moment*/ },
+                    }
+                }
+            }
+        }
+        Err(WorkerError::Configuration(String::from("Network interface specified in configuration not be found.")))
+    }
 }
 
 /// Worker struct.
@@ -824,7 +849,7 @@ impl Worker {
 
         if self.operation_mode == OperationMode::Simulated {
             //Set my own address
-            self.me.address = format!("{}/{}/{}.socket", self.work_dir, SIMULATED_SCAN_DIR, self.me.public_key);
+            //self.me.address = format!("{}/{}/{}.socket", self.work_dir, SIMULATED_SCAN_DIR, self.me.public_key);
 
             //check bcast_groups dir is there
             dir.push("bcast_groups"); //Dir is work_dir/bcast_groups
@@ -878,11 +903,7 @@ impl Worker {
             //If the operation fails, we should error-out since the listener won't be able to start.
             let _ = fs::remove_file(main_address)?;
 
-        } else {
-            //Set TCP address
-            self.me.address = format!("0.0.0.0:{}", DNS_SERVICE_PORT);
         }
-
 
         Ok(())
     }
@@ -914,7 +935,7 @@ impl Worker {
 
     fn start_listener_device(&mut self) -> Result<(), WorkerError> {
         let listener = try!(TcpListener::bind(&self.me.address));
-        debug!("Listening in address: {}", &self.me.address);
+        debug!("Listening in address: {:?}", &self.me.address);
 
         //Now advertise the service to be discoverable by peers.
         let mut service = ServiceRecord::new();
@@ -965,20 +986,24 @@ pub struct WorkerConfig {
     pub delay : Option<u32>,
     ///How often (ms) should the worker scan for new peers.
     pub scan_interval : Option<u32>,
+    ///Name of the network interface that the worker will use.
+    pub interface_name : String,
+
     
 }
 
 impl WorkerConfig {
     ///Creates a new configuration for a Worker with default settings.
     pub fn new() -> WorkerConfig {
-        WorkerConfig{worker_name : "worker1".to_string(),
-                     work_dir : ".".to_string(),
+        WorkerConfig{worker_name : String::from("worker1"),
+                     work_dir : String::from("."),
                      random_seed : 0, //The random seed itself doesn't need to be random. Also, that makes testing more difficult.
                      operation_mode : OperationMode::Simulated,
-                     broadcast_groups : Some(vec!("group1".to_string())),
+                     broadcast_groups : Some(vec!(String::from("group1"))),
                      reliability : Some(1.0),
                      delay : Some(0),
-                     scan_interval : Some(2000)
+                     scan_interval : Some(2000),
+                     interface_name : String::from("wlan0"),
                     }
     }
 
@@ -991,10 +1016,13 @@ impl WorkerConfig {
         obj.random_seed = self.random_seed;
         obj.operation_mode = self.operation_mode;
         if obj.operation_mode == OperationMode::Device {
-            obj.me.address = format!("0.0.0.0:{}", DNS_SERVICE_PORT);
+            let address = Radio::get_radio_address(&self.interface_name).expect("Could not get address for specified interface.");
+            debug!("Obtained address {}", &address);
+            obj.me.address = format!("{}:{}", address, DNS_SERVICE_PORT);
         } else {
             obj.me.address = format!("{}/{}/{}.socket", obj.work_dir, SIMULATED_SCAN_DIR, obj.me.public_key);
         }
+
         obj.radios[0].broadcast_groups = self.broadcast_groups.unwrap_or(vec![]);
         obj.radios[0].reliability = self.reliability.unwrap_or(obj.radios[0].reliability);
         obj.radios[0].delay = self.delay.unwrap_or(obj.radios[0].delay);
@@ -1069,7 +1097,7 @@ mod tests {
     #[test]
     fn test_worker_new() {
         let w = Worker::new();
-        let w_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [] }], nearby_peers: {}, me: Peer { public_key: \"0000000000000000000000000000000000000000000000000000000000000000\", name: \"\", address: \"\", address_type: Simulated }, work_dir: \"\", random_seed: 0, operation_mode: Simulated, scan_interval: 1000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
+        let w_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }], nearby_peers: {}, me: Peer { public_key: \"0000000000000000000000000000000000000000000000000000000000000000\", name: \"\", address: \"\", address_type: Simulated }, work_dir: \"\", random_seed: 0, operation_mode: Simulated, scan_interval: 1000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
         assert_eq!(format!("{:?}", w), String::from(w_display));
     }
 
@@ -1131,7 +1159,7 @@ mod tests {
     #[test]
     fn test_radio_new() {
         let radio = Radio::new();
-        let radio_string = "Radio { delay: 0, reliability: 1, broadcast_groups: [] }";
+        let radio_string = "Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }";
 
         assert_eq!(format!("{:?}", radio), String::from(radio_string));
     }
@@ -1255,16 +1283,10 @@ mod tests {
     //Unit test for: WorkerConfig_new
     #[test]
     fn test_workerconfig_new() {
-        let obj = WorkerConfig::new();
+        let config = WorkerConfig::new();
+        let config_str = "WorkerConfig { worker_name: \"worker1\", work_dir: \".\", random_seed: 0, operation_mode: Simulated, broadcast_groups: Some([\"group1\"]), reliability: Some(1), delay: Some(0), scan_interval: Some(2000), interface_name: \"wlan0\" }";
 
-        assert_eq!(obj.broadcast_groups, Some(vec!("group1".to_string())));
-        assert_eq!(obj.delay, Some(0));
-        assert_eq!(obj.operation_mode, OperationMode::Simulated);
-        assert_eq!(obj.random_seed, 0);
-        assert_eq!(obj.reliability, Some(1.0));
-        assert_eq!(obj.scan_interval, Some(2000));
-        assert_eq!(obj.work_dir, ".".to_string());
-        assert_eq!(obj.worker_name, "worker1".to_string());
+        assert_eq!(format!("{:?}", config), config_str);
     }
 
     //Unit test for: WorkerConfig::create_worker
@@ -1274,7 +1296,7 @@ mod tests {
         //Just make sure thing function translates a WorkerConfig correctly into a Worker.
         let conf = WorkerConfig::new();
         let worker = conf.create_worker();
-        let default_worker_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [\"group1\"] }], nearby_peers: {}, me: Peer { public_key: \"0000000000000000000000000000000000000000000000000000000000000000\", name: \"worker1\", address: \"./bcast_groups/0000000000000000000000000000000000000000000000000000000000000000.socket\", address_type: Simulated }, work_dir: \".\", random_seed: 0, operation_mode: Simulated, scan_interval: 2000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
+        let default_worker_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [\"group1\"], radio_name: \"\" }], nearby_peers: {}, me: Peer { public_key: \"0000000000000000000000000000000000000000000000000000000000000000\", name: \"worker1\", address: \"./bcast_groups/0000000000000000000000000000000000000000000000000000000000000000.socket\", address_type: Simulated }, work_dir: \".\", random_seed: 0, operation_mode: Simulated, scan_interval: 2000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
         assert_eq!(format!("{:?}", worker), String::from(default_worker_display));
     }
 
