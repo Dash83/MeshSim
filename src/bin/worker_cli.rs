@@ -432,6 +432,7 @@ mod worker_cli_tests {
             delay = 0
             scan_interval = 2000
             broadcast_groups = ["bcast_g1", "bcast_g2"]
+            interface_name = "wlan0"
         "#;
         let mut file_path = env::temp_dir();
         file_path.push("sample.toml");
