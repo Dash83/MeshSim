@@ -147,6 +147,14 @@ pub enum MessageType {
     Alive(AliveMessage),
 }
 
+/// This enum is used to pass around the socket listener for the type of operation of the worker
+pub enum ListenerType {
+    ///Simulated mode uses an internal UnixListener
+    Simulated(UnixListener),
+    ///Device mode uses an internal TCPListener
+    Device(TcpListener),
+}
+
 /// Peer struct.
 /// Defines the public identity of a node in the mesh.
 /// 
@@ -439,6 +447,9 @@ impl Worker {
         let _ = try!(self.init());
         info!("Finished initializing.");
 
+        //Get a listener
+        let listener = try!(self.get_listener());
+
         //Do protocol initialization
         //TODO: move this to another thread.
         //Next, join the network
@@ -448,7 +459,7 @@ impl Worker {
 
         //Start listening for messages
         //TODO: move this to another thread. This should be started before any protocol messages go out.
-        let _ = try!(self.start_listener());
+        let _ = try!(self.start_listener(listener));
 
         //TODO: Start required timers on their own threads.
 
@@ -908,16 +919,19 @@ impl Worker {
         Ok(())
     }
 
-    fn start_listener(&mut self) -> Result<(), WorkerError> {
-        match self.operation_mode {
-            OperationMode::Simulated => self.start_listener_simulated(),
-            OperationMode::Device => self.start_listener_device(),
+    fn start_listener(&mut self, listener : ListenerType) -> Result<(), WorkerError> {
+        match listener {
+            ListenerType::Simulated(l) => {
+                self.start_listener_simulated(l)
+            },
+            ListenerType::Device(l) => {
+                self.start_listener_device(l)
+            },
         }
     }
 
-    fn start_listener_simulated(&mut self) -> Result<(), WorkerError> {
-        let listener = try!(UnixListener::bind(&self.me.address));
-
+    fn start_listener_simulated(&mut self, listener : UnixListener) -> Result<(), WorkerError> {
+        //No need for service advertisement in simulated mode.
         //Now listen for messages
         info!("Listening for messages.");
         for stream in listener.incoming() {
@@ -933,11 +947,8 @@ impl Worker {
         Ok(())
     }
 
-    fn start_listener_device(&mut self) -> Result<(), WorkerError> {
-        let listener = try!(TcpListener::bind(&self.me.address));
-        debug!("Listening in address: {:?}", &self.me.address);
-
-        //Now advertise the service to be discoverable by peers.
+    fn start_listener_device(&mut self, listener : TcpListener) -> Result<(), WorkerError> {
+        //Advertise the service to be discoverable by peers before we start listening for messages.
         let mut service = ServiceRecord::new();
         service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.me.name);
         service.service_type = String::from(DNS_SERVICE_TYPE);
@@ -959,6 +970,19 @@ impl Worker {
             }
         }
         Ok(())
+    }
+
+    fn get_listener(&self) -> Result<ListenerType, WorkerError> {
+        match self.operation_mode {
+            OperationMode::Simulated => {
+                let listener = try!(UnixListener::bind(&self.me.address));
+                Ok(ListenerType::Simulated(listener))
+            },
+            OperationMode::Device => {
+                let listener = try!(TcpListener::bind(&self.me.address));
+                Ok(ListenerType::Device(listener))
+            },
+        }
     }
 }
 
