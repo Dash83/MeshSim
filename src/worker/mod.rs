@@ -1073,6 +1073,7 @@ impl WorkerConfig {
         write!(file, "delay = {}\n", self.delay.unwrap_or(0u32))?;
         write!(file, "scan_interval = {}\n", self.scan_interval.unwrap_or(1000u32))?;
         write!(file, "broadcast_groups = {:?}\n", groups)?;
+        write!(file, "interface_name = {:?}\n", "wlan0")?;
 
         //file.flush().expect("Error flusing toml file to disk.");
         let file_name = format!("{}", file_path.display());
@@ -1324,7 +1325,7 @@ mod tests {
         assert_eq!(format!("{:?}", worker), String::from(default_worker_display));
     }
 
-    //Unit test for: WorkerConfig::create_worker
+    //Unit test for: WorkerConfig::write_to_file
     #[test]
     fn test_workerconfig_write_to_file() {
         let config = WorkerConfig::new();
@@ -1332,8 +1333,16 @@ mod tests {
         path.push("worker.toml");
 
         let val = config.write_to_file(&path).expect("Could not write configuration file.");
+        
+        //Assert the file was written.
         assert_eq!(val, format!("{}", path.display()));
         assert!(path.exists());
+
+        let expected_file_content = "worker_name = \"worker1\"\nrandom_seed = 0\nwork_dir = \".\"\noperation_mode = \"Simulated\"\nreliability = 1\ndelay = 0\nscan_interval = 2000\nbroadcast_groups = [\"group1\"]\ninterface_name = \"wlan0\"\n";
+        let mut file_content = String::new();
+        File::open(path).unwrap().read_to_string(&mut file_content);
+
+        assert_eq!(expected_file_content, file_content);
 
     }
 
