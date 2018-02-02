@@ -21,6 +21,7 @@
 extern crate serde;
 extern crate serde_cbor;
 extern crate rustc_serialize;
+extern crate toml;
 
 use ::worker::*;
 use std::process::{Command, Child};
@@ -29,6 +30,10 @@ use std::error;
 use std::fmt;
 use std::collections::HashMap;
 use std::env;
+
+//Sub-modules declaration
+///Modules that defines the functionality for the test specification.
+pub mod TestSpecification;
 
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
@@ -49,6 +54,14 @@ pub enum MasterError {
     IO(io::Error),
     ///Errors generated in the worker module.
     Worker(::worker::WorkerError),
+    ///Errors when deserializing TOML files.
+    TOML(toml::de::Error),
+}
+
+impl From<toml::de::Error> for MasterError {
+    fn from(err : toml::de::Error) -> MasterError {
+        MasterError::TOML(err)
+    }
 }
 
 impl From<serde_cbor::Error> for MasterError {
@@ -75,6 +88,7 @@ impl fmt::Display for MasterError {
             MasterError::Serialization(ref err) => write!(f, "Serialization error: {}", err),
             MasterError::IO(ref err) => write!(f, "IO error: {}", err),
             MasterError::Worker(ref err) => write!(f, "Worker error: {}", err),
+            MasterError::TOML(ref err) => write!(f, "TOML error: {}", err),
         }
     }
 
@@ -86,6 +100,7 @@ impl error::Error for MasterError {
             MasterError::Serialization(ref err) => err.description(),
             MasterError::IO(ref err) => err.description(),
             MasterError::Worker(ref err) => err.description(),
+            MasterError::TOML(ref err) => err.description(),
         }
     }
 
@@ -94,6 +109,7 @@ impl error::Error for MasterError {
             MasterError::Serialization(ref err) => Some(err),
             MasterError::IO(ref err) => Some(err),
             MasterError::Worker(ref err) => Some(err),
+            MasterError::TOML(ref err) => Some(err),
         }
     }
 }

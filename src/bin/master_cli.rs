@@ -25,10 +25,12 @@ use std::io;
 use std::error;
 use std::fmt;
 use std::env;
+use std::error::Error;
 
 const ARG_CONFIG : &'static str = "config";
 const ARG_TEST : &'static str = "test";
 const ARG_WORK_DIR : &'static str = "work_dir";
+const ARG_TEST_FILE : &'static str = "test_file";
 
 const ERROR_LOG_INITIALIZATION : i32 = 1;
 const ERROR_EXECUTION_FAILURE : i32 = 2;
@@ -285,18 +287,45 @@ fn test_six_node_test() -> Result<(), CLIError> {
 }
 
 fn run(matches : ArgMatches) -> Result<(), CLIError> {
+    let test_file = matches.value_of(ARG_TEST_FILE); 
     let test_str = matches.value_of(ARG_TEST);
 
-    match test_str {
-        Some(data) => { 
-            let selected_test = try!(data.parse::<MeshTests>());
-            match selected_test {
-                MeshTests::BasicTest => try!(test_basic_test()),
-                MeshTests::SixNodeTest => try!(test_six_node_test())
-            }
-        },
-        None => { 
-        },
+    //Are we running a test file?
+    if let Some(file) = test_file {
+        let test_spec = try!(TestSpecification::TestSpec::parse_test_spec(file));
+        return run_test(test_spec)
+    }
+
+    //Or are we running one of the default tests.
+    if let Some(data) = test_str {
+        let selected_test = try!(data.parse::<MeshTests>());
+        match selected_test {
+            MeshTests::BasicTest => {
+                return test_basic_test()
+            },
+            MeshTests::SixNodeTest => {
+                return test_six_node_test()
+            },
+        }
+    }
+    Ok(())
+}
+
+fn run_test(spec : TestSpecification::TestSpec) -> Result<(), CLIError> {
+    info!("Running test {}", spec.name);
+    let mut master = Master::new();
+
+    //Add all workers to the master. They will be started right away. 
+    for config in spec.nodes {
+        try!(master.add_worker(config));
+    }
+
+    //TODO: Run all test actions.
+
+    //All nodes created and all actions executed. Wait for the processes to finish (if ever).
+    match master.wait_for_workers() {
+        Ok(_) => info!("Finished successfully."),
+        Err(e) => error!("Master failed to wait for children processes with error {}", e),
     }
     Ok(())
 }
@@ -332,15 +361,20 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                 .value_name("FILE")
                 .help("Sets a custom configuration file for the worker.")
                 .takes_value(true))
-            .arg(Arg::with_name(ARG_TEST)
-                .short("test")
-                .value_name("TEST_NAME")
-                .help("Name of the test to be run.")
-                .takes_value(true))
+            //.arg(Arg::with_name(ARG_TEST)
+            //    .short("test")
+            //    .value_name("TEST_NAME")
+            //    .help("Name of the test to be run. Used only for debug.")
+            //    .takes_value(true))
             .arg(Arg::with_name(ARG_WORK_DIR)
                 .short("dir")
-                .value_name("work_dir")
+                .value_name("WORK_DIR")
                 .help("Operating directory for the program, where results and logs will be placed.")
+                .takes_value(true))
+            .arg(Arg::with_name(ARG_TEST_FILE)
+                .short("test_file")
+                .value_name("FILE")
+                .help("File that contains a valid test specification for the master to run.")
                 .takes_value(true))
             .get_matches()
 }
@@ -357,6 +391,13 @@ fn main() {
 
     if let Err(ref e) = run(matches) {
         error!("master_cli failed with the following error: {}", e);
+        error!("Error chain: ");
+        let mut chain = e.cause();
+        while let Some(internal) = chain {
+            error!("Internal error: {}", internal);
+            chain = internal.cause();
+        }
+
         ::std::process::exit(ERROR_EXECUTION_FAILURE);
     }
 }
