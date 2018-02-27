@@ -31,6 +31,7 @@ const ARG_CONFIG : &'static str = "config";
 const ARG_TEST : &'static str = "test";
 const ARG_WORK_DIR : &'static str = "work_dir";
 const ARG_TEST_FILE : &'static str = "test_file";
+const ARG_WORKER_PATH : &'static str = "worker_path";
 
 const ERROR_LOG_INITIALIZATION : i32 = 1;
 const ERROR_EXECUTION_FAILURE : i32 = 2;
@@ -154,11 +155,12 @@ fn test_basic_test() -> Result<(), CLIError> {
     thread::sleep(std::time::Duration::from_millis(4000)); 
     try!(master.add_worker(cfg2));
 
+    /*
     match master.wait_for_workers() {
         Ok(_) => info!("Finished successfully."),
         Err(e) => error!("Master failed to wait for children processes with error {}", e),
     }
-    
+    */
     Ok(())
 }
 
@@ -209,128 +211,27 @@ fn test_six_node_test() -> Result<(), CLIError> {
     thread::sleep(std::time::Duration::from_millis(4000)); 
     try!(master.add_worker(cfg6));
 
+/*
     match master.wait_for_workers() {
         Ok(_) => info!("Finished successfully."),
         Err(e) => error!("Master failed to wait for children processes with error {}", e),
     }
-    /*
-    info!("Running BasicTest");
-    let mut master = Master::new();
-    let mut w1 = Worker::new();
-    w1.me.name = "Worker1".to_string();
-    
-    w1.radios[0].add_bcast_group(String::from("Group1"));
-    File::create("//tmp/Group1/Worker1")?;
-
-    let mut w2 = Worker::new();
-    w2.me.name = "Worker2".to_string();
-    w2.add_peers(vec![w1.me.clone()]);
-    w2.radios[0].add_bcast_group(String::from("Group1"));
-    w2.radios[0].add_bcast_group(String::from("Group2"));
-    File::create("//tmp/Group1/Worker2")?;
-    File::create("//tmp/Group2/Worker2")?;
-
-    let mut w3 = Worker::new();
-    w3.me.name = "Worker3".to_string();
-    w3.add_peers(vec![w2.me.clone()]);
-    w3.radios[0].add_bcast_group(String::from("Group2"));
-    w3.radios[0].add_bcast_group(String::from("Group3"));
-    File::create("//tmp/Group2/Worker3")?;
-    File::create("//tmp/Group3/Worker3")?;
-
-    let mut w4 = Worker::new();
-    w4.me.name = "Worker4".to_string();
-    w4.add_peers(vec![w3.me.clone()]);
-    w4.radios[0].add_bcast_group(String::from("Group3"));
-    w4.radios[0].add_bcast_group(String::from("Group4"));
-    File::create("//tmp/Group3/Worker4")?;
-    File::create("//tmp/Group4/Worker4")?;
-
-    let mut w5 = Worker::new();
-    w5.me.name = "Worker5".to_string();
-    w5.add_peers(vec![w4.me.clone()]);
-    w5.radios[0].add_bcast_group(String::from("Group4"));
-    w5.radios[0].add_bcast_group(String::from("Group5"));
-    File::create("//tmp/Group4/Worker5")?;
-    File::create("//tmp/Group5/Worker5")?;
-
-    let mut w6 = Worker::new();
-    w6.me.name = "Worker6".to_string();
-    w6.add_peers(vec![w5.me.clone()]);
-    w6.radios[0].add_bcast_group(String::from("Group5"));
-    File::create("//tmp/Group5/Worker6")?;
-
-    try!(master.add_worker(w1));
-    //Super fucking hacky. It seems the order for process start is not that deterministic.
-    //TODO: Find a way to address this.
-    thread::sleep(std::time::Duration::from_millis(2000)); 
-    try!(master.add_worker(w2));
-
-    thread::sleep(std::time::Duration::from_millis(2000)); 
-    try!(master.add_worker(w3));
-
-    thread::sleep(std::time::Duration::from_millis(2000)); 
-    try!(master.add_worker(w4));
-
-    thread::sleep(std::time::Duration::from_millis(2000)); 
-    try!(master.add_worker(w5));
-
-    thread::sleep(std::time::Duration::from_millis(2000)); 
-    try!(master.add_worker(w6));
-
-    match master.wait_for_workers() {
-        Ok(_) => info!("Finished successfully."),
-        Err(e) => error!("Master failed to wait for children processes with error {}", e),
-    }
-    */
+*/
     Ok(())
 }
 
-fn run(matches : ArgMatches) -> Result<(), CLIError> {
-    let test_file = matches.value_of(ARG_TEST_FILE); 
-    let test_str = matches.value_of(ARG_TEST);
-
+fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {    
     //Are we running a test file?
+    let test_file = matches.value_of(ARG_TEST_FILE); 
     if let Some(file) = test_file {
-        let test_spec = try!(TestSpecification::TestSpec::parse_test_spec(file));
-        return run_test(test_spec)
+        let mut test_spec = try!(TestSpecification::TestSpec::parse_test_spec(file));
+        try!(master.run_test(test_spec));
     }
 
-    //Or are we running one of the default tests.
-    if let Some(data) = test_str {
-        let selected_test = try!(data.parse::<MeshTests>());
-        match selected_test {
-            MeshTests::BasicTest => {
-                return test_basic_test()
-            },
-            MeshTests::SixNodeTest => {
-                return test_six_node_test()
-            },
-        }
-    }
     Ok(())
 }
 
-fn run_test(spec : TestSpecification::TestSpec) -> Result<(), CLIError> {
-    info!("Running test {}", spec.name);
-    let mut master = Master::new();
-
-    //Add all workers to the master. They will be started right away. 
-    for config in spec.nodes {
-        try!(master.add_worker(config));
-    }
-
-    //TODO: Run all test actions.
-
-    //All nodes created and all actions executed. Wait for the processes to finish (if ever).
-    match master.wait_for_workers() {
-        Ok(_) => info!("Finished successfully."),
-        Err(e) => error!("Master failed to wait for children processes with error {}", e),
-    }
-    Ok(())
-}
-
-fn init(matches : &ArgMatches) -> Result<(), CLIError> {
+fn init(matches : &ArgMatches) -> Result<(Master), CLIError> {
     //Read the configuration file.
     // let mut current_dir = try!(env::current_dir());
     // let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
@@ -339,15 +240,32 @@ fn init(matches : &ArgMatches) -> Result<(), CLIError> {
     //      current_dir.to_str().expect("No configuration file was provided and current directory is not readable.")
     // });
     // let mut configuration = try!(load_conf_file(config_file_path));
-    
+    let mut master = Master::new();
+
     //Initialize logger
-    let work_dir = try!(env::current_dir());
-    try!(init_logger(work_dir.as_path()));
+    let work_dir = match matches.value_of(ARG_WORK_DIR) {
+        Some(arg) => String::from(arg),
+        None => master.work_dir,
+    };
+
+    master.work_dir = work_dir.clone();
+
+    let work_dir_path = Path::new(&work_dir);
+    if !work_dir_path.exists() {
+        let _ = try!(std::fs::create_dir(&work_dir));
+    }
+    try!(init_logger(work_dir_path));
+
+    //What else was passed to the master?
+    master.worker_binary = match matches.value_of(ARG_WORKER_PATH) {
+                                Some(path_arg) => String::from(path_arg),
+                                None => master.worker_binary,
+                                };
 
     //Validate the current configuration
     //try!(validate_config(&mut configuration, &matches));
 
-    Ok(())
+    Ok(master)
 }
 
 fn get_cli_parameters<'a>() -> ArgMatches<'a> {
@@ -355,21 +273,21 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
             .version("0.1")
             .author("Marco Caballero <marco.caballero@cl.cam.ac.uk>")
             .about("CLI interface to the Master object from the mesh simulator system")
-            .arg(Arg::with_name(ARG_CONFIG)
+            /*.arg(Arg::with_name(ARG_CONFIG)
                 .short("c")
                 .long("config")
                 .value_name("FILE")
                 .help("Sets a custom configuration file for the worker.")
-                .takes_value(true))
-            //.arg(Arg::with_name(ARG_TEST)
-            //    .short("test")
-            //    .value_name("TEST_NAME")
-            //    .help("Name of the test to be run. Used only for debug.")
-            //    .takes_value(true))
+                .takes_value(true))*/
             .arg(Arg::with_name(ARG_WORK_DIR)
                 .short("dir")
                 .value_name("WORK_DIR")
                 .help("Operating directory for the program, where results and logs will be placed.")
+                .takes_value(true))
+            .arg(Arg::with_name(ARG_WORKER_PATH)
+                .short("worker")
+                .value_name("WORKER_PATH")
+                .help("Absolute path to the worker binary.")
                 .takes_value(true))
             .arg(Arg::with_name(ARG_TEST_FILE)
                 .short("test_file")
@@ -382,14 +300,13 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
 fn main() {
     //Build CLI interface
     let matches = get_cli_parameters();
+    
+    let master = init(&matches).unwrap_or_else(|e| {
+                                    println!("master_cli failed with the following error: {}", e);
+                                    ::std::process::exit(ERROR_LOG_INITIALIZATION);
+                                });
 
-    if let Err(ref e) = init(&matches) {
-        //Since we failed before initializing the logger, all we can do is log to stdout and exit with a different error code.
-        println!("master_cli failed with the following error: {}", e);
-        ::std::process::exit(ERROR_LOG_INITIALIZATION);
-    }
-
-    if let Err(ref e) = run(matches) {
+    if let Err(ref e) = run(master, &matches) {
         error!("master_cli failed with the following error: {}", e);
         error!("Error chain: ");
         let mut chain = e.cause();

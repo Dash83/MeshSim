@@ -58,7 +58,7 @@ use std::os::unix::net::{UnixStream, UnixListener};
 const DNS_SERVICE_NAME : &'static str = "meshsim";
 const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT : u16 = 23456;
-const SIMULATED_SCAN_DIR : &'static str = "bcast_groups";
+const SIMULATED_SCAN_DIR : &'static str = "bcgroups";
 const GOSSIP_FACTOR : f32 = 0.25; //25% of the peer list.
 
 // *****************************
@@ -471,7 +471,7 @@ impl Worker {
     /// and an empty radio vector.
     pub fn new() -> Worker {
         //Vector of 32 bytes set to 0
-        let key : Vec<u8>= iter::repeat(0u8).take(32).collect();
+        let key : Vec<u8>= iter::repeat(0u8).take(16).collect();
         //Fill the key bytes with random generated numbers
         //let mut gen = OsRng::new().expect("Failed to get OS random generator");
         //gen.fill_bytes(&mut key[..]);
@@ -863,7 +863,7 @@ impl Worker {
             //self.me.address = format!("{}/{}/{}.socket", self.work_dir, SIMULATED_SCAN_DIR, self.me.public_key);
 
             //check bcast_groups dir is there
-            dir.push("bcast_groups"); //Dir is work_dir/bcast_groups
+            dir.push(SIMULATED_SCAN_DIR); //Dir is work_dir/$SIMULATED_SCAN_DIR
             if !dir.exists() {
                 //Create bcast_groups dir
                 try!(std::fs::create_dir(dir.as_path()));
@@ -874,7 +874,7 @@ impl Worker {
             let mut main_address = String::new();
             let groups = self.radios[0].broadcast_groups.clone();
             for group in groups.iter() {
-                dir.push(&group); //Dir is work_dir/bcast_groups/&group
+                dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/&group
                 
                 //Does broadcast group exist?
                 if !dir.exists() {
@@ -898,14 +898,14 @@ impl Worker {
                     let linked_address = format!("{}/{}.socket", dir.as_path().display(), self.me.public_key);
                     if Path::new(&linked_address).exists() {
                         //Pipe already exists
-                        dir.pop(); //Dir is work_dir/bcast_groups
+                        dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
                         continue;
                     }
                     let _ = try!(std::os::unix::fs::symlink(&main_address, &linked_address));
                     //debug!("Pipe file {} created.", &linked_address);
                 }
                 
-                dir.pop(); //Dir is work_dir/bcast_groups
+                dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
 
             }
             //Now, remove the main address socket file. This will create broken symlinks in the broadcast
@@ -1122,7 +1122,7 @@ mod tests {
     #[test]
     fn test_worker_new() {
         let w = Worker::new();
-        let w_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }], nearby_peers: {}, me: Peer { public_key: \"0000000000000000000000000000000000000000000000000000000000000000\", name: \"\", address: \"\", address_type: Simulated }, work_dir: \"\", random_seed: 0, operation_mode: Simulated, scan_interval: 1000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
+        let w_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }], nearby_peers: {}, me: Peer { public_key: \"00000000000000000000000000000000\", name: \"\", address: \"\", address_type: Simulated }, work_dir: \"\", random_seed: 0, operation_mode: Simulated, scan_interval: 1000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
         assert_eq!(format!("{:?}", w), String::from(w_display));
     }
 
@@ -1321,7 +1321,7 @@ mod tests {
         //Just make sure thing function translates a WorkerConfig correctly into a Worker.
         let conf = WorkerConfig::new();
         let worker = conf.create_worker();
-        let default_worker_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [\"group1\"], radio_name: \"\" }], nearby_peers: {}, me: Peer { public_key: \"0000000000000000000000000000000000000000000000000000000000000000\", name: \"worker1\", address: \"./bcast_groups/0000000000000000000000000000000000000000000000000000000000000000.socket\", address_type: Simulated }, work_dir: \".\", random_seed: 0, operation_mode: Simulated, scan_interval: 2000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
+        let default_worker_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [\"group1\"], radio_name: \"\" }], nearby_peers: {}, me: Peer { public_key: \"00000000000000000000000000000000\", name: \"worker1\", address: \"./bcgroups/00000000000000000000000000000000.socket\", address_type: Simulated }, work_dir: \".\", random_seed: 0, operation_mode: Simulated, scan_interval: 2000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
         assert_eq!(format!("{:?}", worker), String::from(default_worker_display));
     }
 

@@ -26,3 +26,7 @@ toml = "0.4.2"
 byteorder = "1.0.0"
 pnet = "0.20.0"
 ipnetwork = "0.12.7"
+chrono = "0.4"
+
+[dev-dependencies]
+assert_cli = "0.5"
