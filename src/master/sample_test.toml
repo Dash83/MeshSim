@@ -1,8 +1,8 @@
 name = "10 node test"
-actions = []
+actions = ["ENDTEST 60000"]
 
 [[nodes]]
-worker_name = "Worker1"
+worker_name = "node1"
 random_seed = 123
 work_dir = "/tmp"
 operation_mode = "Simulated"

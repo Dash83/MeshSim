@@ -1,0 +1,24 @@
+name = "basic_test"
+actions = ["EndTest 1000"]
+
+[[nodes]]
+worker_name = "node1"
+random_seed = 123
+work_dir = "./tests/basic_test"
+operation_mode = "Simulated"
+reliability = 1
+delay = 0
+scan_interval = 2000
+broadcast_groups = ["group1"]
+interface_name = "wlan0"
+
+[[nodes]]
+worker_name = "node2"
+random_seed = 456
+work_dir = "./tests/basic_test"
+operation_mode = "Simulated"
+reliability = 1
+delay = 0
+scan_interval = 2000
+broadcast_groups = ["group1", "group2"]
+interface_name = "wlan0"
