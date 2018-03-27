@@ -5,10 +5,11 @@ extern crate serde;
 extern crate serde_cbor;
 #[macro_use]
 extern crate slog;
-extern crate slog_stream;
 extern crate slog_term;
 extern crate slog_json;
 extern crate slog_stdlog;
+extern crate slog_async;
+extern crate slog_scope;
 #[macro_use]
 extern crate log;
 
@@ -18,7 +19,7 @@ use mesh_simulator::master;
 use clap::{Arg, App, ArgMatches};
 use std::str::FromStr;
 use std::thread;
-use slog::DrainExt;
+use slog::Drain;
 use std::fs::{OpenOptions};
 use std::path::Path;
 use std::io;
@@ -38,7 +39,7 @@ const ERROR_EXECUTION_FAILURE : i32 = 2;
 
 #[derive(Debug)]
 enum CLIError {
-    SetLogger(log::SetLoggerError),
+    SetLogger(String),
     IO(io::Error),
     Master(master::MasterError),
     TestParsing(String),
@@ -64,7 +65,7 @@ impl FromStr for MeshTests {
 impl error::Error for CLIError {
     fn description(&self) -> &str {
         match *self {
-            CLIError::SetLogger(ref err) => err.description(),
+            CLIError::SetLogger(ref desc) => &desc,
             CLIError::IO(ref err) => err.description(),
             CLIError::Master(ref err) => err.description(),
             CLIError::TestParsing(ref err_str) => err_str,
@@ -73,7 +74,7 @@ impl error::Error for CLIError {
 
     fn cause(&self) -> Option<&error::Error> {
         match *self {
-            CLIError::SetLogger(ref err) => Some(err),
+            CLIError::SetLogger(_) => None,
             CLIError::IO(ref err) => Some(err),
             CLIError::Master(ref err) => Some(err),
             CLIError::TestParsing(_) => None,
@@ -96,12 +97,6 @@ impl fmt::Display for CLIError {
 impl From<io::Error> for CLIError {
     fn from(err : io::Error) -> CLIError {
         CLIError::IO(err)
-    }
-}
-
-impl From<log::SetLoggerError> for CLIError {
-    fn from(err : log::SetLoggerError) -> CLIError {
-        CLIError::SetLogger(err)
     }
 }
 
@@ -130,12 +125,31 @@ fn init_logger(work_dir : &Path) -> Result<(), CLIError> {
                         .truncate(true)
                         .open(log_file_name));
     
-    let console_drain = slog_term::streamer().build();
-    let file_drain = slog_stream::stream(log_file, slog_json::default());
-    let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!());
-    try!(slog_stdlog::set_logger(logger));
+    //Create the terminal drain
+    let decorator = slog_term::TermDecorator::new().build();
+    let d1 = slog_term::FullFormat::new(decorator).build().fuse();
+    let d1 = slog_async::Async::new(d1).build().fuse();
 
-    Ok(())
+    //Create the file drain
+    let d2 = slog_json::Json::new(log_file)
+        .add_default_keys()
+        .build()
+        .fuse();
+    let d2 = slog_async::Async::new(d2).build().fuse();
+
+    //Fuse the drains and create the logger
+    let logger = slog::Logger::root(slog::Duplicate::new(d1, d2).fuse(), o!());
+
+    //slog_stdlog uses the logger from slog_scope, so set a logger there
+    let _guard = slog_scope::set_global_logger(logger);
+
+    // register slog_stdlog as the log handler with the log crate
+    let result = match slog_stdlog::init() {
+        Ok(_) => Ok(()),
+        Err(err) => Err( CLIError::SetLogger(format!("Error setting logger: {}", err))),
+    };
+
+    result
 } 
 
 fn test_basic_test() -> Result<(), CLIError> {
