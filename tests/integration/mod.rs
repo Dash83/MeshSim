@@ -1,10 +1,13 @@
 extern crate assert_cli;
 extern crate chrono;
-use self::chrono::prelude::*;
+extern crate mesh_simulator;
 
+use self::chrono::prelude::*;
 use std::path::{self, PathBuf, Path};
 use std::env;
 use std::fs;
+use self::mesh_simulator::logging;
+
 
 /***********************************************/
 /**************** Helper functions *************/
@@ -58,6 +61,7 @@ fn create_test_dir<'a>(test_name : &'a str) -> String {
 
     test_dir_path.clone()
 }
+
 /***********************************************/
 /********************* Tests *******************/
 /***********************************************/
@@ -70,6 +74,7 @@ fn integration_basic_test() {
 
     println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
 
+    //Assert the test finished succesfully
     assert_cli::Assert::command(&[&program])
     .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
     .succeeds()
@@ -77,4 +82,19 @@ fn integration_basic_test() {
     .stdout()
     .contains("EndTest action: Finished. 2 processes terminated.")
     .unwrap();
+
+    //Check the handshake between the nodes
+    let node1_log_file = format!("{}/log/node1.log", &work_dir);
+    let node1_log_records = logging::get_log_records_from_file(&node1_log_file).unwrap();
+    let node2_log_file = &format!("{}/log/node2.log", &work_dir);
+    let node2_log_records = logging::get_log_records_from_file(&node2_log_file).unwrap();
+
+    let node_2_discovery = logging::find_log_record("msg", "Found 1 peers!", &node2_log_records);   
+    let node_1_rec_join = logging::find_log_record("msg", "Received JOIN message from node2", &node1_log_records);
+    let node_2_ack = logging::find_log_record("msg", "Received ACK message from node1", &node2_log_records);
+
+
+    assert!(node_2_discovery.is_some());
+    assert!(node_1_rec_join.is_some());
+    assert!(node_2_ack.is_some());
 }

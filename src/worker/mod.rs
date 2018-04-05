@@ -660,7 +660,7 @@ impl Worker {
     ///   1. Add sender to global membership list and nearby peer list.
     ///   2. Construct an ACK message and reply with it.
     fn process_join_message(&mut self, msg : JoinMessage) -> Result<(), WorkerError> {
-        info!("Received JOIN message from {}, address {}", msg.sender.name, msg.sender.address);
+        info!("Received JOIN message from {}", msg.sender.name);
         //Add new node to nearby peer list
         self.nearby_peers.insert(msg.sender.clone());
         //Obtain a reference to our current GPL.
@@ -690,7 +690,7 @@ impl Worker {
     /// Actions:
     ///   1. Add the difference between the payload and current GPL to the GPL.
     fn process_ack_message(&mut self, msg: AckMessage) -> Result<(), WorkerError> {
-        info!("Received ACK message from {}, address {}", msg.sender.name, msg.sender.address);
+        info!("Received ACK message from {}", msg.sender.name);
         //Obtain a reference to our current GPL.
         let gpl = self.global_peer_list.clone();
         //Obtain a lock to the underlying data.

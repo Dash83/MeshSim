@@ -165,13 +165,7 @@ impl FromStr for Commands {
     }
 }
 // ************ End Data types *************
-/*
-fn decode_worker_data<'a>(arg : &'a str) -> Result<Worker, serde_cbor::Error> {
-    let e : Vec<u8> = arg.from_hex().unwrap();
-    let obj : Result<Worker, _> = from_reader(&e[..]);
-    obj
-}
-*/
+
 fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIError>  { 
     //let log_dir = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "log");
     let log_dir_name = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "log");
@@ -203,23 +197,6 @@ fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIE
 } 
 
 fn run(config : WorkerConfig) -> Result<(), CLIError> {
-    //Obtain individual arguments
-    //let worker_data = matches.value_of(ARG_WORKER_OBJ);
-    //let worker_name = config.worker_name;
-    
-    /*
-    let mut obj = match worker_data {
-        Some(arg) => {
-                try!(decode_worker_data(arg))
-            },
-        None => { 
-            //Build worker object and set optional parameters
-            info!("Building default worker.");
-            Worker::new(worker_name.to_string())
-        }, 
-
-    };
-    */
    let mut obj =  config.create_worker();
    //debug!("Worker Obj: {:?}", obj);
    try!(obj.start());
