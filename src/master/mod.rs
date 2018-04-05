@@ -28,18 +28,17 @@ use std::process::{Command, Child};
 use std::io;
 use std::error;
 use std::fmt;
-use std::env;
-use self::TestSpecification::TestActions;
+use self::test_specification::TestActions;
 use std::str::FromStr;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
-use std::ops::{Deref, DerefMut};
+use std::ops::DerefMut;
 use std::path::PathBuf;
 
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
-pub mod TestSpecification;
+pub mod test_specification;
 
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
@@ -168,7 +167,7 @@ impl Master {
     }
 
     ///Runs the test defined in the specification passed to the master.
-    pub fn run_test(&mut self, spec : TestSpecification::TestSpec) -> Result<(), MasterError> {
+    pub fn run_test(&mut self, spec : test_specification::TestSpec) -> Result<(), MasterError> {
         info!("Running test {}", spec.name);
         info!("Test results will be placed under {}", &self.work_dir);
 
@@ -211,25 +210,6 @@ impl Master {
             thread_handles.push(action_handle);
         }
         Ok(thread_handles)
-    }
-
-    /// Should be the last method called on any testsin order to wait for the processes to run.
-    fn wait_for_workers(&mut self) -> Result<String, String> {
-        let workers_handle = self.workers.clone();
-        let mut workers_handle = workers_handle.lock().unwrap();
-        debug!("Wait for workers: Locked acquired.");
-        for mut c in workers_handle.iter_mut() {
-            debug!("Waiting on {:?}.", c.id());
-            match c.wait() {
-                Ok(exit_status) => {
-                    info!("Process {} exited with status {}", c.id(), exit_status);
-                },
-                Err(_) => {
-                    info!("Process had already exited.");
-                },
-            }
-        }
-        Ok("All workers finished succesfully".to_string())
     }
 
     fn testaction_end_test(&self, time : u64) -> Result<JoinHandle<()>, MasterError> {

@@ -12,23 +12,19 @@ extern crate slog_stdlog;
 #[macro_use]
 extern crate log;
 
-use mesh_simulator::worker::{WorkerConfig};
 use mesh_simulator::master::*;
 use mesh_simulator::master;
 use clap::{Arg, App, ArgMatches};
 use std::str::FromStr;
-use std::thread;
 use slog::DrainExt;
 use std::fs::{OpenOptions};
 use std::path::Path;
 use std::io;
 use std::error;
 use std::fmt;
-use std::env;
 use std::error::Error;
 
 const ARG_CONFIG : &'static str = "config";
-const ARG_TEST : &'static str = "test";
 const ARG_WORK_DIR : &'static str = "work_dir";
 const ARG_TEST_FILE : &'static str = "test_file";
 const ARG_WORKER_PATH : &'static str = "worker_path";
@@ -138,93 +134,11 @@ fn init_logger(work_dir : &Path) -> Result<(), CLIError> {
     Ok(())
 } 
 
-fn test_basic_test() -> Result<(), CLIError> {
-    info!("Running BasicTest");
-    let mut master = Master::new();
-    let mut cfg1 = WorkerConfig::new();
-    cfg1.worker_name = "Worker1".to_string();
-    cfg1.work_dir = String::from("/tmp");
-
-    let mut cfg2 = WorkerConfig::new();
-    cfg2.worker_name = "Worker2".to_string();
-    cfg2.work_dir = String::from("/tmp");
-
-    try!(master.add_worker(cfg1));
-    //Super fucking hacky. It seems the order for process start is not that deterministic.
-    //TODO: Find a way to address this.
-    thread::sleep(std::time::Duration::from_millis(4000)); 
-    try!(master.add_worker(cfg2));
-
-    /*
-    match master.wait_for_workers() {
-        Ok(_) => info!("Finished successfully."),
-        Err(e) => error!("Master failed to wait for children processes with error {}", e),
-    }
-    */
-    Ok(())
-}
-
-/// This test creates 
-fn test_six_node_test() -> Result<(), CLIError> {
-    info!("Running SixNodeTest");
-    let mut master = Master::new();
-    let mut cfg1 = WorkerConfig::new();
-    cfg1.worker_name = "Worker1".to_string();
-    cfg1.work_dir = String::from("/tmp");
-
-    let mut cfg2 = WorkerConfig::new();
-    cfg2.worker_name = "Worker2".to_string();
-    cfg2.work_dir = String::from("/tmp");
-
-    let mut cfg3 = WorkerConfig::new();
-    cfg3.worker_name = "Worker3".to_string();
-    cfg3.work_dir = String::from("/tmp");
-
-    let mut cfg4 = WorkerConfig::new();
-    cfg4.worker_name = "Worker4".to_string();
-    cfg4.work_dir = String::from("/tmp");
-
-    let mut cfg5 = WorkerConfig::new();
-    cfg5.worker_name = "Worker5".to_string();
-    cfg5.work_dir = String::from("/tmp");
-
-    let mut cfg6 = WorkerConfig::new();
-    cfg6.worker_name = "Worker6".to_string();
-    cfg6.work_dir = String::from("/tmp");
-    
-    try!(master.add_worker(cfg1));
-
-    //Super fucking hacky. It seems the order for process start is not that deterministic.
-    //TODO: Find a way to address this.
-    thread::sleep(std::time::Duration::from_millis(4000)); 
-    try!(master.add_worker(cfg2));
-
-    thread::sleep(std::time::Duration::from_millis(4000)); 
-    try!(master.add_worker(cfg3));
-
-    thread::sleep(std::time::Duration::from_millis(4000)); 
-    try!(master.add_worker(cfg4));
-
-    thread::sleep(std::time::Duration::from_millis(4000)); 
-    try!(master.add_worker(cfg5));
-
-    thread::sleep(std::time::Duration::from_millis(4000)); 
-    try!(master.add_worker(cfg6));
-
-/*
-    match master.wait_for_workers() {
-        Ok(_) => info!("Finished successfully."),
-        Err(e) => error!("Master failed to wait for children processes with error {}", e),
-    }
-*/
-    Ok(())
-}
-
 fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {    
     //Are we running a test file?
     let test_file = matches.value_of(ARG_TEST_FILE); 
     if let Some(file) = test_file {
-        let mut test_spec = try!(TestSpecification::TestSpec::parse_test_spec(file));
+        let mut test_spec = try!(test_specification::TestSpec::parse_test_spec(file));
         try!(master.run_test(test_spec));
     }
 
@@ -273,12 +187,6 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
             .version("0.1")
             .author("Marco Caballero <marco.caballero@cl.cam.ac.uk>")
             .about("CLI interface to the Master object from the mesh simulator system")
-            /*.arg(Arg::with_name(ARG_CONFIG)
-                .short("c")
-                .long("config")
-                .value_name("FILE")
-                .help("Sets a custom configuration file for the worker.")
-                .takes_value(true))*/
             .arg(Arg::with_name(ARG_WORK_DIR)
                 .short("dir")
                 .value_name("WORK_DIR")
