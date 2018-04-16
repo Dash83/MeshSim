@@ -1,7 +1,7 @@
 extern crate toml;
 
 use master::MasterError;
-use worker::WorkerConfig;
+use worker::worker_config::WorkerConfig;
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;

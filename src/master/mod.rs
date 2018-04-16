@@ -23,7 +23,7 @@ extern crate serde_cbor;
 extern crate rustc_serialize;
 extern crate toml;
 
-use ::worker::*;
+use worker::worker_config::WorkerConfig;
 use std::process::{Command, Child};
 use std::io;
 use std::error;

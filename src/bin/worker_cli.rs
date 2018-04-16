@@ -14,7 +14,7 @@ extern crate log;
 extern crate toml;
 extern crate rand;
 
-use mesh_simulator::worker::{WorkerConfig};
+use mesh_simulator::worker::worker_config::WorkerConfig;
 use mesh_simulator::worker;
 use clap::{Arg, App, ArgMatches};
 use slog::DrainExt;

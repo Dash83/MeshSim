@@ -51,6 +51,12 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::net::{UnixStream, UnixListener};
+use worker::protocols::*;
+
+//Sub-modules declaration
+///Modules that defines the functionality for the test specification.
+pub mod worker_config;
+pub mod protocols;
 
 // *****************************
 // ********** Globals **********
@@ -132,21 +138,6 @@ impl From<io::Error> for WorkerError {
     }
 }
 
-/// This enum represents the types of network messages supported in the protocol as well as the
-/// data associated with them. For each message type, an associated struct will be created to represent 
-/// all the data needed to operate on such message.
-#[derive(Debug, Serialize, Deserialize)]
-pub enum MessageType {
-    ///Message that a peer sends to join the network.
-    Join(JoinMessage),
-    ///Reply to a JOIN message sent from a current member of the network.
-    Ack(AckMessage),
-    ///Hearbeat message to check on the health of a peer.
-    Heartbeat(HeartbeatMessage),
-    ///Alive message, which is a response to the heartbeat message.
-    Alive(AliveMessage),
-}
-
 /// This enum is used to pass around the socket listener for the type of operation of the worker
 pub enum ListenerType {
     ///Simulated mode uses an internal UnixListener
@@ -180,39 +171,22 @@ impl Peer {
     }
 }
 
-/// Trait that must be implemented for all message types.
-pub trait Message {}
-
-/// The type of message passed as payload for Join messages.
-/// The actual message is not required at this point, but used for future compatibility.
+/// Generic struct used to interface between the Worker and the protocols.
+/// The sender and destination fields are used in the same way across all message-types and protocols.
+/// The payload field encodes the specific data for the particular message type that only the protocol
+/// knows about
 #[derive(Debug, Serialize, Deserialize)]
-pub struct JoinMessage {
-    sender: Peer,
+pub struct MessageHeader {
+    sender : Peer,
+    destination : Peer,
+    payload : Vec<u8>,
 }
 
-/// Ack message used to reply to Join messages
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AckMessage {
-    sender: Peer,
-    global_peer_list : HashSet<Peer>,
-}
-
-/// General purposes data message for the network
-#[derive(Debug, Serialize, Deserialize)]
-pub struct DataMessage;
-
-/// Heartbeat message used to check on the status of nearby peers.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct HeartbeatMessage {
-    sender: Peer,
-    global_peer_list : HashSet<Peer>,
-}
-
-/// Response message to the heartbeat message.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AliveMessage {
-    sender: Peer,
-    global_peer_list : HashSet<Peer>,
+impl MessageHeader {
+    fn from_vec(data : Vec<u8>) -> Result<MessageHeader, serde_cbor::Error> {
+        let msg : Result<MessageHeader, _> = from_reader(&data[..]);
+        msg
+    }
 }
 
 ///Struct to represent DNS TXT records for advertising the meshsim service and obtain records from peers.
@@ -291,19 +265,6 @@ impl FromStr for OperationMode {
         }
     }
 }
-//impl Message<MessageType> {
-//    pub fn new(mtype: MessageType) -> Message<MessageType> {
-//        match mtype {
-//            MessageType::Ack => { 
-//                Message{sender : Peer{ public_key : "".to_string(), name : "".to_string(), payload:}, 
-//                        recipient : Peer{ public_key : "".to_string(), name : "".to_string()}}
-//            },
-//            MessageType::Data => { },
-//            MessageType::Join => { }, 
-//        }
-//    }
-  //  
-//}
 
 /// Represents a radio used by the worker to send a message to the network.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -324,15 +285,19 @@ pub struct Radio {
 
 impl Radio {
     /// Send a Worker::Message over the address implemented by the current Radio.
-    pub fn send(&self, msg : MessageType, destination: &Peer) -> Result<(), WorkerError> {
-        match destination.address_type {
-            OperationMode::Simulated => self.send_simulated_mode(msg, destination) ,
-            OperationMode::Device => self.send_device_mode(msg, destination),
+    pub fn send(&self, msg : MessageHeader) -> Result<(), WorkerError> {
+        //should the message be sent?
+
+        //should the message be delayed?
+
+        match &msg.destination.address_type {
+            &OperationMode::Simulated => self.send_simulated_mode(msg) ,
+            &OperationMode::Device => self.send_device_mode(msg),
         }
     }
 
-    fn send_simulated_mode(&self, msg : MessageType, destination: &Peer) -> Result<(), WorkerError> {
-        let mut socket = try!(UnixStream::connect(&destination.address));
+    fn send_simulated_mode(&self, msg : MessageHeader) -> Result<(), WorkerError> {
+        let mut socket = try!(UnixStream::connect(&msg.destination.address));
       
         //info!("Sending message to {}, address {}.", destination.name, destination.address);
         let data = try!(to_vec(&msg));
@@ -341,8 +306,8 @@ impl Radio {
         Ok(())
     }
 
-    fn send_device_mode(&self, msg : MessageType, destination: &Peer) -> Result<(), WorkerError> {
-        let mut socket = try!(TcpStream::connect(&destination.address));
+    fn send_device_mode(&self, msg : MessageHeader) -> Result<(), WorkerError> {
+        let mut socket = try!(TcpStream::connect(&msg.destination.address));
         
         //info!("Sending message to {}, address {}.", destination.name, destination.address);
         let data = try!(to_vec(&msg));
@@ -447,19 +412,23 @@ impl Worker {
         let _ = try!(self.init());
         info!("Finished initializing.");
 
-        //Get a listener
+        //Get a listener.
+        //At this point the network address is bound, so network messages should be cached until we read them.
         let listener = try!(self.get_listener());
+
+        //Get the protocol object.
+        let prot_handler = build_protocol_handler(Protocols::TMembership);
 
         //Do protocol initialization
         //TODO: move this to another thread.
         //Next, join the network
-        self.nearby_peers = try!(self.scan_for_peers(&(self.radios[0])));
-        info!("Found {} peers!", self.nearby_peers.len());
-        self.send_join_message();
+        //self.nearby_peers = try!(self.scan_for_peers(&(self.radios[0])));
+        //info!("Found {} peers!", self.nearby_peers.len());
+        //self.send_join_message();
 
         //Start listening for messages
-        //TODO: move this to another thread. This should be started before any protocol messages go out.
-        let _ = try!(self.start_listener(listener));
+        //TODO: move this to another thread.
+        let _ = try!(self.start_listener(listener, &prot_handler));
 
         //TODO: Start required timers on their own threads.
 
@@ -595,246 +564,6 @@ impl Worker {
         Ok(peers)
     }
 
-    fn handle_message(&mut self, encapsulated_message : MessageType) -> Result<(), WorkerError> {
-        match encapsulated_message {
-            MessageType::Join(msg) => {
-                self.process_join_message(msg)
-            },
-            MessageType::Ack(msg) => {
-                 self.process_ack_message(msg)
-            },
-            MessageType::Heartbeat(msg) => {
-                self.process_heartbeat_message(msg)
-            },
-            MessageType::Alive(msg) => {
-                self.process_alive_message(msg)
-            }
-        }
-    }
-   
-    fn handle_client_simulated(&mut self, mut client_socket : UnixStream) -> Result<(), WorkerError> { 
-        //Read the data from the unix socket
-        let mut data = Vec::new();
-        let _bytes_read = try!(client_socket.read_to_end(&mut data));
-
-        //Try to decode the data into a message.
-        let msg_type : Result<MessageType, _> = from_reader(&data[..]);
-        let msg_type = try!(msg_type);
-        self.handle_message(msg_type)
-    }
-
-    fn handle_client_device(&mut self, mut client_socket : TcpStream) -> Result<(), WorkerError>  {
-        //Read the data from the NIC
-        let mut data = Vec::new();
-        let _bytes_read = try!(client_socket.read_to_end(&mut data));
-
-        //Try to decode the data into a message.
-        let msg_type : Result<MessageType, _> = from_reader(&data[..]);
-        let msg_type = try!(msg_type);
-        self.handle_message(msg_type)
-    }
-
-    /// The first message of the protocol. 
-    /// When to send: At start-up, after doing a scan of nearby peers.
-    /// Receiver: All Nearby peers.
-    /// Payload: Self Peer object.
-    /// Actions: None.
-    fn send_join_message(&self) {
-        for r in &self.radios {
-            //Send messge to each Peer reachable by this radio
-            for p in &self.nearby_peers {
-                info!("Sending join message to {}, address {}", p.name, p.public_key);
-                let data = JoinMessage { sender : self.me.clone()};
-                let msg = MessageType::Join(data);
-                let _ = r.send(msg, p);
-            }
-
-        }
-    }
-
-    /// A response to a new peer joining the network.
-    /// When to send: After receiving a join message.
-    /// Sender: A new peer in range joining the network.
-    /// Payload: Global peer list.
-    /// Actions:
-    ///   1. Add sender to global membership list and nearby peer list.
-    ///   2. Construct an ACK message and reply with it.
-    fn process_join_message(&mut self, msg : JoinMessage) -> Result<(), WorkerError> {
-        info!("Received JOIN message from {}", msg.sender.name);
-        //Add new node to nearby peer list
-        self.nearby_peers.insert(msg.sender.clone());
-        //Obtain a reference to our current GPL.
-        let gpl = self.global_peer_list.clone();
-        //Obtain a lock to the underlying data.
-        let mut gpl = gpl.lock().unwrap();
-        gpl.insert(msg.sender.clone());
-
-        //Respond with ACK 
-        //Need to responde through the same radio we used to receive this.
-        // For now just use default radio.
-        let data = AckMessage{sender: self.me.clone(), global_peer_list : self.nearby_peers.clone()};
-        let ack_msg = MessageType::Ack(data);
-        info!("Sending ACK message to {}, address {}", msg.sender.name, msg.sender.address);
-        /*
-        match self.radios[0].send(ack_msg, &msg.sender) {
-            Ok(_) => info!("ACK message sent"),
-            Err(e) => error!("ACK message failed to be sent. Error:{}", e),
-        };*/
-        self.radios[0].send(ack_msg, &msg.sender)
-    }
-
-    /// The final part of the protocol's initial handshake
-    /// When to send: After receiving an ACK message.
-    /// Sender: A peer in the network that received a JOIN message.
-    /// Payload: Global peer list.
-    /// Actions:
-    ///   1. Add the difference between the payload and current GPL to the GPL.
-    fn process_ack_message(&mut self, msg: AckMessage) -> Result<(), WorkerError> {
-        info!("Received ACK message from {}", msg.sender.name);
-        //Obtain a reference to our current GPL.
-        let gpl = self.global_peer_list.clone();
-        //Obtain a lock to the underlying data.
-        let mut gpl = gpl.lock().unwrap();
-
-        //This worker just started, but might be getting an ACK message from many
-        //nearby peers. Diff the incoming set with the current set using an outer join.
-        let gpl_snapshot = gpl.clone();
-        for p in msg.global_peer_list.difference(&gpl_snapshot) {
-            info!("Adding peer {}/{} to list.", p.name, p.public_key);
-            gpl.insert(p.clone());
-        }
-        Ok(())
-    }
-
-    /// A message that is sent periodically to a given amount of members
-    /// of the nearby list to check if they are still alive.
-    /// When to send: After the heartbeat timer expires.
-    /// Receiver: Random member of the nearby peer list.
-    /// Payload: Global peer list.
-    /// Actions: 
-    ///   1. Add the sent peers to the suspected list.
-    fn send_heartbeat_message(&self) {
-        //Get the RNG
-        let mut random_bytes = vec![];
-        let _ = random_bytes.write_u32::<NativeEndian>(self.random_seed);
-        let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
-        let mut gen = StdRng::from_seed(randomness.as_slice());
-
-        //Will contact a given amount of current number of nearby peers.
-        let num_of_peers = self.nearby_peers.len() as f32 * GOSSIP_FACTOR;
-        let num_of_peers = num_of_peers.ceil() as u32;
-
-        //Get a handle and lock on the suspected peer list.
-        let spl = self.suspected_list.clone();
-        let mut spl = spl.lock().unwrap();
-
-        //Get a handle and lock of the GPL
-        let gpl = self.global_peer_list.clone();
-        let gpl = gpl.lock().unwrap();
-
-        //Get a copy of the GPL for iteration and selecting the random peers.
-        let gpl_iter = gpl.clone();
-        let mut gpl_iter = gpl_iter.iter();
-        for _i in 0..num_of_peers {
-            let selection : usize = gen.next_u32() as usize % self.nearby_peers.len();
-            let mut j = 0;
-            while j < selection {
-                gpl_iter.next();
-                j += 1;
-            }
-            //The chosen peer
-            let recipient = gpl_iter.next().unwrap();
-
-            //Add the suspected peer to the suspected list.
-            spl.push(recipient.clone());
-
-            let gpl_snapshot = gpl.clone();
-            let data = HeartbeatMessage{ sender : self.me.clone(),
-                                        global_peer_list : gpl_snapshot};
-            let msg = MessageType::Heartbeat(data);
-            info!("Sending a Heartbeat message to {}, address {}", recipient.name, recipient.address);
-            let _res = self.radios[0].send(msg, recipient);
-        }
-    }
-
-    /// A response to a heartbeat message.
-    /// When to send: After receiving a heartbeat message.
-    /// Sender: A nearby peer in range.
-    /// Payload: Global peer list.
-    /// Actions:
-    ///   1. Construct an alive message with this peer's GPL and send it.
-    ///   2. Add the difference between the senders GPL and this GPL.
-    fn process_heartbeat_message(&self, msg : HeartbeatMessage) -> Result<(), WorkerError> {
-        info!("Received Heartbeat message from {}, address {}", msg.sender.name, msg.sender.address);
-        //The sender is asking if I'm alive. Before responding, let's take a look at their GPL
-        //Obtain a reference to our current GPL.
-        let gpl = self.global_peer_list.clone();
-        //Obtain a lock to the underlying data.
-        let mut gpl = gpl.lock().unwrap();
-
-        //Diff the incoming set with the current set using an outer join.
-        let gpl_snapshot = gpl.clone();
-        for p in msg.global_peer_list.difference(&gpl_snapshot) {
-            info!("Adding peer {}/{} to list.", p.name, p.public_key);
-            gpl.insert(p.clone());
-        }
-
-        //Now construct and send an alive message to prove we are alive.
-        let data = AliveMessage{ sender : self.me.clone(),
-                                 global_peer_list : gpl.clone()};
-        let alive_msg = MessageType::Alive(data);
-        self.radios[0].send(alive_msg, &msg.sender)
-    }
-
-    /// The final part of the heartbeat-alive part of the protocol. If this message is 
-    /// received, it means a peer to which we sent a heartbeat message is still alive.
-    /// Sender: A nearby peer in range that received a heartbeat message from this peer.
-    /// Payload: Global peer list.
-    /// Actions:
-    ///   1. Add the difference between the senders GPL and this GPL.
-    ///   2. Remove the sender from the list of suspected dead peers.
-    fn process_alive_message(&self, msg : AliveMessage) -> Result<(), WorkerError> {
-        info!("Received Alive message from {}, address {}", msg.sender.name, msg.sender.address);
-        //Get a handle and lock on the suspected peer list.
-        let spl = self.suspected_list.clone();
-        let mut spl = spl.lock().unwrap();
-        //Find the index of the element to remove.
-        let mut index : i32 = -1;
-        let mut j = 0;
-        let spl_iter = spl.clone();
-        let spl_iter = spl_iter.iter();
-        for p in spl_iter {
-            if *p == msg.sender {
-                index = j;
-                break; //Found the element
-            }
-            j += 1;
-        }
-        //Remove the sender from the suspected list.
-        if index > 0 {
-            let index = index as usize;
-            spl.remove(index);
-        } else {
-            //Received an alive message from a peer that was not in the list.
-            //In that case, ignore and return.
-            warn!("Received ALIVE message from {}, address {}, that was not in the spl", msg.sender.name, msg.sender.address);
-            return Ok(())
-        }
-
-        //Obtain a reference to our current GPL.
-        let gpl = self.global_peer_list.clone();
-        //Obtain a lock to the underlying data.
-        let mut gpl = gpl.lock().unwrap();
-
-        //Diff the incoming set with the current set using an outer join.
-        let gpl_snapshot = gpl.clone();
-        for p in msg.global_peer_list.difference(&gpl_snapshot) {
-            info!("Adding peer {}/{} to list.", p.name, p.public_key);
-            gpl.insert(p.clone());
-        }
-        Ok(())
-    }
-
     fn init(&mut self) -> Result<(), WorkerError> {
         //Create the key-pair for the worker.
         //For now, just filling with random 32 bytes.
@@ -919,25 +648,67 @@ impl Worker {
         Ok(())
     }
 
-    fn start_listener(&mut self, listener : ListenerType) -> Result<(), WorkerError> {
+    fn handle_client_simulated(&mut self, mut client_socket : UnixStream, protocol : &Box<Protocol>) -> Result<(), WorkerError> { 
+        //Read the data from the unix socket
+        let mut data = Vec::new();
+        let _bytes_read = try!(client_socket.read_to_end(&mut data));
+
+        //Try to decode the data into a message.
+        //let msg_type : Result<MessageType, _> = from_reader(&data[..]);
+        //let msg_type = try!(msg_type);
+        //self.handle_message(msg_type)
+        let msg = try!(MessageHeader::from_vec(data));
+        let response = protocol.handle_message(msg);
+        match response {
+            Some(msg) => { 
+                self.radios[0].send(msg)
+            },
+            None => {
+                Ok(())
+            }
+        }
+    }
+
+    fn handle_client_device(&mut self, mut client_socket : TcpStream, protocol : &Box<Protocol>) -> Result<(), WorkerError>  {
+        //Read the data from the NIC
+        let mut data = Vec::new();
+        let _bytes_read = try!(client_socket.read_to_end(&mut data));
+
+        //Try to decode the data into a message.
+        //let msg_type : Result<MessageType, _> = from_reader(&data[..]);
+        //let msg_type = try!(msg_type);
+        //self.handle_message(msg_type)
+        let msg = try!(MessageHeader::from_vec(data));
+        let response = protocol.handle_message(msg);
+        match response {
+            Some(msg) => { 
+                self.radios[0].send(msg)
+            },
+            None => {
+                Ok(())
+            }
+        }
+    }
+
+    fn start_listener(&mut self, listener : ListenerType, protocol : &Box<Protocol>) -> Result<(), WorkerError> {
         match listener {
             ListenerType::Simulated(l) => {
-                self.start_listener_simulated(l)
+                self.start_listener_simulated(l, protocol)
             },
             ListenerType::Device(l) => {
-                self.start_listener_device(l)
+                self.start_listener_device(l, protocol)
             },
         }
     }
 
-    fn start_listener_simulated(&mut self, listener : UnixListener) -> Result<(), WorkerError> {
+    fn start_listener_simulated(&mut self, listener : UnixListener, protocol : &Box<Protocol>) -> Result<(), WorkerError> {
         //No need for service advertisement in simulated mode.
         //Now listen for messages
         info!("Listening for messages.");
         for stream in listener.incoming() {
             match stream {
                 Ok(client) => { 
-                    let _result = try!(self.handle_client_simulated(client));
+                    let _result = try!(self.handle_client_simulated(client, protocol));
                 },
                 Err(e) => { 
                     warn!("Failed to connect to incoming client. Error: {}", e);
@@ -947,7 +718,7 @@ impl Worker {
         Ok(())
     }
 
-    fn start_listener_device(&mut self, listener : TcpListener) -> Result<(), WorkerError> {
+    fn start_listener_device(&mut self, listener : TcpListener, protocol : &Box<Protocol>) -> Result<(), WorkerError> {
         //Advertise the service to be discoverable by peers before we start listening for messages.
         let mut service = ServiceRecord::new();
         service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.me.name);
@@ -962,7 +733,7 @@ impl Worker {
         for stream in listener.incoming() {
             match stream {
                 Ok(client) => { 
-                    let _result = try!(self.handle_client_device(client));
+                    let _result = try!(self.handle_client_device(client, protocol));
                 },
                 Err(e) => { 
                     warn!("Failed to connect to incoming client. Error: {}", e);
@@ -983,101 +754,6 @@ impl Worker {
                 Ok(ListenerType::Device(listener))
             },
         }
-    }
-}
-
-/// Configuration for a worker object. This struct encapsulates several of the properties
-/// of a worker. Its use is for the external interfaces of the worker module. This facilitates
-/// that an external client such as worker_cli can create WorkerConfig objects from CLI parameters
-/// or configuration files and pass the configuration around, leaving the actual construction of
-/// the worker object to the worker module.
-#[derive(Debug, Deserialize, PartialEq)]
-pub struct WorkerConfig {
-    ///Name of the worker.
-    pub worker_name : String,
-    ///Directory for the worker to operate. Must have RW access to it. Operational files and 
-    ///log files will be written here.
-    pub work_dir : String,
-    ///Random seed used for all RNG operations.
-    pub random_seed : u32,
-    ///Simulated or Device operation.
-    pub operation_mode : OperationMode,
-    ///The broadcast groups this worker belongs to. Ignored in device mode.
-    pub broadcast_groups : Option<Vec<String>>,
-    ///Simulated mode only. How likely ([0-1]) are packets to reach their destination.
-    pub reliability : Option<f64>,
-    ///Simulated mode only. Artificial delay (in ms) introduced to the network packets of this node.
-    pub delay : Option<u32>,
-    ///How often (ms) should the worker scan for new peers.
-    pub scan_interval : Option<u32>,
-    ///Name of the network interface that the worker will use.
-    pub interface_name : String,
-
-    
-}
-
-impl WorkerConfig {
-    ///Creates a new configuration for a Worker with default settings.
-    pub fn new() -> WorkerConfig {
-        WorkerConfig{worker_name : String::from("worker1"),
-                     work_dir : String::from("."),
-                     random_seed : 0, //The random seed itself doesn't need to be random. Also, that makes testing more difficult.
-                     operation_mode : OperationMode::Simulated,
-                     broadcast_groups : Some(vec!(String::from("group1"))),
-                     reliability : Some(1.0),
-                     delay : Some(0),
-                     scan_interval : Some(2000),
-                     interface_name : String::from("wlan0"),
-                    }
-    }
-
-    ///Creates a new Worker object configured with the values of this configuration object.
-    pub fn create_worker(self) -> Worker {
-        let mut obj = Worker::new();
-        obj.me.name = self.worker_name;
-        obj.me.address_type = self.operation_mode.clone();
-        obj.work_dir = self.work_dir;
-        obj.random_seed = self.random_seed;
-        obj.operation_mode = self.operation_mode;
-        if obj.operation_mode == OperationMode::Device {
-            let address = Radio::get_radio_address(&self.interface_name).expect("Could not get address for specified interface.");
-            debug!("Obtained address {}", &address);
-            obj.me.address = format!("{}:{}", address, DNS_SERVICE_PORT);
-        } else {
-            obj.me.address = format!("{}/{}/{}.socket", obj.work_dir, SIMULATED_SCAN_DIR, obj.me.public_key);
-        }
-
-        obj.radios[0].broadcast_groups = self.broadcast_groups.unwrap_or(vec![]);
-        obj.radios[0].reliability = self.reliability.unwrap_or(obj.radios[0].reliability);
-        obj.radios[0].delay = self.delay.unwrap_or(obj.radios[0].delay);
-        obj.scan_interval = self.scan_interval.unwrap_or(obj.scan_interval);
-        
-        obj
-    }
-
-    ///Writes the current configuration object to a formatted configuration file, that can be passed to
-    ///the worker_cli binary.
-    pub fn write_to_file(&self, file_path : &Path) -> Result<String, WorkerError> {
-        //Create configuration file
-        //let file_path = format!("{}{}{}", dir, std::path::MAIN_SEPARATOR, file_name);
-        let mut file = try!(File::create(&file_path));
-        let groups = self.broadcast_groups.as_ref().cloned().unwrap_or(Vec::new());
-
-        //Write content to file
-        //file.write(sample_toml_str.as_bytes()).expect("Error writing to toml file.");
-        write!(file, "worker_name = \"{}\"\n", self.worker_name)?;
-        write!(file, "random_seed = {}\n", self.random_seed)?;
-        write!(file, "work_dir = \"{}\"\n", self.work_dir)?;
-        write!(file, "operation_mode = \"{}\"\n", self.operation_mode)?;
-        write!(file, "reliability = {}\n", self.reliability.unwrap_or(1f64))?;
-        write!(file, "delay = {}\n", self.delay.unwrap_or(0u32))?;
-        write!(file, "scan_interval = {}\n", self.scan_interval.unwrap_or(1000u32))?;
-        write!(file, "broadcast_groups = {:?}\n", groups)?;
-        write!(file, "interface_name = {:?}\n", "wlan0")?;
-
-        //file.flush().expect("Error flusing toml file to disk.");
-        let file_name = format!("{}", file_path.display());
-        Ok(file_name)
     }
 }
 
@@ -1303,48 +979,6 @@ mod tests {
         assert_eq!(peers.len(), 4);
     }
     */
-
-    //**** WorkerConfig unit tests ****
-    //Unit test for: WorkerConfig_new
-    #[test]
-    fn test_workerconfig_new() {
-        let config = WorkerConfig::new();
-        let config_str = "WorkerConfig { worker_name: \"worker1\", work_dir: \".\", random_seed: 0, operation_mode: Simulated, broadcast_groups: Some([\"group1\"]), reliability: Some(1), delay: Some(0), scan_interval: Some(2000), interface_name: \"wlan0\" }";
-
-        assert_eq!(format!("{:?}", config), config_str);
-    }
-
-    //Unit test for: WorkerConfig::create_worker
-    #[test]
-    fn test_workerconfig_create_worker() {
-        //test_workerconfig_new and test_worker_new already test the correct instantiation of WorkerConfig and Worker.
-        //Just make sure thing function translates a WorkerConfig correctly into a Worker.
-        let conf = WorkerConfig::new();
-        let worker = conf.create_worker();
-        let default_worker_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [\"group1\"], radio_name: \"\" }], nearby_peers: {}, me: Peer { public_key: \"00000000000000000000000000000000\", name: \"worker1\", address: \"./bcgroups/00000000000000000000000000000000.socket\", address_type: Simulated }, work_dir: \".\", random_seed: 0, operation_mode: Simulated, scan_interval: 2000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
-        assert_eq!(format!("{:?}", worker), String::from(default_worker_display));
-    }
-
-    //Unit test for: WorkerConfig::write_to_file
-    #[test]
-    fn test_workerconfig_write_to_file() {
-        let config = WorkerConfig::new();
-        let mut path = std::env::temp_dir();
-        path.push("worker.toml");
-
-        let val = config.write_to_file(&path).expect("Could not write configuration file.");
-        
-        //Assert the file was written.
-        assert_eq!(val, format!("{}", path.display()));
-        assert!(path.exists());
-
-        let expected_file_content = "worker_name = \"worker1\"\nrandom_seed = 0\nwork_dir = \".\"\noperation_mode = \"Simulated\"\nreliability = 1\ndelay = 0\nscan_interval = 2000\nbroadcast_groups = [\"group1\"]\ninterface_name = \"wlan0\"\n";
-        let mut file_content = String::new();
-        File::open(path).unwrap().read_to_string(&mut file_content);
-
-        assert_eq!(expected_file_content, file_content);
-
-    }
 
     //**** ServiceRecord unit tests ****
     //Unit test for get get_txt_record
