@@ -4,6 +4,7 @@
 use worker::{MessageHeader, WorkerError};
 use self::tmembership::TMembership;
 
+
 pub mod tmembership;
 
 /// Trait that all protocols need to implement.
@@ -17,7 +18,10 @@ pub trait Protocol {
     
     /// This function implements the state machine of the protocol. It will match against
     /// the message type passed and call the appropriate method to handle it.
-    fn handle_message(&self,  msg : MessageHeader) -> Option<MessageHeader>;
+    fn handle_message(&mut self,  msg : MessageHeader) -> Result<Option<MessageHeader>, WorkerError>;
+
+    /// 
+    fn init_protocol(&mut self) -> Result<Option<MessageHeader>, WorkerError>;
     
 }
 

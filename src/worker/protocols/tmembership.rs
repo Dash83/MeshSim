@@ -5,17 +5,21 @@ extern crate serde_cbor;
 use worker::protocols::Protocol;
 use worker::{WorkerError, Peer, MessageHeader};
 use std::collections::HashSet;
+use std::sync::{Mutex, Arc};
 use self::serde_cbor::de::*;
-//use self::serde_cbor::ser::*;
+use self::serde_cbor::ser::*;
 
 ///The main struct for this protocol. Implements the worker::protocol::Protocol trait.
-pub struct TMembership;
+pub struct TMembership {
+    neighbours : Arc<Mutex<HashSet<Peer>>>,
+    network_members : Arc<Mutex<HashSet<Peer>>>,
+}
 
 /// This enum represents the types of network messages supported in the protocol as well as the
 /// data associated with them. For each message type, an associated struct will be created to represent 
 /// all the data needed to operate on such message.
 #[derive(Debug, Serialize, Deserialize)]
-pub enum MessageType {
+pub enum Messages {
     ///Message that a peer sends to join the network.
     Join(JoinMessage),
     ///Reply to a JOIN message sent from a current member of the network.
@@ -54,40 +58,57 @@ pub struct AliveMessage {
 }
 
 impl Protocol for TMembership {
-    fn handle_message(&self, encapsulated_message : MessageHeader) -> Option<MessageHeader> {
-        None
-    }
+    fn handle_message(&mut self, mut header : MessageHeader) -> Result<Option<MessageHeader>, WorkerError> {
+        let mut data = Vec::new();
 
-    // fn build_message(&self, data : Vec<u8>) -> Result<MessageHeader, WorkerError> {
-    //     let msg : Result<MessageType, _> = try!(from_reader(&data[..]));
+        if let Some(d) = header.payload.take() {
+            data = d;
+        } else {
+            warn!("Messaged received from {:?} had empty payload.", header.sender);
+            return Ok(None)
+        }
         
-    //     Ok(msg_type)
-    // }
+        let msg = try!(TMembership::build_protocol_message(data));
+        self.handle_message_internal(header, msg)
+    }
 }
 
 impl TMembership {
     ///Get a new empty TMembership object.
     pub fn new() -> TMembership {
-        TMembership{}
+        let n = Arc::new(Mutex::new(HashSet::new()));
+        let m = Arc::new(Mutex::new(HashSet::new()));
+
+        TMembership{ neighbours : n, 
+                     network_members : m }
     }
 
-    fn handle_message_internal(&mut self, encapsulated_message : MessageType) -> Result<(), WorkerError> {
-        match encapsulated_message {
-            MessageType::Join(msg) => {
-                //self.process_join_message(msg)
-            },
-            MessageType::Ack(msg) => {
-                //self.process_ack_message(msg)
-            },
-            MessageType::Heartbeat(msg) => {
-                //self.process_heartbeat_message(msg)
-            },
-            MessageType::Alive(msg) => {
-                //self.process_alive_message(msg)
-            }
-        }
-        Ok(())
+    fn handle_message_internal(&mut self, hdr : MessageHeader, msg : Messages) -> Result<Option<MessageHeader>, WorkerError> {
+        let response = match msg {
+                            Messages::Join(m) => {
+                                self.process_join_message(hdr, m)
+                            },
+                            Messages::Ack(msg) => {
+                                //self.process_ack_message(msg)
+                                Ok(None)
+                            },
+                            Messages::Heartbeat(msg) => {
+                                //self.process_heartbeat_message(msg)
+                                Ok(None)
+                            },
+                            Messages::Alive(msg) => {
+                                //self.process_alive_message(msg)
+                                Ok(None)
+                            }
+                       };
+        response
     }
+
+    fn build_protocol_message(data : Vec<u8>) -> Result<Messages, serde_cbor::Error> {
+        let res : Result<Messages, serde_cbor::Error> = from_slice(data.as_slice());
+        res
+    }
+
 /*
     /// The first message of the protocol. 
     /// When to send: At start-up, after doing a scan of nearby peers.
@@ -106,57 +127,75 @@ impl TMembership {
 
         }
     }
-
+*/
     /// A response to a new peer joining the network.
     /// When to send: After receiving a join message.
-    /// Sender: A new peer in range joining the network.
-    /// Payload: Global peer list.
+    /// Sender: A new peer in range of the current node, trying to join the network.
+    /// Payload: None.
     /// Actions:
-    ///   1. Add sender to global membership list and nearby peer list.
+    ///   1. Add sender to global node list and nearby peer list.
     ///   2. Construct an ACK message and reply with it.
-    fn process_join_message(&mut self, msg : JoinMessage) -> Result<(), WorkerError> {
-        info!("Received JOIN message from {}", msg.sender.name);
-        //Add new node to nearby peer list
-        self.nearby_peers.insert(msg.sender.clone());
-        //Obtain a reference to our current GPL.
-        let gpl = self.global_peer_list.clone();
-        //Obtain a lock to the underlying data.
-        let mut gpl = gpl.lock().unwrap();
-        gpl.insert(msg.sender.clone());
+    fn process_join_message(&mut self, hdr : MessageHeader, msg : JoinMessage) -> Result<Option<MessageHeader>, WorkerError> {
+        let mut response = MessageHeader::new();
+        
+        info!("Received JOIN message from {}", hdr.sender.name);
 
-        //Respond with ACK 
-        //Need to responde through the same radio we used to receive this.
-        // For now just use default radio.
-        let data = AckMessage{sender: self.me.clone(), global_peer_list : self.nearby_peers.clone()};
-        let ack_msg = MessageType::Ack(data);
-        info!("Sending ACK message to {}, address {}", msg.sender.name, msg.sender.address);
-        /*
-        match self.radios[0].send(ack_msg, &msg.sender) {
-            Ok(_) => info!("ACK message sent"),
-            Err(e) => error!("ACK message failed to be sent. Error:{}", e),
-        };*/
-        self.radios[0].send(ack_msg, &msg.sender)
+        //Obtain reference to our neighbours list
+        let near = Arc::clone(&self.neighbours);
+        {
+            //LOCK : GET : NEAR
+            let mut near = try!(near.lock());
+            
+            //Presumably, the sender is a new node joining. If already in our neighbour list, this is a NOP.
+            let _res = near.insert(hdr.sender.clone());
+        }   //LOCK : RELEASE : NEAR
+
+        //Obtain a reference to our current GNL.
+        let gnl = Arc::clone(&self.network_members);
+        {
+            //LOCK : GET : GNL
+            // let mut gnl = try!(gnl.lock());
+            let mut gnl = gnl.lock().unwrap();
+
+            //Build the internal message of the response
+            let msg_data = AckMessage{ global_peer_list : gnl.clone()};
+
+            //Add the sender to our own GNL.
+            gnl.insert(hdr.sender.clone());
+
+            //Build the ACK message for the sender
+            let ack_msg = Messages::Ack(msg_data);
+            let payload = try!(to_vec(&ack_msg));
+            info!("Built ACK message for sender: {}, address {}", &hdr.sender.name, &hdr.sender.address);
+            
+            //Build the message header that's ready for sending.
+            response = MessageHeader{   sender : hdr.destination, 
+                                        destination : hdr.sender, 
+                                        payload : Some(payload) };            
+        } //LOCK : RELEASE : GNL
+
+        Ok(Some(response))
     }
-
+/*
     /// The final part of the protocol's initial handshake
     /// When to send: After receiving an ACK message.
     /// Sender: A peer in the network that received a JOIN message.
-    /// Payload: Global peer list.
+    /// Payload: global node list.
     /// Actions:
-    ///   1. Add the difference between the payload and current GPL to the GPL.
+    ///   1. Add the difference between the payload and current GNL to the GNL.
     fn process_ack_message(&mut self, msg: AckMessage) -> Result<(), WorkerError> {
         info!("Received ACK message from {}", msg.sender.name);
-        //Obtain a reference to our current GPL.
-        let gpl = self.global_peer_list.clone();
+        //Obtain a reference to our current GNL.
+        let gnl = self.global_peer_list.clone();
         //Obtain a lock to the underlying data.
-        let mut gpl = gpl.lock().unwrap();
+        let mut gnl = gnl.lock().unwrap();
 
         //This worker just started, but might be getting an ACK message from many
         //nearby peers. Diff the incoming set with the current set using an outer join.
-        let gpl_snapshot = gpl.clone();
-        for p in msg.global_peer_list.difference(&gpl_snapshot) {
+        let gnl_snapshot = gnl.clone();
+        for p in msg.global_peer_list.difference(&gnl_snapshot) {
             info!("Adding peer {}/{} to list.", p.name, p.public_key);
-            gpl.insert(p.clone());
+            gnl.insert(p.clone());
         }
         Ok(())
     }
@@ -165,7 +204,7 @@ impl TMembership {
     /// of the nearby list to check if they are still alive.
     /// When to send: After the heartbeat timer expires.
     /// Receiver: Random member of the nearby peer list.
-    /// Payload: Global peer list.
+    /// Payload: global node list.
     /// Actions: 
     ///   1. Add the sent peers to the suspected list.
     fn send_heartbeat_message(&self) {
@@ -183,29 +222,29 @@ impl TMembership {
         let spl = self.suspected_list.clone();
         let mut spl = spl.lock().unwrap();
 
-        //Get a handle and lock of the GPL
-        let gpl = self.global_peer_list.clone();
-        let gpl = gpl.lock().unwrap();
+        //Get a handle and lock of the GNL
+        let gnl = self.global_peer_list.clone();
+        let gnl = gnl.lock().unwrap();
 
-        //Get a copy of the GPL for iteration and selecting the random peers.
-        let gpl_iter = gpl.clone();
-        let mut gpl_iter = gpl_iter.iter();
+        //Get a copy of the GNL for iteration and selecting the random peers.
+        let gnl_iter = gnl.clone();
+        let mut gnl_iter = gnl_iter.iter();
         for _i in 0..num_of_peers {
             let selection : usize = gen.next_u32() as usize % self.nearby_peers.len();
             let mut j = 0;
             while j < selection {
-                gpl_iter.next();
+                gnl_iter.next();
                 j += 1;
             }
             //The chosen peer
-            let recipient = gpl_iter.next().unwrap();
+            let recipient = gnl_iter.next().unwrap();
 
             //Add the suspected peer to the suspected list.
             spl.push(recipient.clone());
 
-            let gpl_snapshot = gpl.clone();
+            let gnl_snapshot = gnl.clone();
             let data = HeartbeatMessage{ sender : self.me.clone(),
-                                        global_peer_list : gpl_snapshot};
+                                        global_peer_list : gnl_snapshot};
             let msg = MessageType::Heartbeat(data);
             info!("Sending a Heartbeat message to {}, address {}", recipient.name, recipient.address);
             let _res = self.radios[0].send(msg, recipient);
@@ -215,28 +254,28 @@ impl TMembership {
     /// A response to a heartbeat message.
     /// When to send: After receiving a heartbeat message.
     /// Sender: A nearby peer in range.
-    /// Payload: Global peer list.
+    /// Payload: global node list.
     /// Actions:
-    ///   1. Construct an alive message with this peer's GPL and send it.
-    ///   2. Add the difference between the senders GPL and this GPL.
+    ///   1. Construct an alive message with this peer's GNL and send it.
+    ///   2. Add the difference between the senders GNL and this GNL.
     fn process_heartbeat_message(&self, msg : HeartbeatMessage) -> Result<(), WorkerError> {
         info!("Received Heartbeat message from {}, address {}", msg.sender.name, msg.sender.address);
-        //The sender is asking if I'm alive. Before responding, let's take a look at their GPL
-        //Obtain a reference to our current GPL.
-        let gpl = self.global_peer_list.clone();
+        //The sender is asking if I'm alive. Before responding, let's take a look at their GNL
+        //Obtain a reference to our current GNL.
+        let gnl = self.global_peer_list.clone();
         //Obtain a lock to the underlying data.
-        let mut gpl = gpl.lock().unwrap();
+        let mut gnl = gnl.lock().unwrap();
 
         //Diff the incoming set with the current set using an outer join.
-        let gpl_snapshot = gpl.clone();
-        for p in msg.global_peer_list.difference(&gpl_snapshot) {
+        let gnl_snapshot = gnl.clone();
+        for p in msg.global_peer_list.difference(&gnl_snapshot) {
             info!("Adding peer {}/{} to list.", p.name, p.public_key);
-            gpl.insert(p.clone());
+            gnl.insert(p.clone());
         }
 
         //Now construct and send an alive message to prove we are alive.
         let data = AliveMessage{ sender : self.me.clone(),
-                                 global_peer_list : gpl.clone()};
+                                 global_peer_list : gnl.clone()};
         let alive_msg = MessageType::Alive(data);
         self.radios[0].send(alive_msg, &msg.sender)
     }
@@ -244,9 +283,9 @@ impl TMembership {
     /// The final part of the heartbeat-alive part of the protocol. If this message is 
     /// received, it means a peer to which we sent a heartbeat message is still alive.
     /// Sender: A nearby peer in range that received a heartbeat message from this peer.
-    /// Payload: Global peer list.
+    /// Payload: global node list.
     /// Actions:
-    ///   1. Add the difference between the senders GPL and this GPL.
+    ///   1. Add the difference between the senders GNL and this GNL.
     ///   2. Remove the sender from the list of suspected dead peers.
     fn process_alive_message(&self, msg : AliveMessage) -> Result<(), WorkerError> {
         info!("Received Alive message from {}, address {}", msg.sender.name, msg.sender.address);
@@ -276,16 +315,16 @@ impl TMembership {
             return Ok(())
         }
 
-        //Obtain a reference to our current GPL.
-        let gpl = self.global_peer_list.clone();
+        //Obtain a reference to our current GNL.
+        let gnl = self.global_peer_list.clone();
         //Obtain a lock to the underlying data.
-        let mut gpl = gpl.lock().unwrap();
+        let mut gnl = gnl.lock().unwrap();
 
         //Diff the incoming set with the current set using an outer join.
-        let gpl_snapshot = gpl.clone();
-        for p in msg.global_peer_list.difference(&gpl_snapshot) {
+        let gnl_snapshot = gnl.clone();
+        for p in msg.global_peer_list.difference(&gnl_snapshot) {
             info!("Adding peer {}/{} to list.", p.name, p.public_key);
-            gpl.insert(p.clone());
+            gnl.insert(p.clone());
         }
         Ok(())
     }

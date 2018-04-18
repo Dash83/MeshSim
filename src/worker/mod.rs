@@ -48,7 +48,7 @@ use self::byteorder::{NativeEndian, WriteBytesExt};
 use std::path::Path;
 use std::collections::HashSet;
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError, MutexGuard};
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::net::{UnixStream, UnixListener};
 use worker::protocols::*;
@@ -94,6 +94,8 @@ pub enum WorkerError {
     IO(io::Error),
     ///Error configuring the worker.
     Configuration(String),
+    ///Error in concurrency operations.
+    Sync(String),
 
 }
 
@@ -102,7 +104,8 @@ impl fmt::Display for WorkerError {
         match *self {
             WorkerError::Serialization(ref err) => write!(f, "Serialization error: {}", err),
             WorkerError::IO(ref err) => write!(f, "IO error: {}", err),
-            WorkerError::Configuration(ref err) => write!(f, "Configuration error: {}", err),            
+            WorkerError::Configuration(ref err) => write!(f, "Configuration error: {}", err),
+            WorkerError::Sync(ref err) => write!(f, "Synchronization error: {}", err),          
         }
     }
 
@@ -114,6 +117,7 @@ impl error::Error for WorkerError {
             WorkerError::Serialization(ref err) => err.description(),
             WorkerError::IO(ref err) => err.description(),
             WorkerError::Configuration(ref err) => err.as_str(),
+            WorkerError::Sync(ref err) => err.as_str(),
         }
     }
 
@@ -122,6 +126,7 @@ impl error::Error for WorkerError {
             WorkerError::Serialization(ref err) => Some(err),
             WorkerError::IO(ref err) => Some(err),
             WorkerError::Configuration(_) => None,
+            WorkerError::Sync(_) => None,
         }
     }
 }
@@ -135,6 +140,12 @@ impl From<serde_cbor::Error> for WorkerError {
 impl From<io::Error> for WorkerError {
     fn from(err : io::Error) -> WorkerError {
         WorkerError::IO(err)
+    }
+}
+
+impl<'a> From<PoisonError<MutexGuard<'a, HashSet<Peer>>>> for WorkerError {
+    fn from(err : PoisonError<MutexGuard<'a, HashSet<Peer>>>) -> WorkerError {
+        WorkerError::Sync(err.to_string())
     }
 }
 
@@ -177,16 +188,30 @@ impl Peer {
 /// knows about
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MessageHeader {
-    sender : Peer,
-    destination : Peer,
-    payload : Vec<u8>,
+    ///Sender of the message
+    pub sender : Peer,
+    ///Destination of the message
+    pub destination : Peer,
+    ///Optional, serialized payload of the message. 
+    /// It's the responsibility of the underlying protocol to know how to deserialize this payload
+    /// into a protocol-specific message.
+    pub payload : Option<Vec<u8>>,
 }
 
 impl MessageHeader {
-    fn from_vec(data : Vec<u8>) -> Result<MessageHeader, serde_cbor::Error> {
+    ///Creates a MessageHeader from a serialized vector of bytes.
+    pub fn from_vec(data : Vec<u8>) -> Result<MessageHeader, serde_cbor::Error> {
         let msg : Result<MessageHeader, _> = from_reader(&data[..]);
         msg
     }
+
+    ///Create new, empty MessageHeader.
+    pub fn new() -> MessageHeader {
+        MessageHeader{  sender : Peer::new(), 
+                        destination : Peer::new(),
+                        payload : None }
+    }
+
 }
 
 ///Struct to represent DNS TXT records for advertising the meshsim service and obtain records from peers.
@@ -417,7 +442,7 @@ impl Worker {
         let listener = try!(self.get_listener());
 
         //Get the protocol object.
-        let prot_handler = build_protocol_handler(Protocols::TMembership);
+        let mut prot_handler = build_protocol_handler(Protocols::TMembership);
 
         //Do protocol initialization
         //TODO: move this to another thread.
@@ -428,7 +453,7 @@ impl Worker {
 
         //Start listening for messages
         //TODO: move this to another thread.
-        let _ = try!(self.start_listener(listener, &prot_handler));
+        let _ = try!(self.start_listener(listener, &mut prot_handler));
 
         //TODO: Start required timers on their own threads.
 
@@ -648,7 +673,7 @@ impl Worker {
         Ok(())
     }
 
-    fn handle_client_simulated(&mut self, mut client_socket : UnixStream, protocol : &Box<Protocol>) -> Result<(), WorkerError> { 
+    fn handle_client_simulated(&mut self, mut client_socket : UnixStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> { 
         //Read the data from the unix socket
         let mut data = Vec::new();
         let _bytes_read = try!(client_socket.read_to_end(&mut data));
@@ -658,7 +683,7 @@ impl Worker {
         //let msg_type = try!(msg_type);
         //self.handle_message(msg_type)
         let msg = try!(MessageHeader::from_vec(data));
-        let response = protocol.handle_message(msg);
+        let response = try!(protocol.handle_message(msg));
         match response {
             Some(msg) => { 
                 self.radios[0].send(msg)
@@ -669,7 +694,7 @@ impl Worker {
         }
     }
 
-    fn handle_client_device(&mut self, mut client_socket : TcpStream, protocol : &Box<Protocol>) -> Result<(), WorkerError>  {
+    fn handle_client_device(&mut self, mut client_socket : TcpStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError>  {
         //Read the data from the NIC
         let mut data = Vec::new();
         let _bytes_read = try!(client_socket.read_to_end(&mut data));
@@ -679,18 +704,19 @@ impl Worker {
         //let msg_type = try!(msg_type);
         //self.handle_message(msg_type)
         let msg = try!(MessageHeader::from_vec(data));
-        let response = protocol.handle_message(msg);
+        let response = try!(protocol.handle_message(msg));
         match response {
             Some(msg) => { 
                 self.radios[0].send(msg)
             },
             None => {
+                //End of protocol sequence.
                 Ok(())
             }
         }
     }
 
-    fn start_listener(&mut self, listener : ListenerType, protocol : &Box<Protocol>) -> Result<(), WorkerError> {
+    fn start_listener(&mut self, listener : ListenerType, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
         match listener {
             ListenerType::Simulated(l) => {
                 self.start_listener_simulated(l, protocol)
@@ -701,7 +727,7 @@ impl Worker {
         }
     }
 
-    fn start_listener_simulated(&mut self, listener : UnixListener, protocol : &Box<Protocol>) -> Result<(), WorkerError> {
+    fn start_listener_simulated(&mut self, listener : UnixListener, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
         //No need for service advertisement in simulated mode.
         //Now listen for messages
         info!("Listening for messages.");
@@ -718,7 +744,7 @@ impl Worker {
         Ok(())
     }
 
-    fn start_listener_device(&mut self, listener : TcpListener, protocol : &Box<Protocol>) -> Result<(), WorkerError> {
+    fn start_listener_device(&mut self, listener : TcpListener, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
         //Advertise the service to be discoverable by peers before we start listening for messages.
         let mut service = ServiceRecord::new();
         service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.me.name);
