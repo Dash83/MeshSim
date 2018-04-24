@@ -1,3 +1,6 @@
+//! This module defines the worker_config struct and related functions. It allows meshsim to
+//! deserialize a configuration file into a worker_config object that eventually creates a worker object.
+
 use worker::{Worker, SIMULATED_SCAN_DIR, DNS_SERVICE_PORT, OperationMode, Write, WorkerError, Radio};
 use std::path::Path;
 use std::fs::File;
@@ -63,9 +66,9 @@ impl WorkerConfig {
             obj.me.address = format!("{}/{}/{}.socket", obj.work_dir, SIMULATED_SCAN_DIR, obj.me.public_key);
         }
 
-        obj.radios[0].broadcast_groups = self.broadcast_groups.unwrap_or(vec![]);
-        obj.radios[0].reliability = self.reliability.unwrap_or(obj.radios[0].reliability);
-        obj.radios[0].delay = self.delay.unwrap_or(obj.radios[0].delay);
+        obj.short_radio.broadcast_groups = self.broadcast_groups.unwrap_or(vec![]);
+        obj.short_radio.reliability = self.reliability.unwrap_or(obj.short_radio.reliability);
+        obj.short_radio.delay = self.delay.unwrap_or(obj.short_radio.delay);
         obj.scan_interval = self.scan_interval.unwrap_or(obj.scan_interval);
         
         obj
@@ -97,7 +100,15 @@ impl WorkerConfig {
     }
 }
 
-    //**** WorkerConfig unit tests ****
+//**** WorkerConfig unit tests ****
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::fs::File;
+    use std::io::Read;
+    use super::*;
+    use std::env;
+
     //Unit test for: WorkerConfig_new
     #[test]
     fn test_workerconfig_new() {
@@ -114,7 +125,7 @@ impl WorkerConfig {
         //Just make sure thing function translates a WorkerConfig correctly into a Worker.
         let conf = WorkerConfig::new();
         let worker = conf.create_worker();
-        let default_worker_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [\"group1\"], radio_name: \"\" }], nearby_peers: {}, me: Peer { public_key: \"00000000000000000000000000000000\", name: \"worker1\", address: \"./bcgroups/00000000000000000000000000000000.socket\", address_type: Simulated }, work_dir: \".\", random_seed: 0, operation_mode: Simulated, scan_interval: 2000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
+        let default_worker_display = "Worker { short_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [\"group1\"], radio_name: \"\" }, long_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }, nearby_peers: {}, me: Peer { public_key: \"00000000000000000000000000000000\", name: \"worker1\", address: \"./bcgroups/00000000000000000000000000000000.socket\", address_type: Simulated }, work_dir: \".\", random_seed: 0, operation_mode: Simulated, scan_interval: 2000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
         assert_eq!(format!("{:?}", worker), String::from(default_worker_display));
     }
 
@@ -122,7 +133,7 @@ impl WorkerConfig {
     #[test]
     fn test_workerconfig_write_to_file() {
         let config = WorkerConfig::new();
-        let mut path = std::env::temp_dir();
+        let mut path = env::temp_dir();
         path.push("worker.toml");
 
         let val = config.write_to_file(&path).expect("Could not write configuration file.");
@@ -138,3 +149,4 @@ impl WorkerConfig {
         assert_eq!(expected_file_content, file_content);
 
     }
+}

@@ -52,11 +52,12 @@ use std::sync::{Arc, Mutex, PoisonError, MutexGuard};
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::net::{UnixStream, UnixListener};
 use worker::protocols::*;
+use worker::radio::*;
 
 //Sub-modules declaration
-///Modules that defines the functionality for the test specification.
 pub mod worker_config;
 pub mod protocols;
+pub mod radio;
 
 // *****************************
 // ********** Globals **********
@@ -291,120 +292,15 @@ impl FromStr for OperationMode {
     }
 }
 
-/// Represents a radio used by the worker to send a message to the network.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Radio {
-    /// delay parameter used by the test. Sets a number of millisecs
-    /// as base value for delay of messages. The actual delay for message sending 
-    /// will be a a percentage between the constants MESSAGE_DELAY_LOW and MESSAGE_DELAY_HIGH
-    delay : u32,
-    /// Reliability parameter used by the test. Sets a number of percentage
-    /// between (0 and 1] of probability that the message sent by this worker will
-    /// not reach its destination.
-    reliability : f64,
-    ///Broadcast group for this radio. Only used in simulated mode.
-    pub broadcast_groups : Vec<String>,
-    ///Name of the network interface that maps to this Radio object.
-    pub radio_name : String,
-}
-
-impl Radio {
-    /// Send a Worker::Message over the address implemented by the current Radio.
-    pub fn send(&self, msg : MessageHeader) -> Result<(), WorkerError> {
-        //should the message be sent?
-
-        //should the message be delayed?
-
-        match &msg.destination.address_type {
-            &OperationMode::Simulated => self.send_simulated_mode(msg) ,
-            &OperationMode::Device => self.send_device_mode(msg),
-        }
-    }
-
-    fn send_simulated_mode(&self, msg : MessageHeader) -> Result<(), WorkerError> {
-        let mut socket = try!(UnixStream::connect(&msg.destination.address));
-      
-        //info!("Sending message to {}, address {}.", destination.name, destination.address);
-        let data = try!(to_vec(&msg));
-        try!(socket.write_all(&data));
-        info!("Message sent successfully.");
-        Ok(())
-    }
-
-    fn send_device_mode(&self, msg : MessageHeader) -> Result<(), WorkerError> {
-        let mut socket = try!(TcpStream::connect(&msg.destination.address));
-        
-        //info!("Sending message to {}, address {}.", destination.name, destination.address);
-        let data = try!(to_vec(&msg));
-        try!(socket.write_all(&data));
-        info!("Message sent successfully.");
-        Ok(())
-    }
-
-    /// Constructor for new Radios
-    pub fn new() -> Radio {
-        Radio{ delay : 0,
-               reliability : 1.0,
-               broadcast_groups : vec![],
-               radio_name : String::from("") }
-    }
-
-    ///Function for adding broadcast groups in simulated mode
-    pub fn add_bcast_group(&mut self, group: String) {
-        self.broadcast_groups.push(group);
-    }
-
-    ///Publishes the service using the mDNS protocol so other devices can discover it.
-    pub fn publish_service(&self, service : ServiceRecord) -> Result<(), WorkerError> {
-        //Constructing the external process call
-        let mut command = Command::new("avahi-publish");
-        command.arg("-s");
-        command.arg(service.service_name);
-        command.arg(service.service_type);
-        command.arg(service.port.to_string());
-
-        for r in service.txt_records {
-            command.arg(format!(r"{}", r));
-        }
-
-        info!("Registering service with command: {:?}", command);
-
-        //Starting the worker process
-        let child = try!(command.spawn());
-        info!("Process {} started.", child.id());
-
-        Ok(())
-    }
-
-    ///Get the public address of the OS-NIC that maps to this Radio object.
-    ///It will return the first IPv4 address from a NIC that exactly matches the name.
-    pub fn get_radio_address<'a>(name : &'a str) -> Result<String, WorkerError> {
-        use self::pnet::datalink;
-        use self::ipnetwork;
-
-        for iface in datalink::interfaces() {
-            if &iface.name == name {
-                for address in iface.ips {
-                    match address {
-                        ipnetwork::IpNetwork::V4(addr) => {
-                            return Ok(addr.ip().to_string())
-                        },
-                        ipnetwork::IpNetwork::V6(_) => { /*Only using IPv4 for the moment*/ },
-                    }
-                }
-            }
-        }
-        Err(WorkerError::Configuration(String::from("Network interface specified in configuration not be found.")))
-    }
-}
-
 /// Worker struct.
 /// Main struct for the worker module. Must be created via the ::new(Vec<Param>) method.
 /// 
 #[derive(Debug, Clone)]
 pub struct Worker {
-    /// List of radios the worker uses for wireless communication.
-    pub radios : Vec<Radio>,
+    /// Short-range radio for the worker.
+    short_radio : Radio,
+    /// Long-range radio for the worker.
+    long_radio : Radio,
     /// The known neighbors of this worker.
     pub nearby_peers : HashSet<Peer>,
     ///Peer object describing this worker.
@@ -444,7 +340,14 @@ impl Worker {
         //Get the protocol object.
         let mut prot_handler = build_protocol_handler(Protocols::TMembership);
 
+        //Perform an initial peer scan that can be used to bootstrap the protocol.
+        let nearby_peers = try!(self.scan_for_peers(RadioTypes::ShortRange));
+        let wait_time = try!(prot_handler.update_nearby_peers(nearby_peers));
+        let _ = try!(self.start_scanner(wait_time));
+
         //Do protocol initialization
+        let initial_msg = try!(prot_handler.init_protocol());
+
         //TODO: move this to another thread.
         //Next, join the network
         //self.nearby_peers = try!(self.scan_for_peers(&(self.radios[0])));
@@ -469,7 +372,8 @@ impl Worker {
         //Fill the key bytes with random generated numbers
         //let mut gen = OsRng::new().expect("Failed to get OS random generator");
         //gen.fill_bytes(&mut key[..]);
-        let radio = Radio::new();
+        let short_radio = Radio::new();
+        let long_radio = Radio::new();
         let mut me = Peer::new();
         me.public_key = key.to_hex().to_string();
         //Global peer list
@@ -478,7 +382,8 @@ impl Worker {
         //Suspected peer list
         let sp : Vec<Peer> = Vec::new();
         let sl = Arc::new(Mutex::new(sp));
-        Worker{ radios: vec![radio], 
+        Worker{ short_radio: short_radio, 
+                long_radio: long_radio,
                 nearby_peers: HashSet::new(), 
                 me: me,
                 operation_mode : OperationMode::Simulated,
@@ -490,7 +395,8 @@ impl Worker {
     }
 
     ///Function for scanning for nearby peers. Scanning method depends on Operation_Mode.
-    pub fn scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
+    pub fn scan_for_peers(&self, t : RadioTypes) -> Result<HashSet<Peer>, WorkerError> {
+        let radio = self.get_radio(t);
         match self.operation_mode {
             OperationMode::Simulated => { 
                 //debug!("Scanning for peers in simulated_mode.");
@@ -626,7 +532,7 @@ impl Worker {
 
             //check current group dir is there
             let mut main_address = String::new();
-            let groups = self.radios[0].broadcast_groups.clone();
+            let groups = self.short_radio.broadcast_groups.clone();
             for group in groups.iter() {
                 dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/&group
                 
@@ -673,6 +579,28 @@ impl Worker {
         Ok(())
     }
 
+    ///Publishes the service using the mDNS protocol so other devices can discover it.
+    fn publish_service(&self, service : ServiceRecord) -> Result<(), WorkerError> {
+        //Constructing the external process call
+        let mut command = Command::new("avahi-publish");
+        command.arg("-s");
+        command.arg(service.service_name);
+        command.arg(service.service_type);
+        command.arg(service.port.to_string());
+
+        for r in service.txt_records {
+            command.arg(format!(r"{}", r));
+        }
+
+        info!("Registering service with command: {:?}", command);
+
+        //Starting the worker process
+        let child = try!(command.spawn());
+        info!("Process {} started.", child.id());
+
+        Ok(())
+    }
+
     fn handle_client_simulated(&mut self, mut client_socket : UnixStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> { 
         //Read the data from the unix socket
         let mut data = Vec::new();
@@ -686,7 +614,7 @@ impl Worker {
         let response = try!(protocol.handle_message(msg));
         match response {
             Some(msg) => { 
-                self.radios[0].send(msg)
+                self.short_radio.send(msg)
             },
             None => {
                 Ok(())
@@ -707,7 +635,7 @@ impl Worker {
         let response = try!(protocol.handle_message(msg));
         match response {
             Some(msg) => { 
-                self.radios[0].send(msg)
+                self.short_radio.send(msg)
             },
             None => {
                 //End of protocol sequence.
@@ -752,7 +680,7 @@ impl Worker {
         service.port = DNS_SERVICE_PORT;
         service.txt_records.push(format!("PUBLIC_KEY={}", self.me.public_key));
         service.txt_records.push(format!("NAME={}", self.me.name));
-        try!(self.radios[0].publish_service(service));
+        try!(self.publish_service(service));
 
         //Now listen for messages
         info!("Listening for messages.");
@@ -781,6 +709,21 @@ impl Worker {
             },
         }
     }
+
+    fn get_radio<'a>(&self, t : RadioTypes) -> &Radio {
+        match t {
+            RadioTypes::ShortRange => { 
+                &self.short_radio
+            },
+            RadioTypes::LongRange => { 
+                &self.long_radio
+            },
+        }
+    }
+
+    fn start_scanner(&self, initial_wait : usize) -> Result<(), WorkerError> {
+        Ok(())
+    }
 }
 
 // *****************************
@@ -803,6 +746,7 @@ fn extract_address_key<'a>(address : &'a str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use worker::worker_config::*;
 
     //**** Message unit tests ****
 
@@ -824,7 +768,7 @@ mod tests {
     #[test]
     fn test_worker_new() {
         let w = Worker::new();
-        let w_display = "Worker { radios: [Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }], nearby_peers: {}, me: Peer { public_key: \"00000000000000000000000000000000\", name: \"\", address: \"\", address_type: Simulated }, work_dir: \"\", random_seed: 0, operation_mode: Simulated, scan_interval: 1000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
+        let w_display = "Worker { short_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }, long_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }, nearby_peers: {}, me: Peer { public_key: \"00000000000000000000000000000000\", name: \"\", address: \"\", address_type: Simulated }, work_dir: \"\", random_seed: 0, operation_mode: Simulated, scan_interval: 1000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
         assert_eq!(format!("{:?}", w), String::from(w_display));
     }
 
@@ -834,7 +778,7 @@ mod tests {
         let mut config = WorkerConfig::new();
         config.work_dir = String::from("/tmp");
         let mut w = config.create_worker();
-        w.radios[0].broadcast_groups.push(String::from("group2"));
+        w.short_radio.broadcast_groups.push(String::from("group2"));
         let res = w.init();
 
         //Check result is not error

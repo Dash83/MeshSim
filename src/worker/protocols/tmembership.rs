@@ -71,6 +71,20 @@ impl Protocol for TMembership {
         let msg = try!(TMembership::build_protocol_message(data));
         self.handle_message_internal(header, msg)
     }
+
+        fn init_protocol(&mut self) -> Result<Option<MessageHeader>, WorkerError>{
+            //Update peers with initial scan data.
+
+            //Craft join messages for a subset of said peers.
+
+            //Start thread for heartbeat messages.
+
+            Ok(None)
+        }
+
+        fn update_nearby_peers(&mut self, peers : HashSet<Peer>) -> Result<usize, WorkerError> {
+            Ok(1)
+        }
 }
 
 impl TMembership {
@@ -89,14 +103,13 @@ impl TMembership {
                                 self.process_join_message(hdr, m)
                             },
                             Messages::Ack(msg) => {
-                                //self.process_ack_message(msg)
-                                Ok(None)
+                                self.process_ack_message(hdr, msg)
                             },
-                            Messages::Heartbeat(msg) => {
+                            Messages::Heartbeat(_msg) => {
                                 //self.process_heartbeat_message(msg)
                                 Ok(None)
                             },
-                            Messages::Alive(msg) => {
+                            Messages::Alive(_msg) => {
                                 //self.process_alive_message(msg)
                                 Ok(None)
                             }
@@ -109,25 +122,25 @@ impl TMembership {
         res
     }
 
-/*
-    /// The first message of the protocol. 
-    /// When to send: At start-up, after doing a scan of nearby peers.
-    /// Receiver: All Nearby peers.
-    /// Payload: Self Peer object.
-    /// Actions: None.
-    fn send_join_message(&self) {
-        for r in &self.radios {
-            //Send messge to each Peer reachable by this radio
-            for p in &self.nearby_peers {
-                info!("Sending join message to {}, address {}", p.name, p.public_key);
-                let data = JoinMessage { sender : self.me.clone()};
-                let msg = MessageType::Join(data);
-                let _ = r.send(msg, p);
-            }
 
-        }
-    }
-*/
+    // /// The first message of the protocol. 
+    // /// When to send: At start-up, after doing a scan of nearby peers.
+    // /// Receiver: All Nearby peers.
+    // /// Payload: Self Peer object.
+    // /// Actions: None.
+    // fn create_join_message(&self) {
+    //     for r in &self.radios {
+    //         //Send messge to each Peer reachable by this radio
+    //         for p in &self.nearby_peers {
+    //             info!("Sending join message to {}, address {}", p.name, p.public_key);
+    //             let data = JoinMessage { sender : self.me.clone()};
+    //             let msg = MessageType::Join(data);
+    //             let _ = r.send(msg, p);
+    //         }
+
+    //     }
+    // }
+
     /// A response to a new peer joining the network.
     /// When to send: After receiving a join message.
     /// Sender: A new peer in range of the current node, trying to join the network.
@@ -135,7 +148,7 @@ impl TMembership {
     /// Actions:
     ///   1. Add sender to global node list and nearby peer list.
     ///   2. Construct an ACK message and reply with it.
-    fn process_join_message(&mut self, hdr : MessageHeader, msg : JoinMessage) -> Result<Option<MessageHeader>, WorkerError> {
+    fn process_join_message(&mut self, hdr : MessageHeader, _msg : JoinMessage) -> Result<Option<MessageHeader>, WorkerError> {
         let mut response = MessageHeader::new();
         
         info!("Received JOIN message from {}", hdr.sender.name);
@@ -154,8 +167,7 @@ impl TMembership {
         let gnl = Arc::clone(&self.network_members);
         {
             //LOCK : GET : GNL
-            // let mut gnl = try!(gnl.lock());
-            let mut gnl = gnl.lock().unwrap();
+            let mut gnl = try!(gnl.lock());
 
             //Build the internal message of the response
             let msg_data = AckMessage{ global_peer_list : gnl.clone()};
@@ -176,30 +188,35 @@ impl TMembership {
 
         Ok(Some(response))
     }
-/*
+
     /// The final part of the protocol's initial handshake
     /// When to send: After receiving an ACK message.
     /// Sender: A peer in the network that received a JOIN message.
     /// Payload: global node list.
     /// Actions:
     ///   1. Add the difference between the payload and current GNL to the GNL.
-    fn process_ack_message(&mut self, msg: AckMessage) -> Result<(), WorkerError> {
-        info!("Received ACK message from {}", msg.sender.name);
+    fn process_ack_message(&mut self, hdr : MessageHeader, msg : AckMessage) -> Result<Option<MessageHeader>, WorkerError> {        
+        info!("Received ACK message from {}", hdr.sender.name);
+
         //Obtain a reference to our current GNL.
-        let gnl = self.global_peer_list.clone();
-        //Obtain a lock to the underlying data.
-        let mut gnl = gnl.lock().unwrap();
+        let gnl = Arc::clone(&self.network_members);
+        {
+            //LOCK : GET : GNL
+            let mut gnl = try!(gnl.lock());
 
-        //This worker just started, but might be getting an ACK message from many
-        //nearby peers. Diff the incoming set with the current set using an outer join.
-        let gnl_snapshot = gnl.clone();
-        for p in msg.global_peer_list.difference(&gnl_snapshot) {
-            info!("Adding peer {}/{} to list.", p.name, p.public_key);
-            gnl.insert(p.clone());
-        }
-        Ok(())
+            //Get the peers (if any) in the senders GNL that are not in the current node's list.
+            let gnl_cache = gnl.clone();
+            let diff = msg.global_peer_list.difference(&gnl_cache);
+            //Add those elements to the current GNL
+            let _res = diff.map(|x| { 
+                            info!("Adding peer {}/{} to list.", x.name, x.public_key);            
+                            gnl.insert(x.clone());
+                       });
+        } //LOCK : RELEASE : GNL
+
+        Ok(None) //Protocol handshake ends here.
     }
-
+/*
     /// A message that is sent periodically to a given amount of members
     /// of the nearby list to check if they are still alive.
     /// When to send: After the heartbeat timer expires.
