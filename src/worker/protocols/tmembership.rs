@@ -10,6 +10,7 @@ use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
 
 ///The main struct for this protocol. Implements the worker::protocol::Protocol trait.
+#[derive(Debug)]
 pub struct TMembership {
     neighbours : Arc<Mutex<HashSet<Peer>>>,
     network_members : Arc<Mutex<HashSet<Peer>>>,

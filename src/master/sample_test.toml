@@ -6,107 +6,158 @@ worker_name = "node1"
 random_seed = 123
 work_dir = "/tmp"
 operation_mode = "Simulated"
-reliability = 1
-delay = 0
-scan_interval = 2000
-broadcast_groups = ["group1"]
-interface_name = "wlan0"
+[[radio_short]] #Short-range radio
+reliability = 1 #Not used in device_mode
+delay = 0 #Not used in device_mode
+broadcast_groups = ["group1"] #Not used in device_mode
+interface_name = "wlan0" #Not used in simulated_mode
+[[radios-long]] #Long-range radio
+reliability = 1 #Not used in device_mode
+delay = 0 #Not used in device_mode
+broadcast_groups = ["group1"] #Not used in device_mode
+interface_name = "wlan1" #Not used in simulated_mode
 
 [[nodes]]
 worker_name = "node2"
 random_seed = 456
 work_dir = "/tmp"
 operation_mode = "Simulated"
-reliability = 1
-delay = 0
-scan_interval = 2000
-broadcast_groups = ["group1", "group2"]
-interface_name = "wlan0"
+[[radio_short]] #Short-range radio
+reliability = 1 #Not used in device_mode
+delay = 0 #Not used in device_mode
+broadcast_groups = ["group1", "group2"] #Not used in device_mode
+interface_name = "wlan0" #Not used in simulated_mode
+[[radio-long]] #Long-range radio
+reliability = 1 #Not used in device_mode
+delay = 0 #Not used in device_mode
+broadcast_groups = ["group1", "group2"] #Not used in device_mode
+interface_name = "wlan1" #Not used in simulated_mode
 
-[[nodes]]
-worker_name = "node3"
-random_seed = 789
-work_dir = "/tmp"
-operation_mode = "Simulated"
-reliability = 1
-delay = 0
-scan_interval = 2000
-broadcast_groups = ["group1", "group2", "group3"]
-interface_name = "wlan0"
+# [[nodes]]
+# worker_name = "node3"
+# random_seed = 789
+# work_dir = "/tmp"
+# operation_mode = "Simulated"
+# [[radios]] #Short-range radio
 
-[[nodes]]
-worker_name = "node4"
-random_seed = 12
-work_dir = "/tmp"
-operation_mode = "Simulated"
-reliability = 1
-delay = 0
-scan_interval = 2000
-broadcast_groups = ["group1", "group3"]
-interface_name = "wlan0"
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group1", "group2", "group3"] #Not used in device_mode
+# interface_name = "wlan0" #Not used in simulated_mode
+# [[radios]] #Long-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group1", "group2", "group3"] #Not used in device_mode
+# interface_name = "wlan1" #Not used in simulated_mode
 
-[[nodes]]
-worker_name = "node5"
-random_seed = 34
-work_dir = "/tmp"
-operation_mode = "Simulated"
-reliability = 1
-delay = 0
-scan_interval = 2000
-broadcast_groups = ["group3"]
-interface_name = "wlan0"
+# [[nodes]]
+# worker_name = "node4"
+# random_seed = 12
+# work_dir = "/tmp"
+# operation_mode = "Simulated"
+# [[radios]] #Short-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group1", "group3"] #Not used in device_mode
+# interface_name = "wlan0" #Not used in simulated_mode
+# [[radios]] #Long-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group1", "group3"] #Not used in device_mode
+# interface_name = "wlan1" #Not used in simulated_mode
 
-[[nodes]]
-worker_name = "node6"
-random_seed = 56
-work_dir = "/tmp"
-operation_mode = "Simulated"
-reliability = 1
-delay = 0
-scan_interval = 2000
-broadcast_groups = ["group2"]
-interface_name = "wlan0"
+# [[nodes]]
+# worker_name = "node5"
+# random_seed = 34
+# work_dir = "/tmp"
+# operation_mode = "Simulated"
+# [[radios]] #Short-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group3"] #Not used in device_mode
+# interface_name = "wlan0" #Not used in simulated_mode
+# [[radios]] #Long-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group3"] #Not used in device_mode
+# interface_name = "wlan1" #Not used in simulated_mode
 
-[[nodes]]
-worker_name = "node7"
-random_seed = 78
-work_dir = "/tmp"
-operation_mode = "Simulated"
-reliability = 1
-delay = 0
-scan_interval = 2000
-broadcast_groups = ["group2", "group4"]
-interface_name = "wlan0"
+# [[nodes]]
+# worker_name = "node6"
+# random_seed = 56
+# work_dir = "/tmp"
+# operation_mode = "Simulated"
+# [[radios]] #Short-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group2"] #Not used in device_mode
+# interface_name = "wlan0" #Not used in simulated_mode
+# [[radios]] #Long-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group2"] #Not used in device_mode
+# interface_name = "wlan1" #Not used in simulated_mode
 
-[[nodes]]
-worker_name = "node8"
-random_seed = 90
-work_dir = "/tmp"
-operation_mode = "Simulated"
-reliability = 1
-delay = 0
-scan_interval = 2000
-broadcast_groups = ["group4"]
-interface_name = "wlan0"
+# [[nodes]]
+# worker_name = "node7"
+# random_seed = 78
+# work_dir = "/tmp"
+# operation_mode = "Simulated"
+# [[radios]] #Short-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group2", "group4"] #Not used in device_mode
+# interface_name = "wlan0" #Not used in simulated_mode
+# [[radios]] #Long-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group2", "group4"] #Not used in device_mode
+# interface_name = "wlan1" #Not used in simulated_mode
 
-[[nodes]]
-worker_name = "node9"
-random_seed = 1234
-work_dir = "/tmp"
-operation_mode = "Simulated"
-reliability = 1
-delay = 0
-scan_interval = 2000
-broadcast_groups = ["group4"]
-interface_name = "wlan0"
+# [[nodes]]
+# worker_name = "node8"
+# random_seed = 90
+# work_dir = "/tmp"
+# operation_mode = "Simulated"
+# [[radios]] #Short-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group4"] #Not used in device_mode
+# interface_name = "wlan0" #Not used in simulated_mode
+# [[radios]] #Long-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group4"] #Not used in device_mode
+# interface_name = "wlan1" #Not used in simulated_mode
 
-[[nodes]]
-worker_name = "node10"
-random_seed = 5678
-work_dir = "/tmp"
-operation_mode = "Simulated"
-reliability = 1
-delay = 0
-scan_interval = 2000
-broadcast_groups = ["group3"]
-interface_name = "wlan0"
+# [[nodes]]
+# worker_name = "node9"
+# random_seed = 1234
+# work_dir = "/tmp"
+# operation_mode = "Simulated"
+# [[radios]] #Short-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group4"] #Not used in device_mode
+# interface_name = "wlan0" #Not used in simulated_mode
+# [[radios]] #Long-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group4"] #Not used in device_mode
+# interface_name = "wlan1" #Not used in simulated_mode
+
+# [[nodes]]
+# worker_name = "node10"
+# random_seed = 5678
+# work_dir = "/tmp"
+# operation_mode = "Simulated"
+# [[radios]] #Short-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group3"] #Not used in device_mode
+# interface_name = "wlan0" #Not used in simulated_mode
+# [[radios]] #Long-range radio
+# reliability = 1 #Not used in device_mode
+# delay = 0 #Not used in device_mode
+# broadcast_groups = ["group3"] #Not used in device_mode
+# interface_name = "wlan1" #Not used in simulated_mode

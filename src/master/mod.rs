@@ -140,7 +140,7 @@ impl Master {
     }
 
     /// Adds a single worker to the worker vector with a specified name and starts the worker process
-    pub fn add_worker(&mut self, config : WorkerConfig) -> Result<(), MasterError> {
+    pub fn add_worker(&mut self, mut config : WorkerConfig) -> Result<(), MasterError> {
         let worker_name = config.worker_name.clone();
         let file_name = format!("{}.toml", &worker_name);
         let mut file_dir = PathBuf::new();
@@ -167,15 +167,15 @@ impl Master {
     }
 
     ///Runs the test defined in the specification passed to the master.
-    pub fn run_test(&mut self, spec : test_specification::TestSpec) -> Result<(), MasterError> {
-        info!("Running test {}", spec.name);
+    pub fn run_test(&mut self, mut spec : test_specification::TestSpec) -> Result<(), MasterError> {
+        info!("Running test {}", &spec.name);
         info!("Test results will be placed under {}", &self.work_dir);
 
         //Add all workers to the master. They will be started right away. 
-        for mut config in spec.nodes {
+        for (_, val) in spec.nodes.iter_mut() {
             //Since the workers are running as part of the master, change their work_dirs to be relative to the master.
-            config.work_dir = self.work_dir.clone();
-            try!(self.add_worker(config));
+            val.work_dir = self.work_dir.clone();
+            try!(self.add_worker(val.clone()));
         }
 
         //Run all test actions.

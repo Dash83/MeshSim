@@ -294,15 +294,13 @@ impl FromStr for OperationMode {
 
 /// Worker struct.
 /// Main struct for the worker module. Must be created via the ::new(Vec<Param>) method.
-/// 
-#[derive(Debug, Clone)]
+//#[derive(Debug, Clone)]
+//#[derive(Debug)]
 pub struct Worker {
     /// Short-range radio for the worker.
-    short_radio : Radio,
+    short_radio : Box<Radio>,
     /// Long-range radio for the worker.
-    long_radio : Radio,
-    /// The known neighbors of this worker.
-    pub nearby_peers : HashSet<Peer>,
+    long_radio : Box<Radio>,
     ///Peer object describing this worker.
     pub me : Peer,
     ///Directory for the worker to operate. Must have RW access to it. Operational files and 
@@ -312,13 +310,15 @@ pub struct Worker {
     random_seed : u32,
     ///Simulated or Device operation.
     operation_mode : OperationMode,
-    ///How often (ms) should the worker scan for new peers.
-    scan_interval : u32,
-    ///The list of all known active members of the network. They might not all be in broadcast
-    ///range of this worker.
-    pub global_peer_list : Arc<Mutex<HashSet<Peer>>>, //Membership protocol structure.
-    ///The list of peers suspected to be dead/out of range.
-    suspected_list : Arc<Mutex<Vec<Peer>>>,
+    // ///How often (ms) should the worker scan for new peers.
+    // scan_interval : u32,
+    // ///The list of all known active members of the network. They might not all be in broadcast
+    // ///range of this worker.
+    // pub global_peer_list : Arc<Mutex<HashSet<Peer>>>, //Membership protocol structure.
+    // ///The list of peers suspected to be dead/out of range.
+    // suspected_list : Arc<Mutex<Vec<Peer>>>,
+    // /// The known neighbors of this worker.
+    // pub nearby_peers : HashSet<Peer>,
 }
 
 impl Worker {
@@ -341,9 +341,9 @@ impl Worker {
         let mut prot_handler = build_protocol_handler(Protocols::TMembership);
 
         //Perform an initial peer scan that can be used to bootstrap the protocol.
-        let nearby_peers = try!(self.scan_for_peers(RadioTypes::ShortRange));
-        let wait_time = try!(prot_handler.update_nearby_peers(nearby_peers));
-        let _ = try!(self.start_scanner(wait_time));
+        // let nearby_peers = try!(self.scan_for_peers(RadioTypes::ShortRange));
+        // let wait_time = try!(prot_handler.update_nearby_peers(nearby_peers));
+        // let _ = try!(self.start_scanner(wait_time));
 
         //Do protocol initialization
         let initial_msg = try!(prot_handler.init_protocol());
@@ -372,8 +372,10 @@ impl Worker {
         //Fill the key bytes with random generated numbers
         //let mut gen = OsRng::new().expect("Failed to get OS random generator");
         //gen.fill_bytes(&mut key[..]);
-        let short_radio = Radio::new();
-        let long_radio = Radio::new();
+        //let short_radio = Radio::new();
+        //let long_radio = Radio::new();
+        let short_radio = Box::new(DeviceRadio{radio_name : String::from("Radio1")});
+        let long_radio = Box::new(DeviceRadio{radio_name : String::from("Radio2")});
         let mut me = Peer::new();
         me.public_key = key.to_hex().to_string();
         //Global peer list
@@ -384,116 +386,112 @@ impl Worker {
         let sl = Arc::new(Mutex::new(sp));
         Worker{ short_radio: short_radio, 
                 long_radio: long_radio,
-                nearby_peers: HashSet::new(), 
                 me: me,
                 operation_mode : OperationMode::Simulated,
                 random_seed : 0u32,
-                scan_interval : 1000u32,
-                work_dir : String::new(),
-                global_peer_list : gpl,
-                suspected_list : sl }
+                work_dir : String::new() }
     }
 
-    ///Function for scanning for nearby peers. Scanning method depends on Operation_Mode.
-    pub fn scan_for_peers(&self, t : RadioTypes) -> Result<HashSet<Peer>, WorkerError> {
-        let radio = self.get_radio(t);
-        match self.operation_mode {
-            OperationMode::Simulated => { 
-                //debug!("Scanning for peers in simulated_mode.");
-                self.simulated_scan_for_peers(&radio)
-            },
-            OperationMode::Device => {
-                //debug!("Scanning for peers in device_mode.");
-                self.device_scan_for_peers(&radio)
-            },
-        }
-    }
+    // ///Function for scanning for nearby peers. Scanning method depends on Operation_Mode.
+    // pub fn scan_for_peers(&self, t : RadioTypes) -> Result<HashSet<Peer>, WorkerError> {
+    //     let radio = self.get_radio(t);
+    //     match self.operation_mode {
+    //         OperationMode::Simulated => { 
+    //             //debug!("Scanning for peers in simulated_mode.");
+    //             self.simulated_scan_for_peers(&radio)
+    //         },
+    //         OperationMode::Device => {
+    //             //debug!("Scanning for peers in device_mode.");
+    //             self.device_scan_for_peers(&radio)
+    //         },
+    //     }
+    // }
 
-    fn device_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
-        let mut peers = HashSet::new();
+    // fn device_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
+    //     let mut peers = HashSet::new();
 
-        //Constructing the external process call
-        let mut command = Command::new("avahi-browse");
-        command.arg("-r");
-        command.arg("-p");
-        command.arg("-t");
-        command.arg("-l");
-        command.arg("_http._tcp");
+    //     //Constructing the external process call
+    //     let mut command = Command::new("avahi-browse");
+    //     command.arg("-r");
+    //     command.arg("-p");
+    //     command.arg("-t");
+    //     command.arg("-l");
+    //     command.arg("_http._tcp");
 
-        //Starting the worker process
-        let mut child = try!(command.stdout(Stdio::piped()).spawn());
-        let exit_status = child.wait().unwrap();
+    //     //Starting the worker process
+    //     let mut child = try!(command.stdout(Stdio::piped()).spawn());
+    //     let exit_status = child.wait().unwrap();
 
-        if exit_status.success() {
-            let mut buffer = String::new();
-            let mut output = child.stdout.unwrap();
-            output.read_to_string(&mut buffer)?;
+    //     if exit_status.success() {
+    //         let mut buffer = String::new();
+    //         let mut output = child.stdout.unwrap();
+    //         output.read_to_string(&mut buffer)?;
 
-            for l in buffer.lines() {
-                let tokens : Vec<&str> = l.split(';').collect();
-                if tokens.len() > 6 {
-                    let serv = ServiceRecord{ service_name : String::from(tokens[3]),
-                                            service_type: String::from(tokens[4]), 
-                                            host_name : String::from(tokens[6]), 
-                                            address : String::from(tokens[7]), 
-                                            address_type : String::from(tokens[2]), 
-                                            port : u16::from_str_radix(tokens[8], 10).unwrap(),
-                                            txt_records : Vec::new() };
+    //         for l in buffer.lines() {
+    //             let tokens : Vec<&str> = l.split(';').collect();
+    //             if tokens.len() > 6 {
+    //                 let serv = ServiceRecord{ service_name : String::from(tokens[3]),
+    //                                         service_type: String::from(tokens[4]), 
+    //                                         host_name : String::from(tokens[6]), 
+    //                                         address : String::from(tokens[7]), 
+    //                                         address_type : String::from(tokens[2]), 
+    //                                         port : u16::from_str_radix(tokens[8], 10).unwrap(),
+    //                                         txt_records : Vec::new() };
                     
-                    if serv.service_name.starts_with(DNS_SERVICE_NAME) {
-                        //Found a Peer
-                        let mut p = Peer::new();
-                        //TODO: Deconstruct these Options in a classier way. If not, might as well return emptry string on failure.
-                        p.public_key = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from("(NO_KEY)"));
-                        p.name = serv.get_txt_record("NAME").unwrap_or(String::from("(NO_NAME)"));
-                        p.address = format!("{}:{}", serv.address, DNS_SERVICE_PORT);
-                        p.address_type = OperationMode::Device;
-                        //p.service_record = serv;
-                        info!("Found peer {}, address {}", p.name, p.address);
-                        peers.insert(p);
-                    }
-                }
-            }
-        }
-        Ok(peers)
-    }
+    //                 if serv.service_name.starts_with(DNS_SERVICE_NAME) {
+    //                     //Found a Peer
+    //                     let mut p = Peer::new();
+    //                     //TODO: Deconstruct these Options in a classier way. If not, might as well return emptry string on failure.
+    //                     p.public_key = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from("(NO_KEY)"));
+    //                     p.name = serv.get_txt_record("NAME").unwrap_or(String::from("(NO_NAME)"));
+    //                     p.address = format!("{}:{}", serv.address, DNS_SERVICE_PORT);
+    //                     p.address_type = OperationMode::Device;
+    //                     //p.service_record = serv;
+    //                     info!("Found peer {}, address {}", p.name, p.address);
+    //                     peers.insert(p);
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     Ok(peers)
+    // }
 
-    fn simulated_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
-        let mut peers = HashSet::new();
+    // fn simulated_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
+    //     let mut peers = HashSet::new();
 
-        //Obtain parent directory of broadcast groups
-        let mut parent_dir = Path::new(&self.me.address).to_path_buf();
-        let _ = parent_dir.pop(); //bcast group for main address
-        let _ = parent_dir.pop(); //bcast group parent directory
+    //     //Obtain parent directory of broadcast groups
+    //     let mut parent_dir = Path::new(&self.me.address).to_path_buf();
+    //     let _ = parent_dir.pop(); //bcast group for main address
+    //     let _ = parent_dir.pop(); //bcast group parent directory
 
-        info!("Scanning for nearby peers...");
-        debug!("Scanning in dir {}", parent_dir.display());
-        for group in &radio.broadcast_groups {
-            let dir = format!("{}{}{}", parent_dir.display(), std::path::MAIN_SEPARATOR, group);
-            if Path::new(&dir).is_dir() {
-                for path in fs::read_dir(dir)? {
-                    let peer_file = try!(path);
-                    let peer_file = peer_file.path();
-                    let peer_file = peer_file.to_str().unwrap_or("");
-                    let peer_key = extract_address_key(&peer_file);
-                    if !peer_key.is_empty() && peer_key != self.me.public_key {
-                        info!("Found {}!", &peer_key);
-                        let address = format!("{}", peer_file);
-                        let peer = Peer{name : String::from(""), 
-                                        public_key : String::from(peer_key), 
-                                        address : address,
-                                        address_type : OperationMode::Simulated };
-                        peers.insert(peer);
-                    }
-                }
-            }
-        }
-        //Remove self from peers
-        //let own_key = Path::new(&self.address).file_name().unwrap();
-        //let own_key = own_key.to_str().unwrap_or("").to_string();
-        //peers.remove(&own_key);
-        Ok(peers)
-    }
+    //     info!("Scanning for nearby peers...");
+    //     debug!("Scanning in dir {}", parent_dir.display());
+    //     for group in &radio.broadcast_groups {
+    //         let dir = format!("{}{}{}", parent_dir.display(), std::path::MAIN_SEPARATOR, group);
+    //         if Path::new(&dir).is_dir() {
+    //             for path in fs::read_dir(dir)? {
+    //                 let peer_file = try!(path);
+    //                 let peer_file = peer_file.path();
+    //                 let peer_file = peer_file.to_str().unwrap_or("");
+    //                 let peer_key = extract_address_key(&peer_file);
+    //                 if !peer_key.is_empty() && peer_key != self.me.public_key {
+    //                     info!("Found {}!", &peer_key);
+    //                     let address = format!("{}", peer_file);
+    //                     let peer = Peer{name : String::from(""), 
+    //                                     public_key : String::from(peer_key), 
+    //                                     address : address,
+    //                                     address_type : OperationMode::Simulated };
+    //                     peers.insert(peer);
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     //Remove self from peers
+    //     //let own_key = Path::new(&self.address).file_name().unwrap();
+    //     //let own_key = own_key.to_str().unwrap_or("").to_string();
+    //     //peers.remove(&own_key);
+    //     Ok(peers)
+    // }
 
     fn init(&mut self) -> Result<(), WorkerError> {
         //Create the key-pair for the worker.
@@ -530,49 +528,49 @@ impl Worker {
                 //info!("Created dir file {} ", dir.as_path().display());
             }
 
-            //check current group dir is there
-            let mut main_address = String::new();
-            let groups = self.short_radio.broadcast_groups.clone();
-            for group in groups.iter() {
-                dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/&group
+            // //check current group dir is there
+            // let mut main_address = String::new();
+            // let groups = self.short_radio.broadcast_groups.clone();
+            // for group in groups.iter() {
+            //     dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/&group
                 
-                //Does broadcast group exist?
-                if !dir.exists() {
-                    //Create group dir
-                    try!(std::fs::create_dir(dir.as_path()));
-                    //info!("Created dir file {} ", dir.as_path().display());
-                }
+            //     //Does broadcast group exist?
+            //     if !dir.exists() {
+            //         //Create group dir
+            //         try!(std::fs::create_dir(dir.as_path()));
+            //         //info!("Created dir file {} ", dir.as_path().display());
+            //     }
 
-                //Create address or symlink for this worker
-                if main_address.is_empty() {
-                    main_address = format!("{}/{}.socket", dir.as_path().display(), self.me.public_key);
-                    if Path::new(&main_address).exists() {
-                        //Pipe already exists.
-                        try!(fs::remove_file(&main_address));
-                    }
-                    let _ = try!(File::create(&main_address));
-                    //debug!("Pipe file {} created.", &main_address);
-                    //debug!("Radio address set to {}.", &main_address);
-                    self.me.address = format!("{}", main_address);
-                } else {
-                    let linked_address = format!("{}/{}.socket", dir.as_path().display(), self.me.public_key);
-                    if Path::new(&linked_address).exists() {
-                        //Pipe already exists
-                        dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
-                        continue;
-                    }
-                    let _ = try!(std::os::unix::fs::symlink(&main_address, &linked_address));
-                    //debug!("Pipe file {} created.", &linked_address);
-                }
+            //     //Create address or symlink for this worker
+            //     if main_address.is_empty() {
+            //         main_address = format!("{}/{}.socket", dir.as_path().display(), self.me.public_key);
+            //         if Path::new(&main_address).exists() {
+            //             //Pipe already exists.
+            //             try!(fs::remove_file(&main_address));
+            //         }
+            //         let _ = try!(File::create(&main_address));
+            //         //debug!("Pipe file {} created.", &main_address);
+            //         //debug!("Radio address set to {}.", &main_address);
+            //         self.me.address = format!("{}", main_address);
+            //     } else {
+            //         let linked_address = format!("{}/{}.socket", dir.as_path().display(), self.me.public_key);
+            //         if Path::new(&linked_address).exists() {
+            //             //Pipe already exists
+            //             dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
+            //             continue;
+            //         }
+            //         let _ = try!(std::os::unix::fs::symlink(&main_address, &linked_address));
+            //         //debug!("Pipe file {} created.", &linked_address);
+            //     }
                 
-                dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
+            //     dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
 
-            }
-            //Now, remove the main address socket file. This will create broken symlinks in the broadcast
-            //groups that this worker belongs to beyond the first one, but it's needed for the UnixListener
-            //type that the file doesn't exist before starting to listen on it.
-            //If the operation fails, we should error-out since the listener won't be able to start.
-            let _ = fs::remove_file(main_address)?;
+            // }
+            // //Now, remove the main address socket file. This will create broken symlinks in the broadcast
+            // //groups that this worker belongs to beyond the first one, but it's needed for the UnixListener
+            // //type that the file doesn't exist before starting to listen on it.
+            // //If the operation fails, we should error-out since the listener won't be able to start.
+            // let _ = fs::remove_file(main_address)?;
 
         }
 
@@ -710,16 +708,16 @@ impl Worker {
         }
     }
 
-    fn get_radio<'a>(&self, t : RadioTypes) -> &Radio {
-        match t {
-            RadioTypes::ShortRange => { 
-                &self.short_radio
-            },
-            RadioTypes::LongRange => { 
-                &self.long_radio
-            },
-        }
-    }
+    // fn get_radio<'a>(&self, t : RadioTypes) -> &Radio {
+    //     match t {
+    //         RadioTypes::ShortRange => { 
+    //             &self.short_radio
+    //         },
+    //         RadioTypes::LongRange => { 
+    //             &self.long_radio
+    //         },
+    //     }
+    // }
 
     fn start_scanner(&self, initial_wait : usize) -> Result<(), WorkerError> {
         Ok(())
@@ -765,25 +763,25 @@ mod tests {
     
     //**** Worker unit tests ****
     //Unit test for: Worker::new
-    #[test]
-    fn test_worker_new() {
-        let w = Worker::new();
-        let w_display = "Worker { short_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }, long_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }, nearby_peers: {}, me: Peer { public_key: \"00000000000000000000000000000000\", name: \"\", address: \"\", address_type: Simulated }, work_dir: \"\", random_seed: 0, operation_mode: Simulated, scan_interval: 1000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
-        assert_eq!(format!("{:?}", w), String::from(w_display));
-    }
+    // #[test]
+    // fn test_worker_new() {
+    //     let w = Worker::new();
+    //     let w_display = "Worker { short_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }, long_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }, nearby_peers: {}, me: Peer { public_key: \"00000000000000000000000000000000\", name: \"\", address: \"\", address_type: Simulated }, work_dir: \"\", random_seed: 0, operation_mode: Simulated, scan_interval: 1000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
+    //     assert_eq!(format!("{:?}", w), String::from(w_display));
+    // }
 
-    //Unit test for: Worker::init
-    #[test]
-    fn test_worker_init() {
-        let mut config = WorkerConfig::new();
-        config.work_dir = String::from("/tmp");
-        let mut w = config.create_worker();
-        w.short_radio.broadcast_groups.push(String::from("group2"));
-        let res = w.init();
+    // //Unit test for: Worker::init
+    // #[test]
+    // fn test_worker_init() {
+    //     let mut config = WorkerConfig::new();
+    //     config.work_dir = String::from("/tmp");
+    //     let mut w = config.create_worker();
+    //     w.short_radio.broadcast_groups.push(String::from("group2"));
+    //     let res = w.init();
 
-        //Check result is not error
-        assert!(res.is_ok());
-    }
+    //     //Check result is not error
+    //     assert!(res.is_ok());
+    // }
 
     //Unit test for: Worker::handle_message
     //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
@@ -823,130 +821,6 @@ mod tests {
     #[test]
     fn test_radio_send() {
         unimplemented!();
-    }
-    */
-
-    //Unit test for: Radio::new
-    #[test]
-    fn test_radio_new() {
-        let radio = Radio::new();
-        let radio_string = "Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }";
-
-        assert_eq!(format!("{:?}", radio), String::from(radio_string));
-    }
-
-    //Unit test for: Radio::add_bcast_group
-    #[test]
-    fn test_radio_add_bcast_group() {
-        let mut radio = Radio::new();
-        radio.add_bcast_group(String::from("group1"));
-
-        assert_eq!(radio.broadcast_groups, vec![String::from("group1")]);
-    }
-
-    //Unit test for: Radio::scan_for_peers
-    //#[test]
-    /*
-    fn test_radio_scan_for_peers() {
-        let mut worker = Worker::new();
-        //3 phony groups
-        worker.radios[0].add_bcast_group(String::from("group1"));
-        worker.radios[0].add_bcast_group(String::from("group2"));
-        worker.radios[0].add_bcast_group(String::from("group3"));
-
-        //Create dirs
-        let mut dir = Path::new("/tmp/scan_bcast_groups").to_path_buf();
-        if !dir.exists() {
-            let _ = fs::create_dir(&dir).unwrap();
-        } else {
-            //Directory structure exists. Possibly from an earlier test run.
-            //Delete all directory content to ensure deterministic test results.
-            let _ = fs::remove_dir_all(&dir).unwrap();
-            let _ = fs::create_dir(&dir).unwrap();
-        }
-
-        dir.push("group1"); // /tmp/bcast_groups/group1
-        if !dir.exists() {
-            let _ = fs::create_dir(&dir).unwrap();
-        }
-
-        dir.pop();
-        dir.push("group2"); // /tmp/bcast_groups/group1
-        if !dir.exists() {
-            let _ = fs::create_dir(&dir).unwrap();
-        }
-
-        dir.pop();
-        dir.push("group3"); // /tmp/bcast_groups/group1
-        if !dir.exists() {
-            let _ = fs::create_dir(&dir).unwrap();
-        }
-
-        //Create address and links for this radio.
-        let key_str = create_random_key();
-        //Create the pipe
-        let pipe = format!("/tmp/scan_bcast_groups/group1/{}.ipc", key_str);
-        worker.radios[0].address = format!("ipc://{}", &pipe);
-        File::create(&pipe).unwrap();
-        //Create link in group 2
-        let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-        //Create link in group 3
-        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-
-        //Create address and links for radio #2.
-        let other_key_str = create_random_key();
-        //Create the pipe
-        let pipe = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
-        File::create(&pipe).unwrap();
-        //Create link in group 2
-        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-        //Create link in group 3
-        let link = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-
-        //Create address and links for radio #3.
-        let other_key_str = create_random_key();
-        //Create the pipe
-        let pipe = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
-        File::create(&pipe).unwrap();
-        //Create link in group 2
-        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-        //Create link in group 3
-        let link = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-
-        //Create address and links for radio #4.
-        let other_key_str = create_random_key();
-        //Create the pipe
-        let pipe = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
-        File::create(&pipe).unwrap();
-        //Create link in group 2
-        let link = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-        //Create link in group 3
-        let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-
-        //Create address and links for radio #5.
-        let other_key_str = create_random_key();
-        //Create the pipe
-        let pipe = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
-        File::create(&pipe).unwrap();
-        //Create link in group 2
-        let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-        //Create link in group 3
-        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-
-        //Scan for peers. Should find 4 peers in total.
-        let peers : HashSet<Peer> = worker.scan_for_peers(&worker.radios[0]).unwrap();
-
-        assert_eq!(peers.len(), 4);
     }
     */
 

@@ -4,12 +4,13 @@
 use worker::{MessageHeader, WorkerError, Peer};
 use self::tmembership::TMembership;
 use std::collections::HashSet;
+use std;
 
 pub mod tmembership;
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should 
-pub trait Protocol {
+pub trait Protocol : std::fmt::Debug {
     // ///Since the worker doesn't know about the message types that the protocols use,
     // /// it relies on this function to build messages based on the blocks of data it reads
     // /// from the network. 
@@ -28,6 +29,12 @@ pub trait Protocol {
     fn update_nearby_peers(&mut self, peers : HashSet<Peer>) -> Result<usize, WorkerError>;
     
 }
+
+// impl std::fmt::Debug for Protocol {
+//     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+//         write!(f, "{}", "Protocol")
+//     }
+// }
 
 ///Current list of supported protocols by MeshSim.
 pub enum Protocols {

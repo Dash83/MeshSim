@@ -238,27 +238,11 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                                 .long("operation_mode")
                                 .help("Should the worker operte in DEVICE or SIMULATED mode?")
                                 .takes_value(true))
-                          .arg(Arg::with_name(ARG_NETWORK_RELIABILITY)
-                                .value_name("RELIABILITY")
-                                .long("reliability")
-                                .help("Used in SIMULATED mode. How reliable will be the packet delivery of this node [0-1.0]")
-                                .takes_value(true))
                           .arg(Arg::with_name(ARG_RANDOM_SEED)
                                 .short("random")
                                 .value_name("SEED")
                                 .long("random_seed")
                                 .help("Random seed usef for all RNG operations.")
-                                .takes_value(true))
-                          .arg(Arg::with_name(ARG_SCAN_INTERVAL)
-                                .short("scan")
-                                .value_name("INTERVAL")
-                                .long("scan_interval")
-                                .help("Interval in ms for the worker to scan for nearby peers.")
-                                .takes_value(true))
-                          .arg(Arg::with_name(ARG_NETWORK_DELAY)
-                                .value_name("TIME")
-                                .long("network_delay")
-                                .help("Artificial network delay.")
                                 .takes_value(true))
                           .arg(Arg::with_name(ARG_WORK_DIR)
                                 .short("dir")
@@ -293,57 +277,11 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
         config.operation_mode = try!(op_mode_param.parse::<worker::OperationMode>());
     }
 
-    if config.operation_mode == worker::OperationMode::Simulated && 
-        (config.broadcast_groups.is_none() || config.broadcast_groups.as_ref().unwrap().is_empty()) { 
-                error!("Simulated_mode operation requires at least one non-null broadcast group.");
-                return Err(CLIError::Configuration("Simulated_mode operation requires at least one non-null broadcast group.".to_string()))
-    }
-
-    //Reliability. If no valid parameter is passed, we use what's available in the config file.
-    let rel = matches.value_of(ARG_NETWORK_RELIABILITY).unwrap_or("");
-    if !rel.is_empty() {
-        let val = rel.parse::<f64>();
-        match val {
-            Ok(v) => config.reliability = Some(v),
-            Err(_) => { /*We do nothing*/ },
-        }
-    }
-
-    // Reliablity should be a positive number. If smaller than 0, set to zero and issue a warning.
-    if config.reliability.is_some() {
-        let val = config.reliability.unwrap();
-        //Lower bound validation
-        if val < 0f64 {
-            config.reliability = Some(0f64);
-            warn!("Reliability has been set to 0. It must always be avalue between 0 and 1.0")
-        }
-
-        //Upper bound validation
-        if val > 1f64 {
-            config.reliability = Some(1f64);
-            warn!("Reliability has been set to 1.0. It must always be avalue between 0 and 1.0")
-        }
-    }
-
-    //Delay. If no valid parameter is passed, we use what's available in the config file.
-    let del = matches.value_of(ARG_NETWORK_DELAY).unwrap_or("");
-    if !del.is_empty() {
-        let val = del.parse::<u32>();
-        match val {
-            Ok(v) => config.delay = Some(v),
-            Err(_) => { /*We do nothing*/ },
-        }
-    }
-
-    //Scan interval. If no valid parameter is passed, we use what's available in the config file.
-    let scan = matches.value_of(ARG_SCAN_INTERVAL).unwrap_or("");
-    if !scan.is_empty() {
-        let val = scan.parse::<u32>();
-        match val {
-            Ok(v) => config.scan_interval = Some(v),
-            Err(_) => { /*We do nothing*/ },
-        }
-    }
+    // if config.operation_mode == worker::OperationMode::Simulated && 
+    //     (config.broadcast_groups.is_none() || config.broadcast_groups.as_ref().unwrap().is_empty()) { 
+    //             error!("Simulated_mode operation requires at least one non-null broadcast group.");
+    //             return Err(CLIError::Configuration("Simulated_mode operation requires at least one non-null broadcast group.".to_string()))
+    // }
 
     Ok(())
 }
@@ -396,45 +334,44 @@ mod worker_cli_tests {
     use std::io::{Write};
     use std::env;
 
-    //Unit test for: load_conf_file
-    #[test]
-    fn test_load_conf_file() {
-        //Creating the sample TOML file
-        let sample_toml_str = r#"
-            worker_name = "Worker1"
-            random_seed = 12345
-            work_dir = "."
-            operation_mode = "Simulated"
-            reliability = 1.0
-            delay = 0
-            scan_interval = 2000
-            broadcast_groups = ["bcast_g1", "bcast_g2"]
-            interface_name = "wlan0"
-        "#;
-        let mut file_path = env::temp_dir();
-        file_path.push("sample.toml");
-        let file_path_str = file_path.to_str().expect("Invalid file path.");
-        let mut mock_file = File::create(file_path_str).expect("Error creating toml file.");
-        mock_file.write(sample_toml_str.as_bytes()).expect("Error writing to toml file.");
-        mock_file.flush().expect("Error flusing toml file to disk.");
+    // //Unit test for: load_conf_file
+    // #[test]
+    // fn test_load_conf_file() {
+    //     //Creating the sample TOML file
+    //     let sample_toml_str = r#"
+    //         worker_name = "Worker1"
+    //         random_seed = 12345
+    //         work_dir = "."
+    //         operation_mode = "Simulated"
+    //         reliability = 1.0
+    //         delay = 0
+    //         scan_interval = 2000
+    //         broadcast_groups = ["bcast_g1", "bcast_g2"]
+    //         interface_name = "wlan0"
+    //     "#;
+    //     let mut file_path = env::temp_dir();
+    //     file_path.push("sample.toml");
+    //     let file_path_str = file_path.to_str().expect("Invalid file path.");
+    //     let mut mock_file = File::create(file_path_str).expect("Error creating toml file.");
+    //     mock_file.write(sample_toml_str.as_bytes()).expect("Error writing to toml file.");
+    //     mock_file.flush().expect("Error flusing toml file to disk.");
         
-        //Caling the functiong to test
-        let config = load_conf_file(file_path_str).expect("Error loading config file.");
+    //     //Caling the functiong to test
+    //     let config = load_conf_file(file_path_str).expect("Error loading config file.");
 
-        //Asserting the returns struct matches the expected values of the sample file.
-        let mut mock_config = WorkerConfig::new();
-        mock_config.broadcast_groups = Some(vec!("bcast_g1".to_string(),
-                                                "bcast_g2".to_string()));
-        mock_config.delay = Some(0);
-        mock_config.operation_mode = worker::OperationMode::Simulated;
-        mock_config.random_seed = 12345;
-        mock_config.reliability = Some(1.0);
-        mock_config.scan_interval = Some(2000);
-        mock_config.work_dir = ".".to_string();
-        mock_config.worker_name = "Worker1".to_string();
+    //     //Asserting the returns struct matches the expected values of the sample file.
+    //     let mut mock_config = WorkerConfig::new();
+    //     mock_config.broadcast_groups = Some(vec!("bcast_g1".to_string(),
+    //                                             "bcast_g2".to_string()));
+    //     mock_config.delay = Some(0);
+    //     mock_config.operation_mode = worker::OperationMode::Simulated;
+    //     mock_config.random_seed = 12345;
+    //     mock_config.reliability = Some(1.0);
+    //     mock_config.work_dir = ".".to_string();
+    //     mock_config.worker_name = "Worker1".to_string();
 
-        assert_eq!(mock_config, config);
-    }
+    //     assert_eq!(mock_config, config);
+    // }
 
     //Unit test for: init_logger
     #[test]

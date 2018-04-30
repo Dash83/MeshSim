@@ -5,17 +5,17 @@ use worker::worker_config::WorkerConfig;
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
+use std::collections::HashMap;
 
 ///Structure that holds the data of a given test specification.
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct TestSpec {
     ///Name of the test. For informational purposes only. 
     pub name : String,
-    ///Vector of worker configurations for the master to start.
-    pub nodes : Vec<WorkerConfig>,
-    //TODO: Implement the use of this feature.
     ///Vector of actions for the Master to take.
     pub actions : Vec<String>,
+    ///Vector of worker configurations for the master to start.
+    pub nodes : HashMap<String, WorkerConfig>,
 }
 
 impl TestSpec {
