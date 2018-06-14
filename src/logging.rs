@@ -16,11 +16,11 @@ use std::fs::File;
 use std::io::BufRead;
 use self::serde_json::Value;
 
-struct LogRecord {
-    msg : String,
-    level : String,
-    ts : String,    
-}
+// struct LogRecord {
+//     msg : String,
+//     level : String,
+//     ts : String,    
+// }
 
 ///Loads a log file and produces an array of log records for processing.
 pub fn get_log_records_from_file<P: AsRef<Path>>(path : P) -> Result<Vec<Value>, io::Error> {

@@ -14,7 +14,7 @@ extern crate log;
 extern crate toml;
 extern crate rand;
 
-use mesh_simulator::worker::{WorkerConfig};
+use mesh_simulator::worker::worker_config::WorkerConfig;
 use mesh_simulator::worker;
 use clap::{Arg, App, ArgMatches};
 use slog::DrainExt;
@@ -23,7 +23,6 @@ use std::io::{self, Read};
 use std::fmt;
 use std::error;
 use std::env;
-use std::str::FromStr;
 use std::path::Path;
 
 const ARG_CONFIG : &'static str = "config";
@@ -31,23 +30,7 @@ const ARG_WORKER_NAME : &'static str = "worker_name";
 const ARG_WORK_DIR : &'static str = "work_dir";
 const ARG_RANDOM_SEED : &'static str = "random_seed";
 const ARG_OPERATION_MODE : &'static str = "operation_mode";
-const ARG_NETWORK_RELIABILITY : &'static str = "reliability";
-const ARG_NETWORK_DELAY : &'static str = "delay";
-const ARG_SCAN_INTERVAL : &'static str = "scan_interval";
-//const ARG_ACTION : &'static str = "action";
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-/*
-const CONFIG_FILE_TEMPLATE  : &'static str = r#"
-        worker_name = "{}"
-        random_seed = {}
-        work_dir = "{}""
-        operation_mode = "{}"
-        reliability = {}
-        delay = {}
-        scan_interval = {}
-        broadcast_group = "{}"
-    "#;
-*/
 const CONFIG_FILE_NAME  : &'static str = "worker.toml";
 const ERROR_EXECUTION_FAILURE : i32 = 1;
 const ERROR_INITIALIZATION : i32 = 2;
@@ -137,37 +120,7 @@ impl From<toml::de::Error> for CLIError {
 }
 // ***************End Errors****************
 
-// *****************************************
-// ************* Data types ****************
-// *****************************************
-#[derive(Debug)]
-enum Commands {
-    ///This is the main command that worker_cli whould execute most times.
-    ///It loads the configuration file, parsers parameters, and starts the worker.
-    Run,
-    ///This should only run once (optionally) upon installation of the worker.
-    ///It creates a default configuration file suitable for simulated mode.
-    ///The user should make sure the values are appropriate for their use case and 
-    ///modify as necessary.
-    Configuration,
-}
-
-impl FromStr for Commands {
-    type Err = CLIError;
-
-    fn from_str(s: &str) -> Result<Commands, CLIError> {
-        let u = s.to_uppercase();
-        match u.as_str() {
-            "RUN" => Ok(Commands::Run),
-            "CONFIGURATION" => Ok(Commands::Configuration),
-            _ => Err(CLIError::Configuration("Unsupported command.".to_string()))
-        }
-    }
-}
-// ************ End Data types *************
-
 fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIError>  { 
-    //let log_dir = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "log");
     let log_dir_name = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "log");
     let log_dir = Path::new(log_dir_name.as_str());
     
@@ -176,7 +129,6 @@ fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIE
     }
 
     let mut log_dir_buf = log_dir.to_path_buf();
-    //log_dir_buf.set_file_name(format!("{}{}", worker_name, ".log"));
     log_dir_buf.push(format!("{}{}", worker_name, ".log"));
     
     //At this point the log folder has been created, so the path should be valid.
@@ -213,7 +165,6 @@ fn load_conf_file<'a>(file_path : &'a str) -> Result<WorkerConfig, CLIError> {
     try!(file.read_to_string(&mut file_content));
     let configuration : WorkerConfig = try!(toml::from_str(&file_content));
     Ok(configuration)
-    //WorkerConfig::new()
 }
 
 fn get_cli_parameters<'a>() -> ArgMatches<'a> {
@@ -238,27 +189,11 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                                 .long("operation_mode")
                                 .help("Should the worker operte in DEVICE or SIMULATED mode?")
                                 .takes_value(true))
-                          .arg(Arg::with_name(ARG_NETWORK_RELIABILITY)
-                                .value_name("RELIABILITY")
-                                .long("reliability")
-                                .help("Used in SIMULATED mode. How reliable will be the packet delivery of this node [0-1.0]")
-                                .takes_value(true))
                           .arg(Arg::with_name(ARG_RANDOM_SEED)
                                 .short("random")
                                 .value_name("SEED")
                                 .long("random_seed")
                                 .help("Random seed usef for all RNG operations.")
-                                .takes_value(true))
-                          .arg(Arg::with_name(ARG_SCAN_INTERVAL)
-                                .short("scan")
-                                .value_name("INTERVAL")
-                                .long("scan_interval")
-                                .help("Interval in ms for the worker to scan for nearby peers.")
-                                .takes_value(true))
-                          .arg(Arg::with_name(ARG_NETWORK_DELAY)
-                                .value_name("TIME")
-                                .long("network_delay")
-                                .help("Artificial network delay.")
                                 .takes_value(true))
                           .arg(Arg::with_name(ARG_WORK_DIR)
                                 .short("dir")
@@ -291,58 +226,6 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
     let op_mode_param = matches.value_of(ARG_OPERATION_MODE).unwrap_or("");
     if !op_mode_param.is_empty() {
         config.operation_mode = try!(op_mode_param.parse::<worker::OperationMode>());
-    }
-
-    if config.operation_mode == worker::OperationMode::Simulated && 
-        (config.broadcast_groups.is_none() || config.broadcast_groups.as_ref().unwrap().is_empty()) { 
-                error!("Simulated_mode operation requires at least one non-null broadcast group.");
-                return Err(CLIError::Configuration("Simulated_mode operation requires at least one non-null broadcast group.".to_string()))
-    }
-
-    //Reliability. If no valid parameter is passed, we use what's available in the config file.
-    let rel = matches.value_of(ARG_NETWORK_RELIABILITY).unwrap_or("");
-    if !rel.is_empty() {
-        let val = rel.parse::<f64>();
-        match val {
-            Ok(v) => config.reliability = Some(v),
-            Err(_) => { /*We do nothing*/ },
-        }
-    }
-
-    // Reliablity should be a positive number. If smaller than 0, set to zero and issue a warning.
-    if config.reliability.is_some() {
-        let val = config.reliability.unwrap();
-        //Lower bound validation
-        if val < 0f64 {
-            config.reliability = Some(0f64);
-            warn!("Reliability has been set to 0. It must always be avalue between 0 and 1.0")
-        }
-
-        //Upper bound validation
-        if val > 1f64 {
-            config.reliability = Some(1f64);
-            warn!("Reliability has been set to 1.0. It must always be avalue between 0 and 1.0")
-        }
-    }
-
-    //Delay. If no valid parameter is passed, we use what's available in the config file.
-    let del = matches.value_of(ARG_NETWORK_DELAY).unwrap_or("");
-    if !del.is_empty() {
-        let val = del.parse::<u32>();
-        match val {
-            Ok(v) => config.delay = Some(v),
-            Err(_) => { /*We do nothing*/ },
-        }
-    }
-
-    //Scan interval. If no valid parameter is passed, we use what's available in the config file.
-    let scan = matches.value_of(ARG_SCAN_INTERVAL).unwrap_or("");
-    if !scan.is_empty() {
-        let val = scan.parse::<u32>();
-        match val {
-            Ok(v) => config.scan_interval = Some(v),
-            Err(_) => { /*We do nothing*/ },
-        }
     }
 
     Ok(())
@@ -392,49 +275,15 @@ fn main() {
 #[cfg(test)]
 mod worker_cli_tests {
     use super::*;
-    use std::fs::{File};
-    use std::io::{Write};
-    use std::env;
 
     //Unit test for: load_conf_file
-    #[test]
-    fn test_load_conf_file() {
-        //Creating the sample TOML file
-        let sample_toml_str = r#"
-            worker_name = "Worker1"
-            random_seed = 12345
-            work_dir = "."
-            operation_mode = "Simulated"
-            reliability = 1.0
-            delay = 0
-            scan_interval = 2000
-            broadcast_groups = ["bcast_g1", "bcast_g2"]
-            interface_name = "wlan0"
-        "#;
-        let mut file_path = env::temp_dir();
-        file_path.push("sample.toml");
-        let file_path_str = file_path.to_str().expect("Invalid file path.");
-        let mut mock_file = File::create(file_path_str).expect("Error creating toml file.");
-        mock_file.write(sample_toml_str.as_bytes()).expect("Error writing to toml file.");
-        mock_file.flush().expect("Error flusing toml file to disk.");
-        
-        //Caling the functiong to test
-        let config = load_conf_file(file_path_str).expect("Error loading config file.");
-
-        //Asserting the returns struct matches the expected values of the sample file.
-        let mut mock_config = WorkerConfig::new();
-        mock_config.broadcast_groups = Some(vec!("bcast_g1".to_string(),
-                                                "bcast_g2".to_string()));
-        mock_config.delay = Some(0);
-        mock_config.operation_mode = worker::OperationMode::Simulated;
-        mock_config.random_seed = 12345;
-        mock_config.reliability = Some(1.0);
-        mock_config.scan_interval = Some(2000);
-        mock_config.work_dir = ".".to_string();
-        mock_config.worker_name = "Worker1".to_string();
-
-        assert_eq!(mock_config, config);
-    }
+    // #[test]
+    // fn test_load_conf_file() {
+       /*
+        This test has been commented out since it the function only makes use of the functionality to deserialize
+        a worker_config object. Tests in the worker_config module should cover this.
+       */ 
+    // }
 
     //Unit test for: init_logger
     #[test]
@@ -447,13 +296,13 @@ mod worker_cli_tests {
     }
 
     //Unit test for: run
-    //This is difficult to test. The function should never return, so it can be assessed whether it did
-    //its job or not. Ignore for now.
-    #[test]
-    #[ignore]
-    fn test_run() {
-        panic!("test failed!");
-    }
+    // #[test]
+    // #[ignore]
+    // fn test_run() {
+        /*
+        This function basically just runs the start method of the worker type. This code will be tested there.
+        */
+    // }
 
     //Unit test for: validate_config
     #[test]
@@ -467,16 +316,11 @@ mod worker_cli_tests {
     }
     
     //Unit test for: get_cli_parameters
-    #[test]
-    #[ignore]
-    fn test_get_cli_parameters() {
-        //Rather than a function, this is a method. It abstracts the calls to the CLAP
-        //framework to handle CLI parameters. Unsure how that can be tested with Rust.
-        //Look for a way to pass CL params to the test in order to test the parameter extraction works.
-        //Even then though, a test script would be required to pass the parameters.
-        //let matches = get_cli_parameters();
-        //let name = matches.value_of(ARG_WORKER_NAME).expect("Worker_name was not provided.");
-
-        unimplemented!()
-    }
+    // #[test]
+    // #[ignore]
+    // fn test_get_cli_parameters() {
+        /*
+         This function only uses clap to parse parameters. There is not much to test but the code of the library.
+        */
+    // }
 }
