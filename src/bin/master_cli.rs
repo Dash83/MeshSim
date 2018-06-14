@@ -24,7 +24,7 @@ use std::error;
 use std::fmt;
 use std::error::Error;
 
-const ARG_CONFIG : &'static str = "config";
+//const ARG_CONFIG : &'static str = "config";
 const ARG_WORK_DIR : &'static str = "work_dir";
 const ARG_TEST_FILE : &'static str = "test_file";
 const ARG_WORKER_PATH : &'static str = "worker_path";
@@ -135,7 +135,7 @@ fn init_logger(work_dir : &Path) -> Result<(), CLIError> {
 } 
 
 fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {    
-    //Are we running a test file?
+    //Has a test file been provided?
     let test_file = matches.value_of(ARG_TEST_FILE); 
     if let Some(file) = test_file {
         let mut test_spec = try!(test_specification::TestSpec::parse_test_spec(file));
@@ -146,6 +146,7 @@ fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {
 }
 
 fn init(matches : &ArgMatches) -> Result<(Master), CLIError> {
+    //TODO: Implement configuration file support for the master.
     //Read the configuration file.
     // let mut current_dir = try!(env::current_dir());
     // let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
@@ -175,9 +176,6 @@ fn init(matches : &ArgMatches) -> Result<(Master), CLIError> {
                                 Some(path_arg) => String::from(path_arg),
                                 None => master.worker_binary,
                                 };
-
-    //Validate the current configuration
-    //try!(validate_config(&mut configuration, &matches));
 
     Ok(master)
 }

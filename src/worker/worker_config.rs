@@ -1,10 +1,17 @@
 //! This module defines the worker_config struct and related functions. It allows meshsim to
 //! deserialize a configuration file into a worker_config object that eventually creates a worker object.
 extern crate toml;
+extern crate rustc_serialize;
+extern crate rand;
+extern crate byteorder;
 
-use worker::{Worker, DNS_SERVICE_PORT, OperationMode, Write, WorkerError, Radio};
+use worker::{Worker, OperationMode, Write, WorkerError, DeviceRadio, SimulatedRadio, Radio};
 use std::path::Path;
 use std::fs::File;
+use std::iter;
+use self::rustc_serialize::hex::*;
+use self::rand::{Rng, SeedableRng, StdRng};
+use self::byteorder::{NativeEndian, WriteBytesExt};
 
 ///Configuration pertaining to a given radio of the worker.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -65,57 +72,66 @@ impl WorkerConfig {
 
     ///Creates a new Worker object configured with the values of this configuration object.
     pub fn create_worker(self) -> Worker {
-        let mut obj = Worker::new();
-        obj.me.name = self.worker_name;
-        obj.me.address_type = self.operation_mode.clone();
-        obj.work_dir = self.work_dir;
-        obj.random_seed = self.random_seed;
-        obj.operation_mode = self.operation_mode;
-        // if obj.operation_mode == OperationMode::Device {
-        //     let address = Radio::get_radio_address(&self.interface_name).expect("Could not get address for specified interface.");
-        //     debug!("Obtained address {}", &address);
-        //     obj.me.address = format!("{}:{}", address, DNS_SERVICE_PORT);
-        // } else {
-        //     obj.me.address = format!("{}/{}/{}.socket", obj.work_dir, SIMULATED_SCAN_DIR, obj.me.public_key);
-        // }
+        //Vector of 16 bytes set to 0
+        let mut key : Vec<u8>= iter::repeat(0u8).take(16).collect();
+        //Create RNG from the provided random seed.
+        let mut random_bytes = vec![];
+        let _ = random_bytes.write_u32::<NativeEndian>(self.random_seed);
+        let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
+        let mut gen = StdRng::from_seed(randomness.as_slice());
+        //Fill the vector with 16 random bytes.
+        gen.fill_bytes(&mut key[..]);
+        let id = key.to_hex().to_string();
 
-        // obj.short_radio.broadcast_groups = self.broadcast_groups.unwrap_or(vec![]);
-        // obj.short_radio.reliability = self.reliability.unwrap_or(obj.short_radio.reliability);
-        // obj.short_radio.delay = self.delay.unwrap_or(obj.short_radio.delay);
-        // obj.scan_interval = self.scan_interval.unwrap_or(obj.scan_interval);
-        
-        obj
+        //Create the radios
+        //TODO: This warning will dissapear when 2nd radio feature is enabled.
+        let (sr, lr) : (Box<Radio>, Box<Radio>) = match self.operation_mode {
+            OperationMode::Device => { 
+                //Short-range radio
+                let iname = self.radio_short.interface_name.expect("An interface name for radio_short must be provided when operating in device_mode.");
+                let radio_short = DeviceRadio::new(iname, self.worker_name.clone(), id.clone() );
+
+                //Long-range radio
+                let iname = self.radio_long.interface_name.expect("An interface name for radio_long must be provided when operating in device_mode.");
+                let radio_long = DeviceRadio::new(iname, self.worker_name.clone(), id.clone() );
+
+                (Box::new(radio_short), Box::new(radio_long))
+            },
+            OperationMode::Simulated => { 
+                //Short-range radio
+                let delay = self.radio_short.delay.unwrap_or(0);
+                let reliability = self.radio_short.reliability.unwrap_or(1.0);
+                let bg = self.radio_short.broadcast_groups.expect("A list of broadcast groups must be provided for radio_short in simulated_mode.");
+                let radio_short = SimulatedRadio::new( delay, reliability, bg, self.work_dir.clone(), id.clone(), self.worker_name.clone() );
+
+                //Long-range radio
+                let delay = self.radio_long.delay.unwrap_or(0);
+                let reliability = self.radio_long.reliability.unwrap_or(1.0);
+                let bg = self.radio_long.broadcast_groups.expect("A list of broadcast groups must be provided for radio_long in simulated_mode.");
+                let radio_long = SimulatedRadio::new( delay, reliability, bg, self.work_dir.clone(), id.clone(), self.worker_name.clone() );
+
+                (Box::new(radio_short), Box::new(radio_long))                
+            },
+        };
+
+        Worker{ name : self.worker_name,
+                short_radio : Some(sr),
+                //long_radio : lr, //TODO: Uncomment when 2nd radio feature is enabled.
+                work_dir : self.work_dir, 
+                random_seed : self.random_seed,
+                operation_mode : self.operation_mode,
+                id : id }
     }
 
     ///Writes the current configuration object to a formatted configuration file, that can be passed to
     ///the worker_cli binary.
-    pub fn write_to_file(mut self, file_path : &Path) -> Result<String, WorkerError> {
+    pub fn write_to_file(self, file_path : &Path) -> Result<String, WorkerError> {
         //Create configuration file
         //let file_path = format!("{}{}{}", dir, std::path::MAIN_SEPARATOR, file_name);
         let mut file = try!(File::create(&file_path));
         let data = toml::to_string(&self).unwrap();
-        write!(file, "{}", data);
-        // let groups_short = self.radio_short.broadcast_groups.as_ref().cloned().unwrap_or(Vec::new());
-        // let groups_long = self.radio_short.broadcast_groups.as_ref().cloned().unwrap_or(Vec::new());
+        let _res = try!(write!(file, "{}", data));
 
-        // //Write content to file
-        // //file.write(sample_toml_str.as_bytes()).expect("Error writing to toml file.");
-        // write!(file, "worker_name = \"{}\"\n", self.worker_name)?;
-        // write!(file, "random_seed = {}\n", self.random_seed)?;
-        // write!(file, "work_dir = \"{}\"\n", self.work_dir)?;
-        // write!(file, "operation_mode = \"{}\"\n", self.operation_mode)?;
-        // write!(file, "[radio-short]\n")?;
-        // write!(file, "reliability = {} #Not used in device_mode\n", self.radio_short.reliability.unwrap_or(1f64))?;
-        // write!(file, "delay = {} #Not used in device_mode\n", self.radio_short.delay.unwrap_or(0u32))?;
-        // write!(file, "broadcast_groups = {:?}\n", groups_short)?;
-        // write!(file, "interface_name = {:?} #Not used in simulated_mode\n", self.radio_short.interface_name.take().unwrap_or(String::from("wlan0")))?;
-        // write!(file, "[radio-long]\n")?;
-        // write!(file, "reliability = {} #Not used in device_mode\n", self.radio_long.reliability.unwrap_or(1f64))?;
-        // write!(file, "delay = {} #Not used in device_mode\n", self.radio_long.delay.unwrap_or(0u32))?;
-        // write!(file, "broadcast_groups = {:?} #Not used in device_mode\n", groups_long)?;
-        // write!(file, "interface_name = {:?} #Not used in simulated_mode\n", self.radio_long.interface_name.take().unwrap_or(String::from("wlan0")))?;
-
-        //file.flush().expect("Error flusing toml file to disk.");
         let file_name = format!("{}", file_path.display());
         Ok(file_name)
     }

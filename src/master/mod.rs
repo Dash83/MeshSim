@@ -43,7 +43,7 @@ pub mod test_specification;
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
 /// The master should always be created using the ::new(TestSpec) method.
-//#[derive(Debug)]
+#[derive(Debug)]
 pub struct Master {
     /// Vector of worker processes the Master controls.
     pub workers : Arc<Mutex<Vec<Child>>>,
@@ -127,7 +127,6 @@ impl error::Error for MasterError {
     }
 }
 
-
 impl Master {
     /// Constructor for the struct.
     pub fn new() -> Master {
@@ -140,7 +139,7 @@ impl Master {
     }
 
     /// Adds a single worker to the worker vector with a specified name and starts the worker process
-    pub fn add_worker(&mut self, mut config : WorkerConfig) -> Result<(), MasterError> {
+    pub fn add_worker(&mut self, config : WorkerConfig) -> Result<(), MasterError> {
         let worker_name = config.worker_name.clone();
         let file_name = format!("{}.toml", &worker_name);
         let mut file_dir = PathBuf::new();
@@ -158,11 +157,13 @@ impl Master {
         info!("Starting worker process {}", &worker_name);
         //debug!("with command {:?}", command);
         let child = try!(command.spawn());
+        //TODO: The unwrap below is used because doing a try! on the result of lock implies
+        //I need to implement converting the MutexGuard error to a Master error. I think that's 
+        //already implemented in Worker error, but make a note for later.
         //let workers_handle = self.workers.clone();
-        //let mut workers_handle = self.workers.lock().unwrap();
+        //let mut workers_handle = try!(self.workers.lock());
         //workers_handle.push(child);
         self.workers.lock().unwrap().push(child);
-        //debug!("add_worker: # of workers in queue: {}", self.worker_count());
         Ok(())
     }
 
@@ -175,6 +176,13 @@ impl Master {
         for (_, val) in spec.nodes.iter_mut() {
             //Since the workers are running as part of the master, change their work_dirs to be relative to the master.
             val.work_dir = self.work_dir.clone();
+            /*
+            TODO: This 100ms delay between startup of nodes is to avoid potential initialization races. This might be
+            removed in the future since it's a bit hacky and the code should be robust enough to handle these issues, but
+            it's also a strange situation to have an empty network one instant and the next we have X amount of nodes joining
+            at exactly the same time. Will revisit in the future.
+            */
+            thread::sleep(Duration::from_millis(100));
             try!(self.add_worker(val.clone()));
         }
 
@@ -236,32 +244,21 @@ impl Master {
                     });
         Ok(handle)
     }
-
-    fn worker_count(&self) -> usize {
-        self.workers.lock().unwrap().len()
-    }
 }
 
 // *****************************
 // ********** Tests ************
 // *****************************
-
-
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     //**** Create master with 0 workers ****
+    //Unit test for: Master::new
     #[test]
-    #[ignore]
-    fn create_empty_master() {
-        panic!("test failed!");
+    fn test_master_new() {
+        let m = Master::new();
+        let obj_str = r#"Master { workers: Mutex { data: [] }, work_dir: ".", worker_binary: "./worker_cli" }"#;
+        assert_eq!(format!("{:?}", m), String::from(obj_str));
     }
-
-    //**** Create master with 10 workers and kill 1 ****
-    #[test]
-    #[ignore]
-    fn create_master_ten_children_kill_one() {
-        panic!("test failed!");
-    }
-    
 }

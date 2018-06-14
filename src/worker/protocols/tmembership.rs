@@ -3,7 +3,7 @@
 extern crate serde_cbor;
 
 use worker::protocols::Protocol;
-use worker::{WorkerError, Peer, MessageHeader};
+use worker::{WorkerError, Peer, MessageHeader, Radio};
 use std::collections::HashSet;
 use std::sync::{Mutex, Arc};
 use self::serde_cbor::de::*;
@@ -14,6 +14,7 @@ use self::serde_cbor::ser::*;
 pub struct TMembership {
     neighbours : Arc<Mutex<HashSet<Peer>>>,
     network_members : Arc<Mutex<HashSet<Peer>>>,
+    short_radio : Box<Radio>,
 }
 
 /// This enum represents the types of network messages supported in the protocol as well as the
@@ -73,29 +74,58 @@ impl Protocol for TMembership {
         self.handle_message_internal(header, msg)
     }
 
-        fn init_protocol(&mut self) -> Result<Option<MessageHeader>, WorkerError>{
-            //Update peers with initial scan data.
+    fn init_protocol(&mut self) -> Result<Option<MessageHeader>, WorkerError>{
+        //Update peers with initial scan data.
+        let nearby_peers = try!(self.short_radio.scan_for_peers());
 
-            //Craft join messages for a subset of said peers.
+        //Send join messages for all of said peers
+        for p in nearby_peers {
+            //Create join message
+            let msg = try!(self.create_join_message(p));
+            //Connect to the remote peer
+            let mut c = try!(self.short_radio.connect(&msg.destination));
+            //Send initial message
+            let _res = try!(c.send_msg(msg));
 
-            //Start thread for heartbeat messages.
-
-            Ok(None)
+            //We will now enter a read/response loop until the protocol finishes.
+            loop {
+                //Read the data from the unix socket
+                let recv_msg = try!(c.read_msg());
+                //Try to decode the data into a message.
+                let response = match recv_msg {
+                    Some(m) => { try!(self.handle_message(m)) },
+                    None => None,
+                };
+                //let response = try!(self.handle_message(recv_msg));
+                match response {
+                    Some(resp_msg) => { 
+                        let _res = try!(c.send_msg(resp_msg));
+                    },
+                    None => {
+                        //End of protocol sequence.
+                        break;
+                    }
+                }
+            }            
+            //info!("Sending join message to {}, address {}", p.name, p.public_key);
         }
 
-        fn update_nearby_peers(&mut self, peers : HashSet<Peer>) -> Result<usize, WorkerError> {
-            Ok(1)
-        }
+        //TODO: Start thread for heartbeat messages.
+
+        Ok(None)
+    }
+
 }
 
 impl TMembership {
     ///Get a new empty TMembership object.
-    pub fn new() -> TMembership {
+    pub fn new(sr : Box<Radio>) -> TMembership {
         let n = Arc::new(Mutex::new(HashSet::new()));
         let m = Arc::new(Mutex::new(HashSet::new()));
 
         TMembership{ neighbours : n, 
-                     network_members : m }
+                     network_members : m,
+                     short_radio : sr }
     }
 
     fn handle_message_internal(&mut self, hdr : MessageHeader, msg : Messages) -> Result<Option<MessageHeader>, WorkerError> {
@@ -124,23 +154,23 @@ impl TMembership {
     }
 
 
-    // /// The first message of the protocol. 
-    // /// When to send: At start-up, after doing a scan of nearby peers.
-    // /// Receiver: All Nearby peers.
-    // /// Payload: Self Peer object.
-    // /// Actions: None.
-    // fn create_join_message(&self) {
-    //     for r in &self.radios {
-    //         //Send messge to each Peer reachable by this radio
-    //         for p in &self.nearby_peers {
-    //             info!("Sending join message to {}, address {}", p.name, p.public_key);
-    //             let data = JoinMessage { sender : self.me.clone()};
-    //             let msg = MessageType::Join(data);
-    //             let _ = r.send(msg, p);
-    //         }
-
-    //     }
-    // }
+    /// The first message of the protocol. 
+    /// When to send: At start-up, after doing a scan of nearby peers.
+    /// Receiver: All Nearby peers.
+    /// Payload: Self Peer object.
+    /// Actions: None.
+    fn create_join_message(&self, destination : Peer) -> Result<MessageHeader, WorkerError> {
+        let data = JoinMessage;
+        let join_msg = Messages::Join(data);
+        let payload = try!(to_vec(&join_msg));
+        info!("Built JOIN message for peer: {}, address {}", &destination.name, &destination.address);
+        
+        //Build the message header that's ready for sending.
+        let msg = MessageHeader{ sender : self.short_radio.get_self_peer().clone(), 
+                                 destination : destination, 
+                                 payload : Some(payload) };
+        Ok(msg)
+    }
 
     /// A response to a new peer joining the network.
     /// When to send: After receiving a join message.
@@ -150,8 +180,6 @@ impl TMembership {
     ///   1. Add sender to global node list and nearby peer list.
     ///   2. Construct an ACK message and reply with it.
     fn process_join_message(&mut self, hdr : MessageHeader, _msg : JoinMessage) -> Result<Option<MessageHeader>, WorkerError> {
-        let mut response = MessageHeader::new();
-        
         info!("Received JOIN message from {}", hdr.sender.name);
 
         //Obtain reference to our neighbours list
@@ -182,12 +210,11 @@ impl TMembership {
             info!("Built ACK message for sender: {}, address {}", &hdr.sender.name, &hdr.sender.address);
             
             //Build the message header that's ready for sending.
-            response = MessageHeader{   sender : hdr.destination, 
+            let response = MessageHeader{   sender : hdr.destination, 
                                         destination : hdr.sender, 
-                                        payload : Some(payload) };            
+                                        payload : Some(payload) };
+            Ok(Some(response))
         } //LOCK : RELEASE : GNL
-
-        Ok(Some(response))
     }
 
     /// The final part of the protocol's initial handshake
@@ -210,7 +237,7 @@ impl TMembership {
             let diff = msg.global_peer_list.difference(&gnl_cache);
             //Add those elements to the current GNL
             let _res = diff.map(|x| { 
-                            info!("Adding peer {}/{} to list.", x.name, x.public_key);            
+                            info!("Adding peer {}/{} to list.", x.name, x.id);            
                             gnl.insert(x.clone());
                        });
         } //LOCK : RELEASE : GNL
@@ -348,3 +375,33 @@ impl TMembership {
     }
 */
 }
+
+    //Unit test for: Worker::handle_message
+    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
+    //so I don't know how to mock that out in rust.
+    /*
+    #[test]
+    fn test_worker_handle_message() {
+        unimplemented!();
+    }
+    */
+
+    //Unit test for: Worker::join_network
+    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
+    //so I don't know how to mock that out in rust.
+    /*
+    #[test]
+    fn test_worker_send_join_message() {
+        unimplemented!();
+    }
+    */
+
+    //Unit test for: Worker::process_join_message
+    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
+    //so I don't know how to mock that out in rust.
+    /*
+    #[test]
+    fn test_worker_process_join_message() {
+        unimplemented!();
+    }
+    */

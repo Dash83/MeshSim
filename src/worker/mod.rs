@@ -32,27 +32,22 @@ extern crate byteorder;
 extern crate pnet;
 extern crate ipnetwork;
 
-use std::iter;
 use std::io::{Read, Write};
-use self::rand::{Rng, SeedableRng, StdRng};
-use self::rustc_serialize::hex::*;
 use self::serde_cbor::de::*;
-use self::serde_cbor::ser::*;
 use std::error;
 use std::fmt;
 use std::io;
-use std::fs::{File, self};
 use std::str::FromStr;
 use std;
-use self::byteorder::{NativeEndian, WriteBytesExt};
 use std::path::Path;
 use std::collections::HashSet;
-use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex, PoisonError, MutexGuard};
+use std::process::Command;
+use std::sync::{PoisonError, MutexGuard};
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::net::{UnixStream, UnixListener};
 use worker::protocols::*;
 use worker::radio::*;
+use self::serde_cbor::ser::*;
 
 //Sub-modules declaration
 pub mod worker_config;
@@ -66,21 +61,6 @@ const DNS_SERVICE_NAME : &'static str = "meshsim";
 const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT : u16 = 23456;
 const SIMULATED_SCAN_DIR : &'static str = "bcgroups";
-const GOSSIP_FACTOR : f32 = 0.25; //25% of the peer list.
-
-// *****************************
-// ********** Traits **********
-// *****************************
-//trait message<T> {
-//    fn get_sender(&self) -> Peer;
-//    fn get_recipient(&self) -> Peer;
-//    fn get_payload(&self) -> T;
-//}
-
-
-// *****************************
-// ******* End traits  *********
-// *****************************
 
 // *****************************
 // ********** Structs **********
@@ -164,22 +144,19 @@ pub enum ListenerType {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct Peer {
     /// Public key of the peer. It's considered it's public address.
-    pub public_key: String, 
+    pub id: String, 
     /// Friendly name of the peer. 
     pub name : String,
     ///Endpoint at which the peer is listening for messages.
     pub address : String,
-    ///Type of peer.
-    pub address_type : OperationMode,
 }
 
 impl Peer {
     ///Empty constructor for the Peer struct.
     pub fn new() -> Peer {
-        Peer{   public_key : String::from(""),
+        Peer{   id : String::from(""),
                 name : String::from(""),
-                address : String::from(""), 
-                address_type : OperationMode::Simulated, }
+                address : String::from("")}
     }
 }
 
@@ -295,14 +272,17 @@ impl FromStr for OperationMode {
 /// Worker struct.
 /// Main struct for the worker module. Must be created via the ::new(Vec<Param>) method.
 //#[derive(Debug, Clone)]
-//#[derive(Debug)]
+#[derive(Debug)]
 pub struct Worker {
+    ///Name of the current worker.
+    name : String,
+    ///Unique ID composed of 16 random numbers represented in a Hex String.
+    pub id : String,
     /// Short-range radio for the worker.
-    short_radio : Box<Radio>,
-    /// Long-range radio for the worker.
-    long_radio : Box<Radio>,
-    ///Peer object describing this worker.
-    pub me : Peer,
+    short_radio : Option<Box<Radio>>,
+    // TODO: Uncomment this line when the 2nd radio feature is enabled.
+    // /// Long-range radio for the worker.
+    // long_radio : Box<Radio>,
     ///Directory for the worker to operate. Must have RW access to it. Operational files and 
     ///log files will be written here.
     work_dir : String,
@@ -310,15 +290,6 @@ pub struct Worker {
     random_seed : u32,
     ///Simulated or Device operation.
     operation_mode : OperationMode,
-    // ///How often (ms) should the worker scan for new peers.
-    // scan_interval : u32,
-    // ///The list of all known active members of the network. They might not all be in broadcast
-    // ///range of this worker.
-    // pub global_peer_list : Arc<Mutex<HashSet<Peer>>>, //Membership protocol structure.
-    // ///The list of peers suspected to be dead/out of range.
-    // suspected_list : Arc<Mutex<Vec<Peer>>>,
-    // /// The known neighbors of this worker.
-    // pub nearby_peers : HashSet<Peer>,
 }
 
 impl Worker {
@@ -331,248 +302,36 @@ impl Worker {
     pub fn start(&mut self) -> Result<(), WorkerError> {        
         //Init the worker
         let _ = try!(self.init());
-        info!("Finished initializing.");
 
-        //Get a listener.
-        //At this point the network address is bound, so network messages should be cached until we read them.
-        let listener = try!(self.get_listener());
+        //Init the radios and get their respective listeners.
+        let mut short_radio = self.short_radio.take().unwrap();
+        let listener = try!(short_radio.init());
+
+        info!("Worker finished initializing.");
 
         //Get the protocol object.
-        let mut prot_handler = build_protocol_handler(Protocols::TMembership);
-
-        //Perform an initial peer scan that can be used to bootstrap the protocol.
-        // let nearby_peers = try!(self.scan_for_peers(RadioTypes::ShortRange));
-        // let wait_time = try!(prot_handler.update_nearby_peers(nearby_peers));
-        // let _ = try!(self.start_scanner(wait_time));
-
-        //Do protocol initialization
-        let initial_msg = try!(prot_handler.init_protocol());
-
-        //TODO: move this to another thread.
-        //Next, join the network
-        //self.nearby_peers = try!(self.scan_for_peers(&(self.radios[0])));
-        //info!("Found {} peers!", self.nearby_peers.len());
-        //self.send_join_message();
+        //TODO: Get protocol from configuration file.
+        let mut prot_handler = build_protocol_handler(Protocols::TMembership, short_radio);
+        //Initialize protocol.
+        let _ = try!(prot_handler.init_protocol());
 
         //Start listening for messages
-        //TODO: move this to another thread.
         let _ = try!(self.start_listener(listener, &mut prot_handler));
 
-        //TODO: Start required timers on their own threads.
-
-        //TODO: Wait for all threads.
         Ok(())
     }
 
-    /// Default constructor for Worker strucutre. Assigns it the name Default_Worker
-    /// and an empty radio vector.
-    pub fn new() -> Worker {
-        //Vector of 32 bytes set to 0
-        let key : Vec<u8>= iter::repeat(0u8).take(16).collect();
-        //Fill the key bytes with random generated numbers
-        //let mut gen = OsRng::new().expect("Failed to get OS random generator");
-        //gen.fill_bytes(&mut key[..]);
-        //let short_radio = Radio::new();
-        //let long_radio = Radio::new();
-        let short_radio = Box::new(DeviceRadio{radio_name : String::from("Radio1")});
-        let long_radio = Box::new(DeviceRadio{radio_name : String::from("Radio2")});
-        let mut me = Peer::new();
-        me.public_key = key.to_hex().to_string();
-        //Global peer list
-        let ps : HashSet<Peer> = HashSet::new();
-        let gpl = Arc::new(Mutex::new(ps));
-        //Suspected peer list
-        let sp : Vec<Peer> = Vec::new();
-        let sl = Arc::new(Mutex::new(sp));
-        Worker{ short_radio: short_radio, 
-                long_radio: long_radio,
-                me: me,
-                operation_mode : OperationMode::Simulated,
-                random_seed : 0u32,
-                work_dir : String::new() }
-    }
-
-    // ///Function for scanning for nearby peers. Scanning method depends on Operation_Mode.
-    // pub fn scan_for_peers(&self, t : RadioTypes) -> Result<HashSet<Peer>, WorkerError> {
-    //     let radio = self.get_radio(t);
-    //     match self.operation_mode {
-    //         OperationMode::Simulated => { 
-    //             //debug!("Scanning for peers in simulated_mode.");
-    //             self.simulated_scan_for_peers(&radio)
-    //         },
-    //         OperationMode::Device => {
-    //             //debug!("Scanning for peers in device_mode.");
-    //             self.device_scan_for_peers(&radio)
-    //         },
-    //     }
-    // }
-
-    // fn device_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
-    //     let mut peers = HashSet::new();
-
-    //     //Constructing the external process call
-    //     let mut command = Command::new("avahi-browse");
-    //     command.arg("-r");
-    //     command.arg("-p");
-    //     command.arg("-t");
-    //     command.arg("-l");
-    //     command.arg("_http._tcp");
-
-    //     //Starting the worker process
-    //     let mut child = try!(command.stdout(Stdio::piped()).spawn());
-    //     let exit_status = child.wait().unwrap();
-
-    //     if exit_status.success() {
-    //         let mut buffer = String::new();
-    //         let mut output = child.stdout.unwrap();
-    //         output.read_to_string(&mut buffer)?;
-
-    //         for l in buffer.lines() {
-    //             let tokens : Vec<&str> = l.split(';').collect();
-    //             if tokens.len() > 6 {
-    //                 let serv = ServiceRecord{ service_name : String::from(tokens[3]),
-    //                                         service_type: String::from(tokens[4]), 
-    //                                         host_name : String::from(tokens[6]), 
-    //                                         address : String::from(tokens[7]), 
-    //                                         address_type : String::from(tokens[2]), 
-    //                                         port : u16::from_str_radix(tokens[8], 10).unwrap(),
-    //                                         txt_records : Vec::new() };
-                    
-    //                 if serv.service_name.starts_with(DNS_SERVICE_NAME) {
-    //                     //Found a Peer
-    //                     let mut p = Peer::new();
-    //                     //TODO: Deconstruct these Options in a classier way. If not, might as well return emptry string on failure.
-    //                     p.public_key = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from("(NO_KEY)"));
-    //                     p.name = serv.get_txt_record("NAME").unwrap_or(String::from("(NO_NAME)"));
-    //                     p.address = format!("{}:{}", serv.address, DNS_SERVICE_PORT);
-    //                     p.address_type = OperationMode::Device;
-    //                     //p.service_record = serv;
-    //                     info!("Found peer {}, address {}", p.name, p.address);
-    //                     peers.insert(p);
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     Ok(peers)
-    // }
-
-    // fn simulated_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
-    //     let mut peers = HashSet::new();
-
-    //     //Obtain parent directory of broadcast groups
-    //     let mut parent_dir = Path::new(&self.me.address).to_path_buf();
-    //     let _ = parent_dir.pop(); //bcast group for main address
-    //     let _ = parent_dir.pop(); //bcast group parent directory
-
-    //     info!("Scanning for nearby peers...");
-    //     debug!("Scanning in dir {}", parent_dir.display());
-    //     for group in &radio.broadcast_groups {
-    //         let dir = format!("{}{}{}", parent_dir.display(), std::path::MAIN_SEPARATOR, group);
-    //         if Path::new(&dir).is_dir() {
-    //             for path in fs::read_dir(dir)? {
-    //                 let peer_file = try!(path);
-    //                 let peer_file = peer_file.path();
-    //                 let peer_file = peer_file.to_str().unwrap_or("");
-    //                 let peer_key = extract_address_key(&peer_file);
-    //                 if !peer_key.is_empty() && peer_key != self.me.public_key {
-    //                     info!("Found {}!", &peer_key);
-    //                     let address = format!("{}", peer_file);
-    //                     let peer = Peer{name : String::from(""), 
-    //                                     public_key : String::from(peer_key), 
-    //                                     address : address,
-    //                                     address_type : OperationMode::Simulated };
-    //                     peers.insert(peer);
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     //Remove self from peers
-    //     //let own_key = Path::new(&self.address).file_name().unwrap();
-    //     //let own_key = own_key.to_str().unwrap_or("").to_string();
-    //     //peers.remove(&own_key);
-    //     Ok(peers)
-    // }
-
     fn init(&mut self) -> Result<(), WorkerError> {
-        //Create the key-pair for the worker.
-        //For now, just filling with random 32 bytes.
-        let mut random_bytes = vec![];
-        let _ = random_bytes.write_u32::<NativeEndian>(self.random_seed);
-        let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
-        let mut gen = StdRng::from_seed(randomness.as_slice());
-        let mut key = self.me.public_key.from_hex().unwrap();
-        gen.fill_bytes(&mut key[..]);
-        self.me.public_key = key.to_hex().to_string();
-
         //Make sure the required directories are there and writable or create them.
         //check log dir is there
         let mut dir = try!(std::fs::canonicalize(&self.work_dir));
-        //debug!("Work dir: {}", dir.display());
         dir.push("log"); //Dir is work_dir/log
         if !dir.exists() {
             //Create log dir
             try!(std::fs::create_dir(dir.as_path()));
-            //info!("Created dir file {} ", dir.as_path().display());
+            info!("Created dir {} ", dir.as_path().display());
         }
         dir.pop(); //Dir is work_dir
-
-        if self.operation_mode == OperationMode::Simulated {
-            //Set my own address
-            //self.me.address = format!("{}/{}/{}.socket", self.work_dir, SIMULATED_SCAN_DIR, self.me.public_key);
-
-            //check bcast_groups dir is there
-            dir.push(SIMULATED_SCAN_DIR); //Dir is work_dir/$SIMULATED_SCAN_DIR
-            if !dir.exists() {
-                //Create bcast_groups dir
-                try!(std::fs::create_dir(dir.as_path()));
-                //info!("Created dir file {} ", dir.as_path().display());
-            }
-
-            // //check current group dir is there
-            // let mut main_address = String::new();
-            // let groups = self.short_radio.broadcast_groups.clone();
-            // for group in groups.iter() {
-            //     dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/&group
-                
-            //     //Does broadcast group exist?
-            //     if !dir.exists() {
-            //         //Create group dir
-            //         try!(std::fs::create_dir(dir.as_path()));
-            //         //info!("Created dir file {} ", dir.as_path().display());
-            //     }
-
-            //     //Create address or symlink for this worker
-            //     if main_address.is_empty() {
-            //         main_address = format!("{}/{}.socket", dir.as_path().display(), self.me.public_key);
-            //         if Path::new(&main_address).exists() {
-            //             //Pipe already exists.
-            //             try!(fs::remove_file(&main_address));
-            //         }
-            //         let _ = try!(File::create(&main_address));
-            //         //debug!("Pipe file {} created.", &main_address);
-            //         //debug!("Radio address set to {}.", &main_address);
-            //         self.me.address = format!("{}", main_address);
-            //     } else {
-            //         let linked_address = format!("{}/{}.socket", dir.as_path().display(), self.me.public_key);
-            //         if Path::new(&linked_address).exists() {
-            //             //Pipe already exists
-            //             dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
-            //             continue;
-            //         }
-            //         let _ = try!(std::os::unix::fs::symlink(&main_address, &linked_address));
-            //         //debug!("Pipe file {} created.", &linked_address);
-            //     }
-                
-            //     dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
-
-            // }
-            // //Now, remove the main address socket file. This will create broken symlinks in the broadcast
-            // //groups that this worker belongs to beyond the first one, but it's needed for the UnixListener
-            // //type that the file doesn't exist before starting to listen on it.
-            // //If the operation fails, we should error-out since the listener won't be able to start.
-            // let _ = fs::remove_file(main_address)?;
-
-        }
 
         Ok(())
     }
@@ -599,47 +358,64 @@ impl Worker {
         Ok(())
     }
 
-    fn handle_client_simulated(&mut self, mut client_socket : UnixStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> { 
-        //Read the data from the unix socket
-        let mut data = Vec::new();
-        let _bytes_read = try!(client_socket.read_to_end(&mut data));
+    fn handle_client_simulated(&mut self, client_socket : UnixStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
+        let mut client = SimulatedClient{ socket : client_socket};
 
-        //Try to decode the data into a message.
-        //let msg_type : Result<MessageType, _> = from_reader(&data[..]);
-        //let msg_type = try!(msg_type);
-        //self.handle_message(msg_type)
-        let msg = try!(MessageHeader::from_vec(data));
-        let response = try!(protocol.handle_message(msg));
-        match response {
-            Some(msg) => { 
-                self.short_radio.send(msg)
-            },
-            None => {
-                Ok(())
+        loop {
+            //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
+            //Read the data from the unix socket
+            //let _bytes_read = try!(client_socket.read_to_end(&mut data));
+            //Try to decode the data into a message.
+            //let msg = try!(MessageHeader::from_vec(data));
+            let msg = try!(client.read_msg());
+            let response = match msg {
+                Some(m) => { try!(protocol.handle_message(m)) },
+                None => None,
+            };
+
+            match response {
+                Some(resp_msg) => { 
+                    //self.short_radio.send(msg)
+                    //let resp_data = try!(to_vec(&resp_msg));
+                    let _res = try!(client.send_msg(resp_msg));
+                },
+                None => {
+                    //End of protocol sequence.
+                    break;
+                }
             }
         }
+        Ok(())
     }
 
-    fn handle_client_device(&mut self, mut client_socket : TcpStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError>  {
-        //Read the data from the NIC
-        let mut data = Vec::new();
-        let _bytes_read = try!(client_socket.read_to_end(&mut data));
+    fn handle_client_device(&mut self, client_socket : TcpStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError>  {
+        let mut client = DeviceClient{ socket : client_socket};
 
-        //Try to decode the data into a message.
-        //let msg_type : Result<MessageType, _> = from_reader(&data[..]);
-        //let msg_type = try!(msg_type);
-        //self.handle_message(msg_type)
-        let msg = try!(MessageHeader::from_vec(data));
-        let response = try!(protocol.handle_message(msg));
-        match response {
-            Some(msg) => { 
-                self.short_radio.send(msg)
-            },
-            None => {
-                //End of protocol sequence.
-                Ok(())
+        loop {
+            //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
+            //Read the data from the unix socket
+            //let _bytes_read = try!(client_socket.read_to_end(&mut data));
+            //Try to decode the data into a message.
+            //let msg = try!(MessageHeader::from_vec(data));
+            let msg = try!(client.read_msg());
+            let response = match msg {
+                Some(m) => { try!(protocol.handle_message(m)) },
+                None => None,
+            };
+
+            match response {
+                Some(resp_msg) => { 
+                    //self.short_radio.send(msg)
+                    //let resp_data = try!(to_vec(&resp_msg));
+                    let _res = try!(client.send_msg(resp_msg));
+                },
+                None => {
+                    //End of protocol sequence.
+                    break;
+                }
             }
         }
+        Ok(())
     }
 
     fn start_listener(&mut self, listener : ListenerType, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
@@ -673,11 +449,11 @@ impl Worker {
     fn start_listener_device(&mut self, listener : TcpListener, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
         //Advertise the service to be discoverable by peers before we start listening for messages.
         let mut service = ServiceRecord::new();
-        service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.me.name);
+        service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.name);
         service.service_type = String::from(DNS_SERVICE_TYPE);
         service.port = DNS_SERVICE_PORT;
-        service.txt_records.push(format!("PUBLIC_KEY={}", self.me.public_key));
-        service.txt_records.push(format!("NAME={}", self.me.name));
+        service.txt_records.push(format!("PUBLIC_KEY={}", self.id));
+        service.txt_records.push(format!("NAME={}", self.name));
         try!(self.publish_service(service));
 
         //Now listen for messages
@@ -695,33 +471,18 @@ impl Worker {
         Ok(())
     }
 
-    fn get_listener(&self) -> Result<ListenerType, WorkerError> {
-        match self.operation_mode {
-            OperationMode::Simulated => {
-                let listener = try!(UnixListener::bind(&self.me.address));
-                Ok(ListenerType::Simulated(listener))
-            },
-            OperationMode::Device => {
-                let listener = try!(TcpListener::bind(&self.me.address));
-                Ok(ListenerType::Device(listener))
-            },
-        }
-    }
-
-    // fn get_radio<'a>(&self, t : RadioTypes) -> &Radio {
-    //     match t {
-    //         RadioTypes::ShortRange => { 
-    //             &self.short_radio
+    // fn get_listener(&self, radio : &Box<Radio>) -> Result<ListenerType, WorkerError> {
+    //     match self.operation_mode {
+    //         OperationMode::Simulated => {
+    //             let listener = try!(UnixListener::bind(&radio.get_self_peer().address));
+    //             Ok(ListenerType::Simulated(listener))
     //         },
-    //         RadioTypes::LongRange => { 
-    //             &self.long_radio
+    //         OperationMode::Device => {
+    //             let listener = try!(TcpListener::bind(&radio.get_self_peer().address));
+    //             Ok(ListenerType::Device(listener))
     //         },
     //     }
     // }
-
-    fn start_scanner(&self, initial_wait : usize) -> Result<(), WorkerError> {
-        Ok(())
-    }
 }
 
 // *****************************
@@ -746,20 +507,8 @@ mod tests {
     use super::*;
     use worker::worker_config::*;
 
-    //**** Message unit tests ****
-
-
     //**** Peer unit tests ****
     
-
-    //Unit test for: create_default_conf_file
-    // #[test]
-    // fn test_create_default_conf_file() {
-    //     let file_path = create_default_conf_file().unwrap();
-    //     let md = fs::metadata(file_path).unwrap();
-    //     assert!(md.is_file());
-    //     assert!(md.len() > 0);
-    // }
     
     //**** Worker unit tests ****
     //Unit test for: Worker::new
@@ -783,47 +532,6 @@ mod tests {
     //     assert!(res.is_ok());
     // }
 
-    //Unit test for: Worker::handle_message
-    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
-    //so I don't know how to mock that out in rust.
-    /*
-    #[test]
-    fn test_worker_handle_message() {
-        unimplemented!();
-    }
-    */
-
-    //Unit test for: Worker::join_network
-    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
-    //so I don't know how to mock that out in rust.
-    /*
-    #[test]
-    fn test_worker_send_join_message() {
-        unimplemented!();
-    }
-    */
-
-    //Unit test for: Worker::process_join_message
-    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
-    //so I don't know how to mock that out in rust.
-    /*
-    #[test]
-    fn test_worker_process_join_message() {
-        unimplemented!();
-    }
-    */
-
-    //**** Radio unit tests ****
-    //Unit test for: Radio::send
-    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
-    //so I don't know how to mock that out in rust.
-    /*
-    #[test]
-    fn test_radio_send() {
-        unimplemented!();
-    }
-    */
-
     //**** ServiceRecord unit tests ****
     //Unit test for get get_txt_record
     #[test]
@@ -834,15 +542,6 @@ mod tests {
         assert_eq!(String::from("Worker1"), record.get_txt_record("NAME").unwrap());
     }
 
-
-    //**** Utility functions ****
-    //Used for creating keys that can be addresss of other workers.
-    fn create_random_key() -> String {
-        let mut rng = rand::thread_rng();
-        let mut key = [0u8; 32];
-        rng.fill_bytes(&mut key[..]);
-        key.to_hex().to_string()
-    }
 }
 
 // *****************************

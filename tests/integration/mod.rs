@@ -89,12 +89,12 @@ fn integration_basic_test() {
     let node2_log_file = &format!("{}/log/node2.log", &work_dir);
     let node2_log_records = logging::get_log_records_from_file(&node2_log_file).unwrap();
 
-    let node_2_discovery = logging::find_log_record("msg", "Found 1 peers!", &node2_log_records);   
+    //let node_2_discovery = logging::find_log_record("msg", "Found 1 peers!", &node2_log_records);   
     let node_1_rec_join = logging::find_log_record("msg", "Received JOIN message from node2", &node1_log_records);
-    let node_2_ack = logging::find_log_record("msg", "Received ACK message from node1", &node2_log_records);
+    let node_2_ack = logging::find_log_record("msg", "Received ACK message from ", &node2_log_records);
 
 
-    assert!(node_2_discovery.is_some());
+    //assert!(node_2_discovery.is_some());
     assert!(node_1_rec_join.is_some());
     assert!(node_2_ack.is_some());
 }
