@@ -12,6 +12,7 @@ use std::iter;
 use self::rustc_serialize::hex::*;
 use self::rand::{Rng, SeedableRng, StdRng};
 use self::byteorder::{NativeEndian, WriteBytesExt};
+use std::sync::{Mutex, Arc};
 
 ///Configuration pertaining to a given radio of the worker.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -82,6 +83,8 @@ impl WorkerConfig {
         //Fill the vector with 16 random bytes.
         gen.fill_bytes(&mut key[..]);
         let id = key.to_hex().to_string();
+        //Wrap the rng in the shared-mutable-state smart pointers
+        let rng = Arc::new(Mutex::new(gen));
 
         //Create the radios
         //TODO: This warning will dissapear when 2nd radio feature is enabled.
@@ -102,13 +105,25 @@ impl WorkerConfig {
                 let delay = self.radio_short.delay.unwrap_or(0);
                 let reliability = self.radio_short.reliability.unwrap_or(1.0);
                 let bg = self.radio_short.broadcast_groups.expect("A list of broadcast groups must be provided for radio_short in simulated_mode.");
-                let radio_short = SimulatedRadio::new( delay, reliability, bg, self.work_dir.clone(), id.clone(), self.worker_name.clone() );
+                let radio_short = SimulatedRadio::new( delay, 
+                                                       reliability, 
+                                                       bg, 
+                                                       self.work_dir.clone(),
+                                                       id.clone(),
+                                                       self.worker_name.clone(),
+                                                       Arc::clone(&rng) );
 
                 //Long-range radio
                 let delay = self.radio_long.delay.unwrap_or(0);
                 let reliability = self.radio_long.reliability.unwrap_or(1.0);
                 let bg = self.radio_long.broadcast_groups.expect("A list of broadcast groups must be provided for radio_long in simulated_mode.");
-                let radio_long = SimulatedRadio::new( delay, reliability, bg, self.work_dir.clone(), id.clone(), self.worker_name.clone() );
+                let radio_long = SimulatedRadio::new( delay,
+                                                      reliability, 
+                                                      bg, 
+                                                      self.work_dir.clone(), 
+                                                      id.clone(), 
+                                                      self.worker_name.clone(),
+                                                      Arc::clone(&rng) );
 
                 (Box::new(radio_short), Box::new(radio_long))                
             },
@@ -118,7 +133,7 @@ impl WorkerConfig {
                 short_radio : Some(sr),
                 //long_radio : lr, //TODO: Uncomment when 2nd radio feature is enabled.
                 work_dir : self.work_dir, 
-                random_seed : self.random_seed,
+                rng : Arc::clone(&rng),
                 operation_mode : self.operation_mode,
                 id : id }
     }

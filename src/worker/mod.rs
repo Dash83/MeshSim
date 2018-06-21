@@ -47,12 +47,17 @@ use std::net::{TcpListener, TcpStream};
 use std::os::unix::net::{UnixStream, UnixListener};
 use worker::protocols::*;
 use worker::radio::*;
+use worker::client::*;
 use self::serde_cbor::ser::*;
+use std::sync::{Mutex, Arc};
+use self::rand::{StdRng, SeedableRng};
 
 //Sub-modules declaration
 pub mod worker_config;
 pub mod protocols;
 pub mod radio;
+pub mod client;
+pub mod listener;
 
 // *****************************
 // ********** Globals **********
@@ -286,8 +291,8 @@ pub struct Worker {
     ///Directory for the worker to operate. Must have RW access to it. Operational files and 
     ///log files will be written here.
     work_dir : String,
-    ///Random seed used for all RNG operations.
-    random_seed : u32,
+    ///Random number generator used for all RNG operations. 
+    rng : Arc<Mutex<StdRng>>,
     ///Simulated or Device operation.
     operation_mode : OperationMode,
 }
@@ -316,7 +321,8 @@ impl Worker {
         let _ = try!(prot_handler.init_protocol());
 
         //Start listening for messages
-        let _ = try!(self.start_listener(listener, &mut prot_handler));
+        //let _ = try!(self.start_listener(listener, &mut prot_handler));
+        let _ = try!(listener.start(&mut prot_handler));
 
         Ok(())
     }
@@ -358,118 +364,118 @@ impl Worker {
         Ok(())
     }
 
-    fn handle_client_simulated(&mut self, client_socket : UnixStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
-        let mut client = SimulatedClient{ socket : client_socket};
+    // fn handle_client_simulated(&mut self, client_socket : UnixStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
+    //     let mut client = SimulatedClient{ socket : client_socket};
 
-        loop {
-            //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
-            //Read the data from the unix socket
-            //let _bytes_read = try!(client_socket.read_to_end(&mut data));
-            //Try to decode the data into a message.
-            //let msg = try!(MessageHeader::from_vec(data));
-            let msg = try!(client.read_msg());
-            let response = match msg {
-                Some(m) => { try!(protocol.handle_message(m)) },
-                None => None,
-            };
+    //     loop {
+    //         //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
+    //         //Read the data from the unix socket
+    //         //let _bytes_read = try!(client_socket.read_to_end(&mut data));
+    //         //Try to decode the data into a message.
+    //         //let msg = try!(MessageHeader::from_vec(data));
+    //         let msg = try!(client.read_msg());
+    //         let response = match msg {
+    //             Some(m) => { try!(protocol.handle_message(m)) },
+    //             None => None,
+    //         };
 
-            match response {
-                Some(resp_msg) => { 
-                    //self.short_radio.send(msg)
-                    //let resp_data = try!(to_vec(&resp_msg));
-                    let _res = try!(client.send_msg(resp_msg));
-                },
-                None => {
-                    //End of protocol sequence.
-                    break;
-                }
-            }
-        }
-        Ok(())
-    }
+    //         match response {
+    //             Some(resp_msg) => { 
+    //                 //self.short_radio.send(msg)
+    //                 //let resp_data = try!(to_vec(&resp_msg));
+    //                 let _res = try!(client.send_msg(resp_msg));
+    //             },
+    //             None => {
+    //                 //End of protocol sequence.
+    //                 break;
+    //             }
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
-    fn handle_client_device(&mut self, client_socket : TcpStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError>  {
-        let mut client = DeviceClient{ socket : client_socket};
+    // fn handle_client_device(&mut self, client_socket : TcpStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError>  {
+    //     let mut client = DeviceClient{ socket : client_socket};
 
-        loop {
-            //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
-            //Read the data from the unix socket
-            //let _bytes_read = try!(client_socket.read_to_end(&mut data));
-            //Try to decode the data into a message.
-            //let msg = try!(MessageHeader::from_vec(data));
-            let msg = try!(client.read_msg());
-            let response = match msg {
-                Some(m) => { try!(protocol.handle_message(m)) },
-                None => None,
-            };
+    //     loop {
+    //         //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
+    //         //Read the data from the unix socket
+    //         //let _bytes_read = try!(client_socket.read_to_end(&mut data));
+    //         //Try to decode the data into a message.
+    //         //let msg = try!(MessageHeader::from_vec(data));
+    //         let msg = try!(client.read_msg());
+    //         let response = match msg {
+    //             Some(m) => { try!(protocol.handle_message(m)) },
+    //             None => None,
+    //         };
 
-            match response {
-                Some(resp_msg) => { 
-                    //self.short_radio.send(msg)
-                    //let resp_data = try!(to_vec(&resp_msg));
-                    let _res = try!(client.send_msg(resp_msg));
-                },
-                None => {
-                    //End of protocol sequence.
-                    break;
-                }
-            }
-        }
-        Ok(())
-    }
+    //         match response {
+    //             Some(resp_msg) => { 
+    //                 //self.short_radio.send(msg)
+    //                 //let resp_data = try!(to_vec(&resp_msg));
+    //                 let _res = try!(client.send_msg(resp_msg));
+    //             },
+    //             None => {
+    //                 //End of protocol sequence.
+    //                 break;
+    //             }
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
-    fn start_listener(&mut self, listener : ListenerType, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
-        match listener {
-            ListenerType::Simulated(l) => {
-                self.start_listener_simulated(l, protocol)
-            },
-            ListenerType::Device(l) => {
-                self.start_listener_device(l, protocol)
-            },
-        }
-    }
+    // fn start_listener(&mut self, listener : ListenerType, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
+    //     match listener {
+    //         ListenerType::Simulated(l) => {
+    //             self.start_listener_simulated(l, protocol)
+    //         },
+    //         ListenerType::Device(l) => {
+    //             self.start_listener_device(l, protocol)
+    //         },
+    //     }
+    // }
 
-    fn start_listener_simulated(&mut self, listener : UnixListener, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
-        //No need for service advertisement in simulated mode.
-        //Now listen for messages
-        info!("Listening for messages.");
-        for stream in listener.incoming() {
-            match stream {
-                Ok(client) => { 
-                    let _result = try!(self.handle_client_simulated(client, protocol));
-                },
-                Err(e) => { 
-                    warn!("Failed to connect to incoming client. Error: {}", e);
-                },
-            }
-        }
-        Ok(())
-    }
+    // fn start_listener_simulated(&mut self, listener : UnixListener, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
+    //     //No need for service advertisement in simulated mode.
+    //     //Now listen for messages
+    //     info!("Listening for messages.");
+    //     for stream in listener.incoming() {
+    //         match stream {
+    //             Ok(client) => { 
+    //                 let _result = try!(self.handle_client_simulated(client, protocol));
+    //             },
+    //             Err(e) => { 
+    //                 warn!("Failed to connect to incoming client. Error: {}", e);
+    //             },
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
-    fn start_listener_device(&mut self, listener : TcpListener, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
-        //Advertise the service to be discoverable by peers before we start listening for messages.
-        let mut service = ServiceRecord::new();
-        service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.name);
-        service.service_type = String::from(DNS_SERVICE_TYPE);
-        service.port = DNS_SERVICE_PORT;
-        service.txt_records.push(format!("PUBLIC_KEY={}", self.id));
-        service.txt_records.push(format!("NAME={}", self.name));
-        try!(self.publish_service(service));
+    // fn start_listener_device(&mut self, listener : TcpListener, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
+    //     //Advertise the service to be discoverable by peers before we start listening for messages.
+    //     let mut service = ServiceRecord::new();
+    //     service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.name);
+    //     service.service_type = String::from(DNS_SERVICE_TYPE);
+    //     service.port = DNS_SERVICE_PORT;
+    //     service.txt_records.push(format!("PUBLIC_KEY={}", self.id));
+    //     service.txt_records.push(format!("NAME={}", self.name));
+    //     try!(self.publish_service(service));
 
-        //Now listen for messages
-        info!("Listening for messages.");
-        for stream in listener.incoming() {
-            match stream {
-                Ok(client) => { 
-                    let _result = try!(self.handle_client_device(client, protocol));
-                },
-                Err(e) => { 
-                    warn!("Failed to connect to incoming client. Error: {}", e);
-                },
-            }
-        }
-        Ok(())
-    }
+    //     //Now listen for messages
+    //     info!("Listening for messages.");
+    //     for stream in listener.incoming() {
+    //         match stream {
+    //             Ok(client) => { 
+    //                 let _result = try!(self.handle_client_device(client, protocol));
+    //             },
+    //             Err(e) => { 
+    //                 warn!("Failed to connect to incoming client. Error: {}", e);
+    //             },
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
     // fn get_listener(&self, radio : &Box<Radio>) -> Result<ListenerType, WorkerError> {
     //     match self.operation_mode {

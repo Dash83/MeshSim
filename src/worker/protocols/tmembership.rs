@@ -61,14 +61,13 @@ pub struct AliveMessage {
 
 impl Protocol for TMembership {
     fn handle_message(&mut self, mut header : MessageHeader) -> Result<Option<MessageHeader>, WorkerError> {
-        let mut data = Vec::new();
-
-        if let Some(d) = header.payload.take() {
-            data = d;
-        } else {
-            warn!("Messaged received from {:?} had empty payload.", header.sender);
-            return Ok(None)
-        }
+        let data = match header.payload.take() {
+            Some(d) => { d },
+            None => {
+                warn!("Messaged received from {:?} had empty payload.", header.sender);
+                return Ok(None)
+            }
+        };
         
         let msg = try!(TMembership::build_protocol_message(data));
         self.handle_message_internal(header, msg)
