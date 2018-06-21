@@ -4,6 +4,7 @@ extern crate pnet;
 extern crate ipnetwork;
 
 use worker::*;
+use worker::listener::*;
 use std::fs;
 
 ///Types of radio supported by the system. Used by Protocols that need to 
@@ -17,7 +18,7 @@ pub enum RadioTypes{
 }
 
 /// Trait for all types of radios.
-pub trait Radio : std::fmt::Debug + Send {
+pub trait Radio : std::fmt::Debug {
     ///Function to create a client object to a remote peer.
     fn connect(&self, p : &Peer) -> Result<Box<Client>, WorkerError>;
     // ///Method that implements the radio-specific logic to send data over the network.
@@ -27,7 +28,7 @@ pub trait Radio : std::fmt::Debug + Send {
     ///Gets the current address at which the radio is listening.
     fn get_self_peer(&self) -> &Peer;
     ///Method for the Radio to perform the necessary initialization for it to function.
-    fn init(&mut self) -> Result<ListenerType, WorkerError>;
+    fn init(&mut self) -> Result<Box<Listener>, WorkerError>;
 }
 
 /// Represents a radio used by the worker to send a message to the network.
@@ -47,6 +48,8 @@ pub struct SimulatedRadio {
     pub work_dir : String,
     ///Peer object that identifies this worker over this radio.
     me : Peer,
+    ///Random number generator used for all RNG operations. 
+    rng : Arc<Mutex<StdRng>>,
 }
 
 impl Radio  for SimulatedRadio {
@@ -97,7 +100,7 @@ impl Radio  for SimulatedRadio {
         &self.me
     }
 
-    fn init(&mut self) -> Result<ListenerType, WorkerError> {
+    fn init(&mut self) -> Result<Box<Listener>, WorkerError> {
         let mut dir = try!(std::fs::canonicalize(&self.work_dir));
 
         //check bcast_groups dir is there
@@ -122,7 +125,8 @@ impl Radio  for SimulatedRadio {
             //Pipe already exists.
             try!(fs::remove_file(&self.me.address));
         }
-        let l = try!(self.get_listener());
+        let l = try!(UnixListener::bind(&self.me.address));
+        let listener = SimulatedListener::new( l, self.delay, self.reliability, Arc::clone(&self.rng) );
         
         for group in groups.iter() {
             dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/&group
@@ -147,12 +151,13 @@ impl Radio  for SimulatedRadio {
             dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
         }
 
-        Ok(ListenerType::Simulated(l))
+        Ok(Box::new(listener))
     }
 
     fn connect(&self, p : &Peer) -> Result<Box<Client>, WorkerError> {
         let socket = try!(UnixStream::connect(&p.address));
-        let client = SimulatedClient{ socket : socket};
+        let rng = Arc::clone(&self.rng);
+        let client = SimulatedClient::new(socket, self.delay, self.reliability, rng);
         Ok(Box::new(client))
     }
 }
@@ -184,7 +189,8 @@ impl SimulatedRadio {
                 bc_groups : Vec<String>,
                 work_dir : String,
                 id : String,
-                worker_name : String ) -> SimulatedRadio {
+                worker_name : String,
+                rng : Arc<Mutex<StdRng>> ) -> SimulatedRadio {
         let main_bcg = bc_groups[0].clone();
         //$WORK_DIR/SIMULATED_SCAN_DIR/GROUP/ID.socket
         let address = format!("{}/{}/{}/{}.socket", work_dir, SIMULATED_SCAN_DIR, main_bcg, id);
@@ -195,7 +201,8 @@ impl SimulatedRadio {
                         reliability : reliability,
                         broadcast_groups : bc_groups,
                         work_dir : work_dir,
-                        me : me }
+                        me : me,
+                        rng : rng }
     }
 
     ///Function for adding broadcast groups in simulated mode
@@ -232,7 +239,7 @@ impl Radio  for DeviceRadio{
         &self.me
     }
 
-    fn init(&mut self) -> Result<ListenerType, WorkerError> {
+    fn init(&mut self) -> Result<Box<Listener>, WorkerError> {
         panic!("DeviceRadio.init() is not implemented yet.");
     }
 
@@ -277,96 +284,6 @@ impl DeviceRadio {
     }
 }
 
-///Trait implemented by the clients returned when a radio connects to a remote peer.
-pub trait Client {
-    ///Sends a message to the destination specified in the msg destination using the underlying socket.
-    fn send_msg(&mut self, msg : MessageHeader) -> Result<(), WorkerError>;
-    ///Reads a MessageHeader from the underlying socket.
-    fn read_msg(&mut self) -> Result<Option<MessageHeader>, WorkerError>;
-}
-
-/// Client returned when connecting to a remote peer under simulated mode.
-pub struct SimulatedClient {
-    ///Underlying socket for this client.
-    pub socket : UnixStream,
-}
-
-impl Client for SimulatedClient {
-    fn send_msg(&mut self, msg : MessageHeader) -> Result<(), WorkerError> {
-        //info!("Sending message to {}, address {}.", destination.name, destination.address);
-        let data = try!(to_vec(&msg));
-        try!(self.socket.write_all(&data));
-        let _ = try!(self.socket.flush());
-        info!("Message sent successfully.");
-        Ok(())
-    }
-
-    fn read_msg(&mut self) -> Result<Option<MessageHeader>, WorkerError> {
-        let mut data : Vec<u8> = Vec::new();
-        let mut total_bytes_read = 0;
-        let mut result = Ok(None);
-
-        info!("Reading message from remote peer.");
-
-        //Read the data from the unix socket
-        //let _bytes_read = try!(self.socket.read_to_end(&mut data));
-        loop {
-            let mut read = [0; 1024]; //Read 1kb at the time. Not particular reason for why this size.
-            match self.socket.read(&mut read) {
-                Ok(bytes_read) => { 
-                    if bytes_read == 0 {
-                        //Connection is closed.
-                        debug!("Connection closed.");
-                        break;
-                    } else {
-                        debug!("Read {} bytes from remote peer.", bytes_read);
-                        data.extend_from_slice(&read);
-                        total_bytes_read += bytes_read;
-                        if bytes_read < read.len() {
-                            //Likely that we already read all available data
-                            break;
-                        }
-                    }
-                },
-                Err(e) => { 
-                    error!("Error reading data from socket: {}", &e);
-                    return Err(WorkerError::IO(e));
-                },
-            }
-            debug!("It seems there's more data to read.");
-        }
-
-        //Try to decode the data into a message.
-        if total_bytes_read > 0 {
-            data.truncate(total_bytes_read);
-            let msg = try!(MessageHeader::from_vec(data));
-            result = Ok(Some(msg));
-        }
-        
-        result
-    }
-}
-
-/// Client returned when connecting to a remote peer under device mode.
-pub struct DeviceClient {
-    ///Underlying socket for this client.
-    pub socket : TcpStream,
-}
-
-impl Client for DeviceClient {
-    fn send_msg(&mut self, msg : MessageHeader) -> Result<(), WorkerError> {
-        //info!("Sending message to {}, address {}.", destination.name, destination.address);
-        let data = try!(to_vec(&msg));
-        try!(self.socket.write_all(&data));
-        let _ = try!(self.socket.flush());
-        info!("Message sent successfully.");
-        Ok(())
-    }
-
-    fn read_msg(&mut self) -> Result<Option<MessageHeader>, WorkerError> {
-        panic!("DeviceClient.read_msg is not implemented yet.");
-    }
-}
     //**** Radio unit tests ****
     //Unit test for: Radio::send
     //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,

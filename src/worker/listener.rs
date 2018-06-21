@@ -1,0 +1,85 @@
+//! This module contains the Listener trait and its implentations. The trait hides the underlying type of
+//! socket used to listen for incoming connections. This is done to abstract the protocols and worker from
+//! knowing whether the worker is running on simulated or device mode.
+use worker::*;
+
+/// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it 
+/// and listen for incoming connections.
+pub trait Listener {
+    /// Starts listening for incoming connections on its underlying socket. Implementors must provide
+    /// their own function to handle client connections.
+    fn start(&self, protocol : &mut Box<Protocol>) -> Result<(), WorkerError>;
+}
+
+///Listener that uses contains an underlying UnixListener. Used by the worker in simulated mode.
+pub struct SimulatedListener {
+    socket : UnixListener,
+    delay : u32,
+    reliability : f64,
+    rng : Arc<Mutex<StdRng>>,
+}
+
+impl Listener for SimulatedListener {
+    fn start(&self, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
+        //No need for service advertisement in simulated mode.
+        //Now listen for messages
+        info!("Listening for messages.");
+        for stream in self.socket.incoming() {
+            match stream {
+                Ok(s) => { 
+                    //TODO: Each client connection must be handled in its own thread. Use interior-mutability pattern.
+                    let client = SimulatedClient::new(s, self.delay, self.reliability, Arc::clone(&self.rng) );
+                    let _result = try!(self.handle_client(client, protocol));
+                },
+                Err(e) => { 
+                    warn!("Failed to connect to incoming client. Error: {}", e);
+                },
+            }
+        }
+        Ok(())
+    }
+}
+
+impl SimulatedListener {
+    ///Creates a new instance of SimulatedListener
+    pub fn new( socket : UnixListener, delay : u32, reliability : f64, rng : Arc<Mutex<StdRng>>) -> SimulatedListener {
+        SimulatedListener{ socket : socket, 
+                           delay : delay, 
+                           reliability : reliability,
+                           rng : rng }
+    }
+
+    ///Handles client connections
+    fn handle_client(&self, mut client : SimulatedClient, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
+        loop {
+            //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
+            //Read the data from the unix socket
+            //let _bytes_read = try!(client_socket.read_to_end(&mut data));
+            //Try to decode the data into a message.
+            //let msg = try!(MessageHeader::from_vec(data));
+            let msg = try!(client.read_msg());
+            let response = match msg {
+                Some(m) => { try!(protocol.handle_message(m)) },
+                None => None,
+            };
+
+            match response {
+                Some(resp_msg) => { 
+                    //self.short_radio.send(msg)
+                    //let resp_data = try!(to_vec(&resp_msg));
+                    let _res = try!(client.send_msg(resp_msg));
+                },
+                None => {
+                    //End of protocol sequence.
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+///Listener that uses contains an underlying TCPListener. Used by the worker in simulated mode.
+pub struct DeviceListener {
+    socket : TcpListener,
+}
