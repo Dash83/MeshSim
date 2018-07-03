@@ -18,7 +18,7 @@ pub enum RadioTypes{
 }
 
 /// Trait for all types of radios.
-pub trait Radio : std::fmt::Debug {
+pub trait Radio : std::fmt::Debug + Send + Sync {
     ///Function to create a client object to a remote peer.
     fn connect(&self, p : &Peer) -> Result<Box<Client>, WorkerError>;
     // ///Method that implements the radio-specific logic to send data over the network.

@@ -316,13 +316,15 @@ impl Worker {
 
         //Get the protocol object.
         //TODO: Get protocol from configuration file.
-        let mut prot_handler = build_protocol_handler(Protocols::TMembership, short_radio);
+        let p = build_protocol_handler(Protocols::TMembership, short_radio);
+        let prot_handler = Arc::new(p);
+
         //Initialize protocol.
         let _ = try!(prot_handler.init_protocol());
 
         //Start listening for messages
         //let _ = try!(self.start_listener(listener, &mut prot_handler));
-        let _ = try!(listener.start(&mut prot_handler));
+        let _ = try!(listener.start(prot_handler));
 
         Ok(())
     }
