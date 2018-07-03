@@ -2,13 +2,14 @@
 //! socket used to listen for incoming connections. This is done to abstract the protocols and worker from
 //! knowing whether the worker is running on simulated or device mode.
 use worker::*;
+use std::thread;
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it 
 /// and listen for incoming connections.
 pub trait Listener {
     /// Starts listening for incoming connections on its underlying socket. Implementors must provide
     /// their own function to handle client connections.
-    fn start(&self, protocol : &mut Box<Protocol>) -> Result<(), WorkerError>;
+    fn start(&self, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError>;
 }
 
 ///Listener that uses contains an underlying UnixListener. Used by the worker in simulated mode.
@@ -20,7 +21,7 @@ pub struct SimulatedListener {
 }
 
 impl Listener for SimulatedListener {
-    fn start(&self, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
+    fn start(&self, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError> {
         //No need for service advertisement in simulated mode.
         //Now listen for messages
         info!("Listening for messages.");
@@ -29,9 +30,20 @@ impl Listener for SimulatedListener {
                 Ok(s) => { 
                     //TODO: Each client connection must be handled in its own thread. Use interior-mutability pattern.
                     let client = SimulatedClient::new(s, self.delay, self.reliability, Arc::clone(&self.rng) );
-                    let _result = try!(self.handle_client(client, protocol));
+                    let prot = Arc::clone(&protocol);
+
+                    let _handle = thread::spawn(move || {
+                        match SimulatedListener::handle_client(client, prot) {
+                            Ok(_res) => { 
+                                /* Client connection finished properly. */
+                            },
+                            Err(e) => {
+                                error!("handle_client error: {}", e);
+                            },
+                        }
+                    });
                 },
-                Err(e) => { 
+                Err(e) => {
                     warn!("Failed to connect to incoming client. Error: {}", e);
                 },
             }
@@ -50,7 +62,7 @@ impl SimulatedListener {
     }
 
     ///Handles client connections
-    fn handle_client(&self, mut client : SimulatedClient, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
+    fn handle_client(mut client : SimulatedClient, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError> {
         loop {
             //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
             //Read the data from the unix socket

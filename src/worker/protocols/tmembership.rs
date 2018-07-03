@@ -60,7 +60,7 @@ pub struct AliveMessage {
 }
 
 impl Protocol for TMembership {
-    fn handle_message(&mut self, mut header : MessageHeader) -> Result<Option<MessageHeader>, WorkerError> {
+    fn handle_message(&self, mut header : MessageHeader) -> Result<Option<MessageHeader>, WorkerError> {
         let data = match header.payload.take() {
             Some(d) => { d },
             None => {
@@ -73,7 +73,7 @@ impl Protocol for TMembership {
         self.handle_message_internal(header, msg)
     }
 
-    fn init_protocol(&mut self) -> Result<Option<MessageHeader>, WorkerError>{
+    fn init_protocol(&self) -> Result<Option<MessageHeader>, WorkerError>{
         //Update peers with initial scan data.
         let nearby_peers = try!(self.short_radio.scan_for_peers());
 
@@ -127,7 +127,7 @@ impl TMembership {
                      short_radio : sr }
     }
 
-    fn handle_message_internal(&mut self, hdr : MessageHeader, msg : Messages) -> Result<Option<MessageHeader>, WorkerError> {
+    fn handle_message_internal(&self, hdr : MessageHeader, msg : Messages) -> Result<Option<MessageHeader>, WorkerError> {
         let response = match msg {
                             Messages::Join(m) => {
                                 self.process_join_message(hdr, m)
@@ -178,7 +178,7 @@ impl TMembership {
     /// Actions:
     ///   1. Add sender to global node list and nearby peer list.
     ///   2. Construct an ACK message and reply with it.
-    fn process_join_message(&mut self, hdr : MessageHeader, _msg : JoinMessage) -> Result<Option<MessageHeader>, WorkerError> {
+    fn process_join_message(&self, hdr : MessageHeader, _msg : JoinMessage) -> Result<Option<MessageHeader>, WorkerError> {
         info!("Received JOIN message from {}", hdr.sender.name);
 
         //Obtain reference to our neighbours list
@@ -222,7 +222,7 @@ impl TMembership {
     /// Payload: global node list.
     /// Actions:
     ///   1. Add the difference between the payload and current GNL to the GNL.
-    fn process_ack_message(&mut self, hdr : MessageHeader, msg : AckMessage) -> Result<Option<MessageHeader>, WorkerError> {        
+    fn process_ack_message(&self, hdr : MessageHeader, msg : AckMessage) -> Result<Option<MessageHeader>, WorkerError> {        
         info!("Received ACK message from {}", hdr.sender.name);
 
         //Obtain a reference to our current GNL.

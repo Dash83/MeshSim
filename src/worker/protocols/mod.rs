@@ -9,13 +9,13 @@ pub mod tmembership;
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should 
-pub trait Protocol : std::fmt::Debug {
+pub trait Protocol : std::fmt::Debug + Send + Sync {
     /// This function implements the state machine of the protocol. It will match against
     /// the message type passed and call the appropriate method to handle it.
-    fn handle_message(&mut self,  msg : MessageHeader) -> Result<Option<MessageHeader>, WorkerError>;
+    fn handle_message(&self,  msg : MessageHeader) -> Result<Option<MessageHeader>, WorkerError>;
 
     /// Function to initialize the protocol.
-    fn init_protocol(&mut self) -> Result<Option<MessageHeader>, WorkerError>;
+    fn init_protocol(&self) -> Result<Option<MessageHeader>, WorkerError>;
 
 }
 
