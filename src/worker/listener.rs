@@ -77,8 +77,6 @@ impl SimulatedListener {
 
             match response {
                 Some(resp_msg) => { 
-                    //self.short_radio.send(msg)
-                    //let resp_data = try!(to_vec(&resp_msg));
                     let _res = try!(client.send_msg(resp_msg));
                 },
                 None => {

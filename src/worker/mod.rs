@@ -51,6 +51,8 @@ use worker::client::*;
 use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
 use self::rand::{StdRng, SeedableRng};
+use self::byteorder::{NativeEndian, WriteBytesExt};
+use std::iter;
 
 //Sub-modules declaration
 pub mod worker_config;
@@ -284,7 +286,7 @@ pub struct Worker {
     ///Unique ID composed of 16 random numbers represented in a Hex String.
     pub id : String,
     /// Short-range radio for the worker.
-    short_radio : Option<Box<Radio>>,
+    short_radio : Option<Arc<Radio>>,
     // TODO: Uncomment this line when the 2nd radio feature is enabled.
     // /// Long-range radio for the worker.
     // long_radio : Box<Radio>,
@@ -293,6 +295,8 @@ pub struct Worker {
     work_dir : String,
     ///Random number generator used for all RNG operations. 
     rng : Arc<Mutex<StdRng>>,
+    ///Random number seed used for the rng of all processes.
+    seed : u32,
     ///Simulated or Device operation.
     operation_mode : OperationMode,
 }
@@ -316,7 +320,7 @@ impl Worker {
 
         //Get the protocol object.
         //TODO: Get protocol from configuration file.
-        let p = build_protocol_handler(Protocols::TMembership, short_radio);
+        let p = build_protocol_handler(Protocols::TMembership, short_radio, self.seed);
         let prot_handler = Arc::new(p);
 
         //Initialize protocol.
@@ -491,6 +495,15 @@ impl Worker {
     //         },
     //     }
     // }
+
+    ///Returns a random number generator seeded with the passed parameter.
+    pub fn rng_from_seed(seed : u32) -> StdRng {
+        //Create RNG from the provided random seed.
+        let mut random_bytes = vec![];
+        let _ = random_bytes.write_u32::<NativeEndian>(seed);
+        let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
+        StdRng::from_seed(randomness.as_slice())
+    }
 }
 
 // *****************************

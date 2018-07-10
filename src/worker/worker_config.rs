@@ -73,13 +73,11 @@ impl WorkerConfig {
 
     ///Creates a new Worker object configured with the values of this configuration object.
     pub fn create_worker(self) -> Worker {
+        //Create the RNG
+        let mut gen = Worker::rng_from_seed(self.random_seed);
+        
         //Vector of 16 bytes set to 0
         let mut key : Vec<u8>= iter::repeat(0u8).take(16).collect();
-        //Create RNG from the provided random seed.
-        let mut random_bytes = vec![];
-        let _ = random_bytes.write_u32::<NativeEndian>(self.random_seed);
-        let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
-        let mut gen = StdRng::from_seed(randomness.as_slice());
         //Fill the vector with 16 random bytes.
         gen.fill_bytes(&mut key[..]);
         let id = key.to_hex().to_string();
@@ -88,7 +86,7 @@ impl WorkerConfig {
 
         //Create the radios
         //TODO: This warning will dissapear when 2nd radio feature is enabled.
-        let (sr, lr) : (Box<Radio>, Box<Radio>) = match self.operation_mode {
+        let (sr, lr) : (Arc<Radio>, Arc<Radio>) = match self.operation_mode {
             OperationMode::Device => { 
                 //Short-range radio
                 let iname = self.radio_short.interface_name.expect("An interface name for radio_short must be provided when operating in device_mode.");
@@ -98,7 +96,7 @@ impl WorkerConfig {
                 let iname = self.radio_long.interface_name.expect("An interface name for radio_long must be provided when operating in device_mode.");
                 let radio_long = DeviceRadio::new(iname, self.worker_name.clone(), id.clone() );
 
-                (Box::new(radio_short), Box::new(radio_long))
+                (Arc::new(radio_short), Arc::new(radio_long))
             },
             OperationMode::Simulated => { 
                 //Short-range radio
@@ -125,7 +123,7 @@ impl WorkerConfig {
                                                       self.worker_name.clone(),
                                                       Arc::clone(&rng) );
 
-                (Box::new(radio_short), Box::new(radio_long))                
+                (Arc::new(radio_short), Arc::new(radio_long))                
             },
         };
 
@@ -134,6 +132,7 @@ impl WorkerConfig {
                 //long_radio : lr, //TODO: Uncomment when 2nd radio feature is enabled.
                 work_dir : self.work_dir, 
                 rng : Arc::clone(&rng),
+                seed : self.random_seed,
                 operation_mode : self.operation_mode,
                 id : id }
     }

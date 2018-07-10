@@ -1,9 +1,14 @@
 //! Mesh simulator Protocol module.
 //! This module includes the important Protocol trait that needs to be implement by
 //! struct to be accepted as a protocol to be run by meshsim.
+
+extern crate rand;
+
 use worker::{MessageHeader, WorkerError, Radio};
 use self::tmembership::TMembership;
 use std;
+use std::sync::Arc;
+use self::rand::{StdRng, Rng};
 
 pub mod tmembership;
 
@@ -26,10 +31,10 @@ pub enum Protocols {
 }
 
 /// Provides a new boxed reference to the struct matching the passed protocol.
-pub fn build_protocol_handler( p : Protocols, sr : Box<Radio> ) -> Box<Protocol> {
+pub fn build_protocol_handler( p : Protocols, sr : Arc<Radio>, seed : u32 ) -> Box<Protocol> {
     match p {
         Protocols::TMembership => { 
-            Box::new(TMembership::new(sr))
+            Box::new(TMembership::new(sr, seed))
         }
     }
 }
