@@ -28,7 +28,7 @@ pub trait Radio : std::fmt::Debug + Send + Sync {
     ///Gets the current address at which the radio is listening.
     fn get_self_peer(&self) -> &Peer;
     ///Method for the Radio to perform the necessary initialization for it to function.
-    fn init(&mut self) -> Result<Box<Listener>, WorkerError>;
+    fn init(&self) -> Result<Box<Listener>, WorkerError>;
 }
 
 /// Represents a radio used by the worker to send a message to the network.
@@ -53,17 +53,6 @@ pub struct SimulatedRadio {
 }
 
 impl Radio  for SimulatedRadio {
-    /// Send a Worker::Message over the address implemented by the current Radio.
-    // fn send(&self, msg : MessageHeader) -> Result<(), WorkerError> {
-    //     let mut socket = try!(UnixStream::connect(&msg.destination.address));
-      
-    //     //info!("Sending message to {}, address {}.", destination.name, destination.address);
-    //     let data = try!(to_vec(&msg));
-    //     try!(socket.write_all(&data));
-    //     info!("Message sent successfully.");
-    //     Ok(())
-    // }
-
     fn scan_for_peers(&self) -> Result<HashSet<Peer>, WorkerError> {
         let mut peers = HashSet::new();
 
@@ -100,7 +89,7 @@ impl Radio  for SimulatedRadio {
         &self.me
     }
 
-    fn init(&mut self) -> Result<Box<Listener>, WorkerError> {
+    fn init(&self) -> Result<Box<Listener>, WorkerError> {
         let mut dir = try!(std::fs::canonicalize(&self.work_dir));
 
         //check bcast_groups dir is there
@@ -239,7 +228,7 @@ impl Radio  for DeviceRadio{
         &self.me
     }
 
-    fn init(&mut self) -> Result<Box<Listener>, WorkerError> {
+    fn init(&self) -> Result<Box<Listener>, WorkerError> {
         panic!("DeviceRadio.init() is not implemented yet.");
     }
 
