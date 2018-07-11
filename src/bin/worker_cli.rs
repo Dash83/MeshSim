@@ -244,12 +244,13 @@ fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
     });
     let mut configuration = try!(load_conf_file(config_file_path));
     
-    //Initialize logger
-    try!(init_logger(&configuration.work_dir, &configuration.worker_name));
-
     //Validate the current configuration
+    //This mus always be done before initializing the logger, as it can change the work dir.
     try!(validate_config(&mut configuration, &matches));
     //debug!("Config: {:?}", configuration);
+
+    //Initialize logger
+    try!(init_logger(&configuration.work_dir, &configuration.worker_name));
 
     Ok(configuration)
 }

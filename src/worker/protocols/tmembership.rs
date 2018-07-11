@@ -80,6 +80,8 @@ impl Protocol for TMembership {
         TMembership::handle_message_internal(header, msg, self.short_radio.get_self_peer().clone(), nl, gl)
     }
 
+    //TODO: The initial handshake should time-out after a set period of time, or run each client
+    //      on a different thread.
     fn init_protocol(&self) -> Result<Option<MessageHeader>, WorkerError>{
         //Update peers with initial scan data.
         let nearby_peers = try!(self.short_radio.scan_for_peers());
@@ -124,6 +126,8 @@ impl Protocol for TMembership {
         let network_members = Arc::clone(&self.network_members);
 
         let _handle = thread::spawn(move || -> Result<MessageHeader, WorkerError> {
+            info!("Starting the heartbeat thread.");
+
             let sleep_duration = Duration::from_millis(HEARTBEAT_TIMER);
 
             loop {

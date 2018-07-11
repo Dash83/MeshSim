@@ -313,7 +313,7 @@ impl Worker {
         let _ = try!(self.init());
 
         //Init the radios and get their respective listeners.
-        let mut short_radio = self.short_radio.take().unwrap();
+        let short_radio = self.short_radio.take().unwrap();
         let listener = try!(short_radio.init());
 
         info!("Worker finished initializing.");

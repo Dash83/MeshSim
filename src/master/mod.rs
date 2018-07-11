@@ -35,6 +35,7 @@ use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use std::ops::DerefMut;
 use std::path::PathBuf;
+use std::collections::HashMap;
 
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
@@ -51,6 +52,9 @@ pub struct Master {
     pub work_dir : String,
     /// Path to the worker binary for experiments.
     pub worker_binary : String,
+    /// Collection of available worker configurations that the master may start at any time during
+    /// the test.
+    pub available_nodes : Arc<HashMap<String, WorkerConfig>>,
 }
 
 /// The error type for the Master. Each variant encapsules the underlying reason for failure.
@@ -133,38 +137,35 @@ impl Master {
         let wv = Vec::new();
         let worker_vec = Arc::new(Mutex::new(wv));
         let wb = String::from("./worker_cli");
+        let an = HashMap::new();
         Master{ workers : worker_vec,
                 work_dir : String::from("."),
-                worker_binary : wb }
+                worker_binary : wb, 
+                available_nodes : Arc::new(an) }
     }
 
     /// Adds a single worker to the worker vector with a specified name and starts the worker process
-    pub fn add_worker(&mut self, config : WorkerConfig) -> Result<(), MasterError> {
+    pub fn run_worker<'a>( worker_binary : &'a str, work_dir : &'a str, config : &WorkerConfig) -> Result<Child, MasterError> {
         let worker_name = config.worker_name.clone();
         let file_name = format!("{}.toml", &worker_name);
         let mut file_dir = PathBuf::new();
-        file_dir.push(&config.work_dir);
+        file_dir.push(work_dir);
         file_dir.push(&file_name);
         debug!("Writing config file {}.", &file_dir.display());
         let config_file = try!(config.write_to_file(file_dir.as_path()));
 
         //Constructing the external process call
-        let mut command = Command::new(&self.worker_binary);
+        let mut command = Command::new(worker_binary);
         command.arg("--config");
         command.arg(format!("{}", config_file));
+        command.arg("--work_dir");
+        command.arg(format!("{}", work_dir));
 
         //Starting the worker process
         info!("Starting worker process {}", &worker_name);
         //debug!("with command {:?}", command);
         let child = try!(command.spawn());
-        //TODO: The unwrap below is used because doing a try! on the result of lock implies
-        //I need to implement converting the MutexGuard error to a Master error. I think that's 
-        //already implemented in Worker error, but make a note for later.
-        //let workers_handle = self.workers.clone();
-        //let mut workers_handle = try!(self.workers.lock());
-        //workers_handle.push(child);
-        self.workers.lock().unwrap().push(child);
-        Ok(())
+        Ok(child)
     }
 
     ///Runs the test defined in the specification passed to the master.
@@ -172,26 +173,24 @@ impl Master {
         info!("Running test {}", &spec.name);
         info!("Test results will be placed under {}", &self.work_dir);
 
-        //Add all workers to the master. They will be started right away. 
-        for (_, val) in spec.nodes.iter_mut() {
-            //Since the workers are running as part of the master, change their work_dirs to be relative to the master.
-            val.work_dir = self.work_dir.clone();
-            /*
-            TODO: This 100ms delay between startup of nodes is to avoid potential initialization races. This might be
-            removed in the future since it's a bit hacky and the code should be robust enough to handle these issues, but
-            it's also a strange situation to have an empty network one instant and the next we have X amount of nodes joining
-            at exactly the same time. Will revisit in the future.
-            */
-            thread::sleep(Duration::from_millis(100));
-            try!(self.add_worker(val.clone()));
-        }
+        //Start all workers and add save their child process handle.
+        {
+            let mut workers = self.workers.lock().unwrap(); // LOCK : GET : WORKERS
+            for (_, val) in spec.initial_nodes.iter_mut() {
+                let child_handle = try!(Master::run_worker(&self.worker_binary, &self.work_dir, &val));
+                workers.push(child_handle);
+            }
+        } // LOCK : RELEASE : WORKERS
+
+        //Add the available_nodes pool to the master.
+        self.available_nodes = Arc::new(spec.available_nodes);
+        debug!("Available nodes: {:?}", &self.available_nodes);
 
         //Run all test actions.
         let actions = spec.actions.clone();
         let action_handles = try!(self.schedule_test_actions(actions));
  
         //All actions have been scheduled. Wait for all actions to be executed and then exit.
-        //TODO: Make sure the endtest action is scheduled.
         for mut h in action_handles {
              match h.join() {
                 Ok(_) => { }, 
@@ -211,8 +210,10 @@ impl Master {
             let action = try!(TestActions::from_str(&action_str));
             let action_handle = match action {
                                     TestActions::EndTest(time) => {
-                                        let thread_handle = try!(self.testaction_end_test(time));
-                                        thread_handle
+                                        try!(self.testaction_end_test(time))
+                                    },
+                                    TestActions::AddNode(name, time) => { 
+                                        try!(self.testaction_add_node(name, time))
                                     },
                                 };
             thread_handles.push(action_handle);
@@ -221,27 +222,60 @@ impl Master {
     }
 
     fn testaction_end_test(&self, time : u64) -> Result<JoinHandle<()>, MasterError> {
-        let workers_handle = self.workers.clone();
+        let workers_handle = Arc::clone(&self.workers);
+
         let handle = thread::spawn(move || {
-                        let test_endtime = Duration::from_millis(time);
-                        info!("EndTest action: Scheduled for {:?}", &test_endtime);
-                        thread::sleep(test_endtime);
-                        info!("EndTest action: Starting");
-                        let mut workers_handle = workers_handle.lock().unwrap();
-                        let workers_handle = workers_handle.deref_mut();
-                        let mut i = 0;
-                        for mut handle in workers_handle {
-                            info!("Killing worker pid {}", handle.id());
-                            match handle.kill() {
-                                Ok(_) => {
-                                    info!("Process killed.");
-                                    i += 1;
-                                },
-                                Err(_) => info!("Process was not running.")
-                            }
-                        }
-                        info!("EndTest action: Finished. {} processes terminated.", i);
-                    });
+            let test_endtime = Duration::from_millis(time);
+            info!("End_Test action: Scheduled for {:?}", &test_endtime);
+            thread::sleep(test_endtime);
+            info!("End_Test action: Starting");
+            let mut workers_handle = workers_handle.lock().unwrap(); //TODO: remove unwrap
+            let workers_handle = workers_handle.deref_mut();
+            let mut i = 0;
+            for mut handle in workers_handle {
+                info!("Killing worker pid {}", handle.id());
+                match handle.kill() {
+                    Ok(_) => {
+                        info!("Process killed.");
+                        i += 1;
+                    },
+                    Err(_) => info!("Process was not running.")
+                }
+            }
+            info!("End_Test action: Finished. {} processes terminated.", i);
+        });
+        Ok(handle)
+    }
+
+    fn testaction_add_node(&self, name : String, time : u64) -> Result<JoinHandle<()>, MasterError> {
+        let available_nodes = Arc::clone(&self.available_nodes);
+        let workers = Arc::clone(&self.workers);
+        let worker_binary = self.worker_binary.clone();
+        let work_dir = self.work_dir.clone();
+        
+        let handle = thread::spawn(move || {
+            let test_endtime = Duration::from_millis(time);
+            info!("Add_Node ({}) action: Scheduled for {:?}", &name, &test_endtime);
+            thread::sleep(test_endtime);
+            info!("Add_Node ({}) action: Starting", &name);
+
+            match available_nodes.get(&name) {
+                Some(config) => { 
+                     match Master::run_worker(&worker_binary, &work_dir, config) {
+                         Ok(child_handle) => { 
+                            let mut w = workers.lock().unwrap(); //TODO remove unwrap
+                            w.push(child_handle);
+                         },
+                         Err(e) => { 
+                            error!("Error running worker: {:?}", e);
+                         },
+                     }
+                },
+                None => { 
+                    warn!("Add_Node ({}) action Failed. Worker configuration not found in available_workers pool.", &name);
+                },
+            }
+        });
         Ok(handle)
     }
 }
@@ -258,7 +292,7 @@ mod tests {
     #[test]
     fn test_master_new() {
         let m = Master::new();
-        let obj_str = r#"Master { workers: Mutex { data: [] }, work_dir: ".", worker_binary: "./worker_cli" }"#;
+        let obj_str = r#"Master { workers: Mutex { data: [] }, work_dir: ".", worker_binary: "./worker_cli", available_nodes: {} }"#;
         assert_eq!(format!("{:?}", m), String::from(obj_str));
     }
 }

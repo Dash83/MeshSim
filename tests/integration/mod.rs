@@ -82,7 +82,7 @@ fn integration_basic_test() {
     .succeeds()
     .and()
     .stdout()
-    .contains("EndTest action: Finished. 2 processes terminated.")
+    .contains("End_Test action: Finished. 2 processes terminated.")
     .unwrap();
 
     //Check the handshake between the nodes
@@ -93,7 +93,7 @@ fn integration_basic_test() {
 
     //let node_2_discovery = logging::find_log_record("msg", "Found 1 peers!", &node2_log_records);   
     let node_1_rec_join = logging::find_log_record("msg", "Received JOIN message from node2", &node1_log_records);
-    let node_2_ack = logging::find_log_record("msg", "Received ACK message from ", &node2_log_records);
+    let node_2_ack = logging::find_log_record("msg", "Received ACK message from node1", &node2_log_records);
 
 
     //assert!(node_2_discovery.is_some());
@@ -116,7 +116,7 @@ fn heartbeat_test() {
     .succeeds()
     .and()
     .stdout()
-    .contains("EndTest action: Finished. 2 processes terminated.")
+    .contains("End_Test action: Finished. 2 processes terminated.")
     .unwrap();
 
     //Check the handshake between the nodes

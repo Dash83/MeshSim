@@ -12,10 +12,13 @@ use std::collections::HashMap;
 pub struct TestSpec {
     ///Name of the test. For informational purposes only. 
     pub name : String,
-    ///Vector of actions for the Master to take.
+    /// Vector of actions for the Master to take.
     pub actions : Vec<String>,
-    ///Vector of worker configurations for the master to start.
-    pub nodes : HashMap<String, WorkerConfig>,
+    /// Collection of worker configurations for the master to start at the begginning of the test.
+    pub initial_nodes : HashMap<String, WorkerConfig>,
+    /// Collection of available worker configurations that the master may start at any time during
+    /// the test.
+    pub available_nodes : HashMap<String, WorkerConfig>,
 }
 
 impl TestSpec {
@@ -40,6 +43,8 @@ impl TestSpec {
 pub enum TestActions {
     ///This action determines the maximum duration of the test
     EndTest(u64),
+    ///Adds the indicated node from the available nodes pool at the indicated time offset.
+    AddNode(String, u64),
 }
 
 
@@ -52,13 +57,23 @@ impl FromStr for TestActions {
         //Assuming here we can have actions with 0 parameters.
         if parts.len() > 0 {
             match parts[0].to_uppercase().as_str() {
-                "ENDTEST" => {
+                "END_TEST" => {
                     if parts.len() < 2 {
                         //Error out
-                        return Err(MasterError::TestParsing(format!("EndTest needs a u64 time parameter.")))
+                        return Err(MasterError::TestParsing(format!("End_Test needs a u64 time parameter.")))
                     }
                     let time = parts[1].parse::<u64>().unwrap();
                     Ok(TestActions::EndTest(time))
+                },
+                "ADD_NODE" => {
+                    if parts.len() < 3 {
+                        //Error out
+                        return Err(MasterError::TestParsing(format!("Add_Node needs a worker name and a u64 time parameter.")))
+                    }
+                    let node_name = parts[1].to_owned();
+                    let time = parts[2].parse::<u64>().unwrap();
+
+                    Ok(TestActions::AddNode(node_name, time))
                 },
                 _ => Err(MasterError::TestParsing(format!("Unsupported Test action: {:?}", parts))),
             }
