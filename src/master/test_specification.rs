@@ -45,6 +45,8 @@ pub enum TestActions {
     EndTest(u64),
     ///Adds the indicated node from the available nodes pool at the indicated time offset.
     AddNode(String, u64),
+    ///Kills the indicated node at the specified time offset.
+    KillNode(String, u64),
 }
 
 
@@ -74,6 +76,16 @@ impl FromStr for TestActions {
                     let time = parts[2].parse::<u64>().unwrap();
 
                     Ok(TestActions::AddNode(node_name, time))
+                },
+                "KILL_NODE" => {
+                    if parts.len() < 3 {
+                        //Error out
+                        return Err(MasterError::TestParsing(format!("Kill_Node needs a worker name and a u64 time parameter.")))
+                    }
+                    let node_name = parts[1].to_owned();
+                    let time = parts[2].parse::<u64>().unwrap();
+
+                    Ok(TestActions::KillNode(node_name, time))
                 },
                 _ => Err(MasterError::TestParsing(format!("Unsupported Test action: {:?}", parts))),
             }

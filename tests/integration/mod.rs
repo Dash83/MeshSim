@@ -134,3 +134,24 @@ fn heartbeat_test() {
     assert!(node_1_alive.is_some());
     assert!(node_2_alive.is_some());
 }
+
+#[test]
+fn killnode_test() {
+    let test = get_test_path("killnode_test.toml");
+    let program = get_master_path();
+    let worker = get_worker_path();
+    let work_dir = create_test_dir("killnode_test");
+
+    println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
+
+    //Assert the test finished succesfully.
+    //The only pass condition for this test is that the specified process is killed during the test execution,
+    //therefore leaving only 2 process to be terminated at the end of the test.
+    assert_cli::Assert::command(&[&program])
+    .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
+    .succeeds()
+    .and()
+    .stdout()
+    .contains("End_Test action: Finished. 2 processes terminated.")
+    .unwrap();
+}

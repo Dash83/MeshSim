@@ -46,8 +46,8 @@ pub mod test_specification;
 /// The master should always be created using the ::new(TestSpec) method.
 #[derive(Debug)]
 pub struct Master {
-    /// Vector of worker processes the Master controls.
-    pub workers : Arc<Mutex<Vec<Child>>>,
+    /// Collection of worker processes the Master controls.
+    pub workers : Arc<Mutex<HashMap<String, Child>>>,
     ///Working directory for the master under which it will place the files it needs.
     pub work_dir : String,
     /// Path to the worker binary for experiments.
@@ -134,11 +134,10 @@ impl error::Error for MasterError {
 impl Master {
     /// Constructor for the struct.
     pub fn new() -> Master {
-        let wv = Vec::new();
-        let worker_vec = Arc::new(Mutex::new(wv));
+        let workers = Arc::new(Mutex::new(HashMap::new()));
         let wb = String::from("./worker_cli");
         let an = HashMap::new();
-        Master{ workers : worker_vec,
+        Master{ workers : workers,
                 work_dir : String::from("."),
                 worker_binary : wb, 
                 available_nodes : Arc::new(an) }
@@ -178,7 +177,7 @@ impl Master {
             let mut workers = self.workers.lock().unwrap(); // LOCK : GET : WORKERS
             for (_, val) in spec.initial_nodes.iter_mut() {
                 let child_handle = try!(Master::run_worker(&self.worker_binary, &self.work_dir, &val));
-                workers.push(child_handle);
+                workers.insert(val.worker_name.clone(), child_handle);
             }
         } // LOCK : RELEASE : WORKERS
 
@@ -209,13 +208,16 @@ impl Master {
         for action_str in actions {
             let action = try!(TestActions::from_str(&action_str));
             let action_handle = match action {
-                                    TestActions::EndTest(time) => {
-                                        try!(self.testaction_end_test(time))
-                                    },
-                                    TestActions::AddNode(name, time) => { 
-                                        try!(self.testaction_add_node(name, time))
-                                    },
-                                };
+                TestActions::EndTest(time) => {
+                    try!(self.testaction_end_test(time))
+                },
+                TestActions::AddNode(name, time) => { 
+                    try!(self.testaction_add_node(name, time))
+                },
+                TestActions::KillNode(name, time) => {
+                    try!(self.testaction_kill_node(name, time))
+                }
+            };
             thread_handles.push(action_handle);
         }
         Ok(thread_handles)
@@ -232,7 +234,7 @@ impl Master {
             let mut workers_handle = workers_handle.lock().unwrap(); //TODO: remove unwrap
             let workers_handle = workers_handle.deref_mut();
             let mut i = 0;
-            for mut handle in workers_handle {
+            for (_name, mut handle) in workers_handle {
                 info!("Killing worker pid {}", handle.id());
                 match handle.kill() {
                     Ok(_) => {
@@ -264,7 +266,7 @@ impl Master {
                      match Master::run_worker(&worker_binary, &work_dir, config) {
                          Ok(child_handle) => { 
                             let mut w = workers.lock().unwrap(); //TODO remove unwrap
-                            w.push(child_handle);
+                            w.insert(name, child_handle);
                          },
                          Err(e) => { 
                             error!("Error running worker: {:?}", e);
@@ -273,6 +275,38 @@ impl Master {
                 },
                 None => { 
                     warn!("Add_Node ({}) action Failed. Worker configuration not found in available_workers pool.", &name);
+                },
+            }
+        });
+        Ok(handle)
+    }
+
+    fn testaction_kill_node(&self, name : String, time : u64) -> Result<JoinHandle<()>, MasterError> {
+        let workers = Arc::clone(&self.workers);
+        
+        let handle = thread::spawn(move || {
+            let killtime = Duration::from_millis(time);
+            info!("Kill_Node ({}) action: Scheduled for {:?}", &name, &killtime);
+            thread::sleep(killtime);
+            info!("Kill_Node ({}) action: Starting", &name);
+
+            let workers = workers.lock();
+            match workers {
+                Ok(mut w) => { 
+                    if let Some(mut child) = w.get_mut(&name) {
+                        match child.kill() {
+                            Ok(_) => {
+                                let exit_status = child.wait();
+                                info!("Kill_Node ({}) action: Process {} killed. Exit status: {:?}", &name, child.id(), exit_status); 
+                            },
+                            Err(e) => error!("Kill_Node ({}) action: Failed to kill process with error {}", &name, e),
+                        }
+                    } else {
+                        error!("Kill_Node ({}) action: Process not found in Master's collection.", &name);
+                    }
+                },
+                Err(e) => { 
+                    error!("Kill_Node ({}) action: Could not obtain lock to workers: {}. Process not killed.", &name, e);
                 },
             }
         });
@@ -292,7 +326,7 @@ mod tests {
     #[test]
     fn test_master_new() {
         let m = Master::new();
-        let obj_str = r#"Master { workers: Mutex { data: [] }, work_dir: ".", worker_binary: "./worker_cli", available_nodes: {} }"#;
+        let obj_str = r#"Master { workers: Mutex { data: {} }, work_dir: ".", worker_binary: "./worker_cli", available_nodes: {} }"#;
         assert_eq!(format!("{:?}", m), String::from(obj_str));
     }
 }
