@@ -139,11 +139,11 @@ impl WorkerConfig {
 
     ///Writes the current configuration object to a formatted configuration file, that can be passed to
     ///the worker_cli binary.
-    pub fn write_to_file(self, file_path : &Path) -> Result<String, WorkerError> {
+    pub fn write_to_file(&self, file_path : &Path) -> Result<String, WorkerError> {
         //Create configuration file
         //let file_path = format!("{}{}{}", dir, std::path::MAIN_SEPARATOR, file_name);
         let mut file = try!(File::create(&file_path));
-        let data = toml::to_string(&self).unwrap();
+        let data = toml::to_string(self).unwrap();
         let _res = try!(write!(file, "{}", data));
 
         let file_name = format!("{}", file_path.display());

@@ -3,7 +3,7 @@
 #We used 1 initial node and add a second node shortly after to a potential deadlock in which the 2 process
 #start at the exact same time and end up waiting on the other to responde to the heartbeat message.
 name = "heartbeat_test"
-actions = ["End_Test 7000", "Add_Node node2 100"]
+actions = ["End_Test 1000", "Kill_Node node2 500"]
 
 [initial_nodes.worker1]
     worker_name = "node1"
@@ -21,18 +21,36 @@ actions = ["End_Test 7000", "Add_Node node2 100"]
         delay = 0
         interface_name = "wlan1"
 
-[available_nodes.node2]
+[initial_nodes.node2]
     worker_name = "node2"
     work_dir = "/tmp"
     random_seed = 456
     operation_mode = "Simulated"
-    [available_nodes.node2.radio_short] #Short-range radio
+    [initial_nodes.node2.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
         broadcast_groups = ["group1", "group2"] #Not used in device_mode
         interface_name = "wlan0" #Not used in simulated_mode
-    [available_nodes.node2.radio_long] #Long-range radio
+    [initial_nodes.node2.radio_long] #Long-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
         broadcast_groups = ["group1", "group2"] #Not used in device_mode
         interface_name = "wlan1" #Not used in simulated_mode
+
+[initial_nodes.node3]
+    worker_name = "node3"
+    work_dir = "/tmp"
+    random_seed = 789
+    operation_mode = "Simulated"
+    [initial_nodes.node3.radio_short] #Short-range radio
+        reliability = 1 #Not used in device_mode
+        delay = 0 #Not used in device_mode
+        broadcast_groups = ["group2"] #Not used in device_mode
+        interface_name = "wlan0" #Not used in simulated_mode
+    [initial_nodes.node3.radio_long] #Long-range radio
+        reliability = 1 #Not used in device_mode
+        delay = 0 #Not used in device_mode
+        broadcast_groups = ["group2"] #Not used in device_mode
+        interface_name = "wlan1" #Not used in simulated_mode
+
+[available_nodes]
