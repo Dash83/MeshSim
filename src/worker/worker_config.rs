@@ -10,8 +10,7 @@ use std::path::Path;
 use std::fs::File;
 use std::iter;
 use self::rustc_serialize::hex::*;
-use self::rand::{Rng, SeedableRng, StdRng};
-use self::byteorder::{NativeEndian, WriteBytesExt};
+use self::rand::Rng;
 use std::sync::{Mutex, Arc};
 
 ///Configuration pertaining to a given radio of the worker.
@@ -90,11 +89,11 @@ impl WorkerConfig {
             OperationMode::Device => { 
                 //Short-range radio
                 let iname = self.radio_short.interface_name.expect("An interface name for radio_short must be provided when operating in device_mode.");
-                let radio_short = DeviceRadio::new(iname, self.worker_name.clone(), id.clone() );
+                let radio_short = DeviceRadio::new(iname, self.worker_name.clone(), id.clone(), Arc::clone(&rng) );
 
                 //Long-range radio
                 let iname = self.radio_long.interface_name.expect("An interface name for radio_long must be provided when operating in device_mode.");
-                let radio_long = DeviceRadio::new(iname, self.worker_name.clone(), id.clone() );
+                let radio_long = DeviceRadio::new(iname, self.worker_name.clone(), id.clone(), Arc::clone(&rng) );
 
                 (Arc::new(radio_short), Arc::new(radio_long))
             },
@@ -139,65 +138,64 @@ impl WorkerConfig {
 
     ///Writes the current configuration object to a formatted configuration file, that can be passed to
     ///the worker_cli binary.
-    pub fn write_to_file(&self, file_path : &Path) -> Result<String, WorkerError> {
+    pub fn write_to_file<P: AsRef<Path>>(&self, file_path: P) -> Result<(), WorkerError> {
         //Create configuration file
         //let file_path = format!("{}{}{}", dir, std::path::MAIN_SEPARATOR, file_name);
         let mut file = try!(File::create(&file_path));
         let data = toml::to_string(self).unwrap();
         let _res = try!(write!(file, "{}", data));
 
-        let file_name = format!("{}", file_path.display());
-        Ok(file_name)
+        Ok(())
     }
 }
 
 //**** WorkerConfig unit tests ****
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
     use std::fs::File;
     use std::io::Read;
     use super::*;
     use std::env;
 
-    // //Unit test for: WorkerConfig_new
-    // #[test]
-    // fn test_workerconfig_new() {
-    //     let config = WorkerConfig::new();
-    //     let config_str = "WorkerConfig { worker_name: \"worker1\", work_dir: \".\", random_seed: 0, operation_mode: Simulated, radio_short: RadioConfig { broadcast_groups: Some([\"group1\"]), reliability: Some(1), delay: Some(0), interface_name: Some(\"wlan0\") }, radio_long: RadioConfig { broadcast_groups: Some([\"group1\"]), reliability: Some(1), delay: Some(0), interface_name: Some(\"wlan0\") } }";
+    //Unit test for: WorkerConfig_new
+    #[test]
+    fn test_workerconfig_new() {
+        let config = WorkerConfig::new();
+        let config_str = "WorkerConfig { worker_name: \"worker1\", work_dir: \".\", random_seed: 0, operation_mode: Simulated, radio_short: RadioConfig { broadcast_groups: Some([\"group1\"]), reliability: Some(1), delay: Some(0), interface_name: Some(\"wlan0\") }, radio_long: RadioConfig { broadcast_groups: Some([\"group1\"]), reliability: Some(1), delay: Some(0), interface_name: Some(\"wlan0\") } }";
 
-    //     assert_eq!(format!("{:?}", config), config_str);
-    // }
+        assert_eq!(format!("{:?}", config), config_str);
+    }
 
-    // //Unit test for: WorkerConfig::create_worker
-    // #[test]
-    // fn test_workerconfig_create_worker() {
-    //     //test_workerconfig_new and test_worker_new already test the correct instantiation of WorkerConfig and Worker.
-    //     //Just make sure thing function translates a WorkerConfig correctly into a Worker.
-    //     let conf = WorkerConfig::new();
-    //     let worker = conf.create_worker();
-    //     let default_worker_display = "Worker { short_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [\"group1\"], radio_name: \"\" }, long_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }, nearby_peers: {}, me: Peer { public_key: \"00000000000000000000000000000000\", name: \"worker1\", address: \"./bcgroups/00000000000000000000000000000000.socket\", address_type: Simulated }, work_dir: \".\", random_seed: 0, operation_mode: Simulated, scan_interval: 2000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
-    //     assert_eq!(format!("{:?}", worker), String::from(default_worker_display));
-    // }
+    //Unit test for: WorkerConfig::create_worker
+    #[test]
+    fn test_workerconfig_create_worker() {
+        //test_workerconfig_new and test_worker_new already test the correct instantiation of WorkerConfig and Worker.
+        //Just make sure thing function translates a WorkerConfig correctly into a Worker.
+        let conf = WorkerConfig::new();
+        let worker = conf.create_worker();
+        let default_worker_display = "Worker { name: \"worker1\", id: \"416d77337e24399dc7a5aa058039f72a\", short_radio: Some(SimulatedRadio { delay: 0, reliability: 1, broadcast_groups: [\"group1\"], work_dir: \".\", me: Peer { id: \"416d77337e24399dc7a5aa058039f72a\", name: \"worker1\", address: \"./bcgroups/group1/416d77337e24399dc7a5aa058039f72a.socket\" }, rng: Mutex { data: StdRng { rng: Isaac64Rng {} } } }), work_dir: \".\", rng: Mutex { data: StdRng { rng: Isaac64Rng {} } }, seed: 0, operation_mode: Simulated }";
+        
+        assert_eq!(format!("{:?}", worker), String::from(default_worker_display));
+    }
 
     //Unit test for: WorkerConfig::write_to_file
-    // #[test]
-    // fn test_workerconfig_write_to_file() {
-    //     let config = WorkerConfig::new();
-    //     let mut path = env::temp_dir();
-    //     path.push("worker.toml");
+    #[test]
+    fn test_workerconfig_write_to_file() {
+        let config = WorkerConfig::new();
+        let mut path = env::temp_dir();
+        path.push("worker.toml");
 
-    //     let val = config.write_to_file(&path).expect("Could not write configuration file.");
+        let val = config.write_to_file(&path).expect("Could not write configuration file.");
         
-    //     //Assert the file was written.
-    //     assert_eq!(val, format!("{}", path.display()));
-    //     assert!(path.exists());
+        //Assert the file was written.
+        assert!(path.exists());
 
-    //     let expected_file_content = "worker_name = \"worker1\"\nrandom_seed = 0\nwork_dir = \".\"\noperation_mode = \"Simulated\"\n[radio-short]\nreliability = 1 #Not used in device_mode\ndelay = 0 #Not used in device_mode\nbroadcast_groups = [\"group1\"]\ninterface_name = \"wlan0\" #Not used in simulated_mode\n[radio-long]\nreliability = 1 #Not used in device_mode\ndelay = 0 #Not used in device_mode\nbroadcast_groups = [\"group1\"] #Not used in device_mode\ninterface_name = \"wlan0\" #Not used in simulated_mode\n";
-    //     let mut file_content = String::new();
-    //     File::open(path).unwrap().read_to_string(&mut file_content);
+        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\n\n[radio_short]\nbroadcast_groups = [\"group1\"]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\n\n[radio_long]\nbroadcast_groups = [\"group1\"]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\n";
+        
+        let mut file_content = String::new();
+        let _res = File::open(path).unwrap().read_to_string(&mut file_content);
 
-    //     assert_eq!(expected_file_content, file_content);
+        assert_eq!(expected_file_content, file_content);
 
-    // }
+    }
 }

@@ -3,7 +3,7 @@ extern crate chrono;
 extern crate mesh_simulator;
 
 use self::chrono::prelude::*;
-use std::path::{self, PathBuf, Path};
+use std::path::{PathBuf, Path};
 use std::env;
 use std::fs;
 use self::mesh_simulator::logging;
@@ -62,96 +62,8 @@ fn create_test_dir<'a>(test_name : &'a str) -> String {
     test_dir_path.clone()
 }
 
-/***********************************************/
-/********************* Tests *******************/
-/***********************************************/
+/****************** Platform *****************/
+mod device_mode;
 
-/****************** TMembership ****************/
-#[test]
-fn integration_basic_test() {
-    let test = get_test_path("basic_test.toml");
-    let program = get_master_path();
-    let worker = get_worker_path();
-    let work_dir = create_test_dir("basic_test");
-
-    println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
-
-    //Assert the test finished succesfully
-    assert_cli::Assert::command(&[&program])
-    .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
-    .succeeds()
-    .and()
-    .stdout()
-    .contains("End_Test action: Finished. 2 processes terminated.")
-    .unwrap();
-
-    //Check the handshake between the nodes
-    let node1_log_file = format!("{}/log/node1.log", &work_dir);
-    let node1_log_records = logging::get_log_records_from_file(&node1_log_file).unwrap();
-    let node2_log_file = &format!("{}/log/node2.log", &work_dir);
-    let node2_log_records = logging::get_log_records_from_file(&node2_log_file).unwrap();
-
-    //let node_2_discovery = logging::find_log_record("msg", "Found 1 peers!", &node2_log_records);   
-    let node_1_rec_join = logging::find_log_record("msg", "Received JOIN message from node2", &node1_log_records);
-    let node_2_ack = logging::find_log_record("msg", "Received ACK message from node1", &node2_log_records);
-
-
-    //assert!(node_2_discovery.is_some());
-    assert!(node_1_rec_join.is_some());
-    assert!(node_2_ack.is_some());
-}
-
-#[test]
-fn heartbeat_test() {
-    let test = get_test_path("heartbeat_test.toml");
-    let program = get_master_path();
-    let worker = get_worker_path();
-    let work_dir = create_test_dir("heartbeat_test");
-
-    println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
-
-    //Assert the test finished succesfully
-    assert_cli::Assert::command(&[&program])
-    .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
-    .succeeds()
-    .and()
-    .stdout()
-    .contains("End_Test action: Finished. 2 processes terminated.")
-    .unwrap();
-
-    //Check the handshake between the nodes
-    let node1_log_file = format!("{}/log/node1.log", &work_dir);
-    let node1_log_records = logging::get_log_records_from_file(&node1_log_file).unwrap();
-    let node2_log_file = &format!("{}/log/node2.log", &work_dir);
-    let node2_log_records = logging::get_log_records_from_file(&node2_log_file).unwrap();
-
-    //let node_2_discovery = logging::find_log_record("msg", "Found 1 peers!", &node2_log_records);   
-    let node_1_alive = logging::find_log_record("msg", "Received Alive message from node2.", &node1_log_records);
-    let node_2_alive = logging::find_log_record("msg", "Received Alive message from node1.", &node2_log_records);
-
-
-    //assert!(node_2_discovery.is_some());
-    assert!(node_1_alive.is_some());
-    assert!(node_2_alive.is_some());
-}
-
-#[test]
-fn killnode_test() {
-    let test = get_test_path("killnode_test.toml");
-    let program = get_master_path();
-    let worker = get_worker_path();
-    let work_dir = create_test_dir("killnode_test");
-
-    println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
-
-    //Assert the test finished succesfully.
-    //The only pass condition for this test is that the specified process is killed during the test execution,
-    //therefore leaving only 2 process to be terminated at the end of the test.
-    assert_cli::Assert::command(&[&program])
-    .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
-    .succeeds()
-    .and()
-    .stdout()
-    .contains("End_Test action: Finished. 2 processes terminated.")
-    .unwrap();
-}
+/****************** Protocols ****************/
+mod tmembership;
