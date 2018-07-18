@@ -8,7 +8,6 @@ use worker::{MessageHeader, WorkerError, Radio};
 use self::tmembership::TMembership;
 use std;
 use std::sync::Arc;
-use self::rand::{StdRng, Rng};
 
 pub mod tmembership;
 

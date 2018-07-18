@@ -6,6 +6,8 @@ extern crate ipnetwork;
 use worker::*;
 use worker::listener::*;
 use std::fs;
+use std::process::Stdio;
+use std::io::Read;
 
 ///Types of radio supported by the system. Used by Protocols that need to 
 /// request an operation from the worker on a given radio.
@@ -128,7 +130,7 @@ impl Radio  for SimulatedRadio {
             }
 
             //Create address or symlink for this worker
-            let linked_address = format!("{}/{}.socket", dir.as_path().display(), self.me.id);
+            let linked_address = format!("{}{}{}.socket", dir.as_path().display(), std::path::MAIN_SEPARATOR, self.me.id);
             if Path::new(&linked_address).exists() {
                 //Pipe already exists
                 dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
@@ -198,11 +200,6 @@ impl SimulatedRadio {
     pub fn add_bcast_group(&mut self, group: String) {
         self.broadcast_groups.push(group);
     }
-
-    fn get_listener(&self) -> Result<UnixListener, WorkerError> {
-        let l = try!(UnixListener::bind(&self.me.address));
-        Ok(l)
-    }
 }
 
 /// A radio object that maps directly to a network interface of the system.
@@ -212,16 +209,57 @@ pub struct DeviceRadio {
     pub interface_name : String,
     ///Peer object that identifies this worker over this radio.
     pub me : Peer,
+    ///Random number generator used for all RNG operations. 
+    rng : Arc<Mutex<StdRng>>,
 }
 
 impl Radio  for DeviceRadio{
-    // /// Send a Worker::Message over the address implemented by the current Radio.
-    // fn send(&self, msg : MessageHeader) -> Result<(), WorkerError> {
-    //     panic!("DeviceRadio.send() is not implemented.");
-    // }
-
     fn scan_for_peers(&self) -> Result<HashSet<Peer>, WorkerError> {
-        panic!("DeviceRadio.scan_for_peers() is not implemented.");
+        let mut peers = HashSet::new();
+
+        //Constructing the external process call
+        let mut command = Command::new("avahi-browse");
+        command.arg("-r");
+        command.arg("-p");
+        command.arg("-t");
+        command.arg("-l");
+        command.arg("_http._tcp");
+
+        //Starting the worker process
+        let mut child = try!(command.stdout(Stdio::piped()).spawn());
+        let exit_status = child.wait().unwrap();
+
+        if exit_status.success() {
+            let mut buffer = String::new();
+            let mut output = child.stdout.unwrap();
+            output.read_to_string(&mut buffer)?;
+
+            for l in buffer.lines() {
+                let tokens : Vec<&str> = l.split(';').collect();
+                if tokens.len() > 6 {
+                    let serv = ServiceRecord{ service_name : String::from(tokens[3]),
+                                            service_type: String::from(tokens[4]), 
+                                            host_name : String::from(tokens[6]), 
+                                            address : String::from(tokens[7]), 
+                                            address_type : String::from(tokens[2]), 
+                                            port : u16::from_str_radix(tokens[8], 10).unwrap(),
+                                            txt_records : Vec::new() };
+                    
+                    if serv.service_name.starts_with(DNS_SERVICE_NAME) {
+                        //Found a Peer
+                        let mut p = Peer::new();
+                        //TODO: Deconstruct these Options in a classier way. If not, might as well return emptry string on failure.
+                        p.id = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from("(NO_KEY)"));
+                        p.name = serv.get_txt_record("NAME").unwrap_or(String::from("(NO_NAME)"));
+                        p.address = format!("{}:{}", serv.address, DNS_SERVICE_PORT);
+
+                        info!("Found peer {}, address {}", p.name, p.address);
+                        peers.insert(p);
+                    }
+                }
+            }
+        }
+        Ok(peers)
     }
 
     fn get_self_peer(&self) -> &Peer {
@@ -229,18 +267,34 @@ impl Radio  for DeviceRadio{
     }
 
     fn init(&self) -> Result<Box<Listener>, WorkerError> {
-        panic!("DeviceRadio.init() is not implemented yet.");
+        //Advertise the service to be discoverable by peers before we start listening for messages.
+        let mut service = ServiceRecord::new();
+        service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.me.id);
+        service.service_type = String::from(DNS_SERVICE_TYPE);
+        service.port = DNS_SERVICE_PORT;
+        service.txt_records.push(format!("PUBLIC_KEY={}", self.me.id));
+        service.txt_records.push(format!("NAME={}", self.me.name));
+        let mdns_handler = try!(ServiceRecord::publish_service(service));
+
+        //Now get the TcpListener
+        let l = try!(TcpListener::bind(&self.me.address));
+        let listener = DeviceListener::new(l, mdns_handler, Arc::clone(&self.rng));
+
+        Ok(Box::new(listener))
     }
 
     fn connect(&self, p : &Peer) -> Result<Box<Client>, WorkerError> {
-        panic!("DeviceRadio.connect() not yet implemented.");
+        let socket = try!(TcpStream::connect(&p.address));
+        let rng = Arc::clone(&self.rng);
+        let client = DeviceClient::new(socket, rng);
+        Ok(Box::new(client))
     }
 }
 
 impl DeviceRadio {
     /// Get the public address of the OS-NIC that maps to this Radio object.
     /// It will return the first IPv4 address from a NIC that exactly matches the name.
-    pub fn get_radio_address<'a>(name : &'a str) -> Result<String, WorkerError> {
+    fn get_radio_address<'a>(name : &'a str) -> Result<String, WorkerError> {
         use self::pnet::datalink;
         use self::ipnetwork;
 
@@ -261,7 +315,7 @@ impl DeviceRadio {
 
     /// Function for creating a new DeviceRadio. It should ALWAYS be used for creating new DeviceRadios since it calculates
     ///  the address based on the DeviceRadio's properties.
-    pub fn new(interface_name : String, worker_name : String, id : String ) -> DeviceRadio {
+    pub fn new(interface_name : String, worker_name : String, id : String, rng : Arc<Mutex<StdRng>> ) -> DeviceRadio {
         let address = DeviceRadio::get_radio_address(&interface_name).expect("Could not get address for specified interface.");
         debug!("Obtained address {}", &address);
         let address = format!("{}:{}", address, DNS_SERVICE_PORT);
@@ -269,7 +323,8 @@ impl DeviceRadio {
                        name : worker_name, 
                        address : address };
         DeviceRadio { interface_name : interface_name, 
-                      me : me }
+                      me : me, 
+                      rng : rng }
     }
 }
 
@@ -407,103 +462,3 @@ impl DeviceRadio {
         assert_eq!(peers.len(), 4);
     }
     */
-    // ///Function for scanning for nearby peers. Scanning method depends on Operation_Mode.
-    // pub fn scan_for_peers(&self, t : RadioTypes) -> Result<HashSet<Peer>, WorkerError> {
-    //     let radio = self.get_radio(t);
-    //     match self.operation_mode {
-    //         OperationMode::Simulated => { 
-    //             //debug!("Scanning for peers in simulated_mode.");
-    //             self.simulated_scan_for_peers(&radio)
-    //         },
-    //         OperationMode::Device => {
-    //             //debug!("Scanning for peers in device_mode.");
-    //             self.device_scan_for_peers(&radio)
-    //         },
-    //     }
-    // }
-
-    // fn device_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
-    //     let mut peers = HashSet::new();
-
-    //     //Constructing the external process call
-    //     let mut command = Command::new("avahi-browse");
-    //     command.arg("-r");
-    //     command.arg("-p");
-    //     command.arg("-t");
-    //     command.arg("-l");
-    //     command.arg("_http._tcp");
-
-    //     //Starting the worker process
-    //     let mut child = try!(command.stdout(Stdio::piped()).spawn());
-    //     let exit_status = child.wait().unwrap();
-
-    //     if exit_status.success() {
-    //         let mut buffer = String::new();
-    //         let mut output = child.stdout.unwrap();
-    //         output.read_to_string(&mut buffer)?;
-
-    //         for l in buffer.lines() {
-    //             let tokens : Vec<&str> = l.split(';').collect();
-    //             if tokens.len() > 6 {
-    //                 let serv = ServiceRecord{ service_name : String::from(tokens[3]),
-    //                                         service_type: String::from(tokens[4]), 
-    //                                         host_name : String::from(tokens[6]), 
-    //                                         address : String::from(tokens[7]), 
-    //                                         address_type : String::from(tokens[2]), 
-    //                                         port : u16::from_str_radix(tokens[8], 10).unwrap(),
-    //                                         txt_records : Vec::new() };
-                    
-    //                 if serv.service_name.starts_with(DNS_SERVICE_NAME) {
-    //                     //Found a Peer
-    //                     let mut p = Peer::new();
-    //                     //TODO: Deconstruct these Options in a classier way. If not, might as well return emptry string on failure.
-    //                     p.public_key = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from("(NO_KEY)"));
-    //                     p.name = serv.get_txt_record("NAME").unwrap_or(String::from("(NO_NAME)"));
-    //                     p.address = format!("{}:{}", serv.address, DNS_SERVICE_PORT);
-    //                     p.address_type = OperationMode::Device;
-    //                     //p.service_record = serv;
-    //                     info!("Found peer {}, address {}", p.name, p.address);
-    //                     peers.insert(p);
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     Ok(peers)
-    // }
-
-    // fn simulated_scan_for_peers(&self, radio : &Radio) -> Result<HashSet<Peer>, WorkerError> {
-    //     let mut peers = HashSet::new();
-
-    //     //Obtain parent directory of broadcast groups
-    //     let mut parent_dir = Path::new(&self.me.address).to_path_buf();
-    //     let _ = parent_dir.pop(); //bcast group for main address
-    //     let _ = parent_dir.pop(); //bcast group parent directory
-
-    //     info!("Scanning for nearby peers...");
-    //     debug!("Scanning in dir {}", parent_dir.display());
-    //     for group in &radio.broadcast_groups {
-    //         let dir = format!("{}{}{}", parent_dir.display(), std::path::MAIN_SEPARATOR, group);
-    //         if Path::new(&dir).is_dir() {
-    //             for path in fs::read_dir(dir)? {
-    //                 let peer_file = try!(path);
-    //                 let peer_file = peer_file.path();
-    //                 let peer_file = peer_file.to_str().unwrap_or("");
-    //                 let peer_key = extract_address_key(&peer_file);
-    //                 if !peer_key.is_empty() && peer_key != self.me.public_key {
-    //                     info!("Found {}!", &peer_key);
-    //                     let address = format!("{}", peer_file);
-    //                     let peer = Peer{name : String::from(""), 
-    //                                     public_key : String::from(peer_key), 
-    //                                     address : address,
-    //                                     address_type : OperationMode::Simulated };
-    //                     peers.insert(peer);
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     //Remove self from peers
-    //     //let own_key = Path::new(&self.address).file_name().unwrap();
-    //     //let own_key = own_key.to_str().unwrap_or("").to_string();
-    //     //peers.remove(&own_key);
-    //     Ok(peers)
-    // }

@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::sync::{Mutex, Arc, MutexGuard};
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
-use std::thread::{self, JoinHandle};
+use std::thread;
 use std::time::Duration;
 use self::rand::{StdRng, Rng};
 
@@ -138,6 +138,13 @@ impl Protocol for TMembership {
                 let mut selected_peer = Peer::new();
                 {   //LOCK : GET : NEAR
                     let near : MutexGuard<HashSet<Peer>> = try!(nl.lock());
+                    
+                    if near.len() <= 0 {
+                        //No peers are nearby. Skip the scan.
+                        //[DEADLOCK]Not sure if this releases the acquired lock or not. If any deadlocks occur, look here first.
+                        continue;
+                    }
+
                     //Select random peer
                     let p_index : u32 = rng.next_u32() % near.len() as u32;
 

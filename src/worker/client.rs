@@ -6,6 +6,7 @@ use worker::*;
 use worker::rand::Rng;
 use std::thread;
 use std::time::Duration;
+use std::io::Read;
 
 ///Trait implemented by the clients returned when a radio connects to a remote peer.
 pub trait Client {
@@ -120,11 +121,12 @@ impl SimulatedClient {
 pub struct DeviceClient {
     ///Underlying socket for this client.
     pub socket : TcpStream,
+    ///Random number generator used for all RNG operations. 
+    rng : Arc<Mutex<StdRng>>,   
 }
 
 impl Client for DeviceClient {
     fn send_msg(&mut self, msg : MessageHeader) -> Result<(), WorkerError> {
-        //info!("Sending message to {}, address {}.", destination.name, destination.address);
         let data = try!(to_vec(&msg));
         try!(self.socket.write_all(&data));
         let _ = try!(self.socket.flush());
@@ -133,6 +135,53 @@ impl Client for DeviceClient {
     }
 
     fn read_msg(&mut self) -> Result<Option<MessageHeader>, WorkerError> {
-        panic!("DeviceClient.read_msg is not implemented yet.");
+        let mut data : Vec<u8> = Vec::new();
+        let mut total_bytes_read = 0;
+        let mut result = Ok(None);
+
+        info!("Reading message from remote peer.");
+
+        loop {
+            let mut read = [0; 1024]; //Read 1kb at the time. Not particular reason for why this size.
+            match self.socket.read(&mut read) {
+                Ok(bytes_read) => { 
+                    if bytes_read == 0 {
+                        //Connection is closed.
+                        debug!("Connection closed.");
+                        break;
+                    } else {
+                        debug!("Read {} bytes from remote peer.", bytes_read);
+                        data.extend_from_slice(&read);
+                        total_bytes_read += bytes_read;
+                        if bytes_read < read.len() {
+                            //Likely that we already read all available data
+                            break;
+                        }
+                    }
+                },
+                Err(e) => { 
+                    error!("Error reading data from socket: {}", &e);
+                    return Err(WorkerError::IO(e));
+                },
+            }
+            debug!("It seems there's more data to read.");
+        }
+
+        //Try to decode the data into a message.
+        if total_bytes_read > 0 {
+            data.truncate(total_bytes_read);
+            let msg = try!(MessageHeader::from_vec(data));
+            result = Ok(Some(msg));
+        }
+        
+        result
+    }
+}
+
+impl DeviceClient {
+    ///Creates new instance of DeviceClient    
+    pub fn new(socket : TcpStream, rng : Arc<Mutex<StdRng>>) -> DeviceClient {
+        DeviceClient{ socket : socket, 
+                      rng : rng }
     }
 }

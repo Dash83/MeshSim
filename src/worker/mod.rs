@@ -32,7 +32,7 @@ extern crate byteorder;
 extern crate pnet;
 extern crate ipnetwork;
 
-use std::io::{Read, Write};
+use std::io::Write;
 use self::serde_cbor::de::*;
 use std::error;
 use std::fmt;
@@ -41,7 +41,7 @@ use std::str::FromStr;
 use std;
 use std::path::Path;
 use std::collections::HashSet;
-use std::process::Command;
+use std::process::{Command, Child};
 use std::sync::{PoisonError, MutexGuard};
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::net::{UnixStream, UnixListener};
@@ -52,7 +52,6 @@ use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
 use self::rand::{StdRng, SeedableRng};
 use self::byteorder::{NativeEndian, WriteBytesExt};
-use std::iter;
 
 //Sub-modules declaration
 pub mod worker_config;
@@ -244,6 +243,28 @@ impl ServiceRecord {
 
         None
     }
+
+    ///Publishes the service using the mDNS protocol so other devices can discover it.
+    pub fn publish_service(service : ServiceRecord) -> Result<Child, WorkerError> {
+        //Constructing the external process call
+        let mut command = Command::new("avahi-publish");
+        command.arg("-s");
+        command.arg(service.service_name);
+        command.arg(service.service_type);
+        command.arg(service.port.to_string());
+
+        for r in service.txt_records {
+            command.arg(format!(r"{}", r));
+        }
+
+        debug!("Registering service with command: {:?}", command);
+
+        //Starting the worker process
+        let child = try!(command.spawn());
+        info!("Process {} started.", child.id());
+
+        Ok(child)
+    }
 }
 
 /// Operation modes for the worker.
@@ -348,154 +369,6 @@ impl Worker {
         Ok(())
     }
 
-    ///Publishes the service using the mDNS protocol so other devices can discover it.
-    fn publish_service(&self, service : ServiceRecord) -> Result<(), WorkerError> {
-        //Constructing the external process call
-        let mut command = Command::new("avahi-publish");
-        command.arg("-s");
-        command.arg(service.service_name);
-        command.arg(service.service_type);
-        command.arg(service.port.to_string());
-
-        for r in service.txt_records {
-            command.arg(format!(r"{}", r));
-        }
-
-        info!("Registering service with command: {:?}", command);
-
-        //Starting the worker process
-        let child = try!(command.spawn());
-        info!("Process {} started.", child.id());
-
-        Ok(())
-    }
-
-    // fn handle_client_simulated(&mut self, client_socket : UnixStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
-    //     let mut client = SimulatedClient{ socket : client_socket};
-
-    //     loop {
-    //         //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
-    //         //Read the data from the unix socket
-    //         //let _bytes_read = try!(client_socket.read_to_end(&mut data));
-    //         //Try to decode the data into a message.
-    //         //let msg = try!(MessageHeader::from_vec(data));
-    //         let msg = try!(client.read_msg());
-    //         let response = match msg {
-    //             Some(m) => { try!(protocol.handle_message(m)) },
-    //             None => None,
-    //         };
-
-    //         match response {
-    //             Some(resp_msg) => { 
-    //                 //self.short_radio.send(msg)
-    //                 //let resp_data = try!(to_vec(&resp_msg));
-    //                 let _res = try!(client.send_msg(resp_msg));
-    //             },
-    //             None => {
-    //                 //End of protocol sequence.
-    //                 break;
-    //             }
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
-    // fn handle_client_device(&mut self, client_socket : TcpStream, protocol : &mut Box<Protocol>) -> Result<(), WorkerError>  {
-    //     let mut client = DeviceClient{ socket : client_socket};
-
-    //     loop {
-    //         //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
-    //         //Read the data from the unix socket
-    //         //let _bytes_read = try!(client_socket.read_to_end(&mut data));
-    //         //Try to decode the data into a message.
-    //         //let msg = try!(MessageHeader::from_vec(data));
-    //         let msg = try!(client.read_msg());
-    //         let response = match msg {
-    //             Some(m) => { try!(protocol.handle_message(m)) },
-    //             None => None,
-    //         };
-
-    //         match response {
-    //             Some(resp_msg) => { 
-    //                 //self.short_radio.send(msg)
-    //                 //let resp_data = try!(to_vec(&resp_msg));
-    //                 let _res = try!(client.send_msg(resp_msg));
-    //             },
-    //             None => {
-    //                 //End of protocol sequence.
-    //                 break;
-    //             }
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
-    // fn start_listener(&mut self, listener : ListenerType, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
-    //     match listener {
-    //         ListenerType::Simulated(l) => {
-    //             self.start_listener_simulated(l, protocol)
-    //         },
-    //         ListenerType::Device(l) => {
-    //             self.start_listener_device(l, protocol)
-    //         },
-    //     }
-    // }
-
-    // fn start_listener_simulated(&mut self, listener : UnixListener, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
-    //     //No need for service advertisement in simulated mode.
-    //     //Now listen for messages
-    //     info!("Listening for messages.");
-    //     for stream in listener.incoming() {
-    //         match stream {
-    //             Ok(client) => { 
-    //                 let _result = try!(self.handle_client_simulated(client, protocol));
-    //             },
-    //             Err(e) => { 
-    //                 warn!("Failed to connect to incoming client. Error: {}", e);
-    //             },
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
-    // fn start_listener_device(&mut self, listener : TcpListener, protocol : &mut Box<Protocol>) -> Result<(), WorkerError> {
-    //     //Advertise the service to be discoverable by peers before we start listening for messages.
-    //     let mut service = ServiceRecord::new();
-    //     service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.name);
-    //     service.service_type = String::from(DNS_SERVICE_TYPE);
-    //     service.port = DNS_SERVICE_PORT;
-    //     service.txt_records.push(format!("PUBLIC_KEY={}", self.id));
-    //     service.txt_records.push(format!("NAME={}", self.name));
-    //     try!(self.publish_service(service));
-
-    //     //Now listen for messages
-    //     info!("Listening for messages.");
-    //     for stream in listener.incoming() {
-    //         match stream {
-    //             Ok(client) => { 
-    //                 let _result = try!(self.handle_client_device(client, protocol));
-    //             },
-    //             Err(e) => { 
-    //                 warn!("Failed to connect to incoming client. Error: {}", e);
-    //             },
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
-    // fn get_listener(&self, radio : &Box<Radio>) -> Result<ListenerType, WorkerError> {
-    //     match self.operation_mode {
-    //         OperationMode::Simulated => {
-    //             let listener = try!(UnixListener::bind(&radio.get_self_peer().address));
-    //             Ok(ListenerType::Simulated(listener))
-    //         },
-    //         OperationMode::Device => {
-    //             let listener = try!(TcpListener::bind(&radio.get_self_peer().address));
-    //             Ok(ListenerType::Device(listener))
-    //         },
-    //     }
-    // }
-
     ///Returns a random number generator seeded with the passed parameter.
     pub fn rng_from_seed(seed : u32) -> StdRng {
         //Create RNG from the provided random seed.
@@ -526,7 +399,7 @@ fn extract_address_key<'a>(address : &'a str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use worker::worker_config::*;
+    //use worker::worker_config::*;
 
     //**** Peer unit tests ****
     

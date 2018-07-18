@@ -151,12 +151,12 @@ impl Master {
         file_dir.push(work_dir);
         file_dir.push(&file_name);
         debug!("Writing config file {}.", &file_dir.display());
-        let config_file = try!(config.write_to_file(file_dir.as_path()));
+        let _res = try!(config.write_to_file(file_dir.as_path()));
 
         //Constructing the external process call
         let mut command = Command::new(worker_binary);
         command.arg("--config");
-        command.arg(format!("{}", config_file));
+        command.arg(format!("{}", &file_dir.display()));
         command.arg("--work_dir");
         command.arg(format!("{}", work_dir));
 

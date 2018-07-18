@@ -92,4 +92,72 @@ impl SimulatedListener {
 ///Listener that uses contains an underlying TCPListener. Used by the worker in simulated mode.
 pub struct DeviceListener {
     socket : TcpListener,
+    mdns_handler : Child,
+    rng : Arc<Mutex<StdRng>>
+}
+
+impl Listener for DeviceListener {
+    fn start(&self, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError> {
+        //No need for service advertisement in simulated mode.
+        //Now listen for messages
+        info!("Listening for messages.");
+        for stream in self.socket.incoming() {
+            match stream {
+                Ok(s) => { 
+                    let client = DeviceClient::new(s, Arc::clone(&self.rng) );
+                    let prot = Arc::clone(&protocol);
+
+                    let _handle = thread::spawn(move || {
+                        match DeviceListener::handle_client(client, prot) {
+                            Ok(_res) => { 
+                                /* Client connection finished properly. */
+                            },
+                            Err(e) => {
+                                error!("handle_client error: {}", e);
+                            },
+                        }
+                    });
+                },
+                Err(e) => {
+                    warn!("Failed to connect to incoming client. Error: {}", e);
+                },
+            }
+        }
+        Ok(())
+    }   
+}
+
+impl DeviceListener {
+    ///Creates a new instance of DeviceListener
+    pub fn new( socket : TcpListener, h : Child, rng : Arc<Mutex<StdRng>>) -> DeviceListener {
+        DeviceListener{ socket : socket,
+                        mdns_handler : h,
+                        rng : rng }
+    }
+
+    fn handle_client(mut client : DeviceClient, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError> {
+        loop {
+            //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
+            //Read the data from the unix socket
+            //let _bytes_read = try!(client_socket.read_to_end(&mut data));
+            //Try to decode the data into a message.
+            //let msg = try!(MessageHeader::from_vec(data));
+            let msg = try!(client.read_msg());
+            let response = match msg {
+                Some(m) => { try!(protocol.handle_message(m)) },
+                None => None,
+            };
+
+            match response {
+                Some(resp_msg) => { 
+                    let _res = try!(client.send_msg(resp_msg));
+                },
+                None => {
+                    //End of protocol sequence.
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
 }
