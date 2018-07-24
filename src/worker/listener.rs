@@ -6,7 +6,7 @@ use std::thread;
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it 
 /// and listen for incoming connections.
-pub trait Listener {
+pub trait Listener : Send {
     /// Starts listening for incoming connections on its underlying socket. Implementors must provide
     /// their own function to handle client connections.
     fn start(&self, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError>;

@@ -52,6 +52,7 @@ use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
 use self::rand::{StdRng, SeedableRng};
 use self::byteorder::{NativeEndian, WriteBytesExt};
+use std::thread;
 
 //Sub-modules declaration
 pub mod worker_config;
@@ -83,7 +84,6 @@ pub enum WorkerError {
     Configuration(String),
     ///Error in concurrency operations.
     Sync(String),
-
 }
 
 impl fmt::Display for WorkerError {
@@ -308,9 +308,8 @@ pub struct Worker {
     pub id : String,
     /// Short-range radio for the worker.
     short_radio : Option<Arc<Radio>>,
-    // TODO: Uncomment this line when the 2nd radio feature is enabled.
-    // /// Long-range radio for the worker.
-    // long_radio : Box<Radio>,
+    /// Long-range radio for the worker.
+    long_radio : Option<Arc<Radio>>,
     ///Directory for the worker to operate. Must have RW access to it. Operational files and 
     ///log files will be written here.
     work_dir : String,
@@ -331,25 +330,37 @@ impl Worker {
     ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
     pub fn start(&mut self) -> Result<(), WorkerError> {        
         //Init the worker
-        let _ = try!(self.init());
+        let _res = try!(self.init());
 
         //Init the radios and get their respective listeners.
-        let short_radio = self.short_radio.take().unwrap();
-        let listener = try!(short_radio.init());
-
-        info!("Worker finished initializing.");
+        let short_radio = self.short_radio.take();
+        let long_radio = self.long_radio.take();
 
         //Get the protocol object.
         //TODO: Get protocol from configuration file.
-        let p = build_protocol_handler(Protocols::TMembership, short_radio, self.seed);
-        let prot_handler = Arc::new(p);
-
+        let mut resources = try!(build_protocol_resources(Protocols::TMembership, short_radio, long_radio, self.seed));
+        
+        info!("Worker finished initializing.");
+        
         //Initialize protocol.
-        let _ = try!(prot_handler.init_protocol());
+        let _res = try!(resources.handler.init_protocol());
 
         //Start listening for messages
-        //let _ = try!(self.start_listener(listener, &mut prot_handler));
-        let _ = try!(listener.start(prot_handler));
+        let prot_handler = Arc::clone(&resources.handler);
+        let threads = resources.listeners.iter_mut().map(|x| x.take().map(|listener| { 
+            let prot_handler = Arc::clone(&prot_handler);
+            thread::spawn(move || {
+                let _res = listener.start(prot_handler);
+            })
+        }));
+
+        // let _exit_values = threads.map(|x| x.map(|t| t.join())); //This compact version does not work. It seems the lazy iterator is not evaluated.
+        for x in threads {
+            if let Some(h) = x {
+                debug!("Waiting for a listener thread...");
+                let _res = h.join();
+            }
+        }
 
         Ok(())
     }

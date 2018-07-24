@@ -7,8 +7,8 @@
 use super::*;
 
 #[test]
-fn integration_basic_test() {
-    let test = get_test_path("basic_test.toml");
+fn integration_tmembership_join() {
+    let test = get_test_path("join_test.toml");
     let program = get_master_path();
     let worker = get_worker_path();
     let work_dir = create_test_dir("basic_test");

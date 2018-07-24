@@ -28,11 +28,13 @@ fn integration_device_mode_basic() {
     let log_path = format!("{}/log/worker1.log", &work_dir);
     
     //Create configuration
+    //We only change the configuration properties for the test to run on my dev computer. The rest of the defaults are fine.
     let mut config = worker_config::WorkerConfig::new();
     config.work_dir = work_dir;
     config.operation_mode = OperationMode::Device;
-    config.radio_short.interface_name = Some(String::from("eno1")); 
-    config.radio_long.interface_name = Some(String::from("eno1"));
+    let mut r_config = worker_config::RadioConfig::new();
+    r_config.interface_name = Some(String::from("eno1"));
+    config.radio_short = Some(r_config);
 
     //Write config file
     let config_file = format!("{}{}{}", &config.work_dir, std::path::MAIN_SEPARATOR, "worker1.toml");
