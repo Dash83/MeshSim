@@ -67,7 +67,6 @@ pub mod listener;
 const DNS_SERVICE_NAME : &'static str = "meshsim";
 const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT : u16 = 23456;
-const SIMULATED_SCAN_DIR : &'static str = "bcgroups";
 
 // *****************************
 // ********** Structs **********

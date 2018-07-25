@@ -9,6 +9,10 @@ use std::fs;
 use std::process::Stdio;
 use std::io::Read;
 
+const SIMULATED_SCAN_DIR : &'static str = "bcg";
+const SHORT_RANGE_DIR : &'static str = "short";
+const LONG_RANGE_DIR : &'static str = "long";
+
 ///Types of radio supported by the system. Used by Protocols that need to 
 /// request an operation from the worker on a given radio.
 #[derive(Debug)]
@@ -30,7 +34,7 @@ pub trait Radio : std::fmt::Debug + Send + Sync {
     ///Gets the current address at which the radio is listening.
     fn get_self_peer(&self) -> &Peer;
     ///Method for the Radio to perform the necessary initialization for it to function.
-    fn init(&self) -> Result<Box<Listener>, WorkerError>;
+    fn init(&self, t : RadioTypes) -> Result<Box<Listener>, WorkerError>;
 }
 
 /// Represents a radio used by the worker to send a message to the network.
@@ -50,6 +54,8 @@ pub struct SimulatedRadio {
     pub work_dir : String,
     ///Peer object that identifies this worker over this radio.
     me : Peer,
+    ///Short or long range. What's the range-role of this radio.
+    range : RadioTypes,
     ///Random number generator used for all RNG operations. 
     rng : Arc<Mutex<StdRng>>,
 }
@@ -91,13 +97,25 @@ impl Radio  for SimulatedRadio {
         &self.me
     }
 
-    fn init(&self) -> Result<Box<Listener>, WorkerError> {
+    fn init(&self, t : RadioTypes) -> Result<Box<Listener>, WorkerError> {
         let mut dir = try!(std::fs::canonicalize(&self.work_dir));
 
         //check bcast_groups dir is there
         dir.push(SIMULATED_SCAN_DIR); //Dir is work_dir/$SIMULATED_SCAN_DIR
         if !dir.exists() {
             //Create bcast_groups dir
+            try!(std::fs::create_dir(dir.as_path()));
+            info!("Created dir {} ", dir.as_path().display());
+        }
+
+        //Create the scan dir that corresponds to this radio's range.
+        let radio_type_dir = match t {
+            RadioTypes::ShortRange => SHORT_RANGE_DIR,
+            RadioTypes::LongRange => LONG_RANGE_DIR,
+        };
+        dir.push(radio_type_dir);
+        if !dir.exists() {
+            //Create short/long dir
             try!(std::fs::create_dir(dir.as_path()));
             info!("Created dir {} ", dir.as_path().display());
         }
@@ -110,7 +128,7 @@ impl Radio  for SimulatedRadio {
             try!(std::fs::create_dir(dir.as_path()));
             info!("Created dir {} ", dir.as_path().display());
         }
-        dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
+        dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR/$RANGE
         //Check if the socket file exists from a previous run.
         if Path::new(&self.me.address).exists() {
             //Pipe already exists.
@@ -120,7 +138,7 @@ impl Radio  for SimulatedRadio {
         let listener = SimulatedListener::new( l, self.delay, self.reliability, Arc::clone(&self.rng) );
         
         for group in groups.iter() {
-            dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/&group
+            dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/$RANGE/&group
             
             //Does broadcast group exist?
             if !dir.exists() {
@@ -133,13 +151,13 @@ impl Radio  for SimulatedRadio {
             let linked_address = format!("{}{}{}.socket", dir.as_path().display(), std::path::MAIN_SEPARATOR, self.me.id);
             if Path::new(&linked_address).exists() {
                 //Pipe already exists
-                dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
+                dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR/$RANGE
                 continue;
             }
             let _ = try!(std::os::unix::fs::symlink(&self.me.address, &linked_address));
             //debug!("Pipe file {} created.", &linked_address);
 
-            dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR
+            dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR/$RANGE
         }
 
         Ok(Box::new(listener))
@@ -154,26 +172,6 @@ impl Radio  for SimulatedRadio {
 }
 
 impl SimulatedRadio {
-    // fn send_simulated_mode(&self, msg : MessageHeader) -> Result<(), WorkerError> {
-    //     let mut socket = try!(UnixStream::connect(&msg.destination.address));
-      
-    //     //info!("Sending message to {}, address {}.", destination.name, destination.address);
-    //     let data = try!(to_vec(&msg));
-    //     try!(socket.write_all(&data));
-    //     info!("Message sent successfully.");
-    //     Ok(())
-    // }
-
-    // fn send_device_mode(&self, msg : MessageHeader) -> Result<(), WorkerError> {
-    //     let mut socket = try!(TcpStream::connect(&msg.destination.address));
-        
-    //     //info!("Sending message to {}, address {}.", destination.name, destination.address);
-    //     let data = try!(to_vec(&msg));
-    //     try!(socket.write_all(&data));
-    //     info!("Message sent successfully.");
-    //     Ok(())
-    // }
-
     /// Constructor for new Radios
     pub fn new( delay : u32, 
                 reliability : f64, 
@@ -181,6 +179,7 @@ impl SimulatedRadio {
                 work_dir : String,
                 id : String,
                 worker_name : String,
+                range : RadioTypes,
                 rng : Arc<Mutex<StdRng>> ) -> SimulatedRadio {
         let main_bcg = bc_groups[0].clone();
         //$WORK_DIR/SIMULATED_SCAN_DIR/GROUP/ID.socket
@@ -193,6 +192,7 @@ impl SimulatedRadio {
                         broadcast_groups : bc_groups,
                         work_dir : work_dir,
                         me : me,
+                        range : range,
                         rng : rng }
     }
 
@@ -266,7 +266,7 @@ impl Radio  for DeviceRadio{
         &self.me
     }
 
-    fn init(&self) -> Result<Box<Listener>, WorkerError> {
+    fn init(&self, t : RadioTypes) -> Result<Box<Listener>, WorkerError> {
         //Advertise the service to be discoverable by peers before we start listening for messages.
         let mut service = ServiceRecord::new();
         service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.me.id);

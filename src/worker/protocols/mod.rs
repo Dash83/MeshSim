@@ -6,7 +6,8 @@ extern crate rand;
 extern crate toml;
 extern crate rustc_serialize;
 
-use worker::{MessageHeader, WorkerError, Radio };
+use worker::{MessageHeader, WorkerError };
+use worker::radio::*;
 use worker::listener::*;
 use self::tmembership::TMembership;
 use std;
@@ -32,6 +33,8 @@ pub trait Protocol : std::fmt::Debug + Send + Sync {
 pub enum Protocols {
     ///ToyMembership protocol implemented in order to test and develop MeshSim.
     TMembership,
+    // //2-Radio variation of the TMembership protocol.
+    // TMembership_Advanced,
 }
 
 impl FromStr for Protocols {
@@ -64,13 +67,24 @@ pub fn build_protocol_resources( p : Protocols,
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let sr = short_radio.expect("The TMembership protocol requires a short_radio to be provided.");
             //Initialize the radio.
-            let listener = try!(sr.init());
+            let listener = try!(sr.init(RadioTypes::ShortRange));
             let handler : Arc<Box<Protocol>> = Arc::new(Box::new(TMembership::new(sr, seed)));
             let mut listeners = Vec::new();
             listeners.push(Some(listener));
             let resources = ProtocolResources{  handler : handler, 
                                                 listeners : listeners };
             Ok(resources)
-        }
+        },
+
+        // Protocols::TMembership_Advanced => {
+        //     //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+        //     let sr = short_radio.expect("The TMembership protocol requires a short_radio to be provided.");
+        //     //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+        //     let lr = long_radio.expect("The TMembership protocol requires a long_radio to be provided.");
+
+        //     let sr_listener = try!(sr.init());
+        //     Ok(())
+        // },
+
     }
 }
