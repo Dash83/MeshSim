@@ -21,6 +21,7 @@ use std::fs::File;
 /// At the moment, this test is tied up to my lab computer due to network-interface names. Not sure this will be addressed later.
 /// This test could be a part of the tests that only run every now and then.
 #[test]
+#[cfg(target_os = "linux")]
 fn integration_device_mode_basic() {
     let test_duration :u64 = 3000; //3000 ms
     let program = get_worker_path();

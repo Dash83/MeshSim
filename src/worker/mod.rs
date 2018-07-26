@@ -318,6 +318,8 @@ pub struct Worker {
     seed : u32,
     ///Simulated or Device operation.
     operation_mode : OperationMode,
+    /// The protocol that this Worker should run for this configuration.
+    pub protocol : Protocols,
 }
 
 impl Worker {
@@ -337,7 +339,7 @@ impl Worker {
 
         //Get the protocol object.
         //TODO: Get protocol from configuration file.
-        let mut resources = try!(build_protocol_resources(Protocols::TMembership, short_radio, long_radio, self.seed));
+        let mut resources = try!(build_protocol_resources(self.protocol, short_radio, long_radio, self.seed));
         
         info!("Worker finished initializing.");
         

@@ -10,11 +10,13 @@ use worker::{MessageHeader, WorkerError };
 use worker::radio::*;
 use worker::listener::*;
 use self::tmembership::TMembership;
+use self::tmembership_advanced::*;
 use std;
 use std::sync::Arc;
 use std::str::FromStr;
 
 pub mod tmembership;
+pub mod tmembership_advanced;
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should 
@@ -29,12 +31,12 @@ pub trait Protocol : std::fmt::Debug + Send + Sync {
 }
 
 ///Current list of supported protocols by MeshSim.
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Copy)]
 pub enum Protocols {
-    ///ToyMembership protocol implemented in order to test and develop MeshSim.
+    /// ToyMembership protocol implemented in order to test and develop MeshSim.
     TMembership,
-    // //2-Radio variation of the TMembership protocol.
-    // TMembership_Advanced,
+    /// 2-Radio variation of the TMembership protocol.
+    TMembership_Advanced,
 }
 
 impl FromStr for Protocols {
@@ -67,7 +69,7 @@ pub fn build_protocol_resources( p : Protocols,
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let sr = short_radio.expect("The TMembership protocol requires a short_radio to be provided.");
             //Initialize the radio.
-            let listener = try!(sr.init(RadioTypes::ShortRange));
+            let listener = try!(sr.init());
             let handler : Arc<Box<Protocol>> = Arc::new(Box::new(TMembership::new(sr, seed)));
             let mut listeners = Vec::new();
             listeners.push(Some(listener));
@@ -76,15 +78,27 @@ pub fn build_protocol_resources( p : Protocols,
             Ok(resources)
         },
 
-        // Protocols::TMembership_Advanced => {
-        //     //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
-        //     let sr = short_radio.expect("The TMembership protocol requires a short_radio to be provided.");
-        //     //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
-        //     let lr = long_radio.expect("The TMembership protocol requires a long_radio to be provided.");
+        Protocols::TMembership_Advanced => {
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let sr = short_radio.expect("The TMembership protocol requires a short_radio to be provided.");
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let lr = long_radio.expect("The TMembership protocol requires a long_radio to be provided.");
 
-        //     let sr_listener = try!(sr.init());
-        //     Ok(())
-        // },
+            //Build the listeners list
+            let mut listeners = Vec::new();
+            let sr_listener = try!(sr.init());
+            let lr_listener = try!(lr.init());
+            listeners.push(Some(sr_listener));
+            listeners.push(Some(lr_listener));
+
+            //Build the protocol handler
+            let handler : Arc<Box<Protocol>> = Arc::new(Box::new(TMembershipAdvanced::new()));
+
+            //Build the resources context
+            let resources = ProtocolResources{ handler : handler,
+                                              listeners : listeners };
+            Ok(resources)
+        },
 
     }
 }

@@ -34,7 +34,7 @@ pub trait Radio : std::fmt::Debug + Send + Sync {
     ///Gets the current address at which the radio is listening.
     fn get_self_peer(&self) -> &Peer;
     ///Method for the Radio to perform the necessary initialization for it to function.
-    fn init(&self, t : RadioTypes) -> Result<Box<Listener>, WorkerError>;
+    fn init(&self) -> Result<Box<Listener>, WorkerError>;
 }
 
 /// Represents a radio used by the worker to send a message to the network.
@@ -97,7 +97,7 @@ impl Radio  for SimulatedRadio {
         &self.me
     }
 
-    fn init(&self, t : RadioTypes) -> Result<Box<Listener>, WorkerError> {
+    fn init(&self) -> Result<Box<Listener>, WorkerError> {
         let mut dir = try!(std::fs::canonicalize(&self.work_dir));
 
         //check bcast_groups dir is there
@@ -109,7 +109,7 @@ impl Radio  for SimulatedRadio {
         }
 
         //Create the scan dir that corresponds to this radio's range.
-        let radio_type_dir = match t {
+        let radio_type_dir = match self.range {
             RadioTypes::ShortRange => SHORT_RANGE_DIR,
             RadioTypes::LongRange => LONG_RANGE_DIR,
         };
@@ -182,7 +182,8 @@ impl SimulatedRadio {
                 range : RadioTypes,
                 rng : Arc<Mutex<StdRng>> ) -> SimulatedRadio {
         let main_bcg = bc_groups[0].clone();
-        //$WORK_DIR/SIMULATED_SCAN_DIR/GROUP/ID.socket
+        //$WORK_DIR/SIMULATED_SCAN_DIR/GROUP/RANGE/ID.socket
+        let a = RadioTypes::LongRange.to_str();
         let address = format!("{}/{}/{}/{}.socket", work_dir, SIMULATED_SCAN_DIR, main_bcg, id);
         let me = Peer{ id : id, 
                        name : worker_name, 
@@ -266,7 +267,7 @@ impl Radio  for DeviceRadio{
         &self.me
     }
 
-    fn init(&self, t : RadioTypes) -> Result<Box<Listener>, WorkerError> {
+    fn init(&self) -> Result<Box<Listener>, WorkerError> {
         //Advertise the service to be discoverable by peers before we start listening for messages.
         let mut service = ServiceRecord::new();
         service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.me.id);
