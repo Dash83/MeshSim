@@ -23,10 +23,16 @@ use std::fs::File;
 #[test]
 #[cfg(target_os = "linux")]
 fn integration_device_mode_basic() {
+    let host = env::var("MESHSIM_HOST").unwrap_or(String::from(""));
     let test_duration :u64 = 3000; //3000 ms
     let program = get_worker_path();
     let work_dir = create_test_dir("device_mode_basic");
     let log_path = format!("{}/log/worker1.log", &work_dir);
+
+    //This test should ONLY run on my lab development machine due to required configuration of device_mode.
+    if !host.eq("kaer-morhen") {
+        return;
+    }
     
     //Create configuration
     //We only change the configuration properties for the test to run on my dev computer. The rest of the defaults are fine.
