@@ -183,7 +183,7 @@ impl Master {
 
         //Add the available_nodes pool to the master.
         self.available_nodes = Arc::new(spec.available_nodes);
-        debug!("Available nodes: {:?}", &self.available_nodes);
+        //debug!("Available nodes: {:?}", &self.available_nodes);
 
         //Run all test actions.
         let actions = spec.actions.clone();

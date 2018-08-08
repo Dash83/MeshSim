@@ -44,8 +44,11 @@ fn get_test_path<'a>(test : &'a str) -> String {
     format!("{}", file_pb.display())
 }
 
+//MESHIM_TEST_DIR should point to "/media/marco/Data/Tests/" at my lab computer.
 fn get_tests_root() -> String {
-    String::from("/media/marco/Data/Tests/")
+    use std::env;
+    let test_home = env::var("MESHIM_TEST_DIR").unwrap_or(String::from("/tmp/Tests/"));
+    test_home
 }
 
 fn create_test_dir<'a>(test_name : &'a str) -> String {

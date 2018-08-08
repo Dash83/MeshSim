@@ -40,7 +40,7 @@ use std::io;
 use std::str::FromStr;
 use std;
 use std::path::Path;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::process::{Command, Child};
 use std::sync::{PoisonError, MutexGuard};
 use std::net::{TcpListener, TcpStream};
@@ -67,7 +67,6 @@ pub mod listener;
 const DNS_SERVICE_NAME : &'static str = "meshsim";
 const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT : u16 = 23456;
-const SIMULATED_SCAN_DIR : &'static str = "bcgroups";
 
 // *****************************
 // ********** Structs **********
@@ -136,6 +135,11 @@ impl<'a> From<PoisonError<MutexGuard<'a, HashSet<Peer>>>> for WorkerError {
     }
 }
 
+impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Peer>>>> for WorkerError {
+    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, Peer>>>) -> WorkerError {
+        WorkerError::Sync(err.to_string())
+    }
+}
 /// This enum is used to pass around the socket listener for the type of operation of the worker
 pub enum ListenerType {
     ///Simulated mode uses an internal UnixListener
@@ -153,16 +157,19 @@ pub struct Peer {
     pub id: String, 
     /// Friendly name of the peer. 
     pub name : String,
-    ///Endpoint at which the peer is listening for messages.
-    pub address : String,
+    ///Endpoint at which this worker's short_radio is listening for messages.
+    pub short_address : Option<String>,
+    ///Endpoint at which this worker's long_radio is listening for messages.
+    pub long_address : Option<String>,
 }
 
 impl Peer {
     ///Empty constructor for the Peer struct.
     pub fn new() -> Peer {
-        Peer{   id : String::from(""),
+        Peer {  id : String::from(""),
                 name : String::from(""),
-                address : String::from("")}
+                short_address : None,
+                long_address : None }
     }
 }
 
@@ -319,6 +326,8 @@ pub struct Worker {
     seed : u32,
     ///Simulated or Device operation.
     operation_mode : OperationMode,
+    /// The protocol that this Worker should run for this configuration.
+    pub protocol : Protocols,
 }
 
 impl Worker {
@@ -338,7 +347,8 @@ impl Worker {
 
         //Get the protocol object.
         //TODO: Get protocol from configuration file.
-        let mut resources = try!(build_protocol_resources(Protocols::TMembership, short_radio, long_radio, self.seed));
+        let mut resources = try!(build_protocol_resources( self.protocol, short_radio, long_radio, self.seed, 
+                                                           self.id.clone(), self.name.clone(),));
         
         info!("Worker finished initializing.");
         

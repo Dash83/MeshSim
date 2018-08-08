@@ -69,7 +69,7 @@ impl Client for SimulatedClient {
         let mut total_bytes_read = 0;
         let mut result = Ok(None);
 
-        info!("Reading message from remote peer.");
+        // info!("Reading message from remote peer.");
 
         //Read the data from the unix socket
         //let _bytes_read = try!(self.socket.read_to_end(&mut data));
@@ -82,7 +82,7 @@ impl Client for SimulatedClient {
                         debug!("Connection closed.");
                         break;
                     } else {
-                        debug!("Read {} bytes from remote peer.", bytes_read);
+                        // debug!("Read {} bytes from remote peer.", bytes_read);
                         data.extend_from_slice(&read);
                         total_bytes_read += bytes_read;
                         if bytes_read < read.len() {
