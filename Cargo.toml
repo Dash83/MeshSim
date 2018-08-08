@@ -25,7 +25,7 @@ slog-stdlog = "1.1.0"
 log = "0.3.7"
 toml = "0.4.2"
 byteorder = "1.0.0"
-pnet = "0.20.0"
+pnet = "0.21.0"
 ipnetwork = "0.12.7"
 chrono = "0.4"
 
