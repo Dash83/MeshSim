@@ -2,6 +2,7 @@
 //! socket used to listen for incoming connections. This is done to abstract the protocols and worker from
 //! knowing whether the worker is running on simulated or device mode.
 use worker::*;
+use worker::radio::RadioTypes;
 use std::thread;
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it 
@@ -18,6 +19,7 @@ pub struct SimulatedListener {
     delay : u32,
     reliability : f64,
     rng : Arc<Mutex<StdRng>>,
+    r_type : RadioTypes,
 }
 
 impl Listener for SimulatedListener {
@@ -28,12 +30,14 @@ impl Listener for SimulatedListener {
         for stream in self.socket.incoming() {
             match stream {
                 Ok(s) => { 
-                    //TODO: Each client connection must be handled in its own thread. Use interior-mutability pattern.
+                    //info!("Incoming connection from {:?}", s);
+                    info!("Incoming connection");
                     let client = SimulatedClient::new(s, self.delay, self.reliability, Arc::clone(&self.rng) );
                     let prot = Arc::clone(&protocol);
+                    let r_type = self.r_type;
 
                     let _handle = thread::spawn(move || {
-                        match SimulatedListener::handle_client(client, prot) {
+                        match SimulatedListener::handle_client(client, prot, r_type) {
                             Ok(_res) => { 
                                 /* Client connection finished properly. */
                             },
@@ -54,24 +58,20 @@ impl Listener for SimulatedListener {
 
 impl SimulatedListener {
     ///Creates a new instance of SimulatedListener
-    pub fn new( socket : UnixListener, delay : u32, reliability : f64, rng : Arc<Mutex<StdRng>>) -> SimulatedListener {
+    pub fn new( socket : UnixListener, delay : u32, reliability : f64, rng : Arc<Mutex<StdRng>>, r_type : RadioTypes) -> SimulatedListener {
         SimulatedListener{ socket : socket, 
                            delay : delay, 
                            reliability : reliability,
-                           rng : rng }
+                           rng : rng,
+                           r_type : r_type }
     }
 
     ///Handles client connections
-    fn handle_client(mut client : SimulatedClient, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError> {
+    fn handle_client(mut client : SimulatedClient, protocol : Arc<Box<Protocol>>, r_type : RadioTypes) -> Result<(), WorkerError> {
         loop {
-            //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
-            //Read the data from the unix socket
-            //let _bytes_read = try!(client_socket.read_to_end(&mut data));
-            //Try to decode the data into a message.
-            //let msg = try!(MessageHeader::from_vec(data));
             let msg = try!(client.read_msg());
             let response = match msg {
-                Some(m) => { try!(protocol.handle_message(m)) },
+                Some(m) => { try!(protocol.handle_message(m, r_type)) },
                 None => None,
             };
 
@@ -93,7 +93,8 @@ impl SimulatedListener {
 pub struct DeviceListener {
     socket : TcpListener,
     mdns_handler : Child,
-    rng : Arc<Mutex<StdRng>>
+    rng : Arc<Mutex<StdRng>>,
+    r_type : RadioTypes,
 }
 
 impl Listener for DeviceListener {
@@ -106,9 +107,10 @@ impl Listener for DeviceListener {
                 Ok(s) => { 
                     let client = DeviceClient::new(s, Arc::clone(&self.rng) );
                     let prot = Arc::clone(&protocol);
+                    let r_type = self.r_type;
 
                     let _handle = thread::spawn(move || {
-                        match DeviceListener::handle_client(client, prot) {
+                        match DeviceListener::handle_client(client, prot, r_type) {
                             Ok(_res) => { 
                                 /* Client connection finished properly. */
                             },
@@ -129,13 +131,14 @@ impl Listener for DeviceListener {
 
 impl DeviceListener {
     ///Creates a new instance of DeviceListener
-    pub fn new( socket : TcpListener, h : Child, rng : Arc<Mutex<StdRng>>) -> DeviceListener {
+    pub fn new( socket : TcpListener, h : Child, rng : Arc<Mutex<StdRng>>, r_type : RadioTypes) -> DeviceListener {
         DeviceListener{ socket : socket,
                         mdns_handler : h,
-                        rng : rng }
+                        rng : rng,
+                        r_type : r_type }
     }
 
-    fn handle_client(mut client : DeviceClient, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError> {
+    fn handle_client(mut client : DeviceClient, protocol : Arc<Box<Protocol>>, r_type : RadioTypes) -> Result<(), WorkerError> {
         loop {
             //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
             //Read the data from the unix socket
@@ -144,7 +147,7 @@ impl DeviceListener {
             //let msg = try!(MessageHeader::from_vec(data));
             let msg = try!(client.read_msg());
             let response = match msg {
-                Some(m) => { try!(protocol.handle_message(m)) },
+                Some(m) => { try!(protocol.handle_message(m, r_type)) },
                 None => None,
             };
 

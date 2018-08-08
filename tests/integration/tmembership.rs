@@ -94,3 +94,33 @@ fn killnode_test() {
     .contains("End_Test action: Finished. 2 processes terminated.")
     .unwrap();
 }
+
+#[test]
+fn sustained_test() {
+    use std;
+    
+    let test = get_test_path("tmembership_sustained.toml");
+    let program = get_master_path();
+    let worker = get_worker_path();
+    let work_dir = create_test_dir("tmembership_sustained");
+    let log_dir = format!("{}{}{}", &work_dir, std::path::MAIN_SEPARATOR, "log");
+
+    println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
+
+    //Assert the test finished succesfully.
+    //The only pass condition for this test is that the specified process is killed during the test execution,
+    //therefore leaving only 2 process to be terminated at the end of the test.
+    assert_cli::Assert::command(&[&program])
+    .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
+    .succeeds()
+    .and()
+    .stdout()
+    .contains("End_Test action: Finished. 14 processes terminated.")
+    .unwrap();
+
+
+}
+//**************************************//
+//******** TMembership advanced ********//
+//**************************************//
+
