@@ -1,2 +1,6 @@
 target
 .vscode
+
+*.log
+
+Cargo\.lock
