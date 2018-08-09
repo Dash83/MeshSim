@@ -130,7 +130,7 @@ impl TMembershipAdvanced {
     fn initial_join_scan(&self) -> Result<Vec<JoinHandle<Result<(), WorkerError>>>, WorkerError> {
         let mut handles = Vec::new();
         //Perform radio-scan.
-        let nearby_peers = try!(self.short_radio.scan_for_peers()); //TODO: Refer to issue#13 in repo.
+        let nearby_peers = try!(self.short_radio.scan_for_peers());
         let mut far_peers = try!(self.long_radio.scan_for_peers());
 
         //In a lot of cases, the devices detected by the Long-range radio will have a large intersection

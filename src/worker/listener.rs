@@ -140,9 +140,6 @@ impl DeviceListener {
 
     fn handle_client(mut client : DeviceClient, protocol : Arc<Box<Protocol>>, r_type : RadioTypes) -> Result<(), WorkerError> {
         loop {
-            //let mut data = Vec::new(); //TODO: Not sure this is the right thing here. Does the compiler optimize this allocation?
-            //Read the data from the unix socket
-            //let _bytes_read = try!(client_socket.read_to_end(&mut data));
             //Try to decode the data into a message.
             //let msg = try!(MessageHeader::from_vec(data));
             let msg = try!(client.read_msg());
