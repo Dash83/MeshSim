@@ -346,7 +346,6 @@ impl Worker {
         let long_radio = self.long_radio.take();
 
         //Get the protocol object.
-        //TODO: Get protocol from configuration file.
         let mut resources = try!(build_protocol_resources( self.protocol, short_radio, long_radio, self.seed, 
                                                            self.id.clone(), self.name.clone(),));
         

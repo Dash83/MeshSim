@@ -352,7 +352,7 @@ impl TMembership {
     fn initial_join_scan(&self) -> Result<Vec<JoinHandle<Result<(), WorkerError>>>, WorkerError> {
         let mut handles = Vec::new();
         //Perform radio-scan.
-        let nearby_peers = try!(self.short_radio.scan_for_peers()); //TODO: Refer to issue#13 in repo.
+        let nearby_peers = try!(self.short_radio.scan_for_peers());
 
         //Send join messages to all scanned devices
         //data is a tuple of (name, address)

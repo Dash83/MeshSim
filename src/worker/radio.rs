@@ -274,7 +274,6 @@ impl Radio  for DeviceRadio{
                     
                     if serv.service_name.starts_with(DNS_SERVICE_NAME) {
                         //Found a Peer
-                        //TODO: Deconstruct these Options in a classier way. If not, might as well return emptry string on failure.
                         let id = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from("(NO_KEY)"));
                         let name = serv.get_txt_record("NAME").unwrap_or(String::from("(NO_NAME)"));
                         let address = format!("{}:{}", serv.address, DNS_SERVICE_PORT);

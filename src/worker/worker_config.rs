@@ -185,7 +185,6 @@ impl WorkerConfig {
     pub fn write_to_file<P: AsRef<Path>>(&self, file_path: P) -> Result<(), WorkerError> {
         //Create configuration file
         let mut file = try!(File::create(&file_path));
-        //TODO: Do proper error handling.
         let data = match toml::to_string(self) {
             Ok(d) => d,
             Err(e) => return Err(WorkerError::Configuration(format!("Error writing configuration to file: {}", e)))
