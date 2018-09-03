@@ -4,13 +4,8 @@
 extern crate socket2;
 
 use worker::*;
-use worker::radio::*;
 use std::thread;
-use std::net::{TcpListener, TcpStream};
-use std::os::unix::net::{UnixStream, UnixListener, UnixDatagram};
-use self::socket2::{Socket, SockAddr, Domain, Type};
-
-const MAX_CONNECTIONS : i32 = 128; //Arbitrary number.
+use self::socket2::Socket;
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it 
 /// and listen for incoming connections.

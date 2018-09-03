@@ -10,8 +10,7 @@ use std::fs;
 use std::process::Stdio;
 use std::io::Read;
 use std::collections::HashMap;
-use std::net::{TcpListener, TcpStream, SocketAddr};
-use std::os::unix::net::{UnixStream, UnixListener, UnixDatagram};
+use std::net:: SocketAddr;
 use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
 
 const SIMULATED_SCAN_DIR : &'static str = "bcg";
@@ -51,8 +50,6 @@ pub trait Radio : std::fmt::Debug + Send + Sync {
     fn get_address(&self) -> &str;
     ///Method for the Radio to perform the necessary initialization for it to function.
     fn init(&self) -> Result<Box<Listener>, WorkerError>;
-    ///Method for sending a message in a Datagram-way to a given address.
-    fn send_msg(&self, address : String, msg : MessageHeader) -> Result<(), WorkerError>;
 }
 
 /// Represents a radio used by the worker to send a message to the network.
@@ -196,21 +193,6 @@ impl Radio  for SimulatedRadio {
         let client = SimulatedClient::new(addr, self.delay, self.reliability, rng);
         Ok(Box::new(client))
     }
-
-    fn send_msg(&self, address : String, msg : MessageHeader) -> Result<(), WorkerError> {
-        let socket = UnixDatagram::unbound()?;
-        let mut data = to_vec(&msg)?;
-
-        if data.len() > MAX_UDP_PAYLOAD_SIZE {
-            warn!("Payload is larger than MAX_UDP_PAYLOAD_SIZE and will be truncated.");
-        }
-        
-        let _ = socket.connect(&address)?;
-        let sent_bytes = socket.send(data.as_mut_slice())?;
-        debug!("{} bytes sent", sent_bytes);
-
-        Ok(())
-    }
 }
 
 impl SimulatedRadio {
@@ -346,21 +328,6 @@ impl Radio  for DeviceRadio{
         let rng = Arc::clone(&self.rng);
         let client = DeviceClient::new(remote_addr, rng);
         Ok(Box::new(client))
-    }
-
-    fn send_msg(&self, address : String, msg : MessageHeader) -> Result<(), WorkerError> {
-        let socket = UnixDatagram::unbound()?;
-        let mut data = to_vec(&msg)?;
-
-        if data.len() > MAX_UDP_PAYLOAD_SIZE {
-            warn!("Payload is larger than MAX_UDP_PAYLOAD_SIZE and will be truncated.");
-        }
-        
-        let _ = socket.connect(&address)?;
-        let sent_bytes = socket.send(data.as_mut_slice())?;
-        debug!("{} bytes sent", sent_bytes);
-
-        Ok(())
     }
 }
 

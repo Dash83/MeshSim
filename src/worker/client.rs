@@ -7,7 +7,6 @@ use worker::*;
 use worker::rand::Rng;
 use std::thread;
 use std::time::Duration;
-use std::io::Read;
 use std::net::SocketAddr;
 use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
 
@@ -140,7 +139,7 @@ pub struct DeviceClient {
 
 impl Client for DeviceClient {
     fn send_msg(&mut self, msg : MessageHeader) -> Result<(), WorkerError> {
-        //info!("Sending message to {}, address {}.", destination.name, destination.address);
+        info!("Sending message to {}, id {}.", &msg.destination.name, &msg.destination.id);
         let socket = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
     
         //Only 1 address should be specified in the destination peer
