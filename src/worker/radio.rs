@@ -2,6 +2,7 @@
 
 extern crate pnet;
 extern crate ipnetwork;
+extern crate socket2;
 
 use worker::*;
 use worker::listener::*;
@@ -9,10 +10,14 @@ use std::fs;
 use std::process::Stdio;
 use std::io::Read;
 use std::collections::HashMap;
+use std::net:: SocketAddr;
+use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
 
 const SIMULATED_SCAN_DIR : &'static str = "bcg";
 const SHORT_RANGE_DIR : &'static str = "short";
 const LONG_RANGE_DIR : &'static str = "long";
+///Maximum size the payload of a UDP packet can have.
+pub const MAX_UDP_PAYLOAD_SIZE : usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
 
 ///Types of radio supported by the system. Used by Protocols that need to 
 /// request an operation from the worker on a given radio.
@@ -150,8 +155,11 @@ impl Radio  for SimulatedRadio {
             //Pipe already exists.
             try!(fs::remove_file(&self.address));
         }
-        let l = try!(UnixListener::bind(&self.address));
-        let listener = SimulatedListener::new( l, self.delay, self.reliability, Arc::clone(&self.rng), self.r_type );
+
+        let listen_addr = SockAddr::unix(&self.address)?;
+        let sock = Socket::new(Domain::unix(), Type::dgram(), None)?;
+        let _ = sock.bind(&listen_addr)?;
+        let listener = SimulatedListener::new( sock, self.delay, self.reliability, Arc::clone(&self.rng), self.r_type );
         
         for group in groups.iter() {
             dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/$RANGE/&group
@@ -180,9 +188,9 @@ impl Radio  for SimulatedRadio {
     }
 
     fn connect<'a>(&self,  address : String) -> Result<Box<Client>, WorkerError> {
-        let socket = try!(UnixStream::connect(address));
+        let addr = SockAddr::unix(&address)?;
         let rng = Arc::clone(&self.rng);
-        let client = SimulatedClient::new(socket, self.delay, self.reliability, rng);
+        let client = SimulatedClient::new(addr, self.delay, self.reliability, rng);
         Ok(Box::new(client))
     }
 }
@@ -303,17 +311,22 @@ impl Radio  for DeviceRadio{
         service.txt_records.push(format!("NAME={}", self.name));
         let mdns_handler = try!(ServiceRecord::publish_service(service));
 
-        //Now get the TcpListener
-        let l = try!(TcpListener::bind(&self.address));
-        let listener = DeviceListener::new(l, mdns_handler, Arc::clone(&self.rng), self.r_type);
+        //Now bind the socket
+        //debug!("Attempting to bind address: {:?}", &self.address);
+        let listen_addr = &self.address.parse::<SocketAddr>().unwrap().into();
+        let sock = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
+        let _ = sock.bind(&listen_addr)?;
+        let listener = DeviceListener::new(sock, mdns_handler, Arc::clone(&self.rng), self.r_type);
+
+        info!("Radio initialized.");
 
         Ok(Box::new(listener))
     }
 
     fn connect<'a>(&self, address : String) -> Result<Box<Client>, WorkerError> {
-        let socket = try!(TcpStream::connect(address));
+        let remote_addr = address.parse::<SocketAddr>().unwrap().into();
         let rng = Arc::clone(&self.rng);
-        let client = DeviceClient::new(socket, rng);
+        let client = DeviceClient::new(remote_addr, rng);
         Ok(Box::new(client))
     }
 }
@@ -329,10 +342,13 @@ impl DeviceRadio {
             if &iface.name == name {
                 for address in iface.ips {
                     match address {
-                        ipnetwork::IpNetwork::V4(addr) => {
+                        ipnetwork::IpNetwork::V4(_addr) => {
+                            //return Ok(addr.ip().to_string())
+                            /*Only using IPv6 for the moment*/ 
+                        },
+                        ipnetwork::IpNetwork::V6(addr) => { 
                             return Ok(addr.ip().to_string())
                         },
-                        ipnetwork::IpNetwork::V6(_) => { /*Only using IPv4 for the moment*/ },
                     }
                 }
             }
@@ -349,7 +365,7 @@ impl DeviceRadio {
                 r_type : RadioTypes ) -> DeviceRadio {
         let address = DeviceRadio::get_radio_address(&interface_name).expect("Could not get address for specified interface.");
         debug!("Obtained address {}", &address);
-        let address = format!("{}:{}", address, DNS_SERVICE_PORT);
+        let address = format!("[{}]:{}", address, DNS_SERVICE_PORT);
 
         DeviceRadio { interface_name : interface_name, 
                       id : id, 
