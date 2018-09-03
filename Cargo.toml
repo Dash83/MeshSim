@@ -28,6 +28,7 @@ byteorder = "1.0.0"
 pnet = "0.21.0"
 ipnetwork = "0.12.7"
 chrono = "0.4"
+socket2 = { version = "0.3.7", features = ["unix"] }
 
 [dev-dependencies]
 assert_cli = "0.5"

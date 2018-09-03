@@ -72,6 +72,6 @@ fn integration_device_mode_basic() {
 
     println!("Process output: {}", &output);
     assert!(output.contains("Worker finished initializing."));
-    assert!(output.contains("Listening for messages."));
+    assert!(output.contains("Radio initialized."));
     assert!(output.contains("Starting the heartbeat thread."));
 }
