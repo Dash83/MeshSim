@@ -231,7 +231,7 @@ impl Master {
             info!("End_Test action: Scheduled for {:?}", &test_endtime);
             thread::sleep(test_endtime);
             info!("End_Test action: Starting");
-            let mut workers_handle = workers_handle.lock().unwrap(); //TODO: remove unwrap
+            let mut workers_handle = workers_handle.lock().unwrap();
             let workers_handle = workers_handle.deref_mut();
             let mut i = 0;
             for (_name, mut handle) in workers_handle {
@@ -265,7 +265,7 @@ impl Master {
                 Some(config) => { 
                      match Master::run_worker(&worker_binary, &work_dir, config) {
                          Ok(child_handle) => { 
-                            let mut w = workers.lock().unwrap(); //TODO remove unwrap
+                            let mut w = workers.lock().unwrap();
                             w.insert(name, child_handle);
                          },
                          Err(e) => { 

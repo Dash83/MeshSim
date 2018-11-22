@@ -4,7 +4,7 @@ extern crate serde_cbor;
 extern crate rand;
 
 use worker::protocols::Protocol;
-use worker::{WorkerError, Peer, MessageHeader, Worker};
+use worker::{WorkerError, Peer, MessageHeader, Worker, AddressType};
 use worker::radio::*;
 use std::collections::HashSet;
 use std::sync::{Mutex, Arc, MutexGuard};
@@ -105,8 +105,7 @@ impl TMembership {
         let mut members = HashSet::new();
         let me = Peer{ id : id.clone(),
                        name : name.clone(),
-                       short_address : Some(String::from(sr.get_address())),
-                       long_address : None };
+                       addresses : vec![AddressType::ShortRange(String::from(sr.get_address()))] };
         members.insert(me);
         let m = Arc::new(Mutex::new(members));
         let rng = Worker::rng_from_seed(seed);
@@ -154,7 +153,7 @@ impl TMembership {
         let data = JoinMessage;
         let join_msg = Messages::Join(data);
         let payload = try!(to_vec(&join_msg));
-        info!("Built JOIN message for peer: {}, address {:?}", &destination.name, destination.short_address);
+        info!("Built JOIN message for peer: {}, id {:?}", &destination.name, destination.id);
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : sender, 
@@ -196,7 +195,7 @@ impl TMembership {
             //Build the ACK message for the sender
             let ack_msg = Messages::Ack(msg_data);
             let payload = try!(to_vec(&ack_msg));
-            info!("Built ACK message for sender: {}, address {:?}", &hdr.sender.name, hdr.sender.short_address);
+            info!("Built ACK message for sender: {}, id {:?}", &hdr.destination.name, &hdr.destination.id);
             
             //Build the message header that's ready for sending.
             let response = MessageHeader{   sender : me, 
@@ -259,7 +258,7 @@ impl TMembership {
         let data = HeartbeatMessage;
         let hb_msg = Messages::Heartbeat(data);
         let payload = try!(to_vec(&hb_msg));
-        info!("Built HEARTBEAT message for peer: {}, address {:?}", &destination.name, destination.short_address);
+        info!("Built HEARTBEAT message for peer: {}, id {:?}", &destination.name, destination.id);
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : sender, 
@@ -278,7 +277,7 @@ impl TMembership {
     fn process_heartbeat_message(hdr : MessageHeader, msg : HeartbeatMessage,
                                  neighbours : Arc<Mutex<HashSet<Peer>>>,
                                  network_members : Arc<Mutex<HashSet<Peer>>>) -> Result<Option<MessageHeader>, WorkerError> {
-        info!("Received Heartbeat message from {}, address {:?}", hdr.sender.name, hdr.sender.short_address);
+        info!("Received Heartbeat message from {}, id {:?}", hdr.sender.name, hdr.sender.id);
         
         {
             //LOCK : GET : NL
@@ -303,7 +302,7 @@ impl TMembership {
         //debug!("Message payload: {:?}", &data);
         let alive_msg = Messages::Alive(data);
         let payload = try!(to_vec(&alive_msg));
-        info!("Built Alive message for peer: {}, address {:?}", &hdr.sender.name, hdr.sender.short_address);
+        info!("Built Alive message for peer: {}, id {:?}", &hdr.sender.name, hdr.sender.id);
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : hdr.destination, 
@@ -352,7 +351,7 @@ impl TMembership {
     fn initial_join_scan(&self) -> Result<Vec<JoinHandle<Result<(), WorkerError>>>, WorkerError> {
         let mut handles = Vec::new();
         //Perform radio-scan.
-        let nearby_peers = try!(self.short_radio.scan_for_peers()); //TODO: Refer to issue#13 in repo.
+        let nearby_peers = try!(self.short_radio.scan_for_peers());
 
         //Send join messages to all scanned devices
         //data is a tuple of (name, address)
@@ -370,8 +369,7 @@ impl TMembership {
                 //Destination peer
                 let p = Peer { name : name,
                                id : id,
-                               short_address : Some(address.clone()),
-                               long_address : None };
+                               addresses : vec![ AddressType::ShortRange(address.clone()) ]};
                 //Create join message
                 let msg = try!(TMembership::create_join_message(sender.clone(), p));
                 //Connect to the remote peer
@@ -461,8 +459,9 @@ impl TMembership {
 
                 let msg = try!(TMembership::create_heartbeat_message(sender.clone(), selected_peer.clone())); //Initial message of the heartbeat handshake.
                 let mut response = Some(msg);
-                let address = selected_peer.clone().short_address.unwrap_or(String::from(""));
-                let mut client =  match short_radio.connect(address) {
+                let short_range_addresses : Vec<&AddressType> = selected_peer.addresses.iter().filter(|x| x.is_short_range()).collect();
+                //Use the first short-range address.
+                let mut client =  match short_radio.connect(short_range_addresses[0].get_address()) {
                     Ok(c) => { c },
                     Err(e) => { 
                         //Unable to connect to peer. Remove it from neighbor list.
@@ -518,8 +517,7 @@ impl TMembership {
     fn get_self_peer(&self) -> Peer {
         Peer{ name : self.worker_name.clone(),
               id : self.worker_id.clone(),
-              short_address : Some(String::from(self.short_radio.get_address())),
-              long_address : None }
+              addresses : vec![ AddressType::ShortRange(String::from(self.short_radio.get_address())) ] }
     }
 
     fn print_membership_list<'a>(name : &'a str, list : Arc<Mutex<HashSet<Peer>>>) -> Result<(), WorkerError> {

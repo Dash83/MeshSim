@@ -146,7 +146,6 @@ fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {
 }
 
 fn init(matches : &ArgMatches) -> Result<(Master), CLIError> {
-    //TODO: Implement configuration file support for the master.
     //Read the configuration file.
     // let mut current_dir = try!(env::current_dir());
     // let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {

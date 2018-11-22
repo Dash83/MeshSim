@@ -43,8 +43,6 @@ use std::path::Path;
 use std::collections::{HashSet, HashMap};
 use std::process::{Command, Child};
 use std::sync::{PoisonError, MutexGuard};
-use std::net::{TcpListener, TcpStream};
-use std::os::unix::net::{UnixStream, UnixListener};
 use worker::protocols::*;
 use worker::radio::*;
 use worker::client::*;
@@ -140,14 +138,31 @@ impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Peer>>>> for WorkerErro
         WorkerError::Sync(err.to_string())
     }
 }
-/// This enum is used to pass around the socket listener for the type of operation of the worker
-pub enum ListenerType {
-    ///Simulated mode uses an internal UnixListener
-    Simulated(UnixListener),
-    ///Device mode uses an internal TCPListener
-    Device(TcpListener),
+
+///Enum used to encapsualte the addresses a peer has and tag them by type.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub enum AddressType {
+    ///Short range
+    ShortRange(String),
+    ///Long range
+    LongRange(String),
 }
 
+impl AddressType {
+    fn get_address(&self ) -> String {
+        match &self {
+            AddressType::ShortRange(s) => s.clone(),
+            AddressType::LongRange(s) => s.clone(),
+        }
+    }
+
+    fn is_short_range(&self) -> bool {
+        match &self {
+            AddressType::ShortRange(_s) => true,
+            AddressType::LongRange(_s) => false,
+        }        
+    }
+}
 /// Peer struct.
 /// Defines the public identity of a node in the mesh.
 /// 
@@ -157,10 +172,12 @@ pub struct Peer {
     pub id: String, 
     /// Friendly name of the peer. 
     pub name : String,
-    ///Endpoint at which this worker's short_radio is listening for messages.
-    pub short_address : Option<String>,
-    ///Endpoint at which this worker's long_radio is listening for messages.
-    pub long_address : Option<String>,
+    // ///Endpoint at which this worker's short_radio is listening for messages.
+    // pub short_address : Option<String>,
+    // ///Endpoint at which this worker's long_radio is listening for messages.
+    // pub long_address : Option<String>,
+    ///The addesses that this peer is listening at.
+    addresses : Vec<AddressType>,
 }
 
 impl Peer {
@@ -168,8 +185,7 @@ impl Peer {
     pub fn new() -> Peer {
         Peer {  id : String::from(""),
                 name : String::from(""),
-                short_address : None,
-                long_address : None }
+                addresses : vec![] }
     }
 }
 
@@ -177,7 +193,7 @@ impl Peer {
 /// The sender and destination fields are used in the same way across all message-types and protocols.
 /// The payload field encodes the specific data for the particular message type that only the protocol
 /// knows about
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageHeader {
     ///Sender of the message
     pub sender : Peer,
@@ -275,7 +291,7 @@ impl ServiceRecord {
 }
 
 /// Operation modes for the worker.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum OperationMode {
     /// Simulated: The worker process is part of a simulated environment, running as one of many processes in the same machine.
     Simulated,
@@ -344,9 +360,6 @@ impl Worker {
         //Init the radios and get their respective listeners.
         let short_radio = self.short_radio.take();
         let long_radio = self.long_radio.take();
-
-        //Get the protocol object.
-        //TODO: Get protocol from configuration file.
         let mut resources = try!(build_protocol_resources( self.protocol, short_radio, long_radio, self.seed, 
                                                            self.id.clone(), self.name.clone(),));
         

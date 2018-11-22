@@ -4,7 +4,7 @@
 //! 
 //! Future tests might cover the protocol in more detail and corner cases.
 
-use super::*;
+use super::super::*;
 
 #[test]
 fn integration_tmembership_join() {
@@ -95,7 +95,6 @@ fn killnode_test() {
     .unwrap();
 }
 
-//TODO: Fix test
 #[ignore]
 #[test]
 fn sustained_test() {

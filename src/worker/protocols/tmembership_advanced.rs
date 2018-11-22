@@ -4,9 +4,9 @@ extern crate serde_cbor;
 extern crate rand;
 
 use worker::protocols::Protocol;
-use worker::{WorkerError, Peer, MessageHeader, Worker};
+use worker::{WorkerError, Peer, MessageHeader, Worker, AddressType};
 use worker::radio::*;
-use std::collections::{HashSet, HashMap};
+use std::collections::HashMap;
 use std::sync::{Mutex, Arc, MutexGuard};
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
@@ -78,8 +78,8 @@ impl TMembershipAdvanced {
         let mut members = HashMap::new();
         let p = Peer{ id: id.clone(),
                       name : name.clone(),
-                      short_address : Some(String::from(sr.get_address())),
-                      long_address : Some(String::from(lr.get_address())) };
+                      addresses : vec![ AddressType::ShortRange(String::from(sr.get_address())),
+                                        AddressType::LongRange(String::from(lr.get_address())) ]};
         members.insert(id.clone(), p);
         let m = Arc::new(Mutex::new(members));
         let rng = Worker::rng_from_seed(seed);
@@ -130,7 +130,7 @@ impl TMembershipAdvanced {
     fn initial_join_scan(&self) -> Result<Vec<JoinHandle<Result<(), WorkerError>>>, WorkerError> {
         let mut handles = Vec::new();
         //Perform radio-scan.
-        let nearby_peers = try!(self.short_radio.scan_for_peers()); //TODO: Refer to issue#13 in repo.
+        let nearby_peers = try!(self.short_radio.scan_for_peers());
         let mut far_peers = try!(self.long_radio.scan_for_peers());
 
         //In a lot of cases, the devices detected by the Long-range radio will have a large intersection
@@ -413,8 +413,7 @@ impl TMembershipAdvanced {
         //Destination peer
         let p = Peer { name : name,
                         id : id,
-                        short_address : Some(address.clone()),
-                        long_address : None };
+                        addresses : vec![ AddressType::ShortRange(address.clone()) ]};
 
         let h = thread::spawn(move || -> Result<(), WorkerError> {
 
@@ -537,8 +536,9 @@ impl TMembershipAdvanced {
 
         let msg = try!(TMembershipAdvanced::create_heartbeat_message(sender.clone(), selected_peer.clone())); //Initial message of the heartbeat handshake.
         let mut response = Some(msg);
-        let address = selected_peer.clone().short_address.unwrap_or(String::from(""));
-        let mut client =  match radio.connect(address) {
+        let short_range_addresses : Vec<&AddressType> = selected_peer.addresses.iter().filter(|x| x.is_short_range()).collect();
+        //Use the first short-range address.
+        let mut client =  match radio.connect(short_range_addresses[0].get_address()) {
             Ok(c) => { c },
             Err(e) => { 
                 //Unable to connect to peer. Remove it from neighbor list.
@@ -593,8 +593,7 @@ impl TMembershipAdvanced {
     fn get_self_peer(&self) -> Peer {
         Peer{ name : self.worker_name.clone(),
               id : self.worker_id.clone(),
-              short_address : Some(String::from(self.short_radio.get_address())),
-              long_address : None }
+              addresses : vec![ AddressType::ShortRange( self.short_radio.get_address().to_string()) ]}
     }
 
     fn print_membership_list<'a>(name : &'a str, list : Arc<Mutex<HashMap<String, Peer>>>) -> Result<(), WorkerError> {
