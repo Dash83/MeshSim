@@ -10,14 +10,21 @@ use std::fs;
 use std::process::Stdio;
 use std::io::Read;
 use std::collections::HashMap;
-use std::net:: SocketAddr;
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
+use worker::rand::Rng;
+use std::thread::JoinHandle;
 
 const SIMULATED_SCAN_DIR : &'static str = "bcg";
 const SHORT_RANGE_DIR : &'static str = "short";
 const LONG_RANGE_DIR : &'static str = "long";
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE : usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
+
+lazy_static! {
+    ///Address used for multicast group
+    pub static ref SERVICE_ADDRESS: Ipv6Addr = Ipv6Addr::new(0xFF02, 0, 0, 0, 0, 0, 0, 0x0123).into();
+}
 
 ///Types of radio supported by the system. Used by Protocols that need to 
 /// request an operation from the worker on a given radio.
@@ -50,6 +57,8 @@ pub trait Radio : std::fmt::Debug + Send + Sync {
     fn get_address(&self) -> &str;
     ///Method for the Radio to perform the necessary initialization for it to function.
     fn init(&self) -> Result<Box<Listener>, WorkerError>;
+    ///Used to broadcast a message using the radio
+    fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError>;
 }
 
 /// Represents a radio used by the worker to send a message to the network.
@@ -75,8 +84,6 @@ pub struct SimulatedRadio {
     range : RadioTypes,
     ///Random number generator used for all RNG operations. 
     rng : Arc<Mutex<StdRng>>,
-    ///Role this radio will take in the protocol based on it's range.
-    r_type : RadioTypes,
 }
 
 impl Radio  for SimulatedRadio {
@@ -88,7 +95,7 @@ impl Radio  for SimulatedRadio {
         let _ = parent_dir.pop(); //bcast group for main address
         let _ = parent_dir.pop(); //bcast group parent directory
 
-        info!("Scanning for peers in range: {:?}", &self.r_type);
+        info!("Scanning for peers in range: {:?}", &self.range);
         debug!("Scanning in dir {}", parent_dir.display());
         for group in &self.broadcast_groups {
             let dir = format!("{}{}{}", parent_dir.display(), std::path::MAIN_SEPARATOR, group);
@@ -104,7 +111,7 @@ impl Radio  for SimulatedRadio {
                         let id = String::from(peer_key);
 
                         if !nodes_discovered.contains_key(&id) {
-                            info!("Found {}!", &id);
+                            debug!("Found {}!", &id);
                             nodes_discovered.insert(id, (name, address));
                         }
                     }
@@ -159,7 +166,7 @@ impl Radio  for SimulatedRadio {
         let listen_addr = SockAddr::unix(&self.address)?;
         let sock = Socket::new(Domain::unix(), Type::dgram(), None)?;
         let _ = sock.bind(&listen_addr)?;
-        let listener = SimulatedListener::new( sock, self.delay, self.reliability, Arc::clone(&self.rng), self.r_type );
+        let listener = SimulatedListener::new( sock, self.delay, self.reliability, Arc::clone(&self.rng), self.range );
         
         for group in groups.iter() {
             dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/$RANGE/&group
@@ -193,6 +200,52 @@ impl Radio  for SimulatedRadio {
         let client = SimulatedClient::new(addr, self.delay, self.reliability, rng);
         Ok(Box::new(client))
     }
+
+    fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
+        //info!("Sending message to {}, address {}.", destination.name, destination.address);
+        let r = Arc::clone(&self.rng);
+        let mut rng = r.lock().unwrap();
+
+        //Get the peers in range for broadcast
+        let peers = self.scan_for_peers()?;
+
+        for (_peer_id, (peer_name, peer_address)) in peers {
+            //Check if the message will be sent
+            if self.reliability < 1.0 {
+                let p = rng.next_f64();
+
+                if p > self.reliability {
+                    //Message will be dropped.
+                    info!("Message {:?} will not reach {}.", &hdr, &peer_name);
+                }
+            }
+            
+            let msg = hdr.clone();
+            let _res : JoinHandle<Result<(), WorkerError> > = thread::spawn(move || {
+                let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
+                let debug_addr : SockAddr = SockAddr::unix(&peer_address)?;
+                let _res = socket.connect(&debug_addr)?;
+                let data = try!(to_vec(&msg));
+                let _sent_bytes = socket.send(&data)?;
+                info!("Message sent to {}.", &peer_name);
+                Ok(())
+            });
+
+        }
+        //TODO: Does delay still make sense?
+        // //Check if message should be delayed.
+        // if self.delay > 0 {
+        //     //Get a percerntage between 80% and 100%. The introduced delay will be p-percent
+        //     //of the delay parameter. This is done so that the delay doesn't become a synchronized
+        //     //delay across the simulation and actually has unexpectability about the transmission time.
+        //     let p : f64 = rng.gen_range(0.8f64, 1.0f64);
+        //     let delay : u64= (p * self.delay as f64).round() as u64;
+        //     thread::sleep(Duration::from_millis(delay));
+        // }
+
+        Ok(())        
+    }
+
 }
 
 impl SimulatedRadio {
@@ -221,8 +274,7 @@ impl SimulatedRadio {
                         id : id,
                         address : address,
                         range : range,
-                        rng : rng,
-                        r_type : r_type }
+                        rng : rng, }
     }
 
     ///Function for adding broadcast groups in simulated mode
@@ -236,6 +288,8 @@ impl SimulatedRadio {
 pub struct DeviceRadio {
     ///Name of the network interface that maps to this Radio object.
     pub interface_name : String,
+    ///Index of the interface
+    interface_index : u32,
     ///Address that this radio listens on
     address : String,
     ///The unique id of the worker that uses this radio. The id is shared across radios belonging to the same worker.
@@ -313,10 +367,16 @@ impl Radio  for DeviceRadio{
 
         //Now bind the socket
         //debug!("Attempting to bind address: {:?}", &self.address);
-        let listen_addr = &self.address.parse::<SocketAddr>().unwrap().into();
+        //let listen_addr = &self.address.parse::<SocketAddr>().unwrap().into();
         let sock = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
-        let _ = sock.bind(&listen_addr)?;
-        let listener = DeviceListener::new(sock, mdns_handler, Arc::clone(&self.rng), self.r_type);
+        
+        //Join multicast group
+        sock.join_multicast_v6(&SERVICE_ADDRESS, self.interface_index)?;
+        sock.set_only_v6(true)?;
+
+        let debug_address = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,0)), DNS_SERVICE_PORT);
+        let _ = sock.bind(&SockAddr::from(debug_address))?;
+        let listener = DeviceListener::new(sock, Some(mdns_handler), Arc::clone(&self.rng), self.r_type);
 
         info!("Radio initialized.");
 
@@ -328,6 +388,17 @@ impl Radio  for DeviceRadio{
         let rng = Arc::clone(&self.rng);
         let client = DeviceClient::new(remote_addr, rng);
         Ok(Box::new(client))
+    }
+
+    fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
+        let sock_addr = SocketAddr::new(IpAddr::V6(*SERVICE_ADDRESS), DNS_SERVICE_PORT);
+        let socket = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
+        socket.set_multicast_if_v6(self.interface_index)?;
+        
+        let data = to_vec(&hdr)?;
+        socket.send_to(&data, &socket2::SockAddr::from(sock_addr))?;
+
+        Ok(())
     }
 }
 
@@ -356,6 +427,19 @@ impl DeviceRadio {
         Err(WorkerError::Configuration(String::from("Network interface specified in configuration not found.")))
     }
 
+    ///Get the index of the passed interface name
+    fn get_interface_index<'a>(name : &'a str) -> Option<u32> {
+        use self::pnet::datalink;
+
+        for iface in datalink::interfaces() {
+            if &iface.name == name {
+                return Some(iface.index)
+            }
+        }
+
+        None
+    }
+
     /// Function for creating a new DeviceRadio. It should ALWAYS be used for creating new DeviceRadios since it calculates
     ///  the address based on the DeviceRadio's properties.
     pub fn new( interface_name : String, 
@@ -364,10 +448,12 @@ impl DeviceRadio {
                 rng : Arc<Mutex<StdRng>>, 
                 r_type : RadioTypes ) -> DeviceRadio {
         let address = DeviceRadio::get_radio_address(&interface_name).expect("Could not get address for specified interface.");
+        let interface_index = DeviceRadio::get_interface_index(&interface_name).expect("Could not get index for specified interface.");
         debug!("Obtained address {}", &address);
         let address = format!("[{}]:{}", address, DNS_SERVICE_PORT);
 
-        DeviceRadio { interface_name : interface_name, 
+        DeviceRadio { interface_name : interface_name,
+                      interface_index : interface_index,
                       id : id, 
                       name : worker_name, 
                       address : address,
@@ -375,138 +461,3 @@ impl DeviceRadio {
                       r_type : r_type }
     }
 }
-
-    //**** Radio unit tests ****
-    //Unit test for: Radio::send
-    //At this point, I don't know how to test this function. The function uses network connections to communciate to another process,
-    //so I don't know how to mock that out in rust.
-    /*
-    #[test]
-    fn test_radio_send() {
-        unimplemented!();
-    }
-    */
-
-    // //Unit test for: Radio::new
-    // #[test]
-    // fn test_radio_new() {
-    //     let radio = Radio::new();
-    //     let radio_string = "Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }";
-
-    //     assert_eq!(format!("{:?}", radio), String::from(radio_string));
-    // }
-
-    // //Unit test for: Radio::add_bcast_group
-    // #[test]
-    // fn test_radio_add_bcast_group() {
-    //     let mut radio = Radio::new();
-    //     radio.add_bcast_group(String::from("group1"));
-
-    //     assert_eq!(radio.broadcast_groups, vec![String::from("group1")]);
-    // }
-
-    //Unit test for: Radio::scan_for_peers
-    //#[test]
-    /*
-    fn test_radio_scan_for_peers() {
-        let mut worker = Worker::new();
-        //3 phony groups
-        worker.radios[0].add_bcast_group(String::from("group1"));
-        worker.radios[0].add_bcast_group(String::from("group2"));
-        worker.radios[0].add_bcast_group(String::from("group3"));
-
-        //Create dirs
-        let mut dir = Path::new("/tmp/scan_bcast_groups").to_path_buf();
-        if !dir.exists() {
-            let _ = fs::create_dir(&dir).unwrap();
-        } else {
-            //Directory structure exists. Possibly from an earlier test run.
-            //Delete all directory content to ensure deterministic test results.
-            let _ = fs::remove_dir_all(&dir).unwrap();
-            let _ = fs::create_dir(&dir).unwrap();
-        }
-
-        dir.push("group1"); // /tmp/bcast_groups/group1
-        if !dir.exists() {
-            let _ = fs::create_dir(&dir).unwrap();
-        }
-
-        dir.pop();
-        dir.push("group2"); // /tmp/bcast_groups/group1
-        if !dir.exists() {
-            let _ = fs::create_dir(&dir).unwrap();
-        }
-
-        dir.pop();
-        dir.push("group3"); // /tmp/bcast_groups/group1
-        if !dir.exists() {
-            let _ = fs::create_dir(&dir).unwrap();
-        }
-
-        //Create address and links for this radio.
-        let key_str = create_random_key();
-        //Create the pipe
-        let pipe = format!("/tmp/scan_bcast_groups/group1/{}.ipc", key_str);
-        worker.radios[0].address = format!("ipc://{}", &pipe);
-        File::create(&pipe).unwrap();
-        //Create link in group 2
-        let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-        //Create link in group 3
-        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-
-        //Create address and links for radio #2.
-        let other_key_str = create_random_key();
-        //Create the pipe
-        let pipe = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
-        File::create(&pipe).unwrap();
-        //Create link in group 2
-        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-        //Create link in group 3
-        let link = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-
-        //Create address and links for radio #3.
-        let other_key_str = create_random_key();
-        //Create the pipe
-        let pipe = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
-        File::create(&pipe).unwrap();
-        //Create link in group 2
-        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-        //Create link in group 3
-        let link = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-
-        //Create address and links for radio #4.
-        let other_key_str = create_random_key();
-        //Create the pipe
-        let pipe = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
-        File::create(&pipe).unwrap();
-        //Create link in group 2
-        let link = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-        //Create link in group 3
-        let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-
-        //Create address and links for radio #5.
-        let other_key_str = create_random_key();
-        //Create the pipe
-        let pipe = format!("/tmp/scan_bcast_groups/group1/{}.ipc", other_key_str);
-        File::create(&pipe).unwrap();
-        //Create link in group 2
-        let link = format!("/tmp/scan_bcast_groups/group2/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-        //Create link in group 3
-        let link = format!("/tmp/scan_bcast_groups/group3/{}.ipc", other_key_str);
-        let _ = std::os::unix::fs::symlink(&pipe, &link).unwrap();
-
-        //Scan for peers. Should find 4 peers in total.
-        let peers : HashSet<Peer> = worker.scan_for_peers(&worker.radios[0]).unwrap();
-
-        assert_eq!(peers.len(), 4);
-    }
-    */

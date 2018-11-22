@@ -7,8 +7,8 @@
 
 //extern crate mesh_simulator;
 
-use super::*;
-use integration::mesh_simulator::worker::*;
+use super::super::*;
+use self::mesh_simulator::worker::*;
 use std;
 use std::process::Command;
 use std::thread;
@@ -22,7 +22,7 @@ use std::fs::File;
 /// This test could be a part of the tests that only run every now and then.
 #[test]
 #[cfg(target_os = "linux")]
-fn integration_device_mode_basic() {
+fn integration_device_mode_basic() -> TestResult {
     let host = env::var("MESHSIM_HOST").unwrap_or(String::from(""));
     let test_duration :u64 = 3000; //3000 ms
     let program = get_worker_path();
@@ -31,8 +31,11 @@ fn integration_device_mode_basic() {
 
     //This test should ONLY run on my lab development machine due to required configuration of device_mode.
     if !host.eq("kaer-morhen") {
-        return;
+        panic!("This test should only run in the kaer-morhen host");
     }
+    
+    //Acquire the lock for the NIC since other tests also require it and they conflict with each other. 
+    let _nic = WIRELESS_NIC.lock()?;
     
     //Create configuration
     //We only change the configuration properties for the test to run on my dev computer. The rest of the defaults are fine.
@@ -74,4 +77,5 @@ fn integration_device_mode_basic() {
     assert!(output.contains("Worker finished initializing."));
     assert!(output.contains("Radio initialized."));
     assert!(output.contains("Starting the heartbeat thread."));
+    Ok(())
 }

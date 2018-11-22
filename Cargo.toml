@@ -29,6 +29,9 @@ pnet = "0.21.0"
 ipnetwork = "0.12.7"
 chrono = "0.4"
 socket2 = { version = "0.3.7", features = ["unix"] }
+pretty_assertions = "0.5.1"
+lazy_static = "1.2.0"
 
 [dev-dependencies]
 assert_cli = "0.5"
+lazy_static = "1.2.0"

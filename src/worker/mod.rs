@@ -138,13 +138,6 @@ impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Peer>>>> for WorkerErro
         WorkerError::Sync(err.to_string())
     }
 }
-// /// This enum is used to pass around the socket listener for the type of operation of the worker
-// pub enum ListenerType {
-//     ///Simulated mode uses an internal UnixListener
-//     Simulated(UnixListener),
-//     ///Device mode uses an internal TCPListener
-//     Device(TcpListener),
-// }
 
 ///Enum used to encapsualte the addresses a peer has and tag them by type.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
@@ -200,7 +193,7 @@ impl Peer {
 /// The sender and destination fields are used in the same way across all message-types and protocols.
 /// The payload field encodes the specific data for the particular message type that only the protocol
 /// knows about
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageHeader {
     ///Sender of the message
     pub sender : Peer,
@@ -298,7 +291,7 @@ impl ServiceRecord {
 }
 
 /// Operation modes for the worker.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum OperationMode {
     /// Simulated: The worker process is part of a simulated environment, running as one of many processes in the same machine.
     Simulated,
@@ -367,8 +360,6 @@ impl Worker {
         //Init the radios and get their respective listeners.
         let short_radio = self.short_radio.take();
         let long_radio = self.long_radio.take();
-
-        //Get the protocol object.
         let mut resources = try!(build_protocol_resources( self.protocol, short_radio, long_radio, self.seed, 
                                                            self.id.clone(), self.name.clone(),));
         
