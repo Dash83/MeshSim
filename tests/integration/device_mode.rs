@@ -31,7 +31,8 @@ fn integration_device_mode_basic() -> TestResult {
 
     //This test should ONLY run on my lab development machine due to required configuration of device_mode.
     if !host.eq("kaer-morhen") {
-        panic!("This test should only run in the kaer-morhen host");
+        println!("This test should only run in the kaer-morhen host");
+        return Ok(())
     }
     
     //Acquire the lock for the NIC since other tests also require it and they conflict with each other. 
