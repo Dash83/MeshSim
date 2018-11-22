@@ -15,6 +15,8 @@ pub trait Listener : Send {
     // fn accept_connections(&self, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError>;
     ///Starts listening for incoming messages. This uses datagram-based communication.
     fn start(&self, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError>;
+    /// Reads a message (if possible) from the underlying socket
+    fn read_message(&self) -> Option<MessageHeader>;
 }
 
 ///Listener that uses contains an underlying UnixListener. Used by the worker in simulated mode.
@@ -95,6 +97,36 @@ impl Listener for SimulatedListener {
             }
         }
     }
+
+    fn read_message(&self) -> Option<MessageHeader> {
+        let mut buffer = [0; MAX_UDP_PAYLOAD_SIZE+1];
+
+        let msg = match self.socket.recv_from(&mut buffer) {
+            Ok((bytes_read, _peer_addr)) => {                     
+                if bytes_read > 0 {
+                    let data = buffer[..bytes_read].to_vec();
+                    match MessageHeader::from_vec(data) {
+                        Ok(m) => { Some(m) },
+                        Err(e) => { 
+                            //Read bytes but could not form a MessageHeader
+                            error!("Failed reading message: {}", e);
+                            None
+                        } 
+                    }
+                } else {
+                    //0 bytes read
+                    None
+                }
+            },
+            Err(_e) => { 
+                //No message read
+                None
+            }
+        };
+
+        msg
+    }
+
 }
 
 impl SimulatedListener {
@@ -149,7 +181,7 @@ impl SimulatedListener {
 ///Listener that uses contains an underlying TCPListener. Used by the worker in simulated mode.
 pub struct DeviceListener {
     socket : Socket,
-    mdns_handler : Child,
+    mdns_handler : Option<Child>,
     rng : Arc<Mutex<StdRng>>,
     r_type : RadioTypes,
 }
@@ -220,11 +252,39 @@ impl Listener for DeviceListener {
         }
     }
 
+    fn read_message(&self) -> Option<MessageHeader> {
+        let mut buffer = [0; MAX_UDP_PAYLOAD_SIZE+1];
+
+        let msg = match self.socket.recv_from(&mut buffer) {
+            Ok((bytes_read, _peer_addr)) => {                     
+                if bytes_read > 0 {
+                    let data = buffer[..bytes_read].to_vec();
+                    match MessageHeader::from_vec(data) {
+                        Ok(m) => { Some(m) },
+                        Err(e) => { 
+                            //Read bytes but could not form a MessageHeader
+                            error!("Failed reading message: {}", e);
+                            None
+                        } 
+                    }
+                } else {
+                    //0 bytes read
+                    None
+                }
+            },
+            Err(_e) => { 
+                //No message read
+                None
+            }
+        };
+
+        msg
+    }
 }
 
 impl DeviceListener {
     ///Creates a new instance of DeviceListener
-    pub fn new( socket : Socket, h : Child, rng : Arc<Mutex<StdRng>>, r_type : RadioTypes) -> DeviceListener {
+    pub fn new( socket : Socket, h : Option<Child>, rng : Arc<Mutex<StdRng>>, r_type : RadioTypes) -> DeviceListener {
         DeviceListener{ socket : socket,
                         mdns_handler : h,
                         rng : rng,
