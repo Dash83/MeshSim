@@ -55,8 +55,8 @@ impl FromStr for Protocols {
 pub struct ProtocolResources {
     ///Protocol handler for the selected protocol.
     pub handler : Arc<Box<Protocol>>,
-    ///Collection of listeners ready to read network messages for their respective radios.
-    pub listeners : Vec<Option<Box<Listener>>>,
+    ///Collection of rx/tx radio channels for the worker and protocol to communicate.
+    pub radio_channels : Vec<(Box<Listener>, Arc<Radio>)>,
 }
 
 /// Provides a new boxed reference to the struct matching the passed protocol.
@@ -69,12 +69,12 @@ pub fn build_protocol_resources( p : Protocols,
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let sr = short_radio.expect("The TMembership protocol requires a short_radio to be provided.");
             //Initialize the radio.
-            let listener = try!(sr.init());
-            let handler : Arc<Box<Protocol>> = Arc::new(Box::new(TMembership::new(sr, seed, id, name)));
-            let mut listeners = Vec::new();
-            listeners.push(Some(listener));
+            let listener = sr.init()?;
+            let handler : Arc<Box<Protocol>> = Arc::new(Box::new(TMembership::new(Arc::clone(&sr), seed, id, name)));
+            let mut radio_channels = Vec::new();
+            radio_channels.push((listener, sr));
             let resources = ProtocolResources{  handler : handler, 
-                                                listeners : listeners };
+                                                radio_channels : radio_channels };
             Ok(resources)
         },
 
@@ -85,18 +85,18 @@ pub fn build_protocol_resources( p : Protocols,
             let lr = long_radio.expect("The TMembership_Advanced protocol requires a long_radio to be provided.");
 
             //Build the listeners list
-            let mut listeners = Vec::new();
-            let sr_listener = try!(sr.init());
-            let lr_listener = try!(lr.init());
-            listeners.push(Some(sr_listener));
-            listeners.push(Some(lr_listener));
+            let mut radio_channels = Vec::new();
+            let sr_listener = sr.init()?;
+            let lr_listener = lr.init()?;
+            radio_channels.push((sr_listener, Arc::clone(&sr)));
+            radio_channels.push((lr_listener, Arc::clone(&lr)));
 
             //Build the protocol handler
-            let handler : Arc<Box<Protocol>> = Arc::new(Box::new(TMembershipAdvanced::new(sr, lr, seed, id, name)));
+            let handler : Arc<Box<Protocol>> = Arc::new(Box::new(TMembershipAdvanced::new(sr, lr, seed, id, name))); //TODO: This should be changed to just Arc<Protocol>
 
             //Build the resources context
             let resources = ProtocolResources{ handler : handler,
-                                               listeners : listeners };
+                                               radio_channels : radio_channels };
             Ok(resources)
         },
 

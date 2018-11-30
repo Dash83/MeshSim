@@ -45,7 +45,7 @@ use std::process::{Command, Child};
 use std::sync::{PoisonError, MutexGuard};
 use worker::protocols::*;
 use worker::radio::*;
-use worker::client::*;
+//use worker::client::*;
 use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
 use self::rand::{StdRng, SeedableRng};
@@ -56,7 +56,7 @@ use std::thread;
 pub mod worker_config;
 pub mod protocols;
 pub mod radio;
-pub mod client;
+//pub mod client;
 pub mod listener;
 
 // *****************************
@@ -370,19 +370,47 @@ impl Worker {
 
         //Start listening for messages
         let prot_handler = Arc::clone(&resources.handler);
-        let threads = resources.listeners.iter_mut().map(|x| x.take().map(|listener| { 
+        //let threads = resources.listeners.iter_mut().map(|x| x.take().map(|listener| { 
+        let threads = resources.radio_channels.drain(..).map(|(rx, tx)| { 
             let prot_handler = Arc::clone(&prot_handler);
-            thread::spawn(move || {
-                let _res = listener.start(prot_handler);
+
+            thread::spawn(move || {        
+                info!("Listening for messages");
+                loop {
+                    match rx.read_message() {
+                        
+                        Some(hdr) => { 
+                            let prot = Arc::clone(&prot_handler);
+                            let r_type = rx.get_radio_range();
+                            let tx_channel = Arc::clone(&tx);
+
+                            let _handle = thread::spawn(move || -> Result<(), WorkerError> {
+                                let response = prot.handle_message(hdr, r_type)?;
+
+                                match response {
+                                    Some(r) => { 
+                                        tx_channel.broadcast(r)?;
+                                    },
+                                    None => { }
+                                }
+                                   
+                                Ok(())
+                            });
+                        },
+                        None => { 
+                            warn!("Failed to read incoming message.");
+                        }
+                    }
+                }
             })
-        }));
+        });
 
         // let _exit_values = threads.map(|x| x.map(|t| t.join())); //This compact version does not work. It seems the lazy iterator is not evaluated.
         for x in threads {
-            if let Some(h) = x {
-                debug!("Waiting for a listener thread...");
-                let _res = h.join();
-            }
+            // if let Some(h) = x {
+            //     debug!("Waiting for a listener thread...");
+                let _res = x.join();
+            // }
         }
 
         Ok(())
