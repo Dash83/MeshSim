@@ -17,6 +17,8 @@ pub trait Listener : Send {
     fn start(&self, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError>;
     /// Reads a message (if possible) from the underlying socket
     fn read_message(&self) -> Option<MessageHeader>;
+    /// Get's the radio-range of the current listener.
+    fn get_radio_range(&self) -> RadioTypes;
 }
 
 ///Listener that uses contains an underlying UnixListener. Used by the worker in simulated mode.
@@ -75,20 +77,22 @@ impl Listener for SimulatedListener {
                     
                     if bytes_read > 0 {
                         let data = buffer[..bytes_read].to_vec();
-                        let client = SimulatedClient::new(peer_addr, self.delay, self.reliability, Arc::clone(&self.rng) );
+                        let msg = MessageHeader::from_vec(data)?;
+                        
+                        //let client = SimulatedClient::new(peer_addr, self.delay, self.reliability, Arc::clone(&self.rng) );
                         let prot = Arc::clone(&protocol);
                         let r_type = self.r_type;
 
-                        let _handle = thread::spawn(move || {
-                            match SimulatedListener::handle_client(data, client, prot, r_type) {
-                                Ok(_res) => { 
-                                    /* Client connection finished properly. */
-                                },
-                                Err(e) => {
-                                    error!("handle_client error: {}", e);
-                                },
-                            }                            
-                        });
+                        // let _handle = thread::spawn(move || {
+                        //     match SimulatedListener::handle_client(data, client, prot, r_type) {
+                        //         Ok(_res) => { 
+                        //             /* Client connection finished properly. */
+                        //         },
+                        //         Err(e) => {
+                        //             error!("handle_client error: {}", e);
+                        //         },
+                        //     }                            
+                        // });
                     }
                 },
                 Err(e) => { 
@@ -127,6 +131,10 @@ impl Listener for SimulatedListener {
         msg
     }
 
+    fn get_radio_range(&self) -> RadioTypes {
+        self.r_type
+    }
+
 }
 
 impl SimulatedListener {
@@ -139,7 +147,7 @@ impl SimulatedListener {
                            r_type : r_type }
     }
 
-    ///Handles client connections
+    // ///Handles client connections
     // fn handle_client(mut client : SimulatedClient, protocol : Arc<Box<Protocol>>, r_type : RadioTypes) -> Result<(), WorkerError> {
     //     loop {
     //         let msg = try!(client.read_msg());
@@ -161,21 +169,21 @@ impl SimulatedListener {
     //     Ok(())
     // }
     
-    fn handle_client(data : Vec<u8>, mut client : SimulatedClient, protocol : Arc<Box<Protocol>>, r_type : RadioTypes) -> Result<(), WorkerError> {
-        let msg = MessageHeader::from_vec(data)?;
-        let response = protocol.handle_message(msg, r_type)?;
+    // fn handle_client(data : Vec<u8>, mut client : SimulatedClient, protocol : Arc<Box<Protocol>>, r_type : RadioTypes) -> Result<(), WorkerError> {
+    //     let msg = MessageHeader::from_vec(data)?;
+    //     let response = protocol.handle_message(msg, r_type)?;
 
-        match response {
-            Some(resp_msg) => { 
-                debug!("Have a response message for {:?}", &client.peer_addr);
-                let _res = try!(client.send_msg(resp_msg));
-            },
-            None => {
-                /* No response to the incoming message */
-            }
-        }
-        Ok(())
-    }
+    //     match response {
+    //         Some(resp_msg) => { 
+    //             debug!("Have a response message for {:?}", &client.peer_addr);
+    //             let _res = try!(client.send_msg(resp_msg));
+    //         },
+    //         None => {
+    //             /* No response to the incoming message */
+    //         }
+    //     }
+    //     Ok(())
+    // }
 }
 
 ///Listener that uses contains an underlying TCPListener. Used by the worker in simulated mode.
@@ -227,23 +235,23 @@ impl Listener for DeviceListener {
                 Ok((bytes_read, peer_addr)) => { 
                     info!("Incoming connection from {:?}", &peer_addr);
                     
-                    if bytes_read > 0 {
-                        let data = buffer[..bytes_read].to_vec();
-                        let client = DeviceClient::new(peer_addr, Arc::clone(&self.rng));
-                        let prot = Arc::clone(&protocol);
-                        let r_type = self.r_type;
+                    // if bytes_read > 0 {
+                    //     let data = buffer[..bytes_read].to_vec();
+                    //     let client = DeviceClient::new(peer_addr, Arc::clone(&self.rng));
+                    //     let prot = Arc::clone(&protocol);
+                    //     let r_type = self.r_type;
 
-                        let _handle = thread::spawn(move || {
-                            match DeviceListener::handle_client(data, client, prot, r_type) {
-                                Ok(_res) => { 
-                                    /* Client connection finished properly. */
-                                },
-                                Err(e) => {
-                                    error!("handle_client error: {}", e);
-                                },
-                            }                            
-                        });
-                    }
+                    //     let _handle = thread::spawn(move || {
+                    //         match DeviceListener::handle_client(data, client, prot, r_type) {
+                    //             Ok(_res) => { 
+                    //                 /* Client connection finished properly. */
+                    //             },
+                    //             Err(e) => {
+                    //                 error!("handle_client error: {}", e);
+                    //             },
+                    //         }                            
+                    //     });
+                    // }
                 },
                 Err(e) => { 
                     warn!("Failed to read incoming message. Error: {}", e);
@@ -280,6 +288,10 @@ impl Listener for DeviceListener {
 
         msg
     }
+
+    fn get_radio_range(&self) -> RadioTypes {
+        self.r_type
+    }
 }
 
 impl DeviceListener {
@@ -291,19 +303,19 @@ impl DeviceListener {
                         r_type : r_type }
     }
 
-    fn handle_client(data : Vec<u8>, mut client : DeviceClient, protocol : Arc<Box<Protocol>>, r_type : RadioTypes) -> Result<(), WorkerError> {
-        let msg = MessageHeader::from_vec(data)?;
-        let response = protocol.handle_message(msg, r_type)?;
+    // fn handle_client(data : Vec<u8>, mut client : DeviceClient, protocol : Arc<Box<Protocol>>, r_type : RadioTypes) -> Result<(), WorkerError> {
+    //     let msg = MessageHeader::from_vec(data)?;
+    //     let response = protocol.handle_message(msg, r_type)?;
 
-        match response {
-            Some(resp_msg) => { 
-                debug!("Have a response message for {:?}", &client.peer_addr);
-                let _res = try!(client.send_msg(resp_msg));
-            },
-            None => {
-                /* No response to the incoming message */
-            }
-        }
-        Ok(())
-    }
+    //     match response {
+    //         Some(resp_msg) => { 
+    //             debug!("Have a response message for {:?}", &client.peer_addr);
+    //             let _res = try!(client.send_msg(resp_msg));
+    //         },
+    //         None => {
+    //             /* No response to the incoming message */
+    //         }
+    //     }
+    //     Ok(())
+    // }
 }

@@ -85,12 +85,13 @@ impl Protocol for TMembership {
 
     fn init_protocol(&self) -> Result<Option<MessageHeader>, WorkerError>{
         //Perform initial scan
-        let handles = try!(self.initial_join_scan());
-        //Create a thread to join on the threads and log any errors.
-        TMembership::log_thread_errors(handles);
+        let _res = self.initial_join_scan()?;
 
         // Start thread for heartbeat messages.
-        let _res = try!(self.heartbeat_thread());
+        let h = self.heartbeat_thread()?;
+        
+        //Create a thread to join on the threads and log any errors.
+        TMembership::log_thread_errors(vec![h]);
         
         Ok(None)
     }
@@ -150,9 +151,8 @@ impl TMembership {
     /// Payload: Self Peer object.
     /// Actions: None.
     fn create_join_message(sender : Peer, destination : Peer) -> Result<MessageHeader, WorkerError> {
-        let data = JoinMessage;
-        let join_msg = Messages::Join(data);
-        let payload = try!(to_vec(&join_msg));
+        let join_msg = Messages::Join(JoinMessage);
+        let payload = to_vec(&join_msg)?;
         info!("Built JOIN message for peer: {}, id {:?}", &destination.name, destination.id);
         
         //Build the message header that's ready for sending.
@@ -348,79 +348,20 @@ impl TMembership {
         Ok(None)
     }
 
-    fn initial_join_scan(&self) -> Result<Vec<JoinHandle<Result<(), WorkerError>>>, WorkerError> {
-        let mut handles = Vec::new();
-        //Perform radio-scan.
-        let nearby_peers = try!(self.short_radio.scan_for_peers());
-
-        //Send join messages to all scanned devices
-        //data is a tuple of (name, address)
-        for (key, val) in nearby_peers.iter() {
-            //Get all required resources
-            let sender = self.get_self_peer();
-            let short_radio = Arc::clone(&self.short_radio);
-            let neighbours = Arc::clone(&self.neighbours);
-            let network_members = Arc::clone(&self.network_members);
-            let name = val.0.clone();
-            let address = val.1.clone();
-            let id = key.clone();
-            
-            let jh = thread::spawn(move || -> Result<(), WorkerError> {
-                //Destination peer
-                let p = Peer { name : name,
-                               id : id,
-                               addresses : vec![ AddressType::ShortRange(address.clone()) ]};
-                //Create join message
-                let msg = try!(TMembership::create_join_message(sender.clone(), p));
-                //Connect to the remote peer
-                let mut c = try!(short_radio.connect(address)); 
-                //Send initial message
-                let _res = try!(c.send_msg(msg));
-
-                //We will now enter a read/response loop until the protocol finishes.
-                loop {
-                    //Read the data from the unix socket
-                    let recv_msg = try!(c.read_msg());
-                    //Try to decode the data into a message.
-                    let response = match recv_msg {
-                        Some(mut hdr) => { 
-                            let data = hdr.payload.take().unwrap_or(vec![]);
-                            let msg = try!(TMembership::build_protocol_message(data));
-                            try!(TMembership::handle_message_internal(hdr, 
-                                                                      msg, 
-                                                                      sender.clone(), 
-                                                                      Arc::clone(&neighbours), 
-                                                                      Arc::clone(&network_members)) )
-                        },
-                        None => None,
-                    };
-                    //let response = try!(self.handle_message(recv_msg));
-                    match response {
-                        Some(resp_msg) => { 
-                            let _res = try!(c.send_msg(resp_msg));
-                        },
-                        None => {
-                            //End of protocol sequence.
-                            break;
-                        }
-                    }
-                }
-                Ok(())
-            });
-            handles.push(jh);
-        }
-
-        Ok(handles)
+    fn initial_join_scan(&self) -> Result<(), WorkerError> {
+        let destination = Peer::new(); //TODO: remove
+        let msg = TMembership::create_join_message(self.get_self_peer().clone(), destination)?;
+        self.short_radio.broadcast(msg)
     }
 
-    fn heartbeat_thread(&self) -> Result<(), WorkerError> {
+    fn heartbeat_thread(&self) -> Result<JoinHandle<Result<(), WorkerError>>, WorkerError> {
         let mut rng = self.rng.clone();
         let sender = self.get_self_peer();
         let short_radio = Arc::clone(&self.short_radio);
         let neighbours = Arc::clone(&self.neighbours);
         let network_members = Arc::clone(&self.network_members);
 
-        let _handle = thread::spawn(move || -> Result<MessageHeader, WorkerError> {
+        let handle = thread::spawn(move || -> Result<(), WorkerError> {
             info!("Starting the heartbeat thread.");
 
             let sleep_duration = Duration::from_millis(HEARTBEAT_TIMER);
@@ -457,53 +398,13 @@ impl TMembership {
                     }
                 }   //LOCK : RELEASE : NEAR
 
-                let msg = try!(TMembership::create_heartbeat_message(sender.clone(), selected_peer.clone())); //Initial message of the heartbeat handshake.
-                let mut response = Some(msg);
-                let short_range_addresses : Vec<&AddressType> = selected_peer.addresses.iter().filter(|x| x.is_short_range()).collect();
-                //Use the first short-range address.
-                let mut client =  match short_radio.connect(short_range_addresses[0].get_address()) {
-                    Ok(c) => { c },
+                //Initial message of the heartbeat handshake.
+                let msg = TMembership::create_heartbeat_message(sender.clone(), selected_peer.clone())?; 
+                match short_radio.broadcast(msg) {
+                    Ok(_) => { },
                     Err(e) => { 
-                        //Unable to connect to peer. Remove it from neighbor list.
-                        {   //LOCK : GET : NEAR
-                            let mut near : MutexGuard<HashSet<Peer>> = try!(nl.lock());
-                            let _res = near.remove(&selected_peer);
-                            warn!("Could not connect with {}. It has been removed from the neighbour list.", selected_peer.name);
-                        }
-                        continue;
+                        error!("Failed to send message to {}", &selected_peer.name);
                     },
-                };
-
-                loop {
-                    let gl = Arc::clone(&network_members);
-                    let nl = Arc::clone(&neighbours);
-
-                    match response {
-                        Some(resp_msg) => { 
-                            let _res = try!(client.send_msg(resp_msg));
-                        },
-                        None => {
-                            //End of protocol sequence.
-                            break;
-                        }
-                    }
-
-                    let hdr = try!(client.read_msg());
-                    response = match hdr {
-                        Some(mut h) => {
-                                let data = match h.payload.take() {
-                                    Some(d) => { d },
-                                    None => {
-                                        warn!("Messaged received from {:?} had empty payload.", &h.sender);
-                                        vec![]
-                                    }
-                                };
-            
-                                let msg = try!(TMembership::build_protocol_message(data)); 
-                                try!(TMembership::handle_message_internal(h, msg, sender.clone(), nl, gl)) 
-                        },
-                        None => None,
-                    };
                 }
 
                 //Print the membership lists at the end of the cycle
@@ -511,7 +412,7 @@ impl TMembership {
                 let _ = TMembership::print_membership_list("Membership", Arc::clone(&network_members));
             }
         });
-        Ok(())
+        Ok(handle)
     }
 
     fn get_self_peer(&self) -> Peer {
@@ -523,7 +424,7 @@ impl TMembership {
     fn print_membership_list<'a>(name : &'a str, list : Arc<Mutex<HashSet<Peer>>>) -> Result<(), WorkerError> {
         let l = try!(list.lock());
 
-        info!("{}. {} members:", name, l.len());
+        info!("{}. {} members", name, l.len());
         for m in l.iter() {
             info!("{} : {}", m.name, m.id);
         }
