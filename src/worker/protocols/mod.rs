@@ -11,12 +11,14 @@ use worker::radio::*;
 use worker::listener::*;
 use self::tmembership::TMembership;
 use self::tmembership_advanced::*;
+use self::naive_routing::*;
 use std;
 use std::sync::Arc;
 use std::str::FromStr;
 
 pub mod tmembership;
 pub mod tmembership_advanced;
+pub mod naive_routing;
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should 
@@ -37,6 +39,8 @@ pub enum Protocols {
     TMembership,
     /// 2-Radio variation of the TMembership protocol.
     TMembershipAdvanced,
+    /// Broadcast based routing
+    NaiveRouting,
 }
 
 impl FromStr for Protocols {
@@ -99,6 +103,19 @@ pub fn build_protocol_resources( p : Protocols,
                                                radio_channels : radio_channels };
             Ok(resources)
         },
+
+        Protocols::NaiveRouting => {
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let sr = short_radio.expect("The NaiveRouting protocol requires a short_radio to be provided.");
+            //Initialize the radio.
+            let listener = sr.init()?;
+            let handler : Arc<Box<Protocol>> = Arc::new(Box::new(NaiveRouting::new(name, id, Arc::clone(&sr))));
+            let mut radio_channels = Vec::new();
+            radio_channels.push((listener, sr));
+            let resources = ProtocolResources{  handler : handler, 
+                                                radio_channels : radio_channels };
+            Ok(resources)            
+        }
 
     }
 }
