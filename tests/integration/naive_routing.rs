@@ -1,5 +1,6 @@
 use super::super::*;
 
+#[ignore]
 #[test]
 fn naive_basic() {
     let test = get_test_path("naive_basic_test.toml");
