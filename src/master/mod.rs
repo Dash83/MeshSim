@@ -24,7 +24,7 @@ extern crate rustc_serialize;
 extern crate toml;
 
 use worker::worker_config::WorkerConfig;
-use std::process::{Command, Child};
+use std::process::{Command, Child, Stdio};
 use std::io;
 use std::error;
 use std::fmt;
@@ -159,6 +159,7 @@ impl Master {
         command.arg(format!("{}", &file_dir.display()));
         command.arg("--work_dir");
         command.arg(format!("{}", work_dir));
+        command.stdin(Stdio::piped());
 
         //Starting the worker process
         info!("Starting worker process {}", &worker_name);

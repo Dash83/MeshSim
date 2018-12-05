@@ -45,6 +45,19 @@ impl Into<String> for RadioTypes {
     }
 }
 
+impl FromStr for RadioTypes {
+    type Err = WorkerError;
+
+    fn from_str(s : &str) -> Result<RadioTypes, WorkerError> {
+        println!("Received {}", s.to_lowercase().as_str());
+        let r = match s.to_lowercase().as_str() {
+            LONG_RANGE_DIR => RadioTypes::LongRange,
+            SHORT_RANGE_DIR => RadioTypes::ShortRange,
+            &_ => return Err(WorkerError::Configuration(String::from("Unknown radio type")))
+        };
+        Ok(r)
+    }
+}
 /// Trait for all types of radios.
 pub trait Radio : std::fmt::Debug + Send + Sync {
     ///Function to create a client object to a remote peer.

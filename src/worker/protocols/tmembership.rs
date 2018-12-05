@@ -96,6 +96,9 @@ impl Protocol for TMembership {
         Ok(None)
     }
 
+    fn send(&self, destination : String, data : Vec<u8>) -> Result<(), WorkerError> {
+        unimplemented!()
+    }
 }
 
 impl TMembership {

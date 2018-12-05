@@ -51,6 +51,11 @@ impl Protocol for NaiveRouting {
         
         NaiveRouting::handle_message_internal(header, msg, self.get_self_peer(), msg_hash)
     }
+
+    fn send(&self, destination : String, data : Vec<u8>) -> Result<(), WorkerError> {
+        unimplemented!()
+    }
+
 }
 
 impl NaiveRouting {

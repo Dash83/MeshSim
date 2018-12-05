@@ -124,6 +124,11 @@ impl Protocol for TMembershipAdvanced {
         
         Ok(None)
     }
+
+    fn send(&self, destination : String, data : Vec<u8>) -> Result<(), WorkerError> {
+        unimplemented!()
+    }
+
 }
 
 impl TMembershipAdvanced {

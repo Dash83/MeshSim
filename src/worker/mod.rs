@@ -50,14 +50,14 @@ use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
 use self::rand::{StdRng, SeedableRng};
 use self::byteorder::{NativeEndian, WriteBytesExt};
-use std::thread;
+use std::thread::{self, JoinHandle};
 
 //Sub-modules declaration
 pub mod worker_config;
 pub mod protocols;
 pub mod radio;
-//pub mod client;
 pub mod listener;
+pub mod commands;
 
 // *****************************
 // ********** Globals **********
@@ -81,6 +81,8 @@ pub enum WorkerError {
     Configuration(String),
     ///Error in concurrency operations.
     Sync(String),
+    ///Error producing a command for this worker
+    Command(String),
 }
 
 impl fmt::Display for WorkerError {
@@ -89,7 +91,8 @@ impl fmt::Display for WorkerError {
             WorkerError::Serialization(ref err) => write!(f, "Serialization error: {}", err),
             WorkerError::IO(ref err) => write!(f, "IO error: {}", err),
             WorkerError::Configuration(ref err) => write!(f, "Configuration error: {}", err),
-            WorkerError::Sync(ref err) => write!(f, "Synchronization error: {}", err),          
+            WorkerError::Sync(ref err) => write!(f, "Synchronization error: {}", err),   
+            WorkerError::Command(ref err) => write!(f, "Command error: {}", err),
         }
     }
 
@@ -102,6 +105,7 @@ impl error::Error for WorkerError {
             WorkerError::IO(ref err) => err.description(),
             WorkerError::Configuration(ref err) => err.as_str(),
             WorkerError::Sync(ref err) => err.as_str(),
+            WorkerError::Command(ref err) => err.as_str(),
         }
     }
 
@@ -111,6 +115,7 @@ impl error::Error for WorkerError {
             WorkerError::IO(ref err) => Some(err),
             WorkerError::Configuration(_) => None,
             WorkerError::Sync(_) => None,
+            WorkerError::Command(_) => None,
         }
     }
 }
@@ -370,15 +375,13 @@ impl Worker {
 
         //Start listening for messages
         let prot_handler = Arc::clone(&resources.handler);
-        //let threads = resources.listeners.iter_mut().map(|x| x.take().map(|listener| { 
-        let threads = resources.radio_channels.drain(..).map(|(rx, tx)| { 
+        let mut threads : Vec<JoinHandle<Result<(), WorkerError>>> = resources.radio_channels.drain(..).map(|(rx, tx)| { 
             let prot_handler = Arc::clone(&prot_handler);
 
             thread::spawn(move || {        
                 info!("Listening for messages");
                 loop {
                     match rx.read_message() {
-                        
                         Some(hdr) => { 
                             let prot = Arc::clone(&prot_handler);
                             let r_type = rx.get_radio_range();
@@ -403,7 +406,10 @@ impl Worker {
                     }
                 }
             })
-        });
+        }).collect();
+
+        let com_loop_thread = self.start_command_loop_thread(Arc::clone(&prot_handler))?;
+        threads.push(com_loop_thread);
 
         // let _exit_values = threads.map(|x| x.map(|t| t.join())); //This compact version does not work. It seems the lazy iterator is not evaluated.
         for x in threads {
@@ -438,6 +444,52 @@ impl Worker {
         let _ = random_bytes.write_u32::<NativeEndian>(seed);
         let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
         StdRng::from_seed(randomness.as_slice())
+    }
+
+    fn start_command_loop_thread(&self, protocol_handler : Arc<Protocol>) -> io::Result<JoinHandle<Result<(), WorkerError>>> {
+        let tb = thread::Builder::new();
+        tb.name(String::from("CommandLoop"))
+        .spawn(move || { 
+            let mut input = String::new();
+            loop {
+                match io::stdin().read_line(&mut input) {
+                    Ok(_bytes) => {
+                        match input.parse::<commands::Commands>() {
+                            Ok(command) => { 
+                                match Worker::process_command(command, Arc::clone(&protocol_handler)) {
+                                    Ok(_) => { /* All good! */ },
+                                    Err(e) => {
+                                        error!("Error executing command: {}", e);
+                                    }
+                                }
+                            },
+                            Err(e) => { 
+                                error!("{}", e);
+                            },
+                        }
+                    }
+                    Err(error) => { 
+                        error!("{}", error);
+                    }
+                }
+            }
+            Ok(())
+        })
+    }
+
+    fn process_command(com : commands::Commands, ph : Arc<Protocol>) -> Result<(), WorkerError> {
+        match com {
+            commands::Commands::Add_bcg(radio, group) => { 
+                unimplemented!("Adding broadcast groups is not yet supported.");
+            },
+            commands::Commands::Rem_bcg(radio, group) => { 
+                unimplemented!("Removing broadcast groups is not yet supported.");
+            },
+            commands::Commands::Send(destination, data) => {
+                let _res = ph.send(destination, data)?;
+            }
+        }
+        Ok(())
     }
 }
 
