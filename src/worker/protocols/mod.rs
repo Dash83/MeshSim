@@ -52,6 +52,8 @@ impl FromStr for Protocols {
     fn from_str(s : &str) -> Result<Protocols, WorkerError> {
         match s.to_uppercase().as_str() {
             "TMEMBERSHIP" => Ok(Protocols::TMembership),
+            "TMEMBERSHIP_ADVANCED" => Ok(Protocols::TMembershipAdvanced),
+            "NAIVEROUTING" => Ok(Protocols::NaiveRouting),
             _ => Err(WorkerError::Configuration(String::from("The specified protocol is not supported."))),
         }
     }
