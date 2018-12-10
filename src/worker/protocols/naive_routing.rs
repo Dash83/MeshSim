@@ -8,17 +8,27 @@ extern crate md5;
 use worker::protocols::Protocol;
 use worker::{WorkerError, Peer, MessageHeader, AddressType};
 use worker::radio::*;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
 use self::rand::{StdRng, Rng};
 use self::md5::Digest;
+
+const MSG_CACHE_SIZE : usize = 200;
+
+#[derive(Debug)]
+struct CacheEntry {
+    sender : String,
+    msg_id : Digest,
+}
 
 ///The main struct for this protocol. Implements the worker::protocol::Protocol trait.
 #[derive(Debug)]
 pub struct NaiveRouting {
     worker_name : String,
     worker_id : String,
+    msg_cache : Arc<Mutex<Vec<CacheEntry>>>,
     short_radio : Arc<Radio>,
 }
 
@@ -48,12 +58,20 @@ impl Protocol for NaiveRouting {
         };
 
         let msg = NaiveRouting::build_protocol_message(data)?;
-        
-        NaiveRouting::handle_message_internal(header, msg, self.get_self_peer(), msg_hash)
+        let msg_cache = Arc::clone(&self.msg_cache);
+        NaiveRouting::handle_message_internal(header, msg, self.get_self_peer(), msg_hash, msg_cache)
     }
 
     fn send(&self, destination : String, data : Vec<u8>) -> Result<(), WorkerError> {
-        unimplemented!()
+        let mut dest = Peer::new();
+        dest.addresses.push(AddressType::ShortRange(destination));
+        let msg = Messages::Data(data);
+        let payload = to_vec(&msg)?;
+        let hdr = MessageHeader{ sender : self.get_self_peer(),
+                                 destination : dest,
+                                 payload : Some(payload) };
+        let _res = self.short_radio.broadcast(hdr)?;
+        Ok(())
     }
 
 }
@@ -61,8 +79,10 @@ impl Protocol for NaiveRouting {
 impl NaiveRouting {
     /// Creates a new instance of the NaiveRouting protocol handler
     pub fn new(worker_name : String, worker_id : String, sr : Arc<Radio> ) -> NaiveRouting {
+        let v = Vec::new();
         NaiveRouting{ worker_name : worker_name,
                       worker_id : worker_id,
+                      msg_cache : Arc::new(Mutex::new(v)),
                       short_radio : sr }
     }
 
@@ -78,17 +98,58 @@ impl NaiveRouting {
         Ok(msg)
     }
 
-    fn process_data_message(hdr : MessageHeader, data : Vec<u8>, msg_hash : Digest, me : Peer, ) -> Result<Option<MessageHeader>, WorkerError> {
+    fn process_data_message(hdr : MessageHeader, 
+                            data : Vec<u8>, 
+                            msg_hash : Digest, 
+                            me : Peer,
+                            msg_cache : Arc<Mutex<Vec<CacheEntry>>> ) -> Result<Option<MessageHeader>, WorkerError> {
         info!("Received DATA message {:x} from :{}", &msg_hash, &hdr.sender.name);
-        let response = NaiveRouting::create_data_message(hdr.sender, hdr.destination, data)?;
+
+        { // LOCK:ACQUIRE:MSG_CACHE
+            let mut cache = match msg_cache.lock() {
+                Ok(guard) => guard,
+                Err(e) => {
+                    error!("Failed to lock message cache: {}", e);
+                    return Ok(None)
+                }
+            };
+            
+            for entry in cache.iter() {
+                if entry.sender == hdr.sender.id && entry.msg_id == msg_hash {
+                    info!("Dropping repeated message {:x}", &msg_hash);
+                    return Ok(None)
+                }
+            }
+
+            //Have not seen this message yet.
+            //Is there space in the cache?
+            if cache.len() >= MSG_CACHE_SIZE {
+                let _res = cache.remove(0);
+            }
+            //Log message
+            cache.push(CacheEntry{ sender : hdr.sender.id, msg_id : msg_hash});
+
+        } // LOCK:RELEASE:MSG_CACHE
+
+        //Check if this node is the intenteded recipient of the message.
+        if hdr.destination == me {
+            info!("Message {:x} reached its destination.", &msg_hash);
+            return Ok(None)
+        }
+
+        let response = NaiveRouting::create_data_message(me, hdr.destination, data)?;
 
         Ok(Some(response))
     }
 
-    fn handle_message_internal(hdr : MessageHeader, msg : Messages, me : Peer, msg_hash : Digest) -> Result<Option<MessageHeader>, WorkerError> {
+    fn handle_message_internal(hdr : MessageHeader, 
+                               msg : Messages, 
+                               me : Peer, 
+                               msg_hash : Digest,
+                               msg_cache : Arc<Mutex<Vec<CacheEntry>>>) -> Result<Option<MessageHeader>, WorkerError> {
         let response = match msg {
                     Messages::Data(data) => {
-                        NaiveRouting::process_data_message(hdr, data, msg_hash, me)
+                        NaiveRouting::process_data_message(hdr, data, msg_hash, me, msg_cache)
                     },
                 };
         response
