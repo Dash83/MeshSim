@@ -3,6 +3,7 @@
 extern crate pnet;
 extern crate ipnetwork;
 extern crate socket2;
+extern crate md5;
 
 use worker::*;
 use worker::listener::*;
@@ -14,6 +15,7 @@ use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
 use worker::rand::Rng;
 use std::thread::JoinHandle;
+use self::md5::Digest;
 
 const SIMULATED_SCAN_DIR : &'static str = "bcg";
 const SHORT_RANGE_DIR : &'static str = "short";
@@ -207,13 +209,6 @@ impl Radio  for SimulatedRadio {
         Ok(Box::new(listener))
     }
 
-    // fn connect<'a>(&self,  address : String) -> Result<Box<Client>, WorkerError> {
-    //     let addr = SockAddr::unix(&address)?;
-    //     let rng = Arc::clone(&self.rng);
-    //     let client = SimulatedClient::new(addr, self.delay, self.reliability, rng);
-    //     Ok(Box::new(client))
-    // }
-
     fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
         //info!("Sending message to {}, address {}.", destination.name, destination.address);
         let r = Arc::clone(&self.rng);
@@ -240,22 +235,13 @@ impl Radio  for SimulatedRadio {
                 let _res = socket.connect(&debug_addr)?;
                 let data = try!(to_vec(&msg));
                 let _sent_bytes = socket.send(&data)?;
-                info!("Message sent to {}.", &peer_name);
+                //info!("Message sent to {}", &peer_address);
                 Ok(())
             });
 
         }
-        //TODO: Does delay still make sense?
-        // //Check if message should be delayed.
-        // if self.delay > 0 {
-        //     //Get a percerntage between 80% and 100%. The introduced delay will be p-percent
-        //     //of the delay parameter. This is done so that the delay doesn't become a synchronized
-        //     //delay across the simulation and actually has unexpectability about the transmission time.
-        //     let p : f64 = rng.gen_range(0.8f64, 1.0f64);
-        //     let delay : u64= (p * self.delay as f64).round() as u64;
-        //     thread::sleep(Duration::from_millis(delay));
-        // }
-
+        
+        info!("Message {:x} sent", &hdr.get_hdr_hash()?);
         Ok(())        
     }
 
@@ -395,13 +381,6 @@ impl Radio  for DeviceRadio{
 
         Ok(Box::new(listener))
     }
-
-    // fn connect<'a>(&self, address : String) -> Result<Box<Client>, WorkerError> {
-    //     let remote_addr = address.parse::<SocketAddr>().unwrap().into();
-    //     let rng = Arc::clone(&self.rng);
-    //     let client = DeviceClient::new(remote_addr, rng);
-    //     Ok(Box::new(client))
-    // }
 
     fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
         let sock_addr = SocketAddr::new(IpAddr::V6(*SERVICE_ADDRESS), DNS_SERVICE_PORT);
