@@ -31,6 +31,7 @@ extern crate serde;
 extern crate byteorder;
 extern crate pnet;
 extern crate ipnetwork;
+extern crate md5;
 
 use std::io::Write;
 use self::serde_cbor::de::*;
@@ -45,12 +46,12 @@ use std::process::{Command, Child};
 use std::sync::{PoisonError, MutexGuard};
 use worker::protocols::*;
 use worker::radio::*;
-//use worker::client::*;
 use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
 use self::rand::{StdRng, SeedableRng};
 use self::byteorder::{NativeEndian, WriteBytesExt};
 use std::thread::{self, JoinHandle};
+use self::md5::Digest;
 
 //Sub-modules declaration
 pub mod worker_config;
@@ -224,6 +225,19 @@ impl MessageHeader {
                         payload : None }
     }
 
+    /// Produces the MD5 checksum of this message based on the following data:
+    /// Sender name
+    /// Destination name
+    /// Payload
+    /// This is done instead of getting the md5sum of the entire structure for testability purposes
+    pub fn get_hdr_hash(&self) -> Result<Digest, WorkerError> {
+        let mut data = Vec::new();
+        data.append(&mut self.sender.name.clone().into_bytes());
+        data.append(&mut self.destination.name.clone().into_bytes());
+        data.append(&mut self.payload.clone().unwrap());
+        let dig = md5::compute(to_vec(&data)?);
+        Ok(dig)
+    }
 }
 
 ///Struct to represent DNS TXT records for advertising the meshsim service and obtain records from peers.
@@ -451,11 +465,13 @@ impl Worker {
         tb.name(String::from("CommandLoop"))
         .spawn(move || { 
             let mut input = String::new();
+            debug!("Command loop started");
             loop {
                 match io::stdin().read_line(&mut input) {
                     Ok(_bytes) => {
                         match input.parse::<commands::Commands>() {
-                            Ok(command) => { 
+                            Ok(command) => {
+                                info!("Command received: {:?}", &command);
                                 match Worker::process_command(command, Arc::clone(&protocol_handler)) {
                                     Ok(_) => { /* All good! */ },
                                     Err(e) => {
@@ -464,7 +480,7 @@ impl Worker {
                                 }
                             },
                             Err(e) => { 
-                                error!("{}", e);
+                                error!("Error parsing command: {}", e);
                             },
                         }
                     }
