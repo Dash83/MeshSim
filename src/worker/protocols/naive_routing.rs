@@ -9,7 +9,6 @@ use worker::protocols::Protocol;
 use worker::{WorkerError, Peer, MessageHeader, AddressType};
 use worker::radio::*;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
 use self::rand::{StdRng, Rng};
@@ -47,7 +46,7 @@ impl Protocol for NaiveRouting {
     }
 
     fn handle_message(&self, mut header : MessageHeader, r_type : RadioTypes) -> Result<Option<MessageHeader>, WorkerError> {
-        let msg_hash = md5::compute(to_vec(&header)?);
+        let msg_hash = header.get_hdr_hash()?;
 
         let data = match header.payload.take() {
             Some(d) => { d },
@@ -64,7 +63,7 @@ impl Protocol for NaiveRouting {
 
     fn send(&self, destination : String, data : Vec<u8>) -> Result<(), WorkerError> {
         let mut dest = Peer::new();
-        dest.addresses.push(AddressType::ShortRange(destination));
+        dest.name = destination;
         let msg = Messages::Data(data);
         let payload = to_vec(&msg)?;
         let hdr = MessageHeader{ sender : self.get_self_peer(),
@@ -103,7 +102,7 @@ impl NaiveRouting {
                             msg_hash : Digest, 
                             me : Peer,
                             msg_cache : Arc<Mutex<Vec<CacheEntry>>> ) -> Result<Option<MessageHeader>, WorkerError> {
-        info!("Received DATA message {:x} from :{}", &msg_hash, &hdr.sender.name);
+        info!("Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name);
 
         { // LOCK:ACQUIRE:MSG_CACHE
             let mut cache = match msg_cache.lock() {
@@ -132,8 +131,8 @@ impl NaiveRouting {
         } // LOCK:RELEASE:MSG_CACHE
 
         //Check if this node is the intenteded recipient of the message.
-        if hdr.destination == me {
-            info!("Message {:x} reached its destination.", &msg_hash);
+        if hdr.destination.name == me.name {
+            info!("Message {:x} reached its destination", &msg_hash);
             return Ok(None)
         }
 

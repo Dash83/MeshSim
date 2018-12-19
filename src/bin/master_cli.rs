@@ -138,8 +138,8 @@ fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {
     //Has a test file been provided?
     let test_file = matches.value_of(ARG_TEST_FILE); 
     if let Some(file) = test_file {
-        let mut test_spec = try!(test_specification::TestSpec::parse_test_spec(file));
-        try!(master.run_test(test_spec));
+        let mut test_spec = test_specification::TestSpec::parse_test_spec(file)?;
+        master.run_test(test_spec)?;
     }
 
     Ok(())

@@ -47,6 +47,8 @@ pub enum TestActions {
     AddNode(String, u64),
     ///Kills the indicated node at the specified time offset.
     KillNode(String, u64),
+    ///Sends a Ping packet from src to dst. The underlying protocol determines how the data is forwarded.
+    Ping(String, String, u64)
 }
 
 
@@ -86,6 +88,17 @@ impl FromStr for TestActions {
                     let time = parts[2].parse::<u64>().unwrap();
 
                     Ok(TestActions::KillNode(node_name, time))
+                },
+                "PING" => {
+                    if parts.len() < 4 {
+                        //Error out
+                        return Err(MasterError::TestParsing(format!("Ping needs a source, destination and a time parameters.")))
+                    }
+                    let src = parts[1].to_owned();
+                    let dst = parts[2].to_owned();
+                    let time = parts[3].parse::<u64>().unwrap();
+
+                    Ok(TestActions::Ping(src, dst, time))
                 },
                 _ => Err(MasterError::TestParsing(format!("Unsupported Test action: {:?}", parts))),
             }
