@@ -18,6 +18,7 @@ use std::thread::JoinHandle;
 const SIMULATED_SCAN_DIR : &'static str = "bcg";
 const SHORT_RANGE_DIR : &'static str = "short";
 const LONG_RANGE_DIR : &'static str = "long";
+
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE : usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
 
@@ -60,10 +61,6 @@ impl FromStr for RadioTypes {
 }
 /// Trait for all types of radios.
 pub trait Radio : std::fmt::Debug + Send + Sync {
-    ///Function to create a client object to a remote peer.
-    //fn connect(&self,  address : String) -> Result<Box<Client>, WorkerError>;
-    // ///Method that implements the radio-specific logic to send data over the network.
-    // fn send(&self, msg : MessageHeader) -> Result<(), WorkerError>;
     ///Method that implements the radio-specific logic to scan it's medium for other nodes.
     fn scan_for_peers(&self) -> Result<HashMap<String, (String, String)>, WorkerError>;
     ///Gets the current address at which the radio is listening.
@@ -207,13 +204,6 @@ impl Radio  for SimulatedRadio {
         Ok(Box::new(listener))
     }
 
-    // fn connect<'a>(&self,  address : String) -> Result<Box<Client>, WorkerError> {
-    //     let addr = SockAddr::unix(&address)?;
-    //     let rng = Arc::clone(&self.rng);
-    //     let client = SimulatedClient::new(addr, self.delay, self.reliability, rng);
-    //     Ok(Box::new(client))
-    // }
-
     fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
         //info!("Sending message to {}, address {}.", destination.name, destination.address);
         let r = Arc::clone(&self.rng);
@@ -244,7 +234,7 @@ impl Radio  for SimulatedRadio {
                 Ok(())
             });
 
-        }
+    }
         //TODO: Does delay still make sense?
         // //Check if message should be delayed.
         // if self.delay > 0 {
@@ -395,13 +385,6 @@ impl Radio  for DeviceRadio{
 
         Ok(Box::new(listener))
     }
-
-    // fn connect<'a>(&self, address : String) -> Result<Box<Client>, WorkerError> {
-    //     let remote_addr = address.parse::<SocketAddr>().unwrap().into();
-    //     let rng = Arc::clone(&self.rng);
-    //     let client = DeviceClient::new(remote_addr, rng);
-    //     Ok(Box::new(client))
-    // }
 
     fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
         let sock_addr = SocketAddr::new(IpAddr::V6(*SERVICE_ADDRESS), DNS_SERVICE_PORT);

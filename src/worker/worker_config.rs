@@ -14,6 +14,7 @@ use std::iter;
 use self::rustc_serialize::hex::*;
 use self::rand::{Rng, StdRng};
 use std::sync::{Mutex, Arc};
+use worker::mobility::{self, Position};
 
 ///Configuration pertaining to a given radio of the worker.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -90,6 +91,8 @@ pub struct WorkerConfig {
     pub operation_mode : OperationMode,
     /// The protocol that this Worker should run for this configuration.
     pub protocol : Protocols,
+    /// Initial position of the worker
+    pub position : Position,
     ///NOTE: Due to the way serde_toml works, the RadioConfig fields must be kept last in the structure.
     /// This is because they are interpreted as TOML tables, and those are always placed at the end of structures.
     ///The configuration for the short-range radio of this worker.
@@ -108,11 +111,12 @@ impl WorkerConfig {
                      protocol : Protocols::TMembership,
                      radio_short : None,
                      radio_long : None,
-                    }
+                     position : Position{ x : 0.0, y : 0.0 }
+        }
     }
 
     ///Creates a new Worker object configured with the values of this configuration object.
-    pub fn create_worker(self) -> Worker {
+    pub fn create_worker(self) -> Result<Worker, WorkerError> {
         //Create the RNG
         let mut gen = Worker::rng_from_seed(self.random_seed);
         
@@ -143,15 +147,27 @@ impl WorkerConfig {
             None => { None }
         };
 
-        Worker{ name : self.worker_name,
-                short_radio : sr,
-                long_radio : lr,
-                work_dir : self.work_dir, 
-                rng : Arc::clone(&rng),
-                seed : self.random_seed,
-                operation_mode : self.operation_mode,
-                id : id,
-                protocol : self.protocol }
+        let db_id = match self.operation_mode {
+            OperationMode::Device => 0,
+            OperationMode::Simulated => {
+                let conn = mobility::get_db_connection(&self.work_dir)?;
+                let _rows = mobility::create_positions_db(&conn)?;
+                mobility::register_worker(&conn, self.worker_name.clone(), id.clone(), &self.position)?
+            },
+        };
+
+        let w = Worker{ name : self.worker_name,
+                        short_radio : sr,
+                        long_radio : lr,
+                        work_dir : self.work_dir, 
+                        rng : Arc::clone(&rng),
+                        seed : self.random_seed,
+                        operation_mode : self.operation_mode,
+                        id : id,
+                        protocol : self.protocol,
+                        position : self.position,
+                        db_id : db_id, };
+        Ok(w)
     }
 
     ///Writes the current configuration object to a formatted configuration file, that can be passed to
@@ -181,7 +197,7 @@ mod tests {
     #[test]
     fn test_workerconfig_new() {
         let config = WorkerConfig::new();
-        let config_str = "WorkerConfig { worker_name: \"worker1\", work_dir: \".\", random_seed: 0, operation_mode: Simulated, protocol: TMembership, radio_short: None, radio_long: None }";
+        let config_str = "WorkerConfig { worker_name: \"worker1\", work_dir: \".\", random_seed: 0, operation_mode: Simulated, protocol: TMembership, position: Position { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
 
         assert_eq!(format!("{:?}", config), config_str);
     }
@@ -223,7 +239,7 @@ mod tests {
         //Assert the file was written.
         assert!(path.exists());
 
-        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"TMembership\"\n\n[radio_short]\nbroadcast_groups = [\"group1\"]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\n\n[radio_long]\nbroadcast_groups = [\"group1\"]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\n";
+        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"TMembership\"\n\n[position]\nx = 0.0\ny = 0.0\n\n[radio_short]\nbroadcast_groups = [\"group1\"]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\n\n[radio_long]\nbroadcast_groups = [\"group1\"]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\n";
         
         let mut file_content = String::new();
         let _res = File::open(path).unwrap().read_to_string(&mut file_content);

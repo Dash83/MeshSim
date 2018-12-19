@@ -31,6 +31,7 @@ extern crate serde;
 extern crate byteorder;
 extern crate pnet;
 extern crate ipnetwork;
+extern crate rusqlite;
 
 use std::io::Write;
 use self::serde_cbor::de::*;
@@ -45,12 +46,12 @@ use std::process::{Command, Child};
 use std::sync::{PoisonError, MutexGuard};
 use worker::protocols::*;
 use worker::radio::*;
-//use worker::client::*;
 use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
 use self::rand::{StdRng, SeedableRng};
 use self::byteorder::{NativeEndian, WriteBytesExt};
 use std::thread::{self, JoinHandle};
+use worker::mobility::*;
 
 //Sub-modules declaration
 pub mod worker_config;
@@ -58,6 +59,7 @@ pub mod protocols;
 pub mod radio;
 pub mod listener;
 pub mod commands;
+pub mod mobility;
 
 // *****************************
 // ********** Globals **********
@@ -83,6 +85,8 @@ pub enum WorkerError {
     Sync(String),
     ///Error producing a command for this worker
     Command(String),
+    ///Error performing DB operations
+    DB(rusqlite::Error),
 }
 
 impl fmt::Display for WorkerError {
@@ -93,6 +97,7 @@ impl fmt::Display for WorkerError {
             WorkerError::Configuration(ref err) => write!(f, "Configuration error: {}", err),
             WorkerError::Sync(ref err) => write!(f, "Synchronization error: {}", err),   
             WorkerError::Command(ref err) => write!(f, "Command error: {}", err),
+            WorkerError::DB(ref err) => write!(f, "Command error: {}", err),
         }
     }
 
@@ -106,6 +111,7 @@ impl error::Error for WorkerError {
             WorkerError::Configuration(ref err) => err.as_str(),
             WorkerError::Sync(ref err) => err.as_str(),
             WorkerError::Command(ref err) => err.as_str(),
+            WorkerError::DB(ref err) => err.description(),
         }
     }
 
@@ -116,6 +122,7 @@ impl error::Error for WorkerError {
             WorkerError::Configuration(_) => None,
             WorkerError::Sync(_) => None,
             WorkerError::Command(_) => None,
+            WorkerError::DB(ref err) => Some(err),
         }
     }
 }
@@ -141,6 +148,12 @@ impl<'a> From<PoisonError<MutexGuard<'a, HashSet<Peer>>>> for WorkerError {
 impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Peer>>>> for WorkerError {
     fn from(err : PoisonError<MutexGuard<'a, HashMap<String, Peer>>>) -> WorkerError {
         WorkerError::Sync(err.to_string())
+    }
+}
+
+impl From<rusqlite::Error> for WorkerError {
+    fn from(err : rusqlite::Error) -> WorkerError {
+        WorkerError::DB(err)
     }
 }
 
@@ -330,6 +343,8 @@ impl FromStr for OperationMode {
 //#[derive(Debug, Clone)]
 #[derive(Debug)]
 pub struct Worker {
+    ///ID of this worker in the DB
+    db_id : i64,
     ///Name of the current worker.
     name : String,
     ///Unique ID composed of 16 random numbers represented in a Hex String.
@@ -349,6 +364,8 @@ pub struct Worker {
     operation_mode : OperationMode,
     /// The protocol that this Worker should run for this configuration.
     pub protocol : Protocols,
+    ///Position of the worker
+    position : Position,
 }
 
 impl Worker {
@@ -365,8 +382,8 @@ impl Worker {
         //Init the radios and get their respective listeners.
         let short_radio = self.short_radio.take();
         let long_radio = self.long_radio.take();
-        let mut resources = try!(build_protocol_resources( self.protocol, short_radio, long_radio, self.seed, 
-                                                           self.id.clone(), self.name.clone(),));
+        let mut resources = build_protocol_resources( self.protocol, short_radio, long_radio, self.seed, 
+                                                           self.id.clone(), self.name.clone(),)?;
         
         info!("Worker finished initializing.");
         
