@@ -22,6 +22,7 @@ extern crate serde;
 extern crate serde_cbor;
 extern crate rustc_serialize;
 extern crate toml;
+extern crate base64;
 
 use worker::worker_config::WorkerConfig;
 use std::process::{Command, Child, Stdio};
@@ -36,6 +37,8 @@ use std::sync::{Arc, Mutex};
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::collections::HashMap;
+use std::io::Write;
+use std::borrow::BorrowMut;
 
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
@@ -190,16 +193,22 @@ impl Master {
         let actions = spec.actions.clone();
         let action_handles = try!(self.schedule_test_actions(actions));
  
+        //let cl = self.start_command_loop_thread()?;
+
         //All actions have been scheduled. Wait for all actions to be executed and then exit.
         for mut h in action_handles {
              match h.join() {
-                Ok(_) => { }, 
+                Ok(_) => { 
+
+                }, 
                 Err(_) => { 
                     warn!("Couldn't join on thread");
                 },
              }
         }
         
+        //cl.join();
+
         Ok(())
     }
 
@@ -210,13 +219,16 @@ impl Master {
             let action = try!(TestActions::from_str(&action_str));
             let action_handle = match action {
                 TestActions::EndTest(time) => {
-                    try!(self.testaction_end_test(time))
+                    self.testaction_end_test(time)?
                 },
                 TestActions::AddNode(name, time) => { 
-                    try!(self.testaction_add_node(name, time))
+                    self.testaction_add_node(name, time)?
                 },
                 TestActions::KillNode(name, time) => {
-                    try!(self.testaction_kill_node(name, time))
+                    self.testaction_kill_node(name, time)?
+                }
+                TestActions::Ping(src, dst, time) => {
+                    self.testaction_ping_node(src, dst, time)?
                 }
             };
             thread_handles.push(action_handle);
@@ -312,6 +324,81 @@ impl Master {
             }
         });
         Ok(handle)
+    }
+
+    fn testaction_ping_node(&self, source : String, destination : String, time : u64) -> Result<JoinHandle<()>, MasterError> {
+        let workers = Arc::clone(&self.workers);
+        
+        let handle = thread::spawn(move || {
+            let pingtime = Duration::from_millis(time);
+            info!("Ping {}->{} action: Scheduled for {:?}", &source, &destination, &pingtime);
+            thread::sleep(pingtime);
+            info!("Ping {}->{} action: Starting", &source, &destination);
+
+            let workers = workers.lock();
+            match workers {
+                Ok(mut w) => { 
+                    if let Some(mut child) = w.get_mut(&source) {
+                        let ping_data = base64::encode("PING".as_bytes());
+                        let payload = format!("SEND {} {}\n", &destination, &ping_data);
+                        let res = child.stdin.as_mut().unwrap().write_all(payload.as_bytes());
+                    } else {
+                        error!("Ping {}->{} action: Process {} not found in Master's collection.", &source, &destination, &source);
+                    }
+                },
+                Err(e) => { 
+                    error!("Ping {}->{} action: Could not obtain lock to workers, Action aborted.", &source, &destination);
+                },
+            }
+        });
+        Ok(handle)
+    }
+
+    fn start_command_loop_thread(&self) -> io::Result<JoinHandle<Result<(), MasterError>>> {
+        let tb = thread::Builder::new();
+        let workers = Arc::clone(&self.workers);
+
+        tb.name(String::from("CommandLoop"))
+        .spawn(move || { 
+            let mut input = String::new();
+            debug!("Command loop started");
+            loop {
+                match io::stdin().read_line(&mut input) {
+                    Ok(_bytes) => {
+                        //debug!("Read {} bytes from stdin: {}", _bytes, &input);
+                        // match input.parse::<commands::Commands>() {
+                        //     Ok(command) => {
+                        //         info!("Command received: {:?}", &command);
+                        //         match Worker::process_command(command, Arc::clone(&protocol_handler)) {
+                        //             Ok(_) => { /* All good! */ },
+                        //             Err(e) => {
+                        //                 error!("Error executing command: {}", e);
+                        //             }
+                        //         }
+                        //     },
+                        //     Err(e) => { 
+                        //         error!("Error parsing command: {}", e);
+                        //     },
+                        // }
+                        let workers = workers.lock();
+                        match workers {
+                            Ok(mut w_list) => { 
+                                for (name, mut handle) in w_list.iter_mut() {
+                                    let res = handle.stdin.as_mut().unwrap().write_all(&input.as_bytes());
+                                }
+                            },
+                            Err(e) => { 
+                                error!("Could not obtain lock to workers.");
+                            },
+                        }
+                    }
+                    Err(error) => { 
+                        error!("{}", error);
+                    }
+                }
+            }
+            Ok(())
+        })
     }
 }
 
