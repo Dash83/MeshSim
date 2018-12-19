@@ -20,6 +20,7 @@ use self::md5::Digest;
 const SIMULATED_SCAN_DIR : &'static str = "bcg";
 const SHORT_RANGE_DIR : &'static str = "short";
 const LONG_RANGE_DIR : &'static str = "long";
+
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE : usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
 
@@ -62,10 +63,6 @@ impl FromStr for RadioTypes {
 }
 /// Trait for all types of radios.
 pub trait Radio : std::fmt::Debug + Send + Sync {
-    ///Function to create a client object to a remote peer.
-    //fn connect(&self,  address : String) -> Result<Box<Client>, WorkerError>;
-    // ///Method that implements the radio-specific logic to send data over the network.
-    // fn send(&self, msg : MessageHeader) -> Result<(), WorkerError>;
     ///Method that implements the radio-specific logic to scan it's medium for other nodes.
     fn scan_for_peers(&self) -> Result<HashMap<String, (String, String)>, WorkerError>;
     ///Gets the current address at which the radio is listening.
@@ -238,13 +235,11 @@ impl Radio  for SimulatedRadio {
                 //info!("Message sent to {}", &peer_address);
                 Ok(())
             });
-
         }
         
         info!("Message {:x} sent", &hdr.get_hdr_hash()?);
         Ok(())        
     }
-
 }
 
 impl SimulatedRadio {
