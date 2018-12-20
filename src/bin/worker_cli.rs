@@ -177,7 +177,7 @@ fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIE
 } 
 
 fn run(config : WorkerConfig) -> Result<(), CLIError> {
-   let mut obj =  config.create_worker();
+   let mut obj =  config.create_worker()?;
    //debug!("Worker Obj: {:?}", obj);
    try!(obj.start());
    Ok(())

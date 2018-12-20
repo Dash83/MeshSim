@@ -17,13 +17,16 @@ actions = ["End_Test 14000", "Add_Node node2 5",
                              "Add_Node node8 16" ]
 
 ### Initial Nodes ###
-[initial_nodes.worker1]
+[initial_nodes.node1]
     worker_name = "node01"
     work_dir = "/tmp"
     random_seed = 12
     operation_mode = "Simulated"
     protocol = "TMembership"
-    [initial_nodes.worker1.radio_short]
+    [initial_nodes.node1.position]
+        x = 0.0
+        y = 0.0
+    [initial_nodes.node1.radio_short]
         broadcast_groups = ["g1"]
         reliability = 1.0
         delay = 0
@@ -35,6 +38,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 1234
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [initial_nodes.node14.position]
+        x = 0.0
+        y = 0.0
     [initial_nodes.node14.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -48,6 +54,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 34
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node2.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node2.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -60,6 +69,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 56
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node3.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node3.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -72,6 +84,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 78
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node4.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node4.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -84,6 +99,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 90
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node5.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node5.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -96,6 +114,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 123
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node6.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node6.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -108,6 +129,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 234
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node7.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node7.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -120,6 +144,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 345
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node8.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node8.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -132,6 +159,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 456
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node9.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node9.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -144,6 +174,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 567
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node10.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node10.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -156,6 +189,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 678
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node11.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node11.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -168,6 +204,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 789
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node12.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node12.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -180,6 +219,9 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     random_seed = 890
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node13.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node13.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode

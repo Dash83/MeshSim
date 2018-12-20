@@ -7,6 +7,9 @@ actions = ["End_Test 3000", "Add_Node node2 200"]
     random_seed = 0
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [initial_nodes.node1.position]
+        x = 0.0
+        y = 0.0
     [initial_nodes.node1.radio_short]
         broadcast_groups = ["group1"]
         reliability = 1.0
@@ -19,6 +22,9 @@ actions = ["End_Test 3000", "Add_Node node2 200"]
     random_seed = 456
     operation_mode = "Simulated"
     protocol = "TMembership"
+    [available_nodes.node2.position]
+        x = 0.0
+        y = 0.0
     [available_nodes.node2.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
