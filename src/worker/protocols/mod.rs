@@ -11,12 +11,14 @@ use worker::radio::*;
 use worker::listener::*;
 use self::tmembership::TMembership;
 use self::tmembership_advanced::*;
+use self::naive_routing::*;
 use std;
 use std::sync::Arc;
 use std::str::FromStr;
 
 pub mod tmembership;
 pub mod tmembership_advanced;
+pub mod naive_routing;
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should 
@@ -28,6 +30,9 @@ pub trait Protocol : std::fmt::Debug + Send + Sync {
     /// Function to initialize the protocol.
     fn init_protocol(&self) -> Result<Option<MessageHeader>, WorkerError>;
 
+    /// Function to send command to another node in the network
+    fn send(&self, destination : String, data : Vec<u8>) -> Result<(), WorkerError>;
+
 }
 
 ///Current list of supported protocols by MeshSim.
@@ -37,6 +42,8 @@ pub enum Protocols {
     TMembership,
     /// 2-Radio variation of the TMembership protocol.
     TMembershipAdvanced,
+    /// Broadcast based routing
+    NaiveRouting,
 }
 
 impl FromStr for Protocols {
@@ -45,6 +52,8 @@ impl FromStr for Protocols {
     fn from_str(s : &str) -> Result<Protocols, WorkerError> {
         match s.to_uppercase().as_str() {
             "TMEMBERSHIP" => Ok(Protocols::TMembership),
+            "TMEMBERSHIP_ADVANCED" => Ok(Protocols::TMembershipAdvanced),
+            "NAIVEROUTING" => Ok(Protocols::NaiveRouting),
             _ => Err(WorkerError::Configuration(String::from("The specified protocol is not supported."))),
         }
     }
@@ -54,9 +63,9 @@ impl FromStr for Protocols {
 /// It contains all the protocol-releated resources necessary for the worker to do it's job.
 pub struct ProtocolResources {
     ///Protocol handler for the selected protocol.
-    pub handler : Arc<Box<Protocol>>,
-    ///Collection of listeners ready to read network messages for their respective radios.
-    pub listeners : Vec<Option<Box<Listener>>>,
+    pub handler : Arc<Protocol>,
+    ///Collection of rx/tx radio channels for the worker and protocol to communicate.
+    pub radio_channels : Vec<(Box<Listener>, Arc<Radio>)>,
 }
 
 /// Provides a new boxed reference to the struct matching the passed protocol.
@@ -69,12 +78,12 @@ pub fn build_protocol_resources( p : Protocols,
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let sr = short_radio.expect("The TMembership protocol requires a short_radio to be provided.");
             //Initialize the radio.
-            let listener = try!(sr.init());
-            let handler : Arc<Box<Protocol>> = Arc::new(Box::new(TMembership::new(sr, seed, id, name)));
-            let mut listeners = Vec::new();
-            listeners.push(Some(listener));
+            let listener = sr.init()?;
+            let handler : Arc<Protocol> = Arc::new(TMembership::new(Arc::clone(&sr), seed, id, name));
+            let mut radio_channels = Vec::new();
+            radio_channels.push((listener, sr));
             let resources = ProtocolResources{  handler : handler, 
-                                                listeners : listeners };
+                                                radio_channels : radio_channels };
             Ok(resources)
         },
 
@@ -85,20 +94,33 @@ pub fn build_protocol_resources( p : Protocols,
             let lr = long_radio.expect("The TMembership_Advanced protocol requires a long_radio to be provided.");
 
             //Build the listeners list
-            let mut listeners = Vec::new();
-            let sr_listener = try!(sr.init());
-            let lr_listener = try!(lr.init());
-            listeners.push(Some(sr_listener));
-            listeners.push(Some(lr_listener));
+            let mut radio_channels = Vec::new();
+            let sr_listener = sr.init()?;
+            let lr_listener = lr.init()?;
+            radio_channels.push((sr_listener, Arc::clone(&sr)));
+            radio_channels.push((lr_listener, Arc::clone(&lr)));
 
             //Build the protocol handler
-            let handler : Arc<Box<Protocol>> = Arc::new(Box::new(TMembershipAdvanced::new(sr, lr, seed, id, name)));
+            let handler : Arc<Protocol> = Arc::new(TMembershipAdvanced::new(sr, lr, seed, id, name));
 
             //Build the resources context
             let resources = ProtocolResources{ handler : handler,
-                                               listeners : listeners };
+                                               radio_channels : radio_channels };
             Ok(resources)
         },
+
+        Protocols::NaiveRouting => {
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let sr = short_radio.expect("The NaiveRouting protocol requires a short_radio to be provided.");
+            //Initialize the radio.
+            let listener = sr.init()?;
+            let handler : Arc<Protocol> = Arc::new(NaiveRouting::new(name, id, Arc::clone(&sr)));
+            let mut radio_channels = Vec::new();
+            radio_channels.push((listener, sr));
+            let resources = ProtocolResources{  handler : handler, 
+                                                radio_channels : radio_channels };
+            Ok(resources)            
+        }
 
     }
 }

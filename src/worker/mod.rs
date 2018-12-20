@@ -31,6 +31,8 @@ extern crate serde;
 extern crate byteorder;
 extern crate pnet;
 extern crate ipnetwork;
+extern crate md5;
+extern crate rusqlite;
 
 use std::io::Write;
 use self::serde_cbor::de::*;
@@ -43,23 +45,23 @@ use std::path::Path;
 use std::collections::{HashSet, HashMap};
 use std::process::{Command, Child};
 use std::sync::{PoisonError, MutexGuard};
-use std::net::{TcpListener, TcpStream};
-use std::os::unix::net::{UnixStream, UnixListener};
 use worker::protocols::*;
 use worker::radio::*;
-use worker::client::*;
 use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
 use self::rand::{StdRng, SeedableRng};
 use self::byteorder::{NativeEndian, WriteBytesExt};
-use std::thread;
+use std::thread::{self, JoinHandle};
+use self::md5::Digest;
+use worker::mobility::*;
 
 //Sub-modules declaration
 pub mod worker_config;
 pub mod protocols;
 pub mod radio;
-pub mod client;
 pub mod listener;
+pub mod commands;
+pub mod mobility;
 
 // *****************************
 // ********** Globals **********
@@ -83,6 +85,10 @@ pub enum WorkerError {
     Configuration(String),
     ///Error in concurrency operations.
     Sync(String),
+    ///Error producing a command for this worker
+    Command(String),
+    ///Error performing DB operations
+    DB(rusqlite::Error),
 }
 
 impl fmt::Display for WorkerError {
@@ -91,7 +97,9 @@ impl fmt::Display for WorkerError {
             WorkerError::Serialization(ref err) => write!(f, "Serialization error: {}", err),
             WorkerError::IO(ref err) => write!(f, "IO error: {}", err),
             WorkerError::Configuration(ref err) => write!(f, "Configuration error: {}", err),
-            WorkerError::Sync(ref err) => write!(f, "Synchronization error: {}", err),          
+            WorkerError::Sync(ref err) => write!(f, "Synchronization error: {}", err),   
+            WorkerError::Command(ref err) => write!(f, "Command error: {}", err),
+            WorkerError::DB(ref err) => write!(f, "Command error: {}", err),
         }
     }
 
@@ -104,6 +112,8 @@ impl error::Error for WorkerError {
             WorkerError::IO(ref err) => err.description(),
             WorkerError::Configuration(ref err) => err.as_str(),
             WorkerError::Sync(ref err) => err.as_str(),
+            WorkerError::Command(ref err) => err.as_str(),
+            WorkerError::DB(ref err) => err.description(),
         }
     }
 
@@ -113,6 +123,8 @@ impl error::Error for WorkerError {
             WorkerError::IO(ref err) => Some(err),
             WorkerError::Configuration(_) => None,
             WorkerError::Sync(_) => None,
+            WorkerError::Command(_) => None,
+            WorkerError::DB(ref err) => Some(err),
         }
     }
 }
@@ -140,14 +152,37 @@ impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Peer>>>> for WorkerErro
         WorkerError::Sync(err.to_string())
     }
 }
-/// This enum is used to pass around the socket listener for the type of operation of the worker
-pub enum ListenerType {
-    ///Simulated mode uses an internal UnixListener
-    Simulated(UnixListener),
-    ///Device mode uses an internal TCPListener
-    Device(TcpListener),
+
+impl From<rusqlite::Error> for WorkerError {
+    fn from(err : rusqlite::Error) -> WorkerError {
+        WorkerError::DB(err)
+    }
 }
 
+///Enum used to encapsualte the addresses a peer has and tag them by type.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub enum AddressType {
+    ///Short range
+    ShortRange(String),
+    ///Long range
+    LongRange(String),
+}
+
+impl AddressType {
+    fn get_address(&self ) -> String {
+        match &self {
+            AddressType::ShortRange(s) => s.clone(),
+            AddressType::LongRange(s) => s.clone(),
+        }
+    }
+
+    fn is_short_range(&self) -> bool {
+        match &self {
+            AddressType::ShortRange(_s) => true,
+            AddressType::LongRange(_s) => false,
+        }        
+    }
+}
 /// Peer struct.
 /// Defines the public identity of a node in the mesh.
 /// 
@@ -157,10 +192,12 @@ pub struct Peer {
     pub id: String, 
     /// Friendly name of the peer. 
     pub name : String,
-    ///Endpoint at which this worker's short_radio is listening for messages.
-    pub short_address : Option<String>,
-    ///Endpoint at which this worker's long_radio is listening for messages.
-    pub long_address : Option<String>,
+    // ///Endpoint at which this worker's short_radio is listening for messages.
+    // pub short_address : Option<String>,
+    // ///Endpoint at which this worker's long_radio is listening for messages.
+    // pub long_address : Option<String>,
+    ///The addesses that this peer is listening at.
+    addresses : Vec<AddressType>,
 }
 
 impl Peer {
@@ -168,8 +205,7 @@ impl Peer {
     pub fn new() -> Peer {
         Peer {  id : String::from(""),
                 name : String::from(""),
-                short_address : None,
-                long_address : None }
+                addresses : vec![] }
     }
 }
 
@@ -177,7 +213,7 @@ impl Peer {
 /// The sender and destination fields are used in the same way across all message-types and protocols.
 /// The payload field encodes the specific data for the particular message type that only the protocol
 /// knows about
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageHeader {
     ///Sender of the message
     pub sender : Peer,
@@ -203,6 +239,19 @@ impl MessageHeader {
                         payload : None }
     }
 
+    /// Produces the MD5 checksum of this message based on the following data:
+    /// Sender name
+    /// Destination name
+    /// Payload
+    /// This is done instead of getting the md5sum of the entire structure for testability purposes
+    pub fn get_hdr_hash(&self) -> Result<Digest, WorkerError> {
+        let mut data = Vec::new();
+        data.append(&mut self.sender.name.clone().into_bytes());
+        data.append(&mut self.destination.name.clone().into_bytes());
+        data.append(&mut self.payload.clone().unwrap());
+        let dig = md5::compute(to_vec(&data)?);
+        Ok(dig)
+    }
 }
 
 ///Struct to represent DNS TXT records for advertising the meshsim service and obtain records from peers.
@@ -275,7 +324,7 @@ impl ServiceRecord {
 }
 
 /// Operation modes for the worker.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum OperationMode {
     /// Simulated: The worker process is part of a simulated environment, running as one of many processes in the same machine.
     Simulated,
@@ -309,6 +358,8 @@ impl FromStr for OperationMode {
 //#[derive(Debug, Clone)]
 #[derive(Debug)]
 pub struct Worker {
+    ///ID of this worker in the DB
+    db_id : i64,
     ///Name of the current worker.
     name : String,
     ///Unique ID composed of 16 random numbers represented in a Hex String.
@@ -328,6 +379,8 @@ pub struct Worker {
     operation_mode : OperationMode,
     /// The protocol that this Worker should run for this configuration.
     pub protocol : Protocols,
+    ///Position of the worker
+    position : Position,
 }
 
 impl Worker {
@@ -344,11 +397,8 @@ impl Worker {
         //Init the radios and get their respective listeners.
         let short_radio = self.short_radio.take();
         let long_radio = self.long_radio.take();
-
-        //Get the protocol object.
-        //TODO: Get protocol from configuration file.
-        let mut resources = try!(build_protocol_resources( self.protocol, short_radio, long_radio, self.seed, 
-                                                           self.id.clone(), self.name.clone(),));
+        let mut resources = build_protocol_resources( self.protocol, short_radio, long_radio, self.seed, 
+                                                           self.id.clone(), self.name.clone(),)?;
         
         info!("Worker finished initializing.");
         
@@ -357,19 +407,48 @@ impl Worker {
 
         //Start listening for messages
         let prot_handler = Arc::clone(&resources.handler);
-        let threads = resources.listeners.iter_mut().map(|x| x.take().map(|listener| { 
+        let mut threads : Vec<JoinHandle<Result<(), WorkerError>>> = resources.radio_channels.drain(..).map(|(rx, tx)| { 
             let prot_handler = Arc::clone(&prot_handler);
-            thread::spawn(move || {
-                let _res = listener.start(prot_handler);
+
+            thread::spawn(move || {        
+                info!("Listening for messages");
+                loop {
+                    match rx.read_message() {
+                        Some(hdr) => { 
+                            let prot = Arc::clone(&prot_handler);
+                            let r_type = rx.get_radio_range();
+                            let tx_channel = Arc::clone(&tx);
+
+                            let _handle = thread::spawn(move || -> Result<(), WorkerError> {
+                                let response = prot.handle_message(hdr, r_type)?;
+
+                                match response {
+                                    Some(r) => { 
+                                        tx_channel.broadcast(r)?;
+                                    },
+                                    None => { }
+                                }
+                                   
+                                Ok(())
+                            });
+                        },
+                        None => { 
+                            warn!("Failed to read incoming message.");
+                        }
+                    }
+                }
             })
-        }));
+        }).collect();
+
+        let com_loop_thread = self.start_command_loop_thread(Arc::clone(&prot_handler))?;
+        threads.push(com_loop_thread);
 
         // let _exit_values = threads.map(|x| x.map(|t| t.join())); //This compact version does not work. It seems the lazy iterator is not evaluated.
         for x in threads {
-            if let Some(h) = x {
-                debug!("Waiting for a listener thread...");
-                let _res = h.join();
-            }
+            // if let Some(h) = x {
+            //     debug!("Waiting for a listener thread...");
+                let _res = x.join();
+            // }
         }
 
         Ok(())
@@ -397,6 +476,54 @@ impl Worker {
         let _ = random_bytes.write_u32::<NativeEndian>(seed);
         let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
         StdRng::from_seed(randomness.as_slice())
+    }
+
+    fn start_command_loop_thread(&self, protocol_handler : Arc<Protocol>) -> io::Result<JoinHandle<Result<(), WorkerError>>> {
+        let tb = thread::Builder::new();
+        tb.name(String::from("CommandLoop"))
+        .spawn(move || { 
+            let mut input = String::new();
+            debug!("Command loop started");
+            loop {
+                match io::stdin().read_line(&mut input) {
+                    Ok(_bytes) => {
+                        match input.parse::<commands::Commands>() {
+                            Ok(command) => {
+                                info!("Command received: {:?}", &command);
+                                match Worker::process_command(command, Arc::clone(&protocol_handler)) {
+                                    Ok(_) => { /* All good! */ },
+                                    Err(e) => {
+                                        error!("Error executing command: {}", e);
+                                    }
+                                }
+                            },
+                            Err(e) => { 
+                                error!("Error parsing command: {}", e);
+                            },
+                        }
+                    }
+                    Err(error) => { 
+                        error!("{}", error);
+                    }
+                }
+            }
+            Ok(())
+        })
+    }
+
+    fn process_command(com : commands::Commands, ph : Arc<Protocol>) -> Result<(), WorkerError> {
+        match com {
+            commands::Commands::Add_bcg(radio, group) => { 
+                unimplemented!("Adding broadcast groups is not yet supported.");
+            },
+            commands::Commands::Rem_bcg(radio, group) => { 
+                unimplemented!("Removing broadcast groups is not yet supported.");
+            },
+            commands::Commands::Send(destination, data) => {
+                let _res = ph.send(destination, data)?;
+            }
+        }
+        Ok(())
     }
 }
 
