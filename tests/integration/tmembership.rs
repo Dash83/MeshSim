@@ -4,7 +4,7 @@
 //! 
 //! Future tests might cover the protocol in more detail and corner cases.
 
-use super::*;
+use super::super::*;
 
 #[test]
 fn integration_tmembership_join() {
@@ -95,8 +95,6 @@ fn killnode_test() {
     .unwrap();
 }
 
-//TODO: Fix test
-#[ignore]
 #[test]
 fn sustained_test() {
     use std;
@@ -104,7 +102,7 @@ fn sustained_test() {
     let test = get_test_path("tmembership_sustained.toml");
     let program = get_master_path();
     let worker = get_worker_path();
-    let work_dir = create_test_dir("tmembership_sustained");
+    let work_dir = create_test_dir("sustained");
     let log_dir = format!("{}{}{}", &work_dir, std::path::MAIN_SEPARATOR, "log");
 
     println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
@@ -119,6 +117,20 @@ fn sustained_test() {
     .stdout()
     .contains("End_Test action: Finished. 14 processes terminated.")
     .unwrap();
+
+    //Assert all processes had a full membership list
+    for i in 1..15 {
+        let node_number = if i < 10 {
+            format!("0{}", i)
+        } else {
+            format!("{}", i)
+        };
+        println!("Checking membership of node{}", &node_number);
+        let log_file = format!("{}/log/node{}.log", &work_dir, &node_number);
+        let log_records = logging::get_log_records_from_file(&log_file).unwrap();
+        let full_membership = logging::find_log_record("msg", "Membership. 14 members", &log_records);
+        assert!(full_membership.is_some());
+    }
 
 
 }

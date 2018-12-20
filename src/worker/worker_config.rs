@@ -12,14 +12,15 @@ use std::path::Path;
 use std::fs::File;
 use std::iter;
 use self::rustc_serialize::hex::*;
-use self::rand::Rng;
+use self::rand::{Rng, StdRng};
 use std::sync::{Mutex, Arc};
+use worker::mobility::{self, Position};
 
 ///Configuration pertaining to a given radio of the worker.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct RadioConfig {
     ///The broadcast groups this radio belongs to. Ignored in device mode.
-    pub broadcast_groups : Option<Vec<String>>,
+    pub broadcast_groups : Vec<String>,
     ///Simulated mode only. How likely ([0-1]) are packets to reach their destination.
     pub reliability : Option<f64>,
     ///Simulated mode only. Artificial delay (in ms) introduced to the network packets of this radio.
@@ -32,10 +33,44 @@ impl RadioConfig {
     /// Create a new default radio configuration with all fields set to a default. This it not valid for either simulated or device mode,
     /// so users should take care to modify the appropriate values.
     pub fn new() -> RadioConfig {
-        RadioConfig{ broadcast_groups : Some(vec!(String::from("group1"))),
+        RadioConfig{ broadcast_groups : vec!(String::from("group1")),
                      reliability : Some(1.0),
                      delay : Some(0),
                      interface_name : Some(String::from("wlan0")),}
+    }
+
+    /// Consuming the underlying configuration, this method produces a Box<Radio> object that can be started and used.
+    pub fn create_radio(self, operation_mode : OperationMode, range : RadioTypes, work_dir : String, worker_name : String, 
+                        worker_id : String, seed : u32, r : Option<Arc<Mutex<StdRng>>>) -> Arc<Radio> {
+        let rng = match r {
+            Some(gen) => gen,
+            None => { Arc::new(Mutex::new(Worker::rng_from_seed(seed))) }
+        };
+
+        match operation_mode {
+            OperationMode::Device => { 
+                let iname = self.interface_name.expect("An interface name for radio_short must be provided when operating in device_mode.");
+                Arc::new( DeviceRadio::new( iname, 
+                                            worker_name,
+                                            worker_id, 
+                                            rng,
+                                            range))
+            },
+            OperationMode::Simulated => { 
+                let delay = self.delay.unwrap_or(0);
+                let reliability = self.reliability.unwrap_or(1.0);
+                let bg = self.broadcast_groups;
+                Arc::new(SimulatedRadio::new(delay, 
+                                             reliability, 
+                                             bg, 
+                                             work_dir,
+                                             worker_id,
+                                             worker_name,
+                                             RadioTypes::ShortRange,
+                                             rng,
+                                             range))
+            },
+        }
     }
 }
 /// Configuration for a worker object. This struct encapsulates several of the properties
@@ -56,6 +91,8 @@ pub struct WorkerConfig {
     pub operation_mode : OperationMode,
     /// The protocol that this Worker should run for this configuration.
     pub protocol : Protocols,
+    /// Initial position of the worker
+    pub position : Position,
     ///NOTE: Due to the way serde_toml works, the RadioConfig fields must be kept last in the structure.
     /// This is because they are interpreted as TOML tables, and those are always placed at the end of structures.
     ///The configuration for the short-range radio of this worker.
@@ -74,11 +111,12 @@ impl WorkerConfig {
                      protocol : Protocols::TMembership,
                      radio_short : None,
                      radio_long : None,
-                    }
+                     position : Position{ x : 0.0, y : 0.0 }
+        }
     }
 
     ///Creates a new Worker object configured with the values of this configuration object.
-    pub fn create_worker(self) -> Worker {
+    pub fn create_worker(self) -> Result<Worker, WorkerError> {
         //Create the RNG
         let mut gen = Worker::rng_from_seed(self.random_seed);
         
@@ -91,93 +129,45 @@ impl WorkerConfig {
         let rng = Arc::new(Mutex::new(gen));
 
         //Create the radios
-        let (sr, lr) = match self.operation_mode {
-            OperationMode::Device => { 
-                //Short-range radio
-                let radio_short = match self.radio_short {
-                    Some(rs_config) => {
-                        let iname = rs_config.interface_name.expect("An interface name for radio_short must be provided when operating in device_mode.");
-                        let r : Arc<Radio> = Arc::new( DeviceRadio::new(iname, 
-                                                         self.worker_name.clone(),
-                                                         id.clone(), 
-                                                         Arc::clone(&rng),
-                                                         RadioTypes::ShortRange));
-                        Some(r)
-                    }
-                    None => None,
-                };
-                
-                //Long-range radio
-                let radio_long = match self.radio_long {
-                    Some(rl_config) => {
-                        let iname = rl_config.interface_name.expect("An interface name for radio_long must be provided when operating in device_mode.");
-                        let r : Arc<Radio> = Arc::new( DeviceRadio::new( iname, 
-                                                          self.worker_name.clone(), 
-                                                          id.clone(), 
-                                                          Arc::clone(&rng),
-                                                          RadioTypes::LongRange ));
-                        Some(r)
-                    },
-                    None => None,
-                };
-
-                (radio_short, radio_long)
+        let sr = match self.radio_short {
+            Some(sr_config) => { 
+                let sr = sr_config.create_radio(self.operation_mode, RadioTypes::ShortRange, self.work_dir.clone(), 
+                                                self.worker_name.clone(), id.clone(), self.random_seed, Some(Arc::clone(&rng)));
+                Some(sr)
             },
-            OperationMode::Simulated => { 
-                //Short-range radio
-                let radio_short = match self.radio_short {
-                    Some(rs_config) => {
-                        let delay = rs_config.delay.unwrap_or(0);
-                        let reliability = rs_config.reliability.unwrap_or(1.0);
-                        let bg = rs_config.broadcast_groups.expect("A list of broadcast groups must be provided for radio_short in simulated_mode.");
-                        let r : Arc<Radio> = Arc::new( SimulatedRadio::new( delay, 
-                                                             reliability, 
-                                                             bg, 
-                                                             self.work_dir.clone(),
-                                                             id.clone(),
-                                                             self.worker_name.clone(),
-                                                             RadioTypes::ShortRange,
-                                                             Arc::clone(&rng),
-                                                             RadioTypes::ShortRange ));
-                        Some(r)
-                    },
-                    None => None,
-                };
+            None => { None }
+        };
 
-                //Long-range radio
-                let radio_long = match self.radio_long {
-                    Some(rl_config) => { 
-                        let delay = rl_config.delay.unwrap_or(0);
-                        let reliability = rl_config.reliability.unwrap_or(1.0);
-                        let bg = rl_config.broadcast_groups.expect("A list of broadcast groups must be provided for radio_long in simulated_mode.");
-                        let r : Arc<Radio> = Arc::new( SimulatedRadio::new( delay,
-                                                             reliability, 
-                                                             bg, 
-                                                             self.work_dir.clone(), 
-                                                             id.clone(), 
-                                                             self.worker_name.clone(),
-                                                             RadioTypes::LongRange,
-                                                             Arc::clone(&rng),
-                                                             RadioTypes::LongRange ));
-                        Some(r)
-                    },
-                    None => None,
-                };
+        let lr = match self.radio_long {
+            Some(lr_config) => { 
+                let sr = lr_config.create_radio(self.operation_mode, RadioTypes::LongRange, self.work_dir.clone(), 
+                                                self.worker_name.clone(), id.clone(), self.random_seed, Some(Arc::clone(&rng)));
+                Some(sr)
+            },
+            None => { None }
+        };
 
-
-                (radio_short, radio_long)               
+        let db_id = match self.operation_mode {
+            OperationMode::Device => 0,
+            OperationMode::Simulated => {
+                let conn = mobility::get_db_connection(&self.work_dir)?;
+                let _rows = mobility::create_positions_db(&conn)?;
+                mobility::register_worker(&conn, self.worker_name.clone(), id.clone(), &self.position)?
             },
         };
 
-        Worker{ name : self.worker_name,
-                short_radio : sr,
-                long_radio : lr,
-                work_dir : self.work_dir, 
-                rng : Arc::clone(&rng),
-                seed : self.random_seed,
-                operation_mode : self.operation_mode,
-                id : id,
-                protocol : self.protocol }
+        let w = Worker{ name : self.worker_name,
+                        short_radio : sr,
+                        long_radio : lr,
+                        work_dir : self.work_dir, 
+                        rng : Arc::clone(&rng),
+                        seed : self.random_seed,
+                        operation_mode : self.operation_mode,
+                        id : id,
+                        protocol : self.protocol,
+                        position : self.position,
+                        db_id : db_id, };
+        Ok(w)
     }
 
     ///Writes the current configuration object to a formatted configuration file, that can be passed to
@@ -185,7 +175,6 @@ impl WorkerConfig {
     pub fn write_to_file<P: AsRef<Path>>(&self, file_path: P) -> Result<(), WorkerError> {
         //Create configuration file
         let mut file = try!(File::create(&file_path));
-        //TODO: Do proper error handling.
         let data = match toml::to_string(self) {
             Ok(d) => d,
             Err(e) => return Err(WorkerError::Configuration(format!("Error writing configuration to file: {}", e)))
@@ -208,7 +197,7 @@ mod tests {
     #[test]
     fn test_workerconfig_new() {
         let config = WorkerConfig::new();
-        let config_str = "WorkerConfig { worker_name: \"worker1\", work_dir: \".\", random_seed: 0, operation_mode: Simulated, protocol: TMembership, radio_short: None, radio_long: None }";
+        let config_str = "WorkerConfig { worker_name: \"worker1\", work_dir: \".\", random_seed: 0, operation_mode: Simulated, protocol: TMembership, position: Position { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
 
         assert_eq!(format!("{:?}", config), config_str);
     }
@@ -250,7 +239,7 @@ mod tests {
         //Assert the file was written.
         assert!(path.exists());
 
-        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"TMembership\"\n\n[radio_short]\nbroadcast_groups = [\"group1\"]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\n\n[radio_long]\nbroadcast_groups = [\"group1\"]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\n";
+        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"TMembership\"\n\n[position]\nx = 0.0\ny = 0.0\n\n[radio_short]\nbroadcast_groups = [\"group1\"]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\n\n[radio_long]\nbroadcast_groups = [\"group1\"]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\n";
         
         let mut file_content = String::new();
         let _res = File::open(path).unwrap().read_to_string(&mut file_content);

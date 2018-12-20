@@ -4,9 +4,9 @@ extern crate serde_cbor;
 extern crate rand;
 
 use worker::protocols::Protocol;
-use worker::{WorkerError, Peer, MessageHeader, Worker};
+use worker::{WorkerError, Peer, MessageHeader, Worker, AddressType};
 use worker::radio::*;
-use std::collections::{HashSet, HashMap};
+use std::collections::HashMap;
 use std::sync::{Mutex, Arc, MutexGuard};
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
@@ -78,8 +78,8 @@ impl TMembershipAdvanced {
         let mut members = HashMap::new();
         let p = Peer{ id: id.clone(),
                       name : name.clone(),
-                      short_address : Some(String::from(sr.get_address())),
-                      long_address : Some(String::from(lr.get_address())) };
+                      addresses : vec![ AddressType::ShortRange(String::from(sr.get_address())),
+                                        AddressType::LongRange(String::from(lr.get_address())) ]};
         members.insert(id.clone(), p);
         let m = Arc::new(Mutex::new(members));
         let rng = Worker::rng_from_seed(seed);
@@ -124,13 +124,18 @@ impl Protocol for TMembershipAdvanced {
         
         Ok(None)
     }
+
+    fn send(&self, destination : String, data : Vec<u8>) -> Result<(), WorkerError> {
+        unimplemented!()
+    }
+
 }
 
 impl TMembershipAdvanced {
     fn initial_join_scan(&self) -> Result<Vec<JoinHandle<Result<(), WorkerError>>>, WorkerError> {
         let mut handles = Vec::new();
         //Perform radio-scan.
-        let nearby_peers = try!(self.short_radio.scan_for_peers()); //TODO: Refer to issue#13 in repo.
+        let nearby_peers = try!(self.short_radio.scan_for_peers());
         let mut far_peers = try!(self.long_radio.scan_for_peers());
 
         //In a lot of cases, the devices detected by the Long-range radio will have a large intersection
@@ -413,54 +418,55 @@ impl TMembershipAdvanced {
         //Destination peer
         let p = Peer { name : name,
                         id : id,
-                        short_address : Some(address.clone()),
-                        long_address : None };
+                        addresses : vec![ AddressType::ShortRange(address.clone()) ]};
 
         let h = thread::spawn(move || -> Result<(), WorkerError> {
-
             //Create join message
-            let msg = try!(TMembershipAdvanced::create_join_message(sender.clone(), p));
-            //Connect to the remote peer
-            let mut c = try!(r.connect(address)); 
-            //Send initial message
-            let _res = try!(c.send_msg(msg));
+            // let msg = TMembershipAdvanced::create_join_message(sender.clone(), p)?;
+            
+            // let _res = r.broadcast(msg)?;
 
-            //We will now enter a read/response loop until the protocol finishes.
-            loop {
-                //Read the data from the unix socket
-                let recv_msg = try!(c.read_msg());
-                //Try to decode the data into a message.
-                let response = match recv_msg {
-                    Some(mut hdr) => { 
-                        let data = hdr.payload.take().unwrap_or(vec![]);
-                        let msg = try!(TMembershipAdvanced::build_protocol_message(data));
-                        try!(TMembershipAdvanced::handle_message_internal(hdr, 
-                                                                          msg, 
-                                                                          sender.clone(), 
-                                                                          Arc::clone(&neighbours_short),
-                                                                          Arc::clone(&neighbours_long),  
-                                                                          Arc::clone(&network_members),
-                                                                          r_type) )
-                    },
-                    None => None,
-                };
-                //let response = try!(self.handle_message(recv_msg));
-                match response {
-                    Some(resp_msg) => { 
-                        let _res = try!(c.send_msg(resp_msg));
-                    },
-                    None => {
-                        //End of protocol sequence.
-                        break;
-                    }
-                }
-            }
+            // //Connect to the remote peer
+            // let mut c = try!(r.connect(address)); 
+            // //Send initial message
+            // let _res = try!(c.send_msg(msg));
+
+            // //We will now enter a read/response loop until the protocol finishes.
+            // loop {
+            //     //Read the data from the unix socket
+            //     let recv_msg = try!(c.read_msg());
+            //     //Try to decode the data into a message.
+            //     let response = match recv_msg {
+            //         Some(mut hdr) => { 
+            //             let data = hdr.payload.take().unwrap_or(vec![]);
+            //             let msg = try!(TMembershipAdvanced::build_protocol_message(data));
+            //             try!(TMembershipAdvanced::handle_message_internal(hdr, 
+            //                                                               msg, 
+            //                                                               sender.clone(), 
+            //                                                               Arc::clone(&neighbours_short),
+            //                                                               Arc::clone(&neighbours_long),  
+            //                                                               Arc::clone(&network_members),
+            //                                                               r_type) )
+            //         },
+            //         None => None,
+            //     };
+            //     //let response = try!(self.handle_message(recv_msg));
+            //     match response {
+            //         Some(resp_msg) => { 
+            //             let _res = try!(c.send_msg(resp_msg));
+            //         },
+            //         None => {
+            //             //End of protocol sequence.
+            //             break;
+            //         }
+            //     }
+            // }
             Ok(())
         });
         Ok(h)
     }
 
-   fn heartbeat_thread(&self) -> Result<(), WorkerError> {
+   fn heartbeat_thread(&self) -> Result<JoinHandle<Result<(), WorkerError>>, WorkerError> {
         let mut rng = self.rng.clone();
         let sender = self.get_self_peer();
         let short_radio = Arc::clone(&self.short_radio);
@@ -469,7 +475,7 @@ impl TMembershipAdvanced {
         let ln = Arc::clone(&self.neighbours_long);
         let network_members = Arc::clone(&self.network_members);
 
-        let _handle = thread::spawn(move || -> Result<MessageHeader, WorkerError> {
+        let handle = thread::spawn(move || -> Result<(), WorkerError> {
             info!("Starting the heartbeat thread.");
 
             let sleep_duration = Duration::from_millis(HEARTBEAT_TIMER);
@@ -498,7 +504,7 @@ impl TMembershipAdvanced {
                 let _ = TMembershipAdvanced::print_membership_list("Membership", Arc::clone(&network_members));
             }
         });
-        Ok(())
+        Ok(handle)
     }
 
     fn start_heartbeat_handshake(sender : Peer,  random_choice : u32, radio : Arc<Radio>, r_type : RadioTypes,
@@ -535,54 +541,21 @@ impl TMembershipAdvanced {
             }
         }   //LOCK : RELEASE : NEAR
 
-        let msg = try!(TMembershipAdvanced::create_heartbeat_message(sender.clone(), selected_peer.clone())); //Initial message of the heartbeat handshake.
-        let mut response = Some(msg);
-        let address = selected_peer.clone().short_address.unwrap_or(String::from(""));
-        let mut client =  match radio.connect(address) {
-            Ok(c) => { c },
+        //Initial message of the heartbeat handshake.
+        let msg = TMembershipAdvanced::create_heartbeat_message(sender.clone(), selected_peer.clone())?; 
+        match radio.broadcast(msg) {
+            Ok(_) => { },
             Err(e) => { 
-                //Unable to connect to peer. Remove it from neighbor list.
-                {   //LOCK : GET : NEAR
-                    let mut near : MutexGuard<HashMap<String, Peer>> = try!(nl.lock());
-                    let _res = near.remove(&selected_peer.id);
-                    warn!("Could not connect with {}. It has been removed from the neighbour list.", selected_peer.name);
-                }
-                return Ok(())
+                error!("Failed to send message to {}", &selected_peer.name);
             },
-        };
-
-        loop {
-            let gl = Arc::clone(&network_members);
-            let nl = Arc::clone(&neighbours_short);
-            let fl = Arc::clone(&neighbours_long);
-
-            match response {
-                Some(resp_msg) => { 
-                    let _res = try!(client.send_msg(resp_msg));
-                },
-                None => {
-                    //End of protocol sequence.
-                    return Ok(())
-                }
-            }
-
-            let hdr = try!(client.read_msg());
-            response = match hdr {
-                Some(mut h) => {
-                        let data = match h.payload.take() {
-                            Some(d) => { d },
-                            None => {
-                                warn!("Messaged received from {:?} had empty payload.", &h.sender);
-                                vec![]
-                            }
-                        };
-    
-                        let msg = try!(TMembershipAdvanced::build_protocol_message(data)); 
-                        try!(TMembershipAdvanced::handle_message_internal(h, msg, sender.clone(), nl, fl, gl, r_type)) 
-                },
-                None => None,
-            };
         }
+
+        //Print the membership lists at the end of the cycle
+        let _ = TMembershipAdvanced::print_membership_list("Neighbors short", Arc::clone(&nl));
+        let _ = TMembershipAdvanced::print_membership_list("Neighbors long", Arc::clone(&fl));
+        let _ = TMembershipAdvanced::print_membership_list("Membership", Arc::clone(&network_members));
+
+        Ok(())
     }
 
     fn build_protocol_message(data : Vec<u8>) -> Result<Messages, serde_cbor::Error> {
@@ -593,8 +566,7 @@ impl TMembershipAdvanced {
     fn get_self_peer(&self) -> Peer {
         Peer{ name : self.worker_name.clone(),
               id : self.worker_id.clone(),
-              short_address : Some(String::from(self.short_radio.get_address())),
-              long_address : None }
+              addresses : vec![ AddressType::ShortRange( self.short_radio.get_address().to_string()) ]}
     }
 
     fn print_membership_list<'a>(name : &'a str, list : Arc<Mutex<HashMap<String, Peer>>>) -> Result<(), WorkerError> {

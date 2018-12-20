@@ -5,10 +5,11 @@ extern crate serde;
 extern crate serde_cbor;
 #[macro_use]
 extern crate slog;
-extern crate slog_stream;
 extern crate slog_term;
 extern crate slog_json;
 extern crate slog_stdlog;
+extern crate slog_async;
+extern crate slog_scope;
 #[macro_use]
 extern crate log;
 extern crate toml;
@@ -17,7 +18,7 @@ extern crate rand;
 use mesh_simulator::worker::worker_config::WorkerConfig;
 use mesh_simulator::worker;
 use clap::{Arg, App, ArgMatches};
-use slog::DrainExt;
+use slog::Drain;
 use std::fs::{OpenOptions, File, self};
 use std::io::{self, Read};
 use std::fmt;
@@ -43,7 +44,7 @@ const ERROR_INITIALIZATION : i32 = 2;
 
 #[derive(Debug)]
 enum CLIError {
-    SetLogger(log::SetLoggerError),
+    SetLogger(String),
     IO(io::Error),
     Worker(worker::WorkerError),
     Serialization(serde_cbor::Error),
@@ -54,7 +55,7 @@ enum CLIError {
 impl error::Error for CLIError {
     fn description(&self) -> &str {
         match *self {
-            CLIError::SetLogger(ref err) => err.description(),
+            CLIError::SetLogger(ref desc) => &desc,
             CLIError::IO(ref err) => err.description(),
             CLIError::Worker(ref err) => err.description(),
             CLIError::Serialization(ref err) => err.description(),
@@ -65,7 +66,7 @@ impl error::Error for CLIError {
 
     fn cause(&self) -> Option<&error::Error> {
         match *self {
-            CLIError::SetLogger(ref err) => Some(err),
+            CLIError::SetLogger(_) => None,
             CLIError::IO(ref err) => Some(err),
             CLIError::Worker(ref err) => Some(err),
             CLIError::Serialization(ref err) => Some(err),
@@ -95,11 +96,11 @@ impl From<io::Error> for CLIError {
     }
 }
 
-impl From<log::SetLoggerError> for CLIError {
-    fn from(err : log::SetLoggerError) -> CLIError {
-        CLIError::SetLogger(err)
-    }
-}
+// impl From<log::SetLoggerError> for CLIError {
+//     fn from(err : log::SetLoggerError) -> CLIError {
+//         CLIError::SetLogger(err)
+//     }
+// }
 
 impl From<serde_cbor::Error> for CLIError {
     fn from(err : serde_cbor::Error) -> CLIError {
@@ -139,17 +140,44 @@ fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIE
                         .write(true)
                         .truncate(true)
                         .open(log_file_name));
-    
-    let console_drain = slog_term::streamer().build();
-    let file_drain = slog_stream::stream(log_file, slog_json::default());
+
+    //Create the terminal drain
+    let decorator = slog_term::TermDecorator::new().build();
+    let d1 = slog_term::FullFormat::new(decorator).build().fuse();
+    let d1 = slog_async::Async::new(d1).build().fuse();
+
+    //Create the file drain
+    let d2 = slog_json::Json::new(log_file)
+        .add_default_keys()
+        .build()
+        .fuse();
+    let d2 = slog_async::Async::new(d2).build().fuse();
+
     let process_name = String::from(worker_name);
-    let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!("Process" => process_name));
-    try!(slog_stdlog::set_logger(logger));
+    //Fuse the drains and create the logger
+    let logger = slog::Logger::root(slog::Duplicate::new(d1, d2).fuse(), o!("Process" => process_name));
+    //let logger = slog::Logger::root(d2, o!("Process" => process_name));
+
+    // let console_drain = slog_term::streamer().build();
+    // let file_drain = slog_stream::stream(log_file, slog_json::default());
+    // let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!("Process" => process_name));
+    
+    //slog_stdlog uses the logger from slog_scope, so set a logger there
+    let _guard = slog_scope::set_global_logger(logger);
+    
+    // register slog_stdlog as the log handler with the log crate
+    // let result = match slog_stdlog::init() {
+    //     Ok(_) => Ok(()),
+    //     Err(err) => Err( CLIError::SetLogger(format!("Error setting logger: {}", err))),
+    // };
+
+    // result
+    slog_stdlog::init().unwrap();
     Ok(())
 } 
 
 fn run(config : WorkerConfig) -> Result<(), CLIError> {
-   let mut obj =  config.create_worker();
+   let mut obj =  config.create_worker()?;
    //debug!("Worker Obj: {:?}", obj);
    try!(obj.start());
    Ok(())
