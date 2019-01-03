@@ -162,6 +162,7 @@ impl NaiveRouting {
     fn get_self_peer(&self) -> Peer {
         Peer{ name : self.worker_name.clone(),
               id : self.worker_id.clone(),
-              addresses : vec![ AddressType::ShortRange(String::from(self.short_radio.get_address())) ] }
+              short_address : Some(self.short_radio.get_address().into()),
+              long_address : None }
     }
 }

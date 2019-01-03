@@ -96,6 +96,7 @@ fn killnode_test() {
 }
 
 #[test]
+#[ignore]
 fn sustained_test() {
     use std;
     

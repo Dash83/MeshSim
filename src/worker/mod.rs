@@ -192,12 +192,12 @@ pub struct Peer {
     pub id: String, 
     /// Friendly name of the peer. 
     pub name : String,
-    // ///Endpoint at which this worker's short_radio is listening for messages.
-    // pub short_address : Option<String>,
-    // ///Endpoint at which this worker's long_radio is listening for messages.
-    // pub long_address : Option<String>,
-    ///The addesses that this peer is listening at.
-    addresses : Vec<AddressType>,
+    ///Endpoint at which this worker's short_radio is listening for messages.
+    pub short_address : Option<String>,
+    ///Endpoint at which this worker's long_radio is listening for messages.
+    pub long_address : Option<String>,
+    // ///The addesses that this peer is listening at.
+    // addresses : Vec<AddressType>,
 }
 
 impl Peer {
@@ -205,7 +205,8 @@ impl Peer {
     pub fn new() -> Peer {
         Peer {  id : String::from(""),
                 name : String::from(""),
-                addresses : vec![] }
+                short_address : None,
+                long_address : None }
     }
 }
 
@@ -379,8 +380,6 @@ pub struct Worker {
     operation_mode : OperationMode,
     /// The protocol that this Worker should run for this configuration.
     pub protocol : Protocols,
-    ///Position of the worker
-    position : Position,
 }
 
 impl Worker {
