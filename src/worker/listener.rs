@@ -24,7 +24,6 @@ pub trait Listener : Send {
 ///Listener that uses contains an underlying UnixListener. Used by the worker in simulated mode.
 pub struct SimulatedListener {
     socket : Socket,
-    delay : u32,
     reliability : f64,
     rng : Arc<Mutex<StdRng>>,
     r_type : RadioTypes,
@@ -139,9 +138,8 @@ impl Listener for SimulatedListener {
 
 impl SimulatedListener {
     ///Creates a new instance of SimulatedListener
-    pub fn new( socket : Socket, delay : u32, reliability : f64, rng : Arc<Mutex<StdRng>>, r_type : RadioTypes) -> SimulatedListener {
+    pub fn new( socket : Socket, reliability : f64, rng : Arc<Mutex<StdRng>>, r_type : RadioTypes) -> SimulatedListener {
         SimulatedListener{ socket : socket, 
-                           delay : delay, 
                            reliability : reliability,
                            rng : rng,
                            r_type : r_type }

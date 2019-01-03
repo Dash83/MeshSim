@@ -109,7 +109,8 @@ impl TMembership {
         let mut members = HashSet::new();
         let me = Peer{ id : id.clone(),
                        name : name.clone(),
-                       addresses : vec![AddressType::ShortRange(String::from(sr.get_address()))] };
+                       short_address : Some(sr.get_address().into()),
+                       long_address : None };
         members.insert(me);
         let m = Arc::new(Mutex::new(members));
         let rng = Worker::rng_from_seed(seed);
@@ -421,7 +422,8 @@ impl TMembership {
     fn get_self_peer(&self) -> Peer {
         Peer{ name : self.worker_name.clone(),
               id : self.worker_id.clone(),
-              addresses : vec![ AddressType::ShortRange(String::from(self.short_radio.get_address())) ] }
+              short_address : Some(self.short_radio.get_address().into()),
+              long_address : None }
     }
 
     fn print_membership_list<'a>(name : &'a str, list : Arc<Mutex<HashSet<Peer>>>) -> Result<(), WorkerError> {

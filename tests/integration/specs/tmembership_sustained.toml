@@ -3,19 +3,32 @@
 #seconds, as well as serve as a benchmark to see how faster does the 2 radio version finds all nodes.
 
 name = "sustained_test"
-actions = ["End_Test 14000", "Add_Node node2 5", 
-                             "Add_Node node12 6",
-                             "Add_Node node3 7",
-                             "Add_Node node13 8",
-                             "Add_Node node4 9",
-                             "Add_Node node9 10",
-                             "Add_Node node5 11",
-                             "Add_Node node10 12",
-                             "Add_Node node6 13",
-                             "Add_Node node7 14",
-                             "Add_Node node11 15", 
-                             "Add_Node node8 16" ]
-
+# actions = ["End_Test 14000", "Add_Node node14 10",
+#                              "Add_Node node2 20", 
+#                              "Add_Node node12 30",
+#                              "Add_Node node3 40",
+#                              "Add_Node node13 50",
+#                              "Add_Node node4 60",
+#                              "Add_Node node9 70",
+#                              "Add_Node node5 80",
+#                              "Add_Node node10 90",
+#                              "Add_Node node6 100",
+#                              "Add_Node node7 110",
+#                              "Add_Node node11 120", 
+#                              "Add_Node node8 130" ]
+actions = ["End_Test 14000", "Add_Node node2 10",
+                             "Add_Node node3 20", 
+                             "Add_Node node4 30",
+                             "Add_Node node5 40",
+                             "Add_Node node6 50",
+                             "Add_Node node7 60",
+                             "Add_Node node8 70",
+                             "Add_Node node9 80",
+                             "Add_Node node10 90",
+                             "Add_Node node11 100",
+                             "Add_Node node12 110",
+                             "Add_Node node13 120", 
+                             "Add_Node node14 130" ]
 ### Initial Nodes ###
 [initial_nodes.node1]
     worker_name = "node01"
@@ -24,28 +37,14 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     operation_mode = "Simulated"
     protocol = "TMembership"
     [initial_nodes.node1.position]
-        x = 0.0
+        x = -110.0
         y = 0.0
     [initial_nodes.node1.radio_short]
-        broadcast_groups = ["g1"]
+        #broadcast_groups = ["g1"]
         reliability = 1.0
         delay = 0
         interface_name = "wlan0"
-
-[initial_nodes.node14]
-    worker_name = "node14"
-    work_dir = "/tmp"
-    random_seed = 1234
-    operation_mode = "Simulated"
-    protocol = "TMembership"
-    [initial_nodes.node14.position]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node14.radio_short] #Short-range radio
-        reliability = 1 #Not used in device_mode
-        delay = 0 #Not used in device_mode
-        broadcast_groups = ["g11"] #Not used in device_mode
-        interface_name = "wlan0" #Not used in simulated_mode
+        range = 100.0
 
 ### Available Nodes ###
 [available_nodes.node2]
@@ -55,13 +54,15 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     operation_mode = "Simulated"
     protocol = "TMembership"
     [available_nodes.node2.position]
-        x = 0.0
-        y = 0.0
+        x = -55.0
+        y = 55.0
     [available_nodes.node2.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g1", "g2", "g3"] #Not used in device_mode
+        # broadcast_groups = ["g1", "g2", "g3"] #Not used in device_mode
         interface_name = "wlan0" #Not used in simulated_mode
+        range = 100.0
+
 
 [available_nodes.node3]
     worker_name = "node03"
@@ -70,12 +71,13 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     operation_mode = "Simulated"
     protocol = "TMembership"
     [available_nodes.node3.position]
-        x = 0.0
-        y = 0.0
+        x = -55.0
+        y = -55.0
     [available_nodes.node3.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g1", "g2", "g4"] #Not used in device_mode
+        # broadcast_groups = ["g1", "g2", "g4"] #Not used in device_mode
+        range = 100.0
         interface_name = "wlan0" #Not used in simulated_mode
 
 [available_nodes.node4]
@@ -90,7 +92,8 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     [available_nodes.node4.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g2", "g5"] #Not used in device_mode
+        # broadcast_groups = ["g2", "g5"] #Not used in device_mode
+        range = 100.0
         interface_name = "wlan0" #Not used in simulated_mode
 
 [available_nodes.node5]
@@ -101,11 +104,12 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     protocol = "TMembership"
     [available_nodes.node5.position]
         x = 0.0
-        y = 0.0
+        y = 110.0
     [available_nodes.node5.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g3", "g6"] #Not used in device_mode
+        # broadcast_groups = ["g3", "g6"] #Not used in device_mode
+        range = 100.0
         interface_name = "wlan0" #Not used in simulated_mode
 
 [available_nodes.node6]
@@ -116,11 +120,12 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     protocol = "TMembership"
     [available_nodes.node6.position]
         x = 0.0
-        y = 0.0
+        y = -110.0
     [available_nodes.node6.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g4", "g7"] #Not used in device_mode
+        # broadcast_groups = ["g4", "g7"] #Not used in device_mode
+        range = 100.0
         interface_name = "wlan0" #Not used in simulated_mode
 
 [available_nodes.node7]
@@ -130,12 +135,13 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     operation_mode = "Simulated"
     protocol = "TMembership"
     [available_nodes.node7.position]
-        x = 0.0
-        y = 0.0
+        x = 27.0
+        y = 55.0
     [available_nodes.node7.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g3", "g5", "g6", "g8"] #Not used in device_mode
+        # broadcast_groups = ["g3", "g5", "g6", "g8"] #Not used in device_mode
+        range = 100.0
         interface_name = "wlan0" #Not used in simulated_mode
 
 [available_nodes.node8]
@@ -145,12 +151,13 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     operation_mode = "Simulated"
     protocol = "TMembership"
     [available_nodes.node8.position]
-        x = 0.0
-        y = 0.0
+        x = 27.0
+        y = -55.0
     [available_nodes.node8.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g4", "g5", "g7", "g9"] #Not used in device_mode
+        # broadcast_groups = ["g4", "g5", "g7", "g9"] #Not used in device_mode
+        range = 100.0
         interface_name = "wlan0" #Not used in simulated_mode
 
 [available_nodes.node9]
@@ -160,12 +167,13 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     operation_mode = "Simulated"
     protocol = "TMembership"
     [available_nodes.node9.position]
-        x = 0.0
-        y = 0.0
+        x = 55.0
+        y = 110.0
     [available_nodes.node9.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g6", "g8"] #Not used in device_mode
+        # broadcast_groups = ["g6", "g8"] #Not used in device_mode
+        range = 100.0
         interface_name = "wlan0" #Not used in simulated_mode
 
 [available_nodes.node10]
@@ -175,12 +183,13 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     operation_mode = "Simulated"
     protocol = "TMembership"
     [available_nodes.node10.position]
-        x = 0.0
+        x = 55.0
         y = 0.0
     [available_nodes.node10.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g5", "g10"] #Not used in device_mode
+        # broadcast_groups = ["g5", "g10"] #Not used in device_mode
+        range = 100.0
         interface_name = "wlan0" #Not used in simulated_mode
 
 [available_nodes.node11]
@@ -190,12 +199,13 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     operation_mode = "Simulated"
     protocol = "TMembership"
     [available_nodes.node11.position]
-        x = 0.0
-        y = 0.0
+        x = 55.0
+        y = -110.0
     [available_nodes.node11.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g7", "g9"] #Not used in device_mode
+        # broadcast_groups = ["g7", "g9"] #Not used in device_mode
+        range = 100.0
         interface_name = "wlan0" #Not used in simulated_mode
     
 [available_nodes.node12]
@@ -205,12 +215,13 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     operation_mode = "Simulated"
     protocol = "TMembership"
     [available_nodes.node12.position]
-        x = 0.0
-        y = 0.0
+        x = 82.0
+        y = 55.0
     [available_nodes.node12.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g8", "g10", "g11"] #Not used in device_mode
+        # broadcast_groups = ["g8", "g10", "g11"] #Not used in device_mode
+        range = 100.0
         interface_name = "wlan0" #Not used in simulated_mode
 
 [available_nodes.node13]
@@ -220,10 +231,27 @@ actions = ["End_Test 14000", "Add_Node node2 5",
     operation_mode = "Simulated"
     protocol = "TMembership"
     [available_nodes.node13.position]
-        x = 0.0
-        y = 0.0
+        x = 82.0
+        y = -55.0
     [available_nodes.node13.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        broadcast_groups = ["g9", "g10", "g11"] #Not used in device_mode
+        # broadcast_groups = ["g9", "g10", "g11"] #Not used in device_mode
+        range = 100.0
         interface_name = "wlan0" #Not used in simulated_mode
+
+[available_nodes.node14]
+    worker_name = "node14"
+    work_dir = "/tmp"
+    random_seed = 1234
+    operation_mode = "Simulated"
+    protocol = "TMembership"
+    [available_nodes.node14.position]
+        x = 110.0
+        y = 0.0
+    [available_nodes.node14.radio_short] #Short-range radio
+        reliability = 1 #Not used in device_mode
+        delay = 0 #Not used in device_mode
+        # broadcast_groups = ["g11"] #Not used in device_mode
+        interface_name = "wlan0" #Not used in simulated_mode
+        range = 100.0
