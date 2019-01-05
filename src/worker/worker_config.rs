@@ -12,9 +12,16 @@ use std::path::Path;
 use std::fs::File;
 use std::iter;
 use self::rustc_serialize::hex::*;
-use self::rand::{Rng, StdRng};
+use self::rand::{Rng, StdRng, RngCore};
 use std::sync::{Mutex, Arc};
 use worker::mobility::{self, Position};
+
+///Default range in meters for short-range radios
+pub const DEFAULT_SHORT_RADIO_RANGE : f64 = 100.0;
+///Default range in meters for long-range radios
+pub const DEFAULT_LONG_RADIO_RANGE : f64 = 500.0;
+///Default range in meters for long-range radios
+pub const DEFAULT_INTERFACE_NAME : &'static str = "wlan";
 
 //TODO: Cleanup this struct
 ///Configuration pertaining to a given radio of the worker.
@@ -22,8 +29,6 @@ use worker::mobility::{self, Position};
 pub struct RadioConfig {
     ///Simulated mode only. How likely ([0-1]) are packets to reach their destination.
     pub reliability : Option<f64>,
-    ///Simulated mode only. Artificial delay (in ms) introduced to the network packets of this radio.
-    pub delay : Option<u32>,
     ///Name of the network interface that this radio will use.
     pub interface_name : Option<String>,
     ///Range in meters of this radio.
@@ -35,8 +40,7 @@ impl RadioConfig {
     /// so users should take care to modify the appropriate values.
     pub fn new() -> RadioConfig {
         RadioConfig{ reliability : Some(1.0),
-                     delay : Some(0),
-                     interface_name : Some(String::from("wlan0")),
+                     interface_name : Some(format!("{}0", DEFAULT_INTERFACE_NAME)),
                      range : 0.0,
                     }
     }
@@ -123,13 +127,9 @@ impl WorkerConfig {
     ///Creates a new Worker object configured with the values of this configuration object.
     pub fn create_worker(self) -> Result<Worker, WorkerError> {
         //Create the RNG
-        let mut gen = Worker::rng_from_seed(self.random_seed);
-        
-        //Vector of 16 bytes set to 0
-        let mut key : Vec<u8>= iter::repeat(0u8).take(16).collect();
-        //Fill the vector with 16 random bytes.
-        gen.fill_bytes(&mut key[..]);
-        let id = key.to_hex().to_string();
+        let gen = Worker::rng_from_seed(self.random_seed);
+        //Generate the worker_id
+        let id = WorkerConfig::gen_id(self.random_seed);
         //Wrap the rng in the shared-mutable-state smart pointers
         let rng = Arc::new(Mutex::new(gen));
 
@@ -192,6 +192,17 @@ impl WorkerConfig {
         let _res = try!(write!(file, "{}", data));
 
         Ok(())
+    }
+
+    ///Creates a worker_id based on a random seed.
+    pub fn gen_id(seed : u32) -> String {
+        let mut gen = Worker::rng_from_seed(seed);
+        
+        //Vector of 16 bytes set to 0
+        let mut key : Vec<u8>= iter::repeat(0u8).take(16).collect();
+        //Fill the vector with 16 random bytes.
+        gen.fill_bytes(&mut key[..]);
+        key.to_hex().to_string()
     }
 }
 

@@ -8,13 +8,13 @@ use self::rusqlite::{Connection, NO_PARAMS, OpenFlags};
 use std::path::PathBuf;
 use worker::{WorkerError, Peer};
 // use self::rand::prelude::*;
-use worker::rand::Rng;
+use self::rand::{Rng, StdRng, RngCore};
 use std::time::Duration;
 use std::thread;
 
 /// Name used for the worker positions DB
 pub const DB_NAME : &'static str = "worker_positions.db";
-const MAX_DBOPEN_RETRY : i32 = 3;
+const MAX_DBOPEN_RETRY : i32 = 4;
 const CREATE_WORKERS_TBL_QRY : &'static str = "CREATE TABLE IF NOT EXISTS Workers (
                                                     ID	                    INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
                                                     Worker_Name	            TEXT NOT NULL,

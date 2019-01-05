@@ -49,7 +49,7 @@ use worker::protocols::*;
 use worker::radio::*;
 use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
-use self::rand::{StdRng, SeedableRng};
+use self::rand::{StdRng, Rng, SeedableRng, RngCore};
 use self::byteorder::{NativeEndian, WriteBytesExt};
 use std::thread::{self, JoinHandle};
 use self::md5::Digest;
@@ -472,9 +472,17 @@ impl Worker {
     pub fn rng_from_seed(seed : u32) -> StdRng {
         //Create RNG from the provided random seed.
         let mut random_bytes = vec![];
+        //Fill the uper 28 bytes with 0s
+        for _i in 0..7 {
+            let _ = random_bytes.write_u32::<NativeEndian>(0);
+        }
+        //Write the last 4 bytes from the provided seed
         let _ = random_bytes.write_u32::<NativeEndian>(seed);
-        let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
-        StdRng::from_seed(randomness.as_slice())
+
+        // let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
+        let mut randomness = [0; 32];
+        randomness.copy_from_slice(random_bytes.as_slice());
+        StdRng::from_seed(randomness)
     }
 
     fn start_command_loop_thread(&self, protocol_handler : Arc<Protocol>) -> io::Result<JoinHandle<Result<(), WorkerError>>> {
