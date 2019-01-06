@@ -10,7 +10,7 @@ documentation = "https://github.com/Dash83/mesh_simulator"
 description = "Simulation platform for a mesh network."
 
 [dependencies]
-rand = "0.3.15"
+rand = "0.6.2"
 rustc-serialize = "0.3"
 serde_derive = "1.0.10"
 serde = "1.0.10"

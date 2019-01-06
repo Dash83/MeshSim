@@ -12,9 +12,16 @@ use std::path::Path;
 use std::fs::File;
 use std::iter;
 use self::rustc_serialize::hex::*;
-use self::rand::{Rng, StdRng};
+use self::rand::{Rng, StdRng, RngCore};
 use std::sync::{Mutex, Arc};
 use worker::mobility::{self, Position};
+
+///Default range in meters for short-range radios
+pub const DEFAULT_SHORT_RADIO_RANGE : f64 = 100.0;
+///Default range in meters for long-range radios
+pub const DEFAULT_LONG_RADIO_RANGE : f64 = 500.0;
+///Default range in meters for long-range radios
+pub const DEFAULT_INTERFACE_NAME : &'static str = "wlan";
 
 //TODO: Cleanup this struct
 ///Configuration pertaining to a given radio of the worker.
@@ -22,8 +29,6 @@ use worker::mobility::{self, Position};
 pub struct RadioConfig {
     ///Simulated mode only. How likely ([0-1]) are packets to reach their destination.
     pub reliability : Option<f64>,
-    ///Simulated mode only. Artificial delay (in ms) introduced to the network packets of this radio.
-    pub delay : Option<u32>,
     ///Name of the network interface that this radio will use.
     pub interface_name : Option<String>,
     ///Range in meters of this radio.
@@ -35,8 +40,7 @@ impl RadioConfig {
     /// so users should take care to modify the appropriate values.
     pub fn new() -> RadioConfig {
         RadioConfig{ reliability : Some(1.0),
-                     delay : Some(0),
-                     interface_name : Some(String::from("wlan0")),
+                     interface_name : Some(format!("{}0", DEFAULT_INTERFACE_NAME)),
                      range : 0.0,
                     }
     }
@@ -97,6 +101,7 @@ pub struct WorkerConfig {
     /// The protocol that this Worker should run for this configuration.
     pub protocol : Protocols,
     /// Initial position of the worker
+    #[serde(flatten)]
     pub position : Position,
     ///NOTE: Due to the way serde_toml works, the RadioConfig fields must be kept last in the structure.
     /// This is because they are interpreted as TOML tables, and those are always placed at the end of structures.
@@ -123,13 +128,9 @@ impl WorkerConfig {
     ///Creates a new Worker object configured with the values of this configuration object.
     pub fn create_worker(self) -> Result<Worker, WorkerError> {
         //Create the RNG
-        let mut gen = Worker::rng_from_seed(self.random_seed);
-        
-        //Vector of 16 bytes set to 0
-        let mut key : Vec<u8>= iter::repeat(0u8).take(16).collect();
-        //Fill the vector with 16 random bytes.
-        gen.fill_bytes(&mut key[..]);
-        let id = key.to_hex().to_string();
+        let gen = Worker::rng_from_seed(self.random_seed);
+        //Generate the worker_id
+        let id = WorkerConfig::gen_id(self.random_seed);
         //Wrap the rng in the shared-mutable-state smart pointers
         let rng = Arc::new(Mutex::new(gen));
 
@@ -193,6 +194,17 @@ impl WorkerConfig {
 
         Ok(())
     }
+
+    ///Creates a worker_id based on a random seed.
+    pub fn gen_id(seed : u32) -> String {
+        let mut gen = Worker::rng_from_seed(seed);
+        
+        //Vector of 16 bytes set to 0
+        let mut key : Vec<u8>= iter::repeat(0u8).take(16).collect();
+        //Fill the vector with 16 random bytes.
+        gen.fill_bytes(&mut key[..]);
+        key.to_hex().to_string()
+    }
 }
 
 //**** WorkerConfig unit tests ****
@@ -226,7 +238,7 @@ mod tests {
         
         println!("Worker config: {:?}", &config);
         let worker = config.create_worker();
-        let default_worker_display = "Worker { name: \"worker1\", id: \"416d77337e24399dc7a5aa058039f72a\", short_radio: Some(SimulatedRadio { delay: 0, reliability: 1.0, broadcast_groups: [\"group1\"], work_dir: \".\", me: Peer { id: \"416d77337e24399dc7a5aa058039f72a\", name: \"worker1\", address: \"./bcg/group1/416d77337e24399dc7a5aa058039f72a.socket\" }, range: ShortRange, rng: Mutex { data: StdRng { rng: Isaac64Rng {} } } }), long_radio: Some(SimulatedRadio { delay: 0, reliability: 1.0, broadcast_groups: [\"group1\"], work_dir: \".\", me: Peer { id: \"416d77337e24399dc7a5aa058039f72a\", name: \"worker1\", address: \"./bcg/group1/416d77337e24399dc7a5aa058039f72a.socket\" }, range: LongRange, rng: Mutex { data: StdRng { rng: Isaac64Rng {} } } }), work_dir: \".\", rng: Mutex { data: StdRng { rng: Isaac64Rng {} } }, seed: 0, operation_mode: Simulated, protocol: TMembership }";
+        let default_worker_display = "Worker { name: \"worker1\", id: \"416d77337e24399dc7a5aa058039f72a\", short_radio: Some(SimulatedRadio { reliability: 1.0, broadcast_groups: [\"group1\"], work_dir: \".\", me: Peer { id: \"416d77337e24399dc7a5aa058039f72a\", name: \"worker1\", address: \"./bcg/group1/416d77337e24399dc7a5aa058039f72a.socket\" }, range: ShortRange, rng: Mutex { data: StdRng { rng: Isaac64Rng {} } } }), long_radio: Some(SimulatedRadio { reliability: 1.0, broadcast_groups: [\"group1\"], work_dir: \".\", me: Peer { id: \"416d77337e24399dc7a5aa058039f72a\", name: \"worker1\", address: \"./bcg/group1/416d77337e24399dc7a5aa058039f72a.socket\" }, range: LongRange, rng: Mutex { data: StdRng { rng: Isaac64Rng {} } } }), work_dir: \".\", rng: Mutex { data: StdRng { rng: Isaac64Rng {} } }, seed: 0, operation_mode: Simulated, protocol: TMembership }";
         
         assert_eq!(format!("{:?}", worker), String::from(default_worker_display));
     }
@@ -248,7 +260,7 @@ mod tests {
         //Assert the file was written.
         assert!(path.exists());
 
-        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"TMembership\"\n\n[position]\nx = 0.0\ny = 0.0\n\n[radio_short]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\nrange = 0.0\n\n[radio_long]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\nrange = 0.0\n";
+        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"TMembership\"\nx = 0.0\ny = 0.0\n\n[radio_short]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n\n[radio_long]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n";
         
         let mut file_content = String::new();
         let _res = File::open(path).unwrap().read_to_string(&mut file_content);
