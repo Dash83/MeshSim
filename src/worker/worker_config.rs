@@ -238,7 +238,7 @@ mod tests {
         
         println!("Worker config: {:?}", &config);
         let worker = config.create_worker();
-        let default_worker_display = "Worker { name: \"worker1\", id: \"416d77337e24399dc7a5aa058039f72a\", short_radio: Some(SimulatedRadio { delay: 0, reliability: 1.0, broadcast_groups: [\"group1\"], work_dir: \".\", me: Peer { id: \"416d77337e24399dc7a5aa058039f72a\", name: \"worker1\", address: \"./bcg/group1/416d77337e24399dc7a5aa058039f72a.socket\" }, range: ShortRange, rng: Mutex { data: StdRng { rng: Isaac64Rng {} } } }), long_radio: Some(SimulatedRadio { delay: 0, reliability: 1.0, broadcast_groups: [\"group1\"], work_dir: \".\", me: Peer { id: \"416d77337e24399dc7a5aa058039f72a\", name: \"worker1\", address: \"./bcg/group1/416d77337e24399dc7a5aa058039f72a.socket\" }, range: LongRange, rng: Mutex { data: StdRng { rng: Isaac64Rng {} } } }), work_dir: \".\", rng: Mutex { data: StdRng { rng: Isaac64Rng {} } }, seed: 0, operation_mode: Simulated, protocol: TMembership }";
+        let default_worker_display = "Worker { name: \"worker1\", id: \"416d77337e24399dc7a5aa058039f72a\", short_radio: Some(SimulatedRadio { reliability: 1.0, broadcast_groups: [\"group1\"], work_dir: \".\", me: Peer { id: \"416d77337e24399dc7a5aa058039f72a\", name: \"worker1\", address: \"./bcg/group1/416d77337e24399dc7a5aa058039f72a.socket\" }, range: ShortRange, rng: Mutex { data: StdRng { rng: Isaac64Rng {} } } }), long_radio: Some(SimulatedRadio { reliability: 1.0, broadcast_groups: [\"group1\"], work_dir: \".\", me: Peer { id: \"416d77337e24399dc7a5aa058039f72a\", name: \"worker1\", address: \"./bcg/group1/416d77337e24399dc7a5aa058039f72a.socket\" }, range: LongRange, rng: Mutex { data: StdRng { rng: Isaac64Rng {} } } }), work_dir: \".\", rng: Mutex { data: StdRng { rng: Isaac64Rng {} } }, seed: 0, operation_mode: Simulated, protocol: TMembership }";
         
         assert_eq!(format!("{:?}", worker), String::from(default_worker_display));
     }
@@ -260,7 +260,7 @@ mod tests {
         //Assert the file was written.
         assert!(path.exists());
 
-        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"TMembership\"\n\n[position]\nx = 0.0\ny = 0.0\n\n[radio_short]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\nrange = 0.0\n\n[radio_long]\nreliability = 1.0\ndelay = 0\ninterface_name = \"wlan0\"\nrange = 0.0\n";
+        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"TMembership\"\nx = 0.0\ny = 0.0\n\n[radio_short]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n\n[radio_long]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n";
         
         let mut file_content = String::new();
         let _res = File::open(path).unwrap().read_to_string(&mut file_content);
