@@ -8,7 +8,7 @@ use std::str::FromStr;
 use std::collections::HashMap;
 
 ///Structure that holds the data of a given test specification.
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct TestSpec {
     ///Name of the test. For informational purposes only. 
     pub name : String,
@@ -35,6 +35,14 @@ impl TestSpec {
         let _bytes_read = try!(file.read_to_string(&mut file_content));
         let configuration : TestSpec = try!(toml::from_str(&file_content));
         Ok(configuration)
+    }
+
+    ///Creates new empty configuration
+    pub fn new() -> TestSpec {
+        TestSpec{ name : String::from(""),
+                  actions : vec![],
+                  initial_nodes : HashMap::new(),
+                  available_nodes : HashMap::new() }
     }
 }
 

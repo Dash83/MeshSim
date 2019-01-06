@@ -40,23 +40,6 @@ enum CLIError {
     TestParsing(String),
 }
 
-enum MeshTests {
-    BasicTest,
-    SixNodeTest,
-}
-
-impl FromStr for MeshTests {
-    type Err = CLIError;
-
-    fn from_str(s : &str) -> Result<MeshTests, CLIError> {
-        match s {
-            "BasicTest" => Ok(MeshTests::BasicTest),
-            "SixNodeTest" => Ok(MeshTests::SixNodeTest),
-            _ => Err(CLIError::TestParsing("Unsupported test".to_string())),
-        }
-    }
-}
-
 impl error::Error for CLIError {
     fn description(&self) -> &str {
         match *self {
