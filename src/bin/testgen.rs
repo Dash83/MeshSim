@@ -45,8 +45,8 @@ enum Commands {
     finish,
     ///Add nodes to the test. Params: Type of nodes [Initial/Available], Number of nodes.
     add_nodes(String, usize),
-    
-    // add_action(TestActions),
+    ///Add a test action to the configuration
+    add_action(String),
 }
 
 impl FromStr for Commands {
@@ -75,7 +75,18 @@ impl FromStr for Commands {
 
                     Ok(Commands::add_nodes(node_type, number))
                 },
+                "ADD_ACTION" => {
+                   if parts.len() < 2 {
+                        //Error out
+                        return Err(Errors::TestParsing(format!("No action was specified")))
+                    }
+                    let mut action : String = String::new();
+                    for s in parts[1..].iter() {
+                        action.push_str(&format!("{} ", s));
+                    }
 
+                    Ok(Commands::add_action(action))
+                },
                 _ => Err(Errors::TestParsing(format!("Unsupported command: {:?}", parts))),
             }
         } else {
@@ -190,10 +201,14 @@ fn process_command(com : Commands, spec : &mut TestSpec, data : &TestBasics) -> 
     match com {
         Commands::finish => {
             command_finish(spec, data)
-        }
+        },
         Commands::add_nodes(node_type, num) => {
             command_add_nodes(node_type, num, spec, data)
-        }
+        },
+        Commands::add_action(parts) => {
+            command_add_action(parts, spec)
+        },
+        
     }
 }
 
@@ -212,7 +227,7 @@ fn command_finish(spec : &mut TestSpec, data : &TestBasics) -> Result<bool, Erro
     //let canon = p.canonicalize().expect("Invalid file path");
 
     let mut input = String::new();
-    println!("Current spec: {:?}", &spec);
+    print_test_status(&spec);
     println!("Writing {:?} to disk. Press enter to confirm, or provide a new path.", &p);
     let bytes = io::stdin().read_line(&mut input)?;
     
@@ -270,6 +285,18 @@ fn command_add_nodes(node_type : String, num : usize, spec : &mut TestSpec, data
     //println!("Nodes: {:?}", &nodes);
 
     Ok(false)
+}
+
+fn command_add_action(parts : String, spec : &mut TestSpec) -> Result<bool, Errors> {
+    spec.actions.push(parts);
+    Ok(false)
+}
+
+fn print_test_status(spec : &TestSpec) {
+    println!("Test name: {}", spec.name);
+    println!("# of initial nodes: {}", spec.initial_nodes.len());
+    println!("# of available nodes: {}", spec.available_nodes.len());
+    println!("# of test actions: {}", spec.actions.len());
 }
 
 fn capture_basic_data() -> Result<TestBasics, Errors> {

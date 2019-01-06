@@ -101,6 +101,7 @@ pub struct WorkerConfig {
     /// The protocol that this Worker should run for this configuration.
     pub protocol : Protocols,
     /// Initial position of the worker
+    #[serde(flatten)]
     pub position : Position,
     ///NOTE: Due to the way serde_toml works, the RadioConfig fields must be kept last in the structure.
     /// This is because they are interpreted as TOML tables, and those are always placed at the end of structures.
