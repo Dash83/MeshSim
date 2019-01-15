@@ -215,6 +215,7 @@ impl Radio  for SimulatedRadio {
             info!("No nodes in range. Message not sent");
             return Ok(())
         }
+        // debug!("{} peer in range", peers.len());
 
         for p in peers.into_iter() {
             let selected_address = match self.r_type {
@@ -223,6 +224,7 @@ impl Radio  for SimulatedRadio {
             };
             
             if let Some(addr) = selected_address {
+                // debug!("Sending data to {}", &addr);
                 let msg = hdr.clone();
                 let _res : JoinHandle<Result<(), WorkerError> > = thread::spawn(move || {
                     let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;

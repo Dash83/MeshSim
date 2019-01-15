@@ -6,7 +6,7 @@ extern crate rand;
 extern crate md5;
 
 use worker::protocols::Protocol;
-use worker::{WorkerError, Peer, MessageHeader, AddressType};
+use worker::{WorkerError, Peer, MessageHeader};
 use worker::radio::*;
 use std::sync::{Arc, Mutex};
 use self::serde_cbor::de::*;

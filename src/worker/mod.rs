@@ -91,6 +91,7 @@ pub enum WorkerError {
     DB(rusqlite::Error),
 }
 
+//region Errors
 impl fmt::Display for WorkerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -153,36 +154,55 @@ impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Peer>>>> for WorkerErro
     }
 }
 
+impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, String>>>> for WorkerError {
+    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, String>>>) -> WorkerError {
+        WorkerError::Sync(err.to_string())
+    }
+}
+impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Vec<Vec<u8>>>>>> for WorkerError {
+    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, Vec<Vec<u8>>>>>) -> WorkerError {
+        WorkerError::Sync(err.to_string())
+    }
+}
+
+impl<'a> From<PoisonError<MutexGuard<'a, HashSet<String>>>> for WorkerError {
+    fn from(err : PoisonError<MutexGuard<'a, HashSet<String>>>) -> WorkerError {
+        WorkerError::Sync(err.to_string())
+    }
+}
+
 impl From<rusqlite::Error> for WorkerError {
     fn from(err : rusqlite::Error) -> WorkerError {
         WorkerError::DB(err)
     }
 }
 
-///Enum used to encapsualte the addresses a peer has and tag them by type.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub enum AddressType {
-    ///Short range
-    ShortRange(String),
-    ///Long range
-    LongRange(String),
-}
+//endregion Errors
 
-impl AddressType {
-    fn get_address(&self ) -> String {
-        match &self {
-            AddressType::ShortRange(s) => s.clone(),
-            AddressType::LongRange(s) => s.clone(),
-        }
-    }
+// ///Enum used to encapsualte the addresses a peer has and tag them by type.
+// #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+// pub enum AddressType {
+//     ///Short range
+//     ShortRange(String),
+//     ///Long range
+//     LongRange(String),
+// }
 
-    fn is_short_range(&self) -> bool {
-        match &self {
-            AddressType::ShortRange(_s) => true,
-            AddressType::LongRange(_s) => false,
-        }        
-    }
-}
+// impl AddressType {
+//     fn get_address(&self ) -> String {
+//         match &self {
+//             AddressType::ShortRange(s) => s.clone(),
+//             AddressType::LongRange(s) => s.clone(),
+//         }
+//     }
+
+//     fn is_short_range(&self) -> bool {
+//         match &self {
+//             AddressType::ShortRange(_s) => true,
+//             AddressType::LongRange(_s) => false,
+//         }        
+//     }
+// }
 /// Peer struct.
 /// Defines the public identity of a node in the mesh.
 /// 
@@ -250,7 +270,7 @@ impl MessageHeader {
         data.append(&mut self.sender.name.clone().into_bytes());
         data.append(&mut self.destination.name.clone().into_bytes());
         data.append(&mut self.payload.clone().unwrap());
-        let dig = md5::compute(to_vec(&data)?);
+        let dig = md5::compute(&data);
         Ok(dig)
     }
 }

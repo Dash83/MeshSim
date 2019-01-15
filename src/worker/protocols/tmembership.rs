@@ -4,7 +4,7 @@ extern crate serde_cbor;
 extern crate rand;
 
 use worker::protocols::Protocol;
-use worker::{WorkerError, Peer, MessageHeader, Worker, AddressType};
+use worker::{WorkerError, Peer, MessageHeader, Worker};
 use worker::radio::*;
 use std::collections::HashSet;
 use std::sync::{Mutex, Arc, MutexGuard};

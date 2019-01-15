@@ -119,7 +119,6 @@ pub fn register_worker( conn : &Connection,
     }
 
     let mut stmt = conn.prepare(SELECT_WORKER_QRY)?;
-    debug!("Select query prepapred");
     let db_id : i64 = stmt.query_row(&[&worker_id], |row| row.get(0))?;
 
     Ok(db_id)

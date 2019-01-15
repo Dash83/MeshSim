@@ -6,12 +6,14 @@ extern crate rand;
 extern crate toml;
 extern crate rustc_serialize;
 
-use worker::{MessageHeader, WorkerError };
+use worker::{MessageHeader, WorkerError, Worker };
 use worker::radio::*;
 use worker::listener::*;
 use self::tmembership::TMembership;
 use self::tmembership_advanced::*;
 use self::naive_routing::*;
+use self::reactive_gossip_routing::*;
+
 use std;
 use std::sync::Arc;
 use std::str::FromStr;
@@ -19,6 +21,7 @@ use std::str::FromStr;
 pub mod tmembership;
 pub mod tmembership_advanced;
 pub mod naive_routing;
+pub mod reactive_gossip_routing;
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should 
@@ -42,18 +45,27 @@ pub enum Protocols {
     TMembership,
     /// 2-Radio variation of the TMembership protocol.
     TMembershipAdvanced,
-    /// Broadcast based routing
+    /// Broadcast-based routing
     NaiveRouting,
+    ///  Adaptive, gossip-based routing protocol
+    ReactiveGossip,
 }
 
 impl FromStr for Protocols {
     type Err = WorkerError;
 
     fn from_str(s : &str) -> Result<Protocols, WorkerError> {
-        match s.to_uppercase().as_str() {
+        let input = s.to_uppercase();
+        let parts : Vec<&str> = input.split_whitespace().collect();
+
+        assert!(parts.len() > 0);
+        let prot = parts[0];
+        println!("Protocol: {}", &prot);
+        match prot {
             "TMEMBERSHIP" => Ok(Protocols::TMembership),
             "TMEMBERSHIP_ADVANCED" => Ok(Protocols::TMembershipAdvanced),
             "NAIVEROUTING" => Ok(Protocols::NaiveRouting),
+            "REACTIVEGOSSIP" => Ok(Protocols::ReactiveGossip),
             _ => Err(WorkerError::Configuration(String::from("The specified protocol is not supported."))),
         }
     }
@@ -115,6 +127,20 @@ pub fn build_protocol_resources( p : Protocols,
             //Initialize the radio.
             let listener = sr.init()?;
             let handler : Arc<Protocol> = Arc::new(NaiveRouting::new(name, id, Arc::clone(&sr)));
+            let mut radio_channels = Vec::new();
+            radio_channels.push((listener, sr));
+            let resources = ProtocolResources{  handler : handler, 
+                                                radio_channels : radio_channels };
+            Ok(resources)            
+        },
+
+        Protocols::ReactiveGossip => {
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let sr = short_radio.expect("The ReactiveGossip protocol requires a short_radio to be provided.");
+            //Initialize the radio.
+            let listener = sr.init()?;
+            let rng = Worker::rng_from_seed(seed);
+            let handler : Arc<Protocol> = Arc::new(ReactiveGossipRouting::new(name, id, Arc::clone(&sr), rng));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
             let resources = ProtocolResources{  handler : handler, 
