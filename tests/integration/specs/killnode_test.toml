@@ -13,6 +13,9 @@ actions = ["End_Test 1000", "Kill_Node node2 500"]
     protocol = "TMembership"
     x = 0.0
     y = 0.0
+    [initial_nodes.node1.velocity]
+        x = 0.0
+        y = 0.0
     [initial_nodes.node1.radio_short]
         reliability = 1.0
         delay = 0
@@ -32,6 +35,9 @@ actions = ["End_Test 1000", "Kill_Node node2 500"]
     protocol = "TMembership"
     x = 0.0
     y = 0.0
+    [initial_nodes.node2.velocity]
+        x = 0.0
+        y = 0.0
     [initial_nodes.node2.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -51,6 +57,9 @@ actions = ["End_Test 1000", "Kill_Node node2 500"]
     protocol = "TMembership"
     x = 0.0
     y = 0.0
+    [initial_nodes.node3.velocity]
+        x = 0.0
+        y = 0.0
     [initial_nodes.node3.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode

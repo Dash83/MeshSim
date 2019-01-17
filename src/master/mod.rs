@@ -38,7 +38,7 @@ use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::collections::HashMap;
 use std::io::Write;
-use std::borrow::BorrowMut;
+use worker::mobility::*;
 
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
@@ -175,6 +175,9 @@ impl Master {
     pub fn run_test(&mut self, mut spec : test_specification::TestSpec) -> Result<(), MasterError> {
         info!("Running test {}", &spec.name);
         info!("Test results will be placed under {}", &self.work_dir);
+
+        //Start mobility thread
+        let mt_h = self.start_mobility_thread()?;
 
         //Start all workers and add save their child process handle.
         {
@@ -395,6 +398,33 @@ impl Master {
                     Err(error) => { 
                         error!("{}", error);
                     }
+                }
+            }
+            Ok(())
+        })
+    }
+
+    fn start_mobility_thread(&self) -> io::Result<JoinHandle<Result<(), MasterError>>> {
+        let tb = thread::Builder::new();
+        let update_time = Duration::from_millis(1000); //All velocities are expresed in meters per second.
+        let conn = match get_db_connection(&self.work_dir) {
+            Ok(c) => c,
+            //This is a gross workaround for the error handling but it works for now. 
+            //Clean up later. Or never. Probably never.
+            Err(e) => return Err(io::Error::new(io::ErrorKind::Other, MasterError::TestParsing(String::from("Could not connect to DB"))))
+        };
+
+        tb.name(String::from("MobilityThread"))
+        .spawn(move || { 
+            loop {
+                thread::sleep(update_time);
+                match update_worker_positions(&conn) {
+                    Ok(rows) => { 
+                        info!("The position of {} workers has been updated", rows);
+                    },
+                    Err(e) => { 
+                        error!("Error updating worker positions: {}", e);
+                    },
                 }
             }
             Ok(())

@@ -42,7 +42,7 @@ fn setup<'a>(path : &'a str ) {
     let db_path = format!("{}{}{}", path, std::path::MAIN_SEPARATOR, &DB_NAME);
     println!("DB path: {}", &db_path);
     let conn = get_db_connection(&db_path).expect("Could not create DB file");
-    let _res = create_positions_db(&conn).expect("Could not create positions table");
+    let _res = create_db_objects(&conn).expect("Could not create positions table");
 }
 
 //TODO: Review if this test is still needed.
@@ -148,7 +148,7 @@ fn test_broadcast_simulated() {
     println!("Test results placed in {}", &test_path);
 
     let conn = get_db_connection(&test_path).expect("Could not create DB file");
-    let _res = create_positions_db(&conn).expect("Could not create positions table");
+    let _res = create_db_objects(&conn).expect("Could not create positions table");
 
     //Worker1
     let mut sr_config1 = RadioConfig::new();
@@ -162,9 +162,11 @@ fn test_broadcast_simulated() {
                                      worker_id.clone(), random_seed, None);
     let listener1 = r1.init().unwrap();
     let pos = Position{ x : -60.0, y : 0.0};
+    let vel = Velocity{ x : 0.0, y : 0.0};
     let _worker_db_id = register_worker(&conn, worker_name, 
                                                &worker_id, 
-                                               &pos, 
+                                               &pos,
+                                               &vel, 
                                                Some(r1.get_address().into()), 
                                                None).expect("Could not register worker");
 
@@ -181,7 +183,8 @@ fn test_broadcast_simulated() {
     let pos = Position{ x : 0.0, y : 0.0};
     let _worker_db_id = register_worker(&conn, worker_name, 
                                                &worker_id, 
-                                               &pos, 
+                                               &pos,
+                                               &vel,
                                                Some(r2.get_address().into()), 
                                                None).expect("Could not register worker");
     
@@ -199,7 +202,8 @@ fn test_broadcast_simulated() {
     let pos = Position{ x : 60.0, y : 0.0};
     let _worker_db_id = register_worker(&conn, worker_name, 
                                                &worker_id, 
-                                               &pos, 
+                                               &pos,
+                                               &vel, 
                                                Some(r3.get_address().into()), 
                                                None).expect("Could not register worker");
 

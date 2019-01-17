@@ -38,6 +38,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = -110.0
     y = 0.0
+    [initial_nodes.node1.velocity]
+        x = 0.0
+        y = 0.0
     [initial_nodes.node1.radio_short]
         #broadcast_groups = ["g1"]
         reliability = 1.0
@@ -54,6 +57,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = -55.0
     y = 55.0
+    [available_nodes.node2.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node2.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -70,6 +76,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = -55.0
     y = -55.0
+    [available_nodes.node3.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node3.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -85,6 +94,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = 0.0
     y = 0.0
+    [available_nodes.node4.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node4.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -100,6 +112,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = 0.0
     y = 110.0
+    [available_nodes.node5.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node5.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -115,6 +130,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = 0.0
     y = -110.0
+    [available_nodes.node6.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node6.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -130,6 +148,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = 27.0
     y = 55.0
+    [available_nodes.node7.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node7.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -145,6 +166,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = 27.0
     y = -55.0
+    [available_nodes.node8.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node8.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -160,6 +184,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = 55.0
     y = 110.0
+        [available_nodes.node9.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node9.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -175,6 +202,10 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = 55.0
     y = 0.0
+
+        [available_nodes.node10.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node10.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -190,6 +221,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = 55.0
     y = -110.0
+    [available_nodes.node11.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node11.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -205,6 +239,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = 82.0
     y = 55.0
+    [available_nodes.node12.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node12.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -220,6 +257,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = 82.0
     y = -55.0
+    [available_nodes.node13.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node13.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -235,6 +275,9 @@ actions = ["End_Test 14000", "Add_Node node2 10",
     protocol = "TMembership"
     x = 110.0
     y = 0.0
+    [available_nodes.node14.velocity]
+        x = 0.0
+        y = 0.0
     [available_nodes.node14.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
