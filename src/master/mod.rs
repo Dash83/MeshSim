@@ -23,6 +23,7 @@ extern crate serde_cbor;
 extern crate rustc_serialize;
 extern crate toml;
 extern crate base64;
+extern crate rand;
 
 use worker::worker_config::WorkerConfig;
 use std::process::{Command, Child, Stdio};
@@ -31,7 +32,7 @@ use std::error;
 use std::fmt;
 use self::test_specification::TestActions;
 use std::str::FromStr;
-use std::thread::{self, JoinHandle};
+use std::thread::{self, JoinHandle, Builder};
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use std::ops::DerefMut;
@@ -39,10 +40,15 @@ use std::path::PathBuf;
 use std::collections::HashMap;
 use std::io::Write;
 use worker::mobility::*;
-
+use self::workloads::SourceProfiles;
+use self::rand::RngCore;
+use std::sync::{PoisonError, MutexGuard};
+use std::iter;
+       
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
 pub mod test_specification;
+mod workloads;
 
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
@@ -50,7 +56,7 @@ pub mod test_specification;
 #[derive(Debug)]
 pub struct Master {
     /// Collection of worker processes the Master controls.
-    pub workers : Arc<Mutex<HashMap<String, Child>>>,
+    pub workers : Arc<Mutex<HashMap<String, Arc<Mutex<Child>>>>>,
     ///Working directory for the master under which it will place the files it needs.
     pub work_dir : String,
     /// Path to the worker binary for experiments.
@@ -73,6 +79,8 @@ pub enum MasterError {
     TOML(toml::de::Error),
     ///Error produced when Master fails to parse a Test specification.
     TestParsing(String),
+    ///Error produced when locking shared objects
+    Sync(String),
 }
 
 impl From<toml::de::Error> for MasterError {
@@ -93,6 +101,12 @@ impl From<io::Error> for MasterError {
     }
 }
 
+impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Arc<Mutex<Child>>>>>> for MasterError {
+    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, Arc<Mutex<Child>>>>>) -> MasterError {
+        MasterError::Sync(err.to_string())
+    }
+}
+
 impl From<::worker::WorkerError> for MasterError {
     fn from(err : ::worker::WorkerError) -> MasterError {
         MasterError::Worker(err)
@@ -107,6 +121,7 @@ impl fmt::Display for MasterError {
             MasterError::Worker(ref err) => write!(f, "Worker error: {}", err),
             MasterError::TOML(ref err) => write!(f, "TOML error: {}", err),
             MasterError::TestParsing(ref err) => write!(f, "Test parsing error: {}", err),
+            MasterError::Sync(ref err) => write!(f, "Sync error: {}", err),
         }
     }
 
@@ -120,6 +135,7 @@ impl error::Error for MasterError {
             MasterError::Worker(ref err) => err.description(),
             MasterError::TOML(ref err) => err.description(),
             MasterError::TestParsing(ref err) => err.as_str(),
+            MasterError::Sync(ref err) => err.as_str(),
         }
     }
 
@@ -130,6 +146,7 @@ impl error::Error for MasterError {
             MasterError::Worker(ref err) => Some(err),
             MasterError::TOML(ref err) => Some(err),
             MasterError::TestParsing(_) => None,
+            MasterError::Sync(_) => None,
         }
     }
 }
@@ -184,7 +201,7 @@ impl Master {
             let mut workers = self.workers.lock().unwrap(); // LOCK : GET : WORKERS
             for (_, val) in spec.initial_nodes.iter_mut() {
                 let child_handle = try!(Master::run_worker(&self.worker_binary, &self.work_dir, &val));
-                workers.insert(val.worker_name.clone(), child_handle);
+                workers.insert(val.worker_name.clone(), Arc::new(Mutex::new(child_handle)));
             }
         } // LOCK : RELEASE : WORKERS
 
@@ -232,7 +249,10 @@ impl Master {
                 }
                 TestActions::Ping(src, dst, time) => {
                     self.testaction_ping_node(src, dst, time)?
-                }
+                },
+                TestActions::AddSource(src, profile, time) => {
+                    self.testaction_add_source(src, profile, time)?
+                },
             };
             thread_handles.push(action_handle);
         }
@@ -251,8 +271,9 @@ impl Master {
             let workers_handle = workers_handle.deref_mut();
             let mut i = 0;
             for (_name, mut handle) in workers_handle {
-                info!("Killing worker pid {}", handle.id());
-                match handle.kill() {
+                let mut h = handle.lock().unwrap();
+                info!("Killing worker pid {}", h.id());
+                match h.kill() {
                     Ok(_) => {
                         info!("Process killed.");
                         i += 1;
@@ -282,7 +303,7 @@ impl Master {
                      match Master::run_worker(&worker_binary, &work_dir, config) {
                          Ok(child_handle) => { 
                             let mut w = workers.lock().unwrap();
-                            w.insert(name, child_handle);
+                            w.insert(name, Arc::new(Mutex::new(child_handle)));
                          },
                          Err(e) => { 
                             error!("Error running worker: {:?}", e);
@@ -310,10 +331,11 @@ impl Master {
             match workers {
                 Ok(mut w) => { 
                     if let Some(mut child) = w.get_mut(&name) {
-                        match child.kill() {
+                        let mut c = child.lock().unwrap();
+                        match c.kill() {
                             Ok(_) => {
-                                let exit_status = child.wait();
-                                info!("Kill_Node ({}) action: Process {} killed. Exit status: {:?}", &name, child.id(), exit_status); 
+                                let exit_status = c.wait();
+                                info!("Kill_Node ({}) action: Process {} killed. Exit status: {:?}", &name, c.id(), exit_status); 
                             },
                             Err(e) => error!("Kill_Node ({}) action: Failed to kill process with error {}", &name, e),
                         }
@@ -342,9 +364,10 @@ impl Master {
             match workers {
                 Ok(mut w) => { 
                     if let Some(mut child) = w.get_mut(&source) {
+                        let mut c = child.lock().unwrap();
                         let ping_data = base64::encode("PING".as_bytes());
                         let payload = format!("SEND {} {}\n", &destination, &ping_data);
-                        let res = child.stdin.as_mut().unwrap().write_all(payload.as_bytes());
+                        let res = c.stdin.as_mut().unwrap().write_all(payload.as_bytes());
                     } else {
                         error!("Ping {}->{} action: Process {} not found in Master's collection.", &source, &destination, &source);
                     }
@@ -357,52 +380,118 @@ impl Master {
         Ok(handle)
     }
 
-    fn start_command_loop_thread(&self) -> io::Result<JoinHandle<Result<(), MasterError>>> {
+    fn testaction_add_source(&self, source: String, profile : SourceProfiles, time : u64) ->  Result<JoinHandle<()>, MasterError> {
         let tb = thread::Builder::new();
+        let start_time = Duration::from_millis(time);
         let workers = Arc::clone(&self.workers);
 
-        tb.name(String::from("CommandLoop"))
+        let handle = tb.name(format!("[Source]:{}", &source))
         .spawn(move || { 
-            let mut input = String::new();
-            debug!("Command loop started");
-            loop {
-                match io::stdin().read_line(&mut input) {
-                    Ok(_bytes) => {
-                        //debug!("Read {} bytes from stdin: {}", _bytes, &input);
-                        // match input.parse::<commands::Commands>() {
-                        //     Ok(command) => {
-                        //         info!("Command received: {:?}", &command);
-                        //         match Worker::process_command(command, Arc::clone(&protocol_handler)) {
-                        //             Ok(_) => { /* All good! */ },
-                        //             Err(e) => {
-                        //                 error!("Error executing command: {}", e);
-                        //             }
-                        //         }
-                        //     },
-                        //     Err(e) => { 
-                        //         error!("Error parsing command: {}", e);
-                        //     },
-                        // }
-                        let workers = workers.lock();
-                        match workers {
-                            Ok(mut w_list) => { 
-                                for (name, mut handle) in w_list.iter_mut() {
-                                    let res = handle.stdin.as_mut().unwrap().write_all(&input.as_bytes());
-                                }
-                            },
-                            Err(e) => { 
-                                error!("Could not obtain lock to workers.");
-                            },
-                        }
-                    }
-                    Err(error) => { 
-                        error!("{}", error);
-                    }
+            info!("[Source]:{}: Scheduled to start in {:?}", &source, &start_time);
+            thread::sleep(start_time);
+
+            match profile {
+                SourceProfiles::CBR(dest, pps, size, dur) => {
+                    let _res = Master::start_cbr_source(source, dest, pps, size, dur, workers);
                 }
             }
-            Ok(())
-        })
+        })?;
+
+        Ok(handle)
     }
+
+    fn start_cbr_source(source : String,
+                        destination : String, 
+                        packets_per_second : usize, 
+                        packet_size : usize,
+                        duration : u64,
+                        workers : Arc<Mutex<HashMap<String, Arc<Mutex<Child>>>>>) -> Result<(), MasterError> { 
+        let mut rng = rand::thread_rng();
+        let mut data : Vec<u8>= iter::repeat(0u8).take(packet_size).collect();
+        let trans_time = std::time::Instant::now();
+        let dur = Duration::from_millis(duration);
+        let source_handle : Arc<Mutex<Child>> = match workers.lock() {
+            Ok(worker_list) => { 
+                if let Some(w) = worker_list.get(&source) {
+                    Arc::clone(&w)
+                } else {
+                    return Err(MasterError::Sync(format!("Could not find process for {}", &source)))
+                }
+            },
+            Err(e) => { 
+                return Err(MasterError::Sync(String::from("Could not lock workers list")))
+            },
+        };
+
+        while trans_time.elapsed() < dur {
+            for i in 0..packets_per_second {        
+                rng.fill_bytes(&mut data[..]);
+                let encoded_data = base64::encode(&data);
+                let payload = format!("SEND {} {}\n", &destination, &encoded_data);
+
+                match source_handle.lock() {
+                    Ok(mut h) => {
+                        let res = h.deref_mut().stdin.as_mut().unwrap().write_all(payload.as_bytes());
+                    }
+                    Err(e) => {
+                        let err = format!("Process {} is not in the Master list. Can't send data. Aborting CBR.", &source);
+                        error!("{}", &err);
+                        return Err(MasterError::Sync(err))
+                    }
+                }
+                let pause = 1000u64 / packets_per_second as u64;
+                thread::sleep(Duration::from_millis(pause));
+            }
+        }       
+        Ok(())
+    }
+
+    // fn start_command_loop_thread(&self) -> io::Result<JoinHandle<Result<(), MasterError>>> {
+    //     let tb = thread::Builder::new();
+    //     let workers = Arc::clone(&self.workers);
+
+    //     tb.name(String::from("CommandLoop"))
+    //     .spawn(move || { 
+    //         let mut input = String::new();
+    //         debug!("Command loop started");
+    //         loop {
+    //             match io::stdin().read_line(&mut input) {
+    //                 Ok(_bytes) => {
+    //                     //debug!("Read {} bytes from stdin: {}", _bytes, &input);
+    //                     // match input.parse::<commands::Commands>() {
+    //                     //     Ok(command) => {
+    //                     //         info!("Command received: {:?}", &command);
+    //                     //         match Worker::process_command(command, Arc::clone(&protocol_handler)) {
+    //                     //             Ok(_) => { /* All good! */ },
+    //                     //             Err(e) => {
+    //                     //                 error!("Error executing command: {}", e);
+    //                     //             }
+    //                     //         }
+    //                     //     },
+    //                     //     Err(e) => { 
+    //                     //         error!("Error parsing command: {}", e);
+    //                     //     },
+    //                     // }
+    //                     let workers = workers.lock();
+    //                     match workers {
+    //                         Ok(mut w_list) => { 
+    //                             for (name, mut handle) in w_list.iter_mut() {
+    //                                 let res = handle.stdin.as_mut().unwrap().write_all(&input.as_bytes());
+    //                             }
+    //                         },
+    //                         Err(e) => { 
+    //                             error!("Could not obtain lock to workers.");
+    //                         },
+    //                     }
+    //                 }
+    //                 Err(error) => { 
+    //                     error!("{}", error);
+    //                 }
+    //             }
+    //         }
+    //         Ok(())
+    //     })
+    // }
 
     fn start_mobility_thread(&self) -> io::Result<JoinHandle<Result<(), MasterError>>> {
         let tb = thread::Builder::new();

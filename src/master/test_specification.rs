@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
 use std::collections::HashMap;
+use super::workloads::*;
 
 ///Structure that holds the data of a given test specification.
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -56,7 +57,9 @@ pub enum TestActions {
     ///Kills the indicated node at the specified time offset.
     KillNode(String, u64),
     ///Sends a Ping packet from src to dst. The underlying protocol determines how the data is forwarded.
-    Ping(String, String, u64)
+    Ping(String, String, u64),
+    ///Adds a new transmission source
+    AddSource(String, SourceProfiles, u64),
 }
 
 
@@ -107,6 +110,21 @@ impl FromStr for TestActions {
                     let time = parts[3].parse::<u64>().unwrap();
 
                     Ok(TestActions::Ping(src, dst, time))
+                },
+                "ADD_SOURCE" => {
+                    if parts.len() < 7 {
+                        //Error out
+                        return Err(MasterError::TestParsing(format!("Add_Source needs the following parameters: \n*Source \n*Destination \n*Packets per Second \n*Packet size \n* \n*Start time \n*Duration")))
+                    }
+                    let src = parts[1].to_owned();
+                    let dst = parts[2].to_owned();
+                    let pps = parts[3].parse::<usize>().unwrap();
+                    let psize = parts[4].parse::<usize>().unwrap();
+                    let duration = parts[5].parse::<u64>().unwrap();
+                    let time = parts[6].parse::<u64>().unwrap();
+                    let profile = SourceProfiles::CBR(dst, pps, psize, duration);
+                    
+                    Ok(TestActions::AddSource(src, profile, time))
                 },
                 _ => Err(MasterError::TestParsing(format!("Unsupported Test action: {:?}", parts))),
             }

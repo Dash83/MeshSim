@@ -516,7 +516,7 @@ impl Worker {
                     Ok(_bytes) => {
                         match input.parse::<commands::Commands>() {
                             Ok(command) => {
-                                info!("Command received: {:?}", &command);
+                                info!("Command received");
                                 match Worker::process_command(command, Arc::clone(&protocol_handler)) {
                                     Ok(_) => { /* All good! */ },
                                     Err(e) => {
@@ -533,6 +533,7 @@ impl Worker {
                         error!("{}", error);
                     }
                 }
+                input.clear();
             }
             Ok(())
         })
@@ -574,6 +575,9 @@ fn extract_address_key<'a>(address : &'a str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use worker::rand::RngCore;
+    use std::iter;
+
     //use worker::worker_config::*;
 
     //**** Peer unit tests ****
@@ -609,6 +613,30 @@ mod tests {
         record.txt_records.push(String::from("NAME=Worker1"));
 
         assert_eq!(String::from("Worker1"), record.get_txt_record("NAME").unwrap());
+    }
+    
+    #[test]
+    fn test_message_header_hash() {
+        let mut msg = MessageHeader::new();
+        msg.sender.name = String::from("SENDER");
+        msg.destination.name = String::from("DESTINATION");
+        let mut rng = Worker::rng_from_seed(12345);
+        let mut data : Vec<u8>= iter::repeat(0u8).take(64).collect();
+
+        rng.fill_bytes(&mut data[..]);
+        msg.payload = Some(data.clone());
+        let hash = msg.get_hdr_hash().expect("Could not hash message");
+        assert_eq!(&format!("{:x}", &hash), "d14f74d26de34910b1808210c29db3f3");
+
+        rng.fill_bytes(&mut data[..]);
+        msg.payload = Some(data.clone());
+        let hash = msg.get_hdr_hash().expect("Could not hash message");
+        assert_eq!(&format!("{:x}", &hash), "5076bb3622b5b0e36f1e4d0980c8a9c0");
+
+        rng.fill_bytes(&mut data[..]);
+        msg.payload = Some(data.clone());
+        let hash = msg.get_hdr_hash().expect("Could not hash message");
+        assert_eq!(&format!("{:x}", &hash), "5bd1d45704c00e3f39e762f4b607a57e");
     }
 
 }

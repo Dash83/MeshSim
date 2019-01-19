@@ -1,6 +1,7 @@
 
 /****************** Platform *****************/
 mod device_mode;
+mod CBR;
 
 /****************** Protocols ****************/
 mod tmembership;

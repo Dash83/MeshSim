@@ -29,7 +29,7 @@ fn naive_basic() {
     let node3_log_records = logging::get_log_records_from_file(&node3_log_file).unwrap();
 
     //node1 receives the command to start transmission
-    let node_1_cmd_recv = logging::find_log_record("msg", "Command received: Send(\"node3\", [80, 73, 78, 71])", &node1_log_records);
+    let node_1_cmd_recv = logging::find_log_record("msg", "Command received", &node1_log_records);
     //node1 sends the message. node2 is the only node in range.
     let node_1_msg_sent = logging::find_log_record("msg", "Message 645a15a2fcadd06793b5cdd5137d45e3 sent", &node1_log_records);
     //node2 receives the message. It's a new message so it relays it

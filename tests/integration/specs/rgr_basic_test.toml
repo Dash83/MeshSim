@@ -26,8 +26,8 @@ actions = ["ping node2 node24 3000 ", "End_Test 6000"]
     x = -55.0
     y = 55.0
     [initial_nodes.node2.velocity]
-        x = 1.0
-        y = 1.0
+        x = 0.0
+        y = 0.0
     [initial_nodes.node2.radio_short] 
         reliability = 1 
         interface_name = "wlan0" 
