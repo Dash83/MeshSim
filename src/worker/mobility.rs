@@ -14,7 +14,13 @@ use std::thread;
 
 /// Name used for the worker positions DB
 pub const DB_NAME : &'static str = "worker_positions.db";
+/// The mean of human walking speeds
+pub const HUMAN_SPEED_MEAN : f64 = 1.462; //meters per second.
+/// Standard deviation of human walking speeds
+pub const HUMAN_SPEED_STD_DEV : f64 = 0.164;
 const MAX_DBOPEN_RETRY : i32 = 4;
+
+//region Queries
 const CREATE_WORKERS_TBL_QRY : &'static str = "CREATE TABLE IF NOT EXISTS workers (
                                                     ID	                    INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
                                                     Worker_Name	            TEXT NOT NULL,
@@ -30,16 +36,23 @@ const CREATE_WORKER_POS_TBL_QRY : &'static str = "CREATE TABLE IF NOT EXISTS  `w
                                                 );";
 
 const CREATE_WORKER_VEL_TBL_QRY : &'static str = "CREATE TABLE IF NOT EXISTS  `worker_velocities` (
-                                                    `worker_id`	INTEGER UNIQUE,
+                                                    `worker_id`	INTEGER UNIQUE NOT NULL,
                                                     vel_x	REAL NOT NULL,
                                                     vel_y  REAL NOT NULL,
                                                     FOREIGN KEY(worker_id) REFERENCES workers(ID)
+                                                );";
+const CREATE_WORKER_DEST_TBL_QRY : &'static str = "CREATE TABLE IF NOT EXISTS  `worker_destinations` (
+                                                    `worker_id`	INTEGER UNIQUE NOT NULL,
+                                                    `dest_x`	INTEGER NOT NULL,
+                                                    `dest_y`	INTEGER NOT NULL,
+                                                    FOREIGN KEY(`worker_id`) REFERENCES `workers`(`ID`)
                                                 );";
 
 const INSERT_WORKER_QRY : &'static str = "INSERT INTO workers (Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address)
                                           VALUES (?1, ?2, ?3, ?4)";
 const UPDATE_WORKER_POS_QRY : &'static str = "INSERT OR REPLACE INTO worker_positions (worker_id, x, y) VALUES (?1, ?2, ?3)";
 const UPDATE_WORKER_VEL_QRY : &'static str = "INSERT OR REPLACE INTO worker_velocities (worker_id, vel_x, vel_y) VALUES (?1, ?2, ?3)";
+const UPDATE_WORKER_DEST_QRY : &'static str = "INSERT OR REPLACE INTO worker_destinations (worker_id, dest_x, dest_y) VALUES (?1, ?2, ?3)";
 const GET_WORKER_QRY : &'static str = "SELECT ID, Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address FROM Workers WHERE Worker_ID = (?)";
 const SELECT_OTHER_WORKERS_QRY : &'static str = "SELECT Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address FROM Workers WHERE Worker_ID != (?)";
 const GET_WORKER_POS_QRY : &'static str =  "SELECT  Workers.ID,
@@ -57,17 +70,39 @@ const SELECT_OTHER_WORKERS_POS_QRY : &'static str = "SELECT Workers.worker_name,
                                                     FROM Workers
                                                     JOIN Worker_positions on Workers.ID = Worker_positions.worker_id
                                                     WHERE Workers.Worker_ID != (?)";
+const SELECT_ALL_WORKERS_POS_QRY : &'static str = "SELECT   Workers.ID,
+                                                            Workers.worker_name,
+                                                            Worker_positions.X,
+                                                            Worker_positions.Y
+                                                    FROM Workers
+                                                    JOIN Worker_positions on Workers.ID = Worker_positions.worker_id";
 const SELECT_WORKERS_VEL_QRY : &'static str = "SELECT ID, vel_x, vel_y FROM worker_velocities";
 const UPDATE_WORKER_POSITIONS_QRY : &'static str = "
-INSERT OR REPLACE INTO worker_positions
-(worker_id, x, y)
-select worker_positions.worker_id,
-		 worker_positions.X + worker_velocities.vel_x,
-		 worker_positions.Y + worker_velocities.vel_y
-from worker_velocities
-join worker_positions on worker_positions.worker_id = worker_velocities.worker_id;";
+                                            INSERT OR REPLACE INTO worker_positions
+                                            (worker_id, x, y)
+                                            select worker_positions.worker_id,
+                                                    worker_positions.X + worker_velocities.vel_x,
+                                                    worker_positions.Y + worker_velocities.vel_y
+                                            from worker_velocities
+                                            join worker_positions on worker_positions.worker_id = worker_velocities.worker_id;";
+const STOP_WORKERS_QRY : &'static str = "
+                                UPDATE worker_velocities
+                                SET  vel_x = 0,
+                                        vel_y = 0
+                                WHERE worker_velocities.worker_id in (?);";
+const SELECT_REMAINING_DIST_QRY : &'static str = "
+                                select workers.ID,
+                                        worker_destinations.dest_x,
+                                        worker_positions.X,
+                                        worker_destinations.dest_y,
+                                        worker_positions.Y
+                                from workers
+                                join worker_positions on worker_positions.worker_id = workers.ID
+                                join worker_destinations on worker_destinations.worker_id = workers.ID
+                                order by workers.Worker_Name;";
 const SET_WAL_MODE : &'static str = "PRAGMA journal_mode=WAL;";
 const WAL_MODE_QRY : &'static str = "PRAGMA journal_mode;";
+//endregion Queries
 
 ///Struct to encapsule the 2D position of the worker
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -132,6 +167,9 @@ pub fn create_db_objects(conn : &Connection) -> Result<usize, WorkerError> {
 
     //Create velocities table
     let rows = conn.execute(CREATE_WORKER_VEL_TBL_QRY, NO_PARAMS,)?;
+    
+    //Create destinations table
+    let rows = conn.execute(CREATE_WORKER_DEST_TBL_QRY, NO_PARAMS,)?;
 
     Ok(rows)
 }
@@ -142,6 +180,7 @@ pub fn register_worker( conn : &Connection,
                         worker_id : &String, 
                         pos : &Position, 
                         vel : &Velocity,
+                        dest : &Option<Position>,
                         sr_address : Option<String>, 
                         lr_address : Option<String>) -> Result<i64, WorkerError> {
     let name : &ToSql = &worker_name;
@@ -149,8 +188,7 @@ pub fn register_worker( conn : &Connection,
     let y : &ToSql = &pos.y;
     let sr : &ToSql = &sr_address;
     let lr : &ToSql = &lr_address;
-    let vel_x : &ToSql = &vel.x;
-    let vel_y : &ToSql = &vel.y;
+
 
     //Insert worker
     let _res = insert_worker(&conn, name, &worker_id, sr, lr)?;
@@ -163,7 +201,12 @@ pub fn register_worker( conn : &Connection,
     let _res = update_worker_position(&conn, x, y, db_id)?;
 
     //Insert velocity
-    let _res = update_worker_vel(&conn, vel_x, vel_y, db_id)?;
+    let _res = update_worker_vel(&conn, vel, db_id)?;
+    
+    //Insert destination if any
+    if let Some(d) = dest {
+        let _res = update_worker_target(&conn, db_id, d.clone())?;
+    }
 
     Ok(db_id)
 }
@@ -235,10 +278,12 @@ fn update_worker_position(conn : &Connection,
     Ok(rows)
 }
 
-fn update_worker_vel(conn : &Connection,
-                     vel_x : &ToSql,
-                     vel_y : &ToSql,
+/// Updates the worker's velocity
+pub fn update_worker_vel(conn : &Connection,
+                     vel : &Velocity,
                      worker_id : i64 ) -> Result<usize, WorkerError> {
+    let vel_x : &ToSql = &vel.x;
+    let vel_y : &ToSql = &vel.y;
     let mut rows = 0;
     let wid : &ToSql = &worker_id;
     let mut rng = rand::thread_rng();
@@ -318,14 +363,6 @@ fn set_wal_mode(conn : &Connection) -> Result<(), WorkerError> {
     Ok(())
 }
 
-/// Function exported exclusively for the use of the Master module.
-/// Updates the positions of all registered nodes according to their
-/// respective velocity vector. Update happens every 1 second. 
-pub fn update_worker_positions(conn : &Connection) -> Result<usize, WorkerError> {
-    let rows = conn.execute(UPDATE_WORKER_POSITIONS_QRY, NO_PARAMS,)?;
-    Ok(rows)
-}
-
 fn busy_callback(i : i32) -> bool {
     let mut rng = rand::thread_rng();
 
@@ -339,6 +376,56 @@ fn busy_callback(i : i32) -> bool {
     thread::sleep(wait_dur);
     
     true
+}
+
+//**********************************************/
+//************** Public functions **************/
+//**********************************************/
+/// Function exported exclusively for the use of the Master module.
+/// Updates the positions of all registered nodes according to their
+/// respective velocity vector. Update happens every 1 second. 
+pub fn update_worker_positions(conn : &Connection) -> Result<usize, WorkerError> {
+    let rows = conn.execute(UPDATE_WORKER_POSITIONS_QRY, NO_PARAMS,)?;
+    Ok(rows)
+}
+
+/// Function exported exclusively for the use of the Master module.
+/// Returns ids of all workers that have reached their destination.
+pub fn select_final_positions(conn : &Connection) -> Result<Vec<(i64, f64, f64)>, WorkerError> {
+    let mut stmt = conn.prepare(SELECT_REMAINING_DIST_QRY)?;
+    let results_iter = stmt.query_map(NO_PARAMS, |row| {
+        let w_id : i64 = row.get(0);
+        let target_x : f64 = row.get(1);
+        let current_x : f64 = row.get(2);
+        let target_y : f64 = row.get(3);
+        let current_y : f64 = row.get(4);
+
+        if (target_x - current_x) <= 0.0 && 
+           (target_y - current_y) <= 0.0 {
+            Some((w_id, current_x, current_y))
+        } else {
+            None
+        }
+    })?;
+
+    let mut arrived : Vec<(i64, f64, f64)> = Vec::new();
+    for r in results_iter {
+        let r = r?;
+        if r.is_some() {
+            let (w_id, x, y) = r.unwrap();
+            arrived.push((w_id, x, y));
+        }
+    }
+
+    Ok(arrived)
+}
+
+/// Function exported exclusively for the use of the Master module.
+/// Sets the velocity of the worker ids to zero.
+pub fn stop_workers(conn : &Connection, w_ids : &[(i64, f64, f64)]) -> Result<usize, WorkerError> {
+    let ids : Vec<i64> = w_ids.into_iter().map(|(id, _x, _y)| id.clone()).collect();
+    let rows = conn.execute(STOP_WORKERS_QRY, ids)?;
+    Ok(rows)
 }
 
 /// Returns all workers within RANGE meters of the current position of WORKER_ID
@@ -387,11 +474,46 @@ pub fn get_workers_in_range<'a>(conn : &Connection, worker_id : &String, range :
     Ok(data)
 }
 
-fn euclidean_distance(x1 : f64, y1 : f64, x2 : f64, y2 : f64) -> f64 {
+/// Calculate the euclidean distance between 2 points.
+pub fn euclidean_distance(x1 : f64, y1 : f64, x2 : f64, y2 : f64) -> f64 {
     let xs = (x2 - x1).powf(2.0);
     let ys = (y2 - y1).powf(2.0);
     let d = (xs + ys).sqrt();
     d
+}
+
+/// Create a new target position for a worker
+pub fn update_worker_target(conn : &Connection, 
+                         worker_id : i64, 
+                         target_pos : Position) -> Result<(), WorkerError> {
+    let w_id : &ToSql = &worker_id;
+    let dest_x : &ToSql = &target_pos.x;
+    let dest_y : &ToSql = &target_pos.y;
+
+    let rows = conn.execute(UPDATE_WORKER_DEST_QRY, &[w_id, dest_x, dest_y],)?;
+    info!("Worker_id {} destination updated", worker_id);
+    
+    Ok(())
+}
+
+/// Get the positions of all workers
+pub fn get_all_worker_positions(conn : &Connection) -> Result<Vec<(i64, String, f64, f64)>, WorkerError> {
+    let mut stmt = conn.prepare(SELECT_ALL_WORKERS_POS_QRY)?;
+    let results_iter = stmt.query_map(NO_PARAMS, |row| {
+        let w_id : i64 = row.get(0);
+        let name : String = row.get(1);
+        let x : f64 = row.get(2);
+        let y : f64 = row.get(3);
+        (w_id, name, x, y)
+    })?;
+
+    let mut results : Vec<(i64, String, f64, f64)> = Vec::new();
+    for r in results_iter {
+        let r = r?;
+        results.push((r.0, r.1, r.2, r.3));
+    }
+
+    Ok(results)
 }
 
 #[cfg(test)]
@@ -470,6 +592,9 @@ mod tests {
 
         row_id = stmt.query_row(&["worker_velocities"], |row| row.get(0)).expect("Could not execute query");
         assert_ne!(row_id, 0);
+
+        row_id = stmt.query_row(&["worker_destinations"], |row| row.get(0)).expect("Could not execute query");
+        assert_ne!(row_id, 0);
     }
 
     //Unit test for confirming a worker is registered in the db
@@ -493,7 +618,7 @@ mod tests {
         let sr = String::from("/tmp/sr.socket");
         let lr = String::from("/tmp/lr.socket");
 
-        let worker_db_id = register_worker(&conn, name, &id, &pos, &vel, Some(sr), Some(lr)).expect("Could not register worker");
+        let worker_db_id = register_worker(&conn, name, &id, &pos, &vel, &None, Some(sr), Some(lr)).expect("Could not register worker");
         
         assert!(worker_db_id > 0);
     }
@@ -518,7 +643,7 @@ mod tests {
         let vel = Velocity{ x : 0.0, y : 0.0 };
         let source_sr = String::from("/tmp/sr_1.socket");
         let source_lr = String::from("/tmp/lr_1.socket");
-        let _id = register_worker(&conn, source_name, &source_id, &source_pos, &vel, Some(source_sr), Some(source_lr)).expect("Could not register worker1");
+        let _id = register_worker(&conn, source_name, &source_id, &source_pos, &vel, &None, Some(source_sr), Some(source_lr)).expect("Could not register worker1");
 
         //Create test worker2
         //This worker should be in range.
@@ -527,7 +652,7 @@ mod tests {
         let pos = Position{ x : 50.0, y : -25.50 };
         let sr = String::from("/tmp/sr_2.socket");
         let lr = String::from("/tmp/lr_2.socket");
-        let _id = register_worker(&conn, name, &id, &pos, &vel, Some(sr), Some(lr)).expect("Could not register worker2");
+        let _id = register_worker(&conn, name, &id, &pos, &vel, &None, Some(sr), Some(lr)).expect("Could not register worker2");
 
         //Create test worker3
         //This worker should be in range.
@@ -536,7 +661,7 @@ mod tests {
         let pos = Position{ x : 30.0, y : 45.0 };
         let sr = String::from("/tmp/sr_3.socket");
         let lr = String::from("/tmp/lr_3.socket");
-        let _id = register_worker(&conn, name, &id, &pos, &vel, Some(sr), Some(lr)).expect("Could not register worker3");
+        let _id = register_worker(&conn, name, &id, &pos, &vel, &None, Some(sr), Some(lr)).expect("Could not register worker3");
 
         //Create test worker4
         //This worker should NOT be in range.
@@ -545,7 +670,7 @@ mod tests {
         let pos = Position{ x : 120.0, y : 0.0 };
         let sr = String::from("/tmp/sr_4.socket");
         let lr = String::from("/tmp/lr_4.socket");
-        let _id = register_worker(&conn, name, &id, &pos, &vel, Some(sr), Some(lr)).expect("Could not register worker4");
+        let _id = register_worker(&conn, name, &id, &pos, &vel, &None, Some(sr), Some(lr)).expect("Could not register worker4");
 
         //Create test worker5
         //This worker should NOT be in range.
@@ -554,7 +679,7 @@ mod tests {
         let pos = Position{ x : 60.0, y : 90.0 };
         let sr = String::from("/tmp/sr_5.socket");
         let lr = String::from("/tmp/lr_5.socket");
-        let _id = register_worker(&conn, name, &id, &pos, &vel, Some(sr), Some(lr)).expect("Could not register worker5");
+        let _id = register_worker(&conn, name, &id, &pos, &vel, &None, Some(sr), Some(lr)).expect("Could not register worker5");
 
         let workers_in_range : Vec<Peer> = get_workers_in_range(&conn, &source_id, 100.0).unwrap();
         println!("{:?}", &workers_in_range);
@@ -578,7 +703,7 @@ mod tests {
         let vel1 = Velocity{ x : 1.0, y : 0.0 };
         let source_sr = String::from("/tmp/sr_1.socket");
         let source_lr = String::from("/tmp/lr_1.socket");
-        let _id = register_worker(&conn, source_name, &source_id, &source_pos, &vel1, Some(source_sr), Some(source_lr)).expect("Could not register worker1");
+        let _id = register_worker(&conn, source_name, &source_id, &source_pos, &vel1, &None, Some(source_sr), Some(source_lr)).expect("Could not register worker1");
 
         //Create test worker2
         //This worker should be in range.
@@ -588,7 +713,7 @@ mod tests {
         let vel2 = Velocity{ x : 1.0, y : -1.5 };
         let sr = String::from("/tmp/sr_2.socket");
         let lr = String::from("/tmp/lr_2.socket");
-        let _id = register_worker(&conn, name, &id, &pos, &vel2, Some(sr), Some(lr)).expect("Could not register worker2");
+        let _id = register_worker(&conn, name, &id, &pos, &vel2, &None, Some(sr), Some(lr)).expect("Could not register worker2");
 
         //Create test worker3
         //This worker should be in range.
@@ -598,7 +723,7 @@ mod tests {
         let vel3 = Velocity{ x : -3.0, y : 1.5 };
         let sr = String::from("/tmp/sr_3.socket");
         let lr = String::from("/tmp/lr_3.socket");
-        let _id = register_worker(&conn, name, &id, &pos, &vel3, Some(sr), Some(lr)).expect("Could not register worker3");
+        let _id = register_worker(&conn, name, &id, &pos, &vel3, &None, Some(sr), Some(lr)).expect("Could not register worker3");
 
         let rows = update_worker_positions(&conn).expect("Could not update worker positions");
         assert_eq!(rows, 3);

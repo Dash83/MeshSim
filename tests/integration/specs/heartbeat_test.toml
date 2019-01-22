@@ -3,7 +3,10 @@
 #We used 1 initial node and add a second node shortly after to a potential deadlock in which the 2 process
 #start at the exact same time and end up waiting on the other to responde to the heartbeat message.
 name = "heartbeat_test"
-actions = ["End_Test 7000", "Add_Node node2 100"]
+duration = 7000
+width = 200
+height = 200
+actions = ["Add_Node node2 100"]
 
 [initial_nodes.node1]
     worker_name = "node1"
@@ -18,7 +21,6 @@ actions = ["End_Test 7000", "Add_Node node2 100"]
         y = 0.0
     [initial_nodes.node1.radio_short]
         reliability = 1.0
-        delay = 0
         interface_name = "wlan0"
         range = 100.0
 
@@ -33,8 +35,7 @@ actions = ["End_Test 7000", "Add_Node node2 100"]
     [available_nodes.node2.velocity]
         x = 0.0
         y = 0.0
-    [available_nodes.node2.radio_short] #Short-range radio
-        reliability = 1 #Not used in device_mode
-        delay = 0 #Not used in device_mode
-        interface_name = "wlan0" #Not used in simulated_mode
+    [available_nodes.node2.radio_short]
+        reliability = 1
+        interface_name = "wlan1"
         range = 100.0

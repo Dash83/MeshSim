@@ -24,16 +24,17 @@ extern crate rustc_serialize;
 extern crate toml;
 extern crate base64;
 extern crate rand;
+extern crate rusqlite;
 
 use worker::worker_config::WorkerConfig;
 use std::process::{Command, Child, Stdio};
 use std::io;
 use std::error;
 use std::fmt;
-use self::test_specification::TestActions;
+use self::test_specification::{TestActions, Area};
 use std::str::FromStr;
-use std::thread::{self, JoinHandle, Builder};
-use std::time::Duration;
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 use std::ops::DerefMut;
 use std::path::PathBuf;
@@ -41,7 +42,9 @@ use std::collections::HashMap;
 use std::io::Write;
 use worker::mobility::*;
 use self::workloads::SourceProfiles;
-use self::rand::RngCore;
+use self::rand::{thread_rng, Rng, RngCore};
+use self::rand::distributions::{Uniform, Normal};
+use self::rusqlite::Connection;
 use std::sync::{PoisonError, MutexGuard};
 use std::iter;
        
@@ -49,6 +52,29 @@ use std::iter;
 ///Modules that defines the functionality for the test specification.
 pub mod test_specification;
 mod workloads;
+
+const RANDOM_WAYPOINT_WAIT_TIME : u64 = 1000; //TODO: This must be parameterized
+
+///Different supported mobility models
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
+pub enum MobilityModels {
+    /// Random waypoint model
+    RandomWaypoint,
+}
+
+impl FromStr for MobilityModels {
+    type Err = MasterError;
+
+    fn from_str(s : &str) -> Result<MobilityModels, MasterError> {
+        let res = match s.to_uppercase().as_str() {
+                "RANDOMWAYPOINT" => MobilityModels::RandomWaypoint,
+                _ => {
+                    return Err(MasterError::TestParsing(String::from("Invalid mobility model")))
+                }
+        };
+        Ok(res)
+    }
+}
 
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
@@ -62,8 +88,14 @@ pub struct Master {
     /// Path to the worker binary for experiments.
     pub worker_binary : String,
     /// Collection of available worker configurations that the master may start at any time during
-    /// the test.
+    /// the test
     pub available_nodes : Arc<HashMap<String, WorkerConfig>>,
+    /// Duration in milliseconds of the test
+    pub duration : u64,
+    /// Area in meters 
+    pub test_area : Area,
+    /// Current mobility model (if any)
+    pub mobility_model : Option<MobilityModels>
 }
 
 /// The error type for the Master. Each variant encapsules the underlying reason for failure.
@@ -160,7 +192,11 @@ impl Master {
         Master{ workers : workers,
                 work_dir : String::from("."),
                 worker_binary : wb, 
-                available_nodes : Arc::new(an) }
+                available_nodes : Arc::new(an),
+                duration : 0,
+                test_area : Area{ width : 0.0, height : 0.0},
+                mobility_model : None,
+        }
     }
 
     /// Adds a single worker to the worker vector with a specified name and starts the worker process
@@ -194,7 +230,7 @@ impl Master {
         info!("Test results will be placed under {}", &self.work_dir);
 
         //Start mobility thread
-        let mt_h = self.start_mobility_thread()?;
+        let _mt_h = self.start_mobility_thread()?;
 
         //Start all workers and add save their child process handle.
         {
@@ -208,6 +244,10 @@ impl Master {
         //Add the available_nodes pool to the master.
         self.available_nodes = Arc::new(spec.available_nodes);
         //debug!("Available nodes: {:?}", &self.available_nodes);
+
+        //Add a test action to end the test
+        let end_test_action = format!("END_TEST {}\n", &self.duration);
+        spec.actions.push(end_test_action);
 
         //Run all test actions.
         let actions = spec.actions.clone();
@@ -406,7 +446,7 @@ impl Master {
                         packet_size : usize,
                         duration : u64,
                         workers : Arc<Mutex<HashMap<String, Arc<Mutex<Child>>>>>) -> Result<(), MasterError> { 
-        let mut rng = rand::thread_rng();
+        let mut rng = thread_rng();
         let mut data : Vec<u8>= iter::repeat(0u8).take(packet_size).collect();
         let trans_time = std::time::Instant::now();
         let dur = Duration::from_millis(duration);
@@ -446,6 +486,157 @@ impl Master {
         Ok(())
     }
 
+    fn start_mobility_thread(&self) -> io::Result<JoinHandle<Result<(), MasterError>>> {
+        let tb = thread::Builder::new();
+        let update_time = Duration::from_millis(1000); //All velocities are expresed in meters per second.
+        let sim_start_time = Instant::now();
+        let sim_end_time = Duration::from_millis(self.duration);
+        let width = self.test_area.width;
+        let height = self.test_area.height;
+        let duration = self.duration;
+        let db_path = self.work_dir.clone();
+        let m_model = self.mobility_model.clone();
+
+        let conn = match get_db_connection(&self.work_dir) {
+            Ok(c) => c,
+            //This is a gross workaround for the error handling but it works for now. 
+            //Clean up later. Or never. Probably never.
+            Err(e) => return Err(io::Error::new(io::ErrorKind::Other, MasterError::Sync(String::from("Could not connect to DB"))))
+        };
+
+        tb.name(String::from("MobilityThread"))
+        .spawn(move || { 
+            let mut rng = thread_rng();
+            let width_sample = Uniform::new(0.0, width);
+            let height_sample = Uniform::new(0.0, height);
+            let walking_sample = Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV);
+
+            while Instant::now().duration_since(sim_start_time) < sim_end_time {
+                //Wait times will be uniformilet sampled from the remain simulation time.
+                let mut lower_bound : u64 = sim_start_time.elapsed().as_secs() * 1000;
+                lower_bound += sim_start_time.elapsed().subsec_millis() as u64;
+                let wait_sample = Uniform::new(lower_bound, duration);
+
+                thread::sleep(update_time);
+
+                //Update worker positions
+                match update_worker_positions(&conn) {
+                    Ok(rows) => { 
+                        info!("The position of {} workers has been updated", rows);
+                    },
+                    Err(e) => { 
+                        error!("Error updating worker positions: {}", e);
+                    },
+                }
+
+                // ****** DEBUG ******* //
+                let workers = get_all_worker_positions(&conn)?;
+                for w in workers {
+                    debug!("{}({}): ({}, {})", w.1, w.0, w.2, w.3);
+                }
+
+                if let Some(model) = &m_model {
+                    match model {
+                        MobilityModels::RandomWaypoint => {
+                            Master::handle_random_waypoint( &conn, 
+                                                            &width_sample, 
+                                                            &height_sample, 
+                                                            &walking_sample, 
+                                                            &wait_sample, 
+                                                            &mut rng, 
+                                                            &db_path);
+                        },
+                    }
+                }
+
+
+            }
+            Ok(())
+        })
+    }
+
+    fn handle_random_waypoint(conn : &Connection,
+                              width_sample : &Uniform<f64>,
+                              height_sample : &Uniform<f64>,
+                              walking_sample : &Normal,
+                              wait_sample : &Uniform<u64>,
+                              rng : &mut RngCore,
+                              db_path : &String  ) {
+        //Select workers that reached their destination
+        let rows = match select_final_positions(&conn) {
+            Ok(rows) => {
+                rows
+            },
+            Err(e) => { 
+                error!("Error updating worker positions: {}", e);
+                vec![]
+            },
+        };
+
+        if rows.len() > 0 {
+            info!("{} workers have reached their destinations", rows.len());
+            //Stop workers that have reached their destination
+            match stop_workers(&conn, &rows) {
+                Ok(r) => {
+                    info!("{} workers have been stopped", r);
+                },
+                Err(e) => {
+                    error!("Could not stop workers: {}", e);
+                }
+            }
+
+            for w in rows {
+                let w_id = w.0;
+                let current_x = w.1;
+                let current_y = w.2;
+
+                //Calculate parameters
+                // let pause_time :u64 = rng.sample(wait_sample); RANDOM_WAYPOINT_WAIT_TIME
+                let pause_time = RANDOM_WAYPOINT_WAIT_TIME;
+                let next_x : f64 = rng.sample(width_sample);
+                let next_y : f64 = rng.sample(height_sample);
+                let vel : f64 = rng.sample(walking_sample);
+                let distance : f64 = euclidean_distance(current_x, current_y, next_x, next_y);
+                let time : f64 = distance / vel;
+                let x_vel = (next_x - current_x) / time;
+                let y_vel = (next_y - current_y) / time;
+
+                //Update worker target position
+                let _res = update_worker_target(&conn, w_id, Position{x : next_x, y : next_y});
+
+                //Schedule thread
+                let _h = Master::schedule_new_worker_velocity(pause_time, 
+                                                              w_id,
+                                                              db_path.clone(),
+                                                              Velocity{x : x_vel,  y : y_vel});
+            }
+        }
+    }
+    
+    fn schedule_new_worker_velocity(pause_time : u64, 
+                                    worker_id : i64,
+                                    db_path : String,
+                                    velocity : Velocity,  ) -> JoinHandle<()> {
+        let handle = thread::spawn(move || {
+            let dur = Duration::from_millis(pause_time);
+            info!("Worker_id {} will wait for {}ms", worker_id, pause_time);
+            thread::sleep(dur);
+            if let Ok(conn) = get_db_connection(&db_path) {
+                let _res = match update_worker_vel(&conn, &velocity, worker_id,) {
+                    Ok(r) => { r },
+                    Err(e) => { 
+                        error!("Failed updating target for worker_id {}: {}", worker_id, e);
+                        0
+                    },
+                };
+            } else {
+                error!("Failed updating target for worker_id {}: Could not connect to DB", worker_id);
+            }
+        });
+        handle
+    }
+
+//region command_loop
     // fn start_command_loop_thread(&self) -> io::Result<JoinHandle<Result<(), MasterError>>> {
     //     let tb = thread::Builder::new();
     //     let workers = Arc::clone(&self.workers);
@@ -492,33 +683,7 @@ impl Master {
     //         Ok(())
     //     })
     // }
-
-    fn start_mobility_thread(&self) -> io::Result<JoinHandle<Result<(), MasterError>>> {
-        let tb = thread::Builder::new();
-        let update_time = Duration::from_millis(1000); //All velocities are expresed in meters per second.
-        let conn = match get_db_connection(&self.work_dir) {
-            Ok(c) => c,
-            //This is a gross workaround for the error handling but it works for now. 
-            //Clean up later. Or never. Probably never.
-            Err(e) => return Err(io::Error::new(io::ErrorKind::Other, MasterError::TestParsing(String::from("Could not connect to DB"))))
-        };
-
-        tb.name(String::from("MobilityThread"))
-        .spawn(move || { 
-            loop {
-                thread::sleep(update_time);
-                match update_worker_positions(&conn) {
-                    Ok(rows) => { 
-                        info!("The position of {} workers has been updated", rows);
-                    },
-                    Err(e) => { 
-                        error!("Error updating worker positions: {}", e);
-                    },
-                }
-            }
-            Ok(())
-        })
-    }
+//endregion command_loop
 }
 
 // *****************************
@@ -533,7 +698,7 @@ mod tests {
     #[test]
     fn test_master_new() {
         let m = Master::new();
-        let obj_str = r#"Master { workers: Mutex { data: {} }, work_dir: ".", worker_binary: "./worker_cli", available_nodes: {} }"#;
+        let obj_str = r#"Master { workers: Mutex { data: {} }, work_dir: ".", worker_binary: "./worker_cli", available_nodes: {}, duration: 0, test_area: Area { width: 0.0, height: 0.0 }, mobility_model: None }"#;
         assert_eq!(format!("{:?}", m), String::from(obj_str));
     }
 }

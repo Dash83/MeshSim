@@ -3,32 +3,22 @@
 #seconds, as well as serve as a benchmark to see how faster does the 2 radio version finds all nodes.
 
 name = "sustained_test"
-# actions = ["End_Test 14000", "Add_Node node14 10",
-#                              "Add_Node node2 20", 
-#                              "Add_Node node12 30",
-#                              "Add_Node node3 40",
-#                              "Add_Node node13 50",
-#                              "Add_Node node4 60",
-#                              "Add_Node node9 70",
-#                              "Add_Node node5 80",
-#                              "Add_Node node10 90",
-#                              "Add_Node node6 100",
-#                              "Add_Node node7 110",
-#                              "Add_Node node11 120", 
-#                              "Add_Node node8 130" ]
-actions = ["End_Test 14000", "Add_Node node2 10",
-                             "Add_Node node3 20", 
-                             "Add_Node node4 30",
-                             "Add_Node node5 40",
-                             "Add_Node node6 50",
-                             "Add_Node node7 60",
-                             "Add_Node node8 70",
-                             "Add_Node node9 80",
-                             "Add_Node node10 90",
-                             "Add_Node node11 100",
-                             "Add_Node node12 110",
-                             "Add_Node node13 120", 
-                             "Add_Node node14 130" ]
+duration = 14000
+width = 200 #Not used in this test
+height = 200 #Not used in this test
+actions = [ "Add_Node node2 10",
+            "Add_Node node3 20", 
+            "Add_Node node4 30",
+            "Add_Node node5 40",
+            "Add_Node node6 50",
+            "Add_Node node7 60",
+            "Add_Node node8 70",
+            "Add_Node node9 80",
+            "Add_Node node10 90",
+            "Add_Node node11 100",
+            "Add_Node node12 110",
+            "Add_Node node13 120", 
+            "Add_Node node14 130" ]
 ### Initial Nodes ###
 [initial_nodes.node1]
     worker_name = "node01"

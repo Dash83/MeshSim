@@ -60,7 +60,6 @@ impl FromStr for Protocols {
 
         assert!(parts.len() > 0);
         let prot = parts[0];
-        println!("Protocol: {}", &prot);
         match prot {
             "TMEMBERSHIP" => Ok(Protocols::TMembership),
             "TMEMBERSHIP_ADVANCED" => Ok(Protocols::TMembershipAdvanced),

@@ -103,6 +103,8 @@ pub struct WorkerConfig {
     /// Initial position of the worker
     #[serde(flatten)]
     pub position : Position,
+    /// Optional field used for mobility models.
+    pub destination : Option<Position>,
     /// Velocity vector of the worker
     pub velocity : Velocity,
     ///NOTE: Due to the way serde_toml works, the RadioConfig fields must be kept last in the structure.
@@ -124,6 +126,7 @@ impl WorkerConfig {
                      radio_short : None,
                      radio_long : None,
                      position : Position{ x : 0.0, y : 0.0 },
+                     destination : None,
                      velocity : Velocity{ x : 0.0, y : 0.0 },
         }
     }
@@ -169,6 +172,7 @@ impl WorkerConfig {
                                                           &id, 
                                                           &self.position, 
                                                           &self.velocity, 
+                                                          &self.destination,
                                                           sr_addr, 
                                                           lr_addr)?;
                 debug!("Worker registered correcly with id {}", &id);
@@ -227,7 +231,7 @@ mod tests {
     #[test]
     fn test_workerconfig_new() {
         let config = WorkerConfig::new();
-        let config_str = "WorkerConfig { worker_name: \"worker1\", work_dir: \".\", random_seed: 0, operation_mode: Simulated, protocol: TMembership, position: Position { x: 0.0, y: 0.0 }, velocity: Velocity { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
+        let config_str = "WorkerConfig { worker_name: \"worker1\", work_dir: \".\", random_seed: 0, operation_mode: Simulated, protocol: TMembership, position: Position { x: 0.0, y: 0.0 }, destination: None, velocity: Velocity { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
 
         assert_eq!(format!("{:?}", config), config_str);
     }

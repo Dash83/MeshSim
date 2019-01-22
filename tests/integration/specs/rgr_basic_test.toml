@@ -1,5 +1,8 @@
 name = "basic_gossip_test"
-actions = ["ping node2 node24 3000 ", "End_Test 6000"]
+duration = 6000
+width = 200 #Not used in this test
+height = 200 #Not used in this test
+actions = ["ping node2 node24 3000 "]
 
 [initial_nodes.node1]
     worker_name = "node1"

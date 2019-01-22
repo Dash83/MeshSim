@@ -122,6 +122,10 @@ fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {
     let test_file = matches.value_of(ARG_TEST_FILE); 
     if let Some(file) = test_file {
         let mut test_spec = test_specification::TestSpec::parse_test_spec(file)?;
+        master.duration = test_spec.duration;
+        master.test_area.height = test_spec.area_size.height;
+        master.test_area.width = test_spec.area_size.width;
+        master.mobility_model = test_spec.mobility_model.clone();
         master.run_test(test_spec)?;
     }
 

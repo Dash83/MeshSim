@@ -1,6 +1,6 @@
 extern crate toml;
 
-use master::MasterError;
+use master::{MasterError, MobilityModels};
 use worker::worker_config::WorkerConfig;
 use std::fs::File;
 use std::io::Read;
@@ -8,13 +8,29 @@ use std::str::FromStr;
 use std::collections::HashMap;
 use super::workloads::*;
 
+/// Struct to keep the area of the simulation
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+pub struct Area {
+    /// Horizontal measure of the test area
+    pub width : f64,
+    /// Vertical measure of the test area
+    pub height : f64,
+}
+
 ///Structure that holds the data of a given test specification.
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct TestSpec {
     ///Name of the test. For informational purposes only. 
     pub name : String,
+    /// Duration of the test in milliseconds.
+    pub duration : u64,
     /// Vector of actions for the Master to take.
     pub actions : Vec<String>,
+    /// Size of the simulation area.
+    #[serde(flatten)]
+    pub area_size : Area,
+    /// The pattern of mobility the workers will follow
+    pub mobility_model : Option<MobilityModels>,
     /// Collection of worker configurations for the master to start at the begginning of the test.
     pub initial_nodes : HashMap<String, WorkerConfig>,
     /// Collection of available worker configurations that the master may start at any time during
@@ -41,6 +57,9 @@ impl TestSpec {
     ///Creates new empty configuration
     pub fn new() -> TestSpec {
         TestSpec{ name : String::from(""),
+                  duration : 0,
+                  area_size : Area{ width : 0.0, height : 0.0},
+                  mobility_model : None,
                   actions : vec![],
                   initial_nodes : HashMap::new(),
                   available_nodes : HashMap::new() }

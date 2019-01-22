@@ -2,6 +2,7 @@
 /****************** Platform *****************/
 mod device_mode;
 mod CBR;
+mod random_waypoint;
 
 /****************** Protocols ****************/
 mod tmembership;

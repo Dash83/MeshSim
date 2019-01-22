@@ -166,7 +166,8 @@ fn test_broadcast_simulated() {
     let _worker_db_id = register_worker(&conn, worker_name, 
                                                &worker_id, 
                                                &pos,
-                                               &vel, 
+                                               &vel,
+                                               &None,
                                                Some(r1.get_address().into()), 
                                                None).expect("Could not register worker");
 
@@ -185,6 +186,7 @@ fn test_broadcast_simulated() {
                                                &worker_id, 
                                                &pos,
                                                &vel,
+                                               &None,
                                                Some(r2.get_address().into()), 
                                                None).expect("Could not register worker");
     
@@ -204,6 +206,7 @@ fn test_broadcast_simulated() {
                                                &worker_id, 
                                                &pos,
                                                &vel, 
+                                               &None,
                                                Some(r3.get_address().into()), 
                                                None).expect("Could not register worker");
 

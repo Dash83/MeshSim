@@ -3,10 +3,11 @@ extern crate toml;
 extern crate rand;
 
 use mesh_simulator::master::test_specification::*;
+use mesh_simulator::master::MobilityModels;
 use mesh_simulator::worker::worker_config::*;
 use mesh_simulator::worker::protocols::Protocols;
 use mesh_simulator::worker;
-use mesh_simulator::worker::mobility::Position;
+use mesh_simulator::worker::mobility::*;
 
 use std::error;
 use std::fmt;
@@ -16,7 +17,7 @@ use std::path::PathBuf;
 use std::fs::File;
 use std::io::Write;
 use rand::{thread_rng, Rng, RngCore};
-use rand::distributions::Uniform;
+use rand::distributions::{Uniform, Normal};
 
 const DEFAULT_FILE_NAME : &'static str = "untitled";
 const DEFAULT_NODE_NAME : &'static str = "node";
@@ -26,7 +27,9 @@ struct TestBasics {
     pub test_name : String,
     pub end_time : u64,
     pub protocol : Protocols,
-    pub side_size : f64,
+    pub width : f64,
+    pub height : f64,
+    pub m_model : Option<MobilityModels>,
     pub work_dir : String,
 }
 
@@ -35,7 +38,9 @@ impl TestBasics {
         TestBasics{ test_name : String::from(""),
                     end_time : 0,
                     protocol : Protocols::TMembership,
-                    side_size : 0.0,
+                    width : 0.0,
+                    height : 0.0,
+                    m_model : None,
                     work_dir : String::from("") }
     }
 }
@@ -213,8 +218,14 @@ fn process_command(com : Commands, spec : &mut TestSpec, data : &TestBasics) -> 
 }
 
 fn command_finish(spec : &mut TestSpec, data : &TestBasics) -> Result<bool, Errors> {
-    //Add end_test action
-    spec.actions.push(format!("End_Test {}", data.end_time));
+    //Get the test measurements
+    spec.area_size = Area { width : data.width, height : data.height };
+
+    //Get test duration
+    spec.duration = data.end_time;
+
+    //Get mobility model
+    spec.mobility_model = data.m_model.clone();
 
     let mut p = PathBuf::from(".");
     //Determine file name to write
@@ -246,7 +257,9 @@ fn command_finish(spec : &mut TestSpec, data : &TestBasics) -> Result<bool, Erro
 
 fn command_add_nodes(node_type : String, num : usize, spec : &mut TestSpec, data : &TestBasics) -> Result<bool, Errors> {
     let mut rng = rand::thread_rng();
-    let sample_limits = Uniform::new(0.0, data.side_size + 1.0);
+    let width_sample = Uniform::new(0.0, data.width);
+    let height_sample = Uniform::new(0.0, data.height);
+    let walking_sample = Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV);
 
     let ref mut nodes = match node_type.to_uppercase().as_str() {
         "AVAILABLE" => &mut spec.available_nodes,
@@ -264,9 +277,32 @@ fn command_add_nodes(node_type : String, num : usize, spec : &mut TestSpec, data
         w.protocol = data.protocol.clone();
         
         //Calculate the position
-        let x = rng.sample(sample_limits);
-        let y = rng.sample(sample_limits);
+        let x = rng.sample(width_sample);
+        let y = rng.sample(height_sample);
         w.position = Position{ x : x, y : y};
+
+        if let Some(model) = &data.m_model {
+            match model {
+                MobilityModels::RandomWaypoint => {
+                    let target_x = rng.sample(width_sample);
+                    let target_y = rng.sample(height_sample);
+                    w.destination = Some( Position{x :target_x, y : target_y} );
+
+                    //Velocity vector should point to destination
+                    let vel = rng.sample(walking_sample);
+                    let distance : f64 = euclidean_distance(w.position.x, w.position.y, target_x, target_y);
+                    let time : f64 = distance / vel;
+                    let x_vel = (target_x - w.position.x) / time;
+                    let y_vel = (target_y - w.position.y) / time;
+                     w.velocity = Velocity{ x : x_vel, y : y_vel};
+                },
+            }
+        } else {
+            //Calculate velocity
+            let x_vel = rng.sample(walking_sample);
+            let y_vel = rng.sample(walking_sample);
+            w.velocity = Velocity{ x : x_vel, y : y_vel};
+        }
 
         //Create the radio configurations
         let mut sr = RadioConfig::new();
@@ -332,11 +368,30 @@ fn capture_basic_data() -> Result<TestBasics, Errors> {
     };
     input.clear();
 
-    println!("What size (in meters) should the side of the area be? (The Simulation area is square-shaped)");
+    println!("Simulation area Width (in meters):");
     let bytes_read = io::stdin().read_line(&mut input)?;
-    data.side_size = match input[0..input.len()-1].parse() {
+    data.width = match input[0..input.len()-1].parse() {
         Ok(t) => t,
         Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
+    };
+    input.clear();
+
+    println!("Simulation area height (in meters):");
+    let bytes_read = io::stdin().read_line(&mut input)?;
+    data.height = match input[0..input.len()-1].parse() {
+        Ok(t) => t,
+        Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
+    };
+    input.clear();
+
+    println!("Mobility model:");
+    let bytes_read = io::stdin().read_line(&mut input)?;
+    data.m_model = match input[0..input.len()-1].parse::<MobilityModels>() {
+        Ok(t) => Some(t),
+        Err(e) => { 
+            eprintln!("{}. Setting model to None (stationary)", e);
+            None    
+        }
     };
     input.clear();
 
