@@ -42,7 +42,7 @@ impl TestSpec {
     /// This function takes a path to a file that defines a TOML-based
     /// test specification for the Master.
     pub fn parse_test_spec<'a>(file_path : &'a str) -> Result<TestSpec, MasterError> {
-        info!("Parsing test file {}.", file_path);
+        // info!("Parsing test file {}.", file_path);
         //Check that the test file passed exists.
         //If it doesn't exist, error out
         let mut file = try!(File::open(file_path));

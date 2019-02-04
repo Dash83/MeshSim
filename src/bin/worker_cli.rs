@@ -3,27 +3,24 @@ extern crate clap;
 extern crate rustc_serialize;
 extern crate serde;
 extern crate serde_cbor;
+
 #[macro_use]
 extern crate slog;
-extern crate slog_stream;
-extern crate slog_term;
-extern crate slog_json;
-extern crate slog_stdlog;
-#[macro_use]
-extern crate log;
+
 extern crate toml;
 extern crate rand;
 
 use mesh_simulator::worker::worker_config::WorkerConfig;
 use mesh_simulator::worker;
+use mesh_simulator::logging;
 use clap::{Arg, App, ArgMatches};
-use slog::DrainExt;
 use std::fs::{OpenOptions, File, self};
 use std::io::{self, Read};
 use std::fmt;
 use std::error;
 use std::env;
 use std::path::Path;
+use slog::{Drain, Logger};
 
 const ARG_CONFIG : &'static str = "config";
 const ARG_WORKER_NAME : &'static str = "worker_name";
@@ -120,36 +117,8 @@ impl From<toml::de::Error> for CLIError {
 }
 // ***************End Errors****************
 
-fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIError>  { 
-    let log_dir_name = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "log");
-    let log_dir = Path::new(log_dir_name.as_str());
-    
-    if !log_dir.exists() {
-        try!(std::fs::create_dir(log_dir));
-    }
-
-    let mut log_dir_buf = log_dir.to_path_buf();
-    log_dir_buf.push(format!("{}{}", worker_name, ".log"));
-    
-    //At this point the log folder has been created, so the path should be valid.
-    let log_file_name = log_dir_buf.to_str().unwrap();
-
-    let log_file = try!(OpenOptions::new()
-                        .create(true)
-                        .write(true)
-                        .truncate(true)
-                        .open(log_file_name));
-    
-    let console_drain = slog_term::streamer().build();
-    let file_drain = slog_stream::stream(log_file, slog_json::default());
-    let process_name = String::from(worker_name);
-    let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!("Process" => process_name));
-    try!(slog_stdlog::set_logger(logger));
-    Ok(())
-} 
-
-fn run(config : WorkerConfig) -> Result<(), CLIError> {
-   let mut obj =  config.create_worker()?;
+fn run(config : WorkerConfig, logger : Logger) -> Result<(), CLIError> {
+   let mut obj =  config.create_worker(logger)?;
    //debug!("Worker Obj: {:?}", obj);
    try!(obj.start());
    Ok(())
@@ -209,7 +178,7 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
     // Worker_name
     config.worker_name = matches.value_of(ARG_WORKER_NAME).unwrap_or(config.worker_name.as_str()).to_string();
     if config.worker_name.is_empty() {
-        error!("worker_name can't be empty.");
+        eprintln!("worker_name can't be empty.");
         return Err(CLIError::Configuration("Worker name was empty.".to_string()))
     }
 
@@ -217,7 +186,7 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
     config.work_dir = matches.value_of(ARG_WORK_DIR).unwrap_or(config.work_dir.as_str()).to_string();
     let dir_info = try!(fs::metadata(std::path::Path::new(config.work_dir.as_str())));
     if !dir_info.is_dir() || dir_info.permissions().readonly() {
-        error!("work_dir is not a valid directory or it's not writable.");
+        eprintln!("work_dir is not a valid directory or it's not writable.");
         return Err(CLIError::Configuration("work_dir is not a valid directory or it's not writable.".to_string()))
     }
 
@@ -232,25 +201,19 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
 }
 
 /// The init process performs all initialization required for the worker_cli.
-/// It performs 3 main tasks: read the configuration file, process the command line parameters,
-/// and initialize the logger.
+/// It performs 2 main tasks: read the configuration file and process the command line parameters.
 fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
     //Read the configuration file.
-    let mut current_dir = try!(env::current_dir());
+    let mut current_dir = env::current_dir()?;
     let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
         //No configuration file was passed. Look for default option: current_dir + default name.
          current_dir.push(CONFIG_FILE_NAME);
          current_dir.to_str().expect("No configuration file was provided and current directory is not readable.")
     });
-    let mut configuration = try!(load_conf_file(config_file_path));
+    let mut configuration = load_conf_file(config_file_path)?;
     
     //Validate the current configuration
-    //This mus always be done before initializing the logger, as it can change the work dir.
-    try!(validate_config(&mut configuration, &matches));
-    //debug!("Config: {:?}", configuration);
-
-    //Initialize logger
-    try!(init_logger(&configuration.work_dir, &configuration.worker_name));
+    let _res = validate_config(&mut configuration, &matches)?;
 
     Ok(configuration)
 }
@@ -265,9 +228,19 @@ fn main() {
                             ::std::process::exit(ERROR_INITIALIZATION);
                         });
 
+    let log_file_name = format!("{}{}{}{}{}.log", &config.work_dir,
+                                                std::path::MAIN_SEPARATOR,
+                                                logging::LOG_DIR_NAME,
+                                                std::path::MAIN_SEPARATOR,
+                                                &config.worker_name );
+    let logger = logging::create_logger(&log_file_name).unwrap_or_else(|e| {
+                            println!("worker_cli failed with the following error: {}", e);
+                            ::std::process::exit(ERROR_INITIALIZATION);
+    });
+
     //Main loop
-    if let Err(ref e) = run(config) {
-        error!("worker_cli failed with the following error: {}", e);
+    if let Err(ref e) = run(config, logger.clone()) {
+        error!(logger, "worker_cli failed with the following error: {}", e);
         ::std::process::exit(ERROR_EXECUTION_FAILURE);
     }
 }
@@ -286,15 +259,15 @@ mod worker_cli_tests {
        */ 
     // }
 
-    //Unit test for: init_logger
-    #[test]
-    fn test_init_logger() {
-        let worker_name = "test_worker";
-        let dir = std::env::temp_dir();
-        let res = init_logger(dir.to_str().unwrap(), worker_name);
+    // //Unit test for: init_logger
+    // #[test]
+    // fn test_init_logger() {
+    //     let worker_name = "test_worker";
+    //     let dir = std::env::temp_dir();
+    //     let res = init_logger(dir.to_str().unwrap(), worker_name);
         
-        assert!(res.is_ok());
-    }
+    //     assert!(res.is_ok());
+    // }
 
     //Unit test for: run
     // #[test]

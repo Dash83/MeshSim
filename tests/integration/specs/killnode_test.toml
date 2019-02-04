@@ -3,7 +3,7 @@
 #We used 1 initial node and add a second node shortly after to a potential deadlock in which the 2 process
 #start at the exact same time and end up waiting on the other to responde to the heartbeat message.
 name = "heartbeat_test"
-duration = 1000
+duration = 1500
 width = 200
 height = 200
 actions = ["Kill_Node node2 500"]

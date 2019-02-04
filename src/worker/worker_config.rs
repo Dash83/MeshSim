@@ -12,9 +12,10 @@ use std::path::Path;
 use std::fs::File;
 use std::iter;
 use self::rustc_serialize::hex::*;
-use self::rand::{Rng, StdRng, RngCore};
+use self::rand::{StdRng, RngCore};
 use std::sync::{Mutex, Arc};
 use worker::mobility::{self, Position, Velocity};
+use ::slog::Logger;
 
 ///Default range in meters for short-range radios
 pub const DEFAULT_SHORT_RADIO_RANGE : f64 = 100.0;
@@ -52,7 +53,8 @@ impl RadioConfig {
                               worker_name : String, 
                               worker_id : String,
                               seed : u32, 
-                              r : Option<Arc<Mutex<StdRng>>>) -> Arc<Radio> {
+                              r : Option<Arc<Mutex<StdRng>>>,
+                              logger : Logger) -> Arc<Radio> {
         let rng = match r {
             Some(gen) => gen,
             None => { Arc::new(Mutex::new(Worker::rng_from_seed(seed))) }
@@ -65,7 +67,8 @@ impl RadioConfig {
                                             worker_name,
                                             worker_id, 
                                             rng,
-                                            r_type))
+                                            r_type,
+                                            logger))
             },
             OperationMode::Simulated => { 
                 //let delay = self.delay.unwrap_or(0);
@@ -77,7 +80,8 @@ impl RadioConfig {
                                              worker_name,
                                              r_type,
                                              self.range,
-                                             rng ))
+                                             rng,
+                                             logger ))
             },
         }
     }
@@ -132,7 +136,7 @@ impl WorkerConfig {
     }
 
     ///Creates a new Worker object configured with the values of this configuration object.
-    pub fn create_worker(self) -> Result<Worker, WorkerError> {
+    pub fn create_worker(self, logger: Logger) -> Result<Worker, WorkerError> {
         //Create the RNG
         let gen = Worker::rng_from_seed(self.random_seed);
         //Generate the worker_id
@@ -143,8 +147,14 @@ impl WorkerConfig {
         //Create the radios
         let (sr, sr_addr) = match self.radio_short {
             Some(sr_config) => { 
-                let sr = sr_config.create_radio(self.operation_mode, RadioTypes::ShortRange, self.work_dir.clone(), 
-                                                self.worker_name.clone(), id.clone(), self.random_seed, Some(Arc::clone(&rng)));
+                let sr = sr_config.create_radio(self.operation_mode, 
+                                                RadioTypes::ShortRange, 
+                                                self.work_dir.clone(), 
+                                                self.worker_name.clone(), 
+                                                id.clone(), 
+                                                self.random_seed, 
+                                                Some(Arc::clone(&rng)),
+                                                logger.clone(), );
                 let addr = sr.get_address().into();
                 (Some(sr), Some(addr))
             },
@@ -153,8 +163,14 @@ impl WorkerConfig {
 
         let (lr, lr_addr) = match self.radio_long {
             Some(lr_config) => { 
-                let lr = lr_config.create_radio(self.operation_mode, RadioTypes::LongRange, self.work_dir.clone(), 
-                                                self.worker_name.clone(), id.clone(), self.random_seed, Some(Arc::clone(&rng)));
+                let lr = lr_config.create_radio(self.operation_mode, 
+                                                RadioTypes::LongRange, 
+                                                self.work_dir.clone(), 
+                                                self.worker_name.clone(),
+                                                id.clone(), 
+                                                self.random_seed, 
+                                                Some(Arc::clone(&rng)),
+                                                logger.clone(), );
                 let addr = lr.get_address().into();
                 (Some(lr), Some(addr) )
             },
@@ -164,9 +180,9 @@ impl WorkerConfig {
         let db_id = match self.operation_mode {
             OperationMode::Device => 0,
             OperationMode::Simulated => {
-                let conn = mobility::get_db_connection(&self.work_dir)?;
+                let conn = mobility::get_db_connection(&self.work_dir, &logger)?;
                 // debug!("DB Connection obtained.");
-                let _rows = mobility::create_db_objects(&conn)?;
+                let _rows = mobility::create_db_objects(&conn, &logger)?;
                 // debug!("create_positions_db returned {}", _rows);
                 let id = mobility::register_worker(&conn, self.worker_name.clone(), 
                                                           &id, 
@@ -174,8 +190,9 @@ impl WorkerConfig {
                                                           &self.velocity, 
                                                           &self.destination,
                                                           sr_addr, 
-                                                          lr_addr)?;
-                debug!("Worker registered correcly with id {}", &id);
+                                                          lr_addr,
+                                                          &logger)?;
+                debug!(logger, "Worker registered correcly with id {}", &id);
                 id
             },
         };
@@ -189,7 +206,8 @@ impl WorkerConfig {
                         operation_mode : self.operation_mode,
                         id : id,
                         protocol : self.protocol,
-                        db_id : db_id, };
+                        db_id : db_id,
+                        logger : logger };
         Ok(w)
     }
 
@@ -226,6 +244,7 @@ mod tests {
     use std::io::Read;
     use super::*;
     use std::env;
+    use logging;
 
     //Unit test for: WorkerConfig_new
     #[test]
@@ -249,10 +268,12 @@ mod tests {
         config.radio_long = Some(lr);
         
         println!("Worker config: {:?}", &config);
-        let worker = config.create_worker();
-        let default_worker_display = "Worker { name: \"worker1\", id: \"416d77337e24399dc7a5aa058039f72a\", short_radio: Some(SimulatedRadio { reliability: 1.0, broadcast_groups: [\"group1\"], work_dir: \".\", me: Peer { id: \"416d77337e24399dc7a5aa058039f72a\", name: \"worker1\", address: \"./bcg/group1/416d77337e24399dc7a5aa058039f72a.socket\" }, range: ShortRange, rng: Mutex { data: StdRng { rng: Isaac64Rng {} } } }), long_radio: Some(SimulatedRadio { reliability: 1.0, broadcast_groups: [\"group1\"], work_dir: \".\", me: Peer { id: \"416d77337e24399dc7a5aa058039f72a\", name: \"worker1\", address: \"./bcg/group1/416d77337e24399dc7a5aa058039f72a.socket\" }, range: LongRange, rng: Mutex { data: StdRng { rng: Isaac64Rng {} } } }), work_dir: \".\", rng: Mutex { data: StdRng { rng: Isaac64Rng {} } }, seed: 0, operation_mode: Simulated, protocol: TMembership }";
+        let log_file = "/tmp/test.log";
+        let logger = logging::create_logger(log_file).expect("Could not create logger");
+
+        let res = config.create_worker(logger);
         
-        assert_eq!(format!("{:?}", worker), String::from(default_worker_display));
+        assert!(res.is_ok());
     }
 
     //Unit test for: WorkerConfig::write_to_file

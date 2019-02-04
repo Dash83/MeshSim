@@ -5,7 +5,7 @@ extern crate serde;
 extern crate serde_cbor;
 #[macro_use]
 extern crate slog;
-extern crate slog_stream;
+// extern crate slog_stream;
 extern crate slog_term;
 extern crate slog_json;
 extern crate slog_stdlog;
@@ -16,13 +16,15 @@ use mesh_simulator::master::*;
 use mesh_simulator::master;
 use clap::{Arg, App, ArgMatches};
 use std::str::FromStr;
-use slog::DrainExt;
+// use slog::DrainExt;
 use std::fs::{OpenOptions};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::io;
 use std::error;
 use std::fmt;
 use std::error::Error;
+use mesh_simulator::logging;
+use std::time::Duration;
 
 //const ARG_CONFIG : &'static str = "config";
 const ARG_WORK_DIR : &'static str = "work_dir";
@@ -91,31 +93,31 @@ impl From<master::MasterError> for CLIError {
 }
 
 
-fn init_logger(work_dir : &Path) -> Result<(), CLIError> {
-    let mut log_dir_buf = work_dir.to_path_buf();
-    log_dir_buf.push("log");
+// fn init_logger(work_dir : &Path) -> Result<(), CLIError> {
+//     let mut log_dir_buf = work_dir.to_path_buf();
+//     log_dir_buf.push("log");
     
-    if !log_dir_buf.exists() {
-        try!(std::fs::create_dir(log_dir_buf.as_path()));
-    }
+//     if !log_dir_buf.exists() {
+//         try!(std::fs::create_dir(log_dir_buf.as_path()));
+//     }
 
-    log_dir_buf.push("MeshMaster.log");
-    //At this point the log folder has been created, so the path should be valid.
-    let log_file_name = log_dir_buf.to_str().unwrap();
+//     log_dir_buf.push("MeshMaster.log");
+//     //At this point the log folder has been created, so the path should be valid.
+//     let log_file_name = log_dir_buf.to_str().unwrap();
 
-    let log_file = try!(OpenOptions::new()
-                        .create(true)
-                        .write(true)
-                        .truncate(true)
-                        .open(log_file_name));
+//     let log_file = try!(OpenOptions::new()
+//                         .create(true)
+//                         .write(true)
+//                         .truncate(true)
+//                         .open(log_file_name));
     
-    let console_drain = slog_term::streamer().build();
-    let file_drain = slog_stream::stream(log_file, slog_json::default());
-    let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!());
-    try!(slog_stdlog::set_logger(logger));
+//     // let console_drain = slog_term::streamer().build();
+//     // let file_drain = slog_stream::stream(log_file, slog_json::default());
+//     // let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!());
+//     // try!(slog_stdlog::set_logger(logger));
 
-    Ok(())
-} 
+//     Ok(())
+// } 
 
 fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {    
     //Has a test file been provided?
@@ -129,34 +131,44 @@ fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {
         master.run_test(test_spec)?;
     }
 
+    //Temporary fix. Since the logging now runs in a separate thread, the tests may end before
+    //all the data is captured. Check if the log file is still changing.
+    let md = std::fs::metadata(&master.log_file)?;
+    let mut size1 = md.len();
+    let max_wait = 20;
+    for _i in 0..max_wait {
+        std::thread::sleep(Duration::from_millis(100));
+        let size2 = md.len();
+        if size1 < size2 {
+            //File is still changing
+            size1 = size2;
+        } else {
+            //We are good. Exit.
+            break;
+        }
+    }
     Ok(())
 }
 
 fn init(matches : &ArgMatches) -> Result<(Master), CLIError> {
-    //Read the configuration file.
-    // let mut current_dir = try!(env::current_dir());
-    // let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
-    //     //No configuration file was passed. Look for default option: current_dir + default name.
-    //      current_dir.push(CONFIG_FILE_NAME);
-    //      current_dir.to_str().expect("No configuration file was provided and current directory is not readable.")
-    // });
-    // let mut configuration = try!(load_conf_file(config_file_path));
-    let mut master = Master::new();
-
-    //Initialize logger
+    //Determine the work_dir    
     let work_dir = match matches.value_of(ARG_WORK_DIR) {
         Some(arg) => String::from(arg),
-        None => master.work_dir,
+        None => String::from("."),
     };
 
-    master.work_dir = work_dir.clone();
-
-    let work_dir_path = Path::new(&work_dir);
+    //if the workdir does not exists, create it
+    let mut work_dir_path = PathBuf::from(&work_dir);
     if !work_dir_path.exists() {
-        let _ = try!(std::fs::create_dir(&work_dir));
+        let _ = std::fs::create_dir(&work_dir_path)?;
     }
-    try!(init_logger(work_dir_path));
+    work_dir_path.push(logging::LOG_DIR_NAME);
+    work_dir_path.push(logging::DEFAULT_MASTER_LOG);
 
+    let log_file = work_dir_path.to_str().unwrap().into();
+    let logger = logging::create_logger(&log_file).expect("Failed to set the logger for the Master.");
+    let mut master = Master::new(logger, log_file);
+    master.work_dir = work_dir.clone();
     //What else was passed to the master?
     master.worker_binary = match matches.value_of(ARG_WORKER_PATH) {
                                 Some(path_arg) => String::from(path_arg),

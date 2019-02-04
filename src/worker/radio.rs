@@ -7,16 +7,10 @@ extern crate md5;
 
 use worker::*;
 use worker::listener::*;
-use std::fs;
-use std::process::Stdio;
-use std::io::Read;
-use std::collections::HashMap;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
-use worker::rand::Rng;
-use worker::mobility::*;
 use std::thread::JoinHandle;
-use self::md5::Digest;
+use ::slog::Logger;
 
 const SIMULATED_SCAN_DIR : &'static str = "addr";
 const SHORT_RANGE_DIR : &'static str = "short";
@@ -93,6 +87,8 @@ pub struct SimulatedRadio {
     range : f64,
     ///Random number generator used for all RNG operations. 
     rng : Arc<Mutex<StdRng>>,
+    /// Logger for this Radio to use.
+    logger : Logger,
 }
 
 impl Radio  for SimulatedRadio {
@@ -141,12 +137,12 @@ impl Radio  for SimulatedRadio {
     fn init(&self) -> Result<Box<Listener>, WorkerError> {
         let mut dir = try!(std::fs::canonicalize(&self.work_dir));
 
-        //check bcast_groups dir is there
-        dir.push(SIMULATED_SCAN_DIR); //Dir is work_dir/$SIMULATED_SCAN_DIR
+        //Create directory for unix_domain sockets
+        dir.push(SIMULATED_SCAN_DIR);
         if !dir.exists() {
             //Create bcast_groups dir
             try!(std::fs::create_dir(dir.as_path()));
-            info!("Created dir {} ", dir.as_path().display());
+            info!(self.logger, "Created dir {} ", dir.as_path().display());
         }
 
         // //Create the scan dir that corresponds to this radio's range.
@@ -179,7 +175,11 @@ impl Radio  for SimulatedRadio {
         let listen_addr = SockAddr::unix(&self.address)?;
         let sock = Socket::new(Domain::unix(), Type::dgram(), None)?;
         let _ = sock.bind(&listen_addr)?;
-        let listener = SimulatedListener::new( sock, self.reliability, Arc::clone(&self.rng), self.r_type );
+        let listener = SimulatedListener::new(sock, 
+                                              self.reliability, 
+                                              Arc::clone(&self.rng), 
+                                              self.r_type,
+                                              self.logger.clone() );
         
         // for group in groups.iter() {
         //     dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/$RANGE/&group
@@ -208,11 +208,11 @@ impl Radio  for SimulatedRadio {
     }
 
     fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
-        let conn = get_db_connection(&self.work_dir)?;
+        let conn = get_db_connection(&self.work_dir, &self.logger)?;
         let peers = get_workers_in_range(&conn, &self.id, self.range)?;  
 
         if peers.len() == 0 {
-            info!("No nodes in range. Message not sent");
+            info!(self.logger, "No nodes in range. Message not sent");
             return Ok(())
         }
         // debug!("{} peer in range", peers.len());
@@ -236,11 +236,11 @@ impl Radio  for SimulatedRadio {
                     Ok(())
                 });                
             } else {
-                error!("No known address for peer peer {} in range {:?}", p.name, self.r_type);
+                error!(self.logger, "No known address for peer peer {} in range {:?}", p.name, self.r_type);
             }
         }      
         
-        info!("Message {:x} sent", &hdr.get_hdr_hash()?);
+        info!(self.logger, "Message {:x} sent", &hdr.get_hdr_hash()?);
         Ok(())
     }
 
@@ -254,7 +254,8 @@ impl SimulatedRadio {
                 worker_name : String,
                 r_type : RadioTypes,
                 range : f64,
-                rng : Arc<Mutex<StdRng>> ) -> SimulatedRadio {
+                rng : Arc<Mutex<StdRng>>,
+                logger : Logger ) -> SimulatedRadio {
         //$WORK_DIR/SIMULATED_SCAN_DIR/ID_RANGE.sock
         let range_dir : String = r_type.clone().into();
         let address = format!("{}{}{}{}{}_{}.sock", work_dir, std::path::MAIN_SEPARATOR,
@@ -266,7 +267,8 @@ impl SimulatedRadio {
                         address : address,
                         range : range,
                         r_type : r_type,
-                        rng : rng, }
+                        rng : rng,
+                        logger : logger }
     }
 
     // ///Function for adding broadcast groups in simulated mode
@@ -292,6 +294,8 @@ pub struct DeviceRadio {
     rng : Arc<Mutex<StdRng>>,
     ///Role this radio will take in the protocol based on it's range.
     r_type : RadioTypes,
+    /// Logger for this Radio to use.
+    logger : Logger,
 }
 
 impl Radio  for DeviceRadio{
@@ -368,9 +372,13 @@ impl Radio  for DeviceRadio{
 
         let debug_address = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,0)), DNS_SERVICE_PORT);
         let _ = sock.bind(&SockAddr::from(debug_address))?;
-        let listener = DeviceListener::new(sock, Some(mdns_handler), Arc::clone(&self.rng), self.r_type);
+        let listener = DeviceListener::new(sock, 
+                                           Some(mdns_handler), 
+                                           Arc::clone(&self.rng), 
+                                           self.r_type,
+                                           self.logger.clone());
 
-        info!("Radio initialized.");
+        info!(self.logger, "Radio initialized.");
 
         Ok(Box::new(listener))
     }
@@ -431,10 +439,11 @@ impl DeviceRadio {
                 worker_name : String, 
                 id : String, 
                 rng : Arc<Mutex<StdRng>>, 
-                r_type : RadioTypes ) -> DeviceRadio {
+                r_type : RadioTypes,
+                logger : Logger ) -> DeviceRadio {
         let address = DeviceRadio::get_radio_address(&interface_name).expect("Could not get address for specified interface.");
         let interface_index = DeviceRadio::get_interface_index(&interface_name).expect("Could not get index for specified interface.");
-        debug!("Obtained address {}", &address);
+        debug!(logger, "Obtained address {}", &address);
         let address = format!("[{}]:{}", address, DNS_SERVICE_PORT);
 
         DeviceRadio { interface_name : interface_name,
@@ -443,6 +452,7 @@ impl DeviceRadio {
                       name : worker_name, 
                       address : address,
                       rng : rng,
-                      r_type : r_type }
+                      r_type : r_type,
+                      logger : logger }
     }
 }

@@ -13,6 +13,7 @@ use self::tmembership::TMembership;
 use self::tmembership_advanced::*;
 use self::naive_routing::*;
 use self::reactive_gossip_routing::*;
+use ::slog::Logger;
 
 use std;
 use std::sync::Arc;
@@ -83,14 +84,17 @@ pub struct ProtocolResources {
 pub fn build_protocol_resources( p : Protocols, 
                                  short_radio : Option<Arc<Radio>>,
                                  long_radio : Option<Arc<Radio>>,
-                                 seed : u32, id : String, name : String ) -> Result<ProtocolResources, WorkerError> {
+                                 seed : u32, 
+                                 id : String, 
+                                 name : String,
+                                 logger : Logger ) -> Result<ProtocolResources, WorkerError> {
     match p {
         Protocols::TMembership => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let sr = short_radio.expect("The TMembership protocol requires a short_radio to be provided.");
             //Initialize the radio.
             let listener = sr.init()?;
-            let handler : Arc<Protocol> = Arc::new(TMembership::new(Arc::clone(&sr), seed, id, name));
+            let handler : Arc<Protocol> = Arc::new(TMembership::new(Arc::clone(&sr), seed, id, name, logger));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
             let resources = ProtocolResources{  handler : handler, 
@@ -112,7 +116,7 @@ pub fn build_protocol_resources( p : Protocols,
             radio_channels.push((lr_listener, Arc::clone(&lr)));
 
             //Build the protocol handler
-            let handler : Arc<Protocol> = Arc::new(TMembershipAdvanced::new(sr, lr, seed, id, name));
+            let handler : Arc<Protocol> = Arc::new(TMembershipAdvanced::new(sr, lr, seed, id, name, logger));
 
             //Build the resources context
             let resources = ProtocolResources{ handler : handler,
@@ -125,7 +129,7 @@ pub fn build_protocol_resources( p : Protocols,
             let sr = short_radio.expect("The NaiveRouting protocol requires a short_radio to be provided.");
             //Initialize the radio.
             let listener = sr.init()?;
-            let handler : Arc<Protocol> = Arc::new(NaiveRouting::new(name, id, Arc::clone(&sr)));
+            let handler : Arc<Protocol> = Arc::new(NaiveRouting::new(name, id, Arc::clone(&sr), logger));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
             let resources = ProtocolResources{  handler : handler, 
@@ -139,7 +143,7 @@ pub fn build_protocol_resources( p : Protocols,
             //Initialize the radio.
             let listener = sr.init()?;
             let rng = Worker::rng_from_seed(seed);
-            let handler : Arc<Protocol> = Arc::new(ReactiveGossipRouting::new(name, id, Arc::clone(&sr), rng));
+            let handler : Arc<Protocol> = Arc::new(ReactiveGossipRouting::new(name, id, Arc::clone(&sr), rng, logger));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
             let resources = ProtocolResources{  handler : handler, 

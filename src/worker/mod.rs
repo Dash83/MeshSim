@@ -49,11 +49,12 @@ use worker::protocols::*;
 use worker::radio::*;
 use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
-use self::rand::{StdRng, Rng, SeedableRng, RngCore};
+use self::rand::{StdRng, SeedableRng};
 use self::byteorder::{NativeEndian, WriteBytesExt};
 use std::thread::{self, JoinHandle};
 use self::md5::Digest;
 use worker::mobility::*;
+use ::slog::Logger;
 
 //Sub-modules declaration
 pub mod worker_config;
@@ -176,36 +177,10 @@ impl From<rusqlite::Error> for WorkerError {
         WorkerError::DB(err)
     }
 }
-
 //endregion Errors
 
-// ///Enum used to encapsualte the addresses a peer has and tag them by type.
-// #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-// pub enum AddressType {
-//     ///Short range
-//     ShortRange(String),
-//     ///Long range
-//     LongRange(String),
-// }
-
-// impl AddressType {
-//     fn get_address(&self ) -> String {
-//         match &self {
-//             AddressType::ShortRange(s) => s.clone(),
-//             AddressType::LongRange(s) => s.clone(),
-//         }
-//     }
-
-//     fn is_short_range(&self) -> bool {
-//         match &self {
-//             AddressType::ShortRange(_s) => true,
-//             AddressType::LongRange(_s) => false,
-//         }        
-//     }
-// }
 /// Peer struct.
 /// Defines the public identity of a node in the mesh.
-/// 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct Peer {
     /// Public key of the peer. It's considered it's public address.
@@ -269,7 +244,10 @@ impl MessageHeader {
         let mut data = Vec::new();
         data.append(&mut self.sender.name.clone().into_bytes());
         data.append(&mut self.destination.name.clone().into_bytes());
-        data.append(&mut self.payload.clone().unwrap());
+        if let Some(mut p) = self.payload.clone() {
+            data.append(&mut p);
+        }
+
         let dig = md5::compute(&data);
         Ok(dig)
     }
@@ -334,11 +312,11 @@ impl ServiceRecord {
             command.arg(format!(r"{}", r));
         }
 
-        debug!("Registering service with command: {:?}", command);
+        // debug!("Registering service with command: {:?}", command);
 
         //Starting the worker process
         let child = try!(command.spawn());
-        info!("Process {} started.", child.id());
+        // info!("Process {} started.", child.id());
 
         Ok(child)
     }
@@ -400,6 +378,8 @@ pub struct Worker {
     operation_mode : OperationMode,
     /// The protocol that this Worker should run for this configuration.
     pub protocol : Protocols,
+    /// Logger for this Worker to use.
+    logger : Logger,
 }
 
 impl Worker {
@@ -416,10 +396,15 @@ impl Worker {
         //Init the radios and get their respective listeners.
         let short_radio = self.short_radio.take();
         let long_radio = self.long_radio.take();
-        let mut resources = build_protocol_resources( self.protocol, short_radio, long_radio, self.seed, 
-                                                           self.id.clone(), self.name.clone(),)?;
+        let mut resources = build_protocol_resources( self.protocol, 
+                                                      short_radio, 
+                                                      long_radio, 
+                                                      self.seed, 
+                                                      self.id.clone(), 
+                                                      self.name.clone(),
+                                                      self.logger.clone())?;
         
-        info!("Worker finished initializing.");
+        info!(self.logger, "Worker finished initializing.");
         
         //Initialize protocol.
         let _res = try!(resources.handler.init_protocol());
@@ -428,9 +413,10 @@ impl Worker {
         let prot_handler = Arc::clone(&resources.handler);
         let mut threads : Vec<JoinHandle<Result<(), WorkerError>>> = resources.radio_channels.drain(..).map(|(rx, tx)| { 
             let prot_handler = Arc::clone(&prot_handler);
+            let logger = self.logger.clone();
 
             thread::spawn(move || {        
-                info!("Listening for messages");
+                info!(logger, "Listening for messages");
                 loop {
                     match rx.read_message() {
                         Some(hdr) => { 
@@ -452,7 +438,7 @@ impl Worker {
                             });
                         },
                         None => { 
-                            warn!("Failed to read incoming message.");
+                            warn!(logger, "Failed to read incoming message.");
                         }
                     }
                 }
@@ -473,6 +459,7 @@ impl Worker {
         Ok(())
     }
 
+    //TODO: Remove the creationg of the log dir. That should be done in the create_logger function
     fn init(&mut self) -> Result<(), WorkerError> {
         //Make sure the required directories are there and writable or create them.
         //check log dir is there
@@ -481,7 +468,7 @@ impl Worker {
         if !dir.exists() {
             //Create log dir
             try!(std::fs::create_dir(dir.as_path()));
-            info!("Created dir {} ", dir.as_path().display());
+            info!(self.logger, "Created dir {} ", dir.as_path().display());
         }
         dir.pop(); //Dir is work_dir
 
@@ -507,30 +494,32 @@ impl Worker {
 
     fn start_command_loop_thread(&self, protocol_handler : Arc<Protocol>) -> io::Result<JoinHandle<Result<(), WorkerError>>> {
         let tb = thread::Builder::new();
+        let logger = self.logger.clone();
+
         tb.name(String::from("CommandLoop"))
         .spawn(move || { 
             let mut input = String::new();
-            debug!("Command loop started");
+            debug!(logger, "Command loop started");
             loop {
                 match io::stdin().read_line(&mut input) {
                     Ok(_bytes) => {
                         match input.parse::<commands::Commands>() {
                             Ok(command) => {
-                                info!("Command received");
+                                info!(logger, "Command received");
                                 match Worker::process_command(command, Arc::clone(&protocol_handler)) {
                                     Ok(_) => { /* All good! */ },
                                     Err(e) => {
-                                        error!("Error executing command: {}", e);
+                                        error!(logger, "Error executing command: {}", e);
                                     }
                                 }
                             },
                             Err(e) => { 
-                                error!("Error parsing command: {}", e);
+                                error!(logger, "Error parsing command: {}", e);
                             },
                         }
                     }
                     Err(error) => { 
-                        error!("{}", error);
+                        error!(logger, "{}", error);
                     }
                 }
                 input.clear();
@@ -554,6 +543,7 @@ impl Worker {
         Ok(())
     }
 }
+
 
 // *****************************
 // ******* End structs *********
@@ -605,15 +595,15 @@ mod tests {
     //     assert!(res.is_ok());
     // }
 
-    //**** ServiceRecord unit tests ****
-    //Unit test for get get_txt_record
-    #[test]
-    fn test_get_txt_record() {
-        let mut record = ServiceRecord::new();
-        record.txt_records.push(String::from("NAME=Worker1"));
+    // //**** ServiceRecord unit tests ****
+    // //Unit test for get get_txt_record
+    // #[test]
+    // fn test_get_txt_record() {
+    //     let mut record = ServiceRecord::new();
+    //     record.txt_records.push(String::from("NAME=Worker1"));
 
-        assert_eq!(String::from("Worker1"), record.get_txt_record("NAME").unwrap());
-    }
+    //     assert_eq!(String::from("Worker1"), record.get_txt_record("NAME").unwrap());
+    // }
     
     #[test]
     fn test_message_header_hash() {

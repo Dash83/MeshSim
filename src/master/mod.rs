@@ -47,7 +47,8 @@ use self::rand::distributions::{Uniform, Normal};
 use self::rusqlite::Connection;
 use std::sync::{PoisonError, MutexGuard};
 use std::iter;
-       
+use ::slog::Logger;
+
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
 pub mod test_specification;
@@ -95,9 +96,14 @@ pub struct Master {
     /// Area in meters 
     pub test_area : Area,
     /// Current mobility model (if any)
-    pub mobility_model : Option<MobilityModels>
+    pub mobility_model : Option<MobilityModels>,
+    /// The logger to be usef by the Master
+    logger : Logger,
+    /// The log file to which the master will log
+    pub log_file : String,
 }
 
+//region Errors
 /// The error type for the Master. Each variant encapsules the underlying reason for failure.
 #[derive(Debug)]
 pub enum MasterError {
@@ -183,12 +189,15 @@ impl error::Error for MasterError {
     }
 }
 
+//endregion Errors
+
 impl Master {
     /// Constructor for the struct.
-    pub fn new() -> Master {
+    pub fn new(logger : Logger, log_file : String) -> Master {
         let workers = Arc::new(Mutex::new(HashMap::new()));
         let wb = String::from("./worker_cli");
         let an = HashMap::new();
+
         Master{ workers : workers,
                 work_dir : String::from("."),
                 worker_binary : wb, 
@@ -196,17 +205,22 @@ impl Master {
                 duration : 0,
                 test_area : Area{ width : 0.0, height : 0.0},
                 mobility_model : None,
+                logger : logger,
+                log_file : log_file,
         }
     }
 
     /// Adds a single worker to the worker vector with a specified name and starts the worker process
-    pub fn run_worker<'a>( worker_binary : &'a str, work_dir : &'a str, config : &WorkerConfig) -> Result<Child, MasterError> {
+    pub fn run_worker<'a>( worker_binary : &'a str, 
+                           work_dir : &'a str, 
+                           config : &WorkerConfig,
+                           logger : &Logger, ) -> Result<Child, MasterError> {
         let worker_name = config.worker_name.clone();
         let file_name = format!("{}.toml", &worker_name);
         let mut file_dir = PathBuf::new();
         file_dir.push(work_dir);
         file_dir.push(&file_name);
-        debug!("Writing config file {}.", &file_dir.display());
+        debug!(logger, "Writing config file {}.", &file_dir.display());
         let _res = try!(config.write_to_file(file_dir.as_path()));
 
         //Constructing the external process call
@@ -218,7 +232,7 @@ impl Master {
         command.stdin(Stdio::piped());
 
         //Starting the worker process
-        info!("Starting worker process {}", &worker_name);
+        info!(logger, "Starting worker process {}", &worker_name);
         //debug!("with command {:?}", command);
         let child = try!(command.spawn());
         Ok(child)
@@ -226,8 +240,8 @@ impl Master {
 
     ///Runs the test defined in the specification passed to the master.
     pub fn run_test(&mut self, mut spec : test_specification::TestSpec) -> Result<(), MasterError> {
-        info!("Running test {}", &spec.name);
-        info!("Test results will be placed under {}", &self.work_dir);
+        info!(self.logger, "Running test {}", &spec.name);
+        info!(self.logger, "Test results will be placed under {}", &self.work_dir);
 
         //Start mobility thread
         let _mt_h = self.start_mobility_thread()?;
@@ -236,7 +250,10 @@ impl Master {
         {
             let mut workers = self.workers.lock().unwrap(); // LOCK : GET : WORKERS
             for (_, val) in spec.initial_nodes.iter_mut() {
-                let child_handle = try!(Master::run_worker(&self.worker_binary, &self.work_dir, &val));
+                let child_handle = Master::run_worker(&self.worker_binary, 
+                                                      &self.work_dir,
+                                                      &val,
+                                                      &self.logger)?;
                 workers.insert(val.worker_name.clone(), Arc::new(Mutex::new(child_handle)));
             }
         } // LOCK : RELEASE : WORKERS
@@ -262,7 +279,7 @@ impl Master {
 
                 }, 
                 Err(_) => { 
-                    warn!("Couldn't join on thread");
+                    warn!(self.logger, "Couldn't join on thread");
                 },
              }
         }
@@ -301,27 +318,28 @@ impl Master {
 
     fn testaction_end_test(&self, time : u64) -> Result<JoinHandle<()>, MasterError> {
         let workers_handle = Arc::clone(&self.workers);
+        let logger = self.logger.clone();
 
         let handle = thread::spawn(move || {
             let test_endtime = Duration::from_millis(time);
-            info!("End_Test action: Scheduled for {:?}", &test_endtime);
+            info!(logger, "End_Test action: Scheduled for {:?}", &test_endtime);
             thread::sleep(test_endtime);
-            info!("End_Test action: Starting");
+            info!(logger, "End_Test action: Starting");
             let mut workers_handle = workers_handle.lock().unwrap();
             let workers_handle = workers_handle.deref_mut();
             let mut i = 0;
             for (_name, mut handle) in workers_handle {
                 let mut h = handle.lock().unwrap();
-                info!("Killing worker pid {}", h.id());
+                info!(logger, "Killing worker pid {}", h.id());
                 match h.kill() {
                     Ok(_) => {
-                        info!("Process killed.");
+                        info!(logger, "Process killed.");
                         i += 1;
                     },
-                    Err(_) => info!("Process was not running.")
+                    Err(_) => info!(logger, "Process was not running.")
                 }
             }
-            info!("End_Test action: Finished. {} processes terminated.", i);
+            info!(logger, "End_Test action: Finished. {} processes terminated.", i);
         });
         Ok(handle)
     }
@@ -331,27 +349,28 @@ impl Master {
         let workers = Arc::clone(&self.workers);
         let worker_binary = self.worker_binary.clone();
         let work_dir = self.work_dir.clone();
-        
+        let logger = self.logger.clone();
+
         let handle = thread::spawn(move || {
             let test_endtime = Duration::from_millis(time);
-            info!("Add_Node ({}) action: Scheduled for {:?}", &name, &test_endtime);
+            info!(logger, "Add_Node ({}) action: Scheduled for {:?}", &name, &test_endtime);
             thread::sleep(test_endtime);
-            info!("Add_Node ({}) action: Starting", &name);
+            info!(logger, "Add_Node ({}) action: Starting", &name);
 
             match available_nodes.get(&name) {
                 Some(config) => { 
-                     match Master::run_worker(&worker_binary, &work_dir, config) {
+                     match Master::run_worker(&worker_binary, &work_dir, config, &logger) {
                          Ok(child_handle) => { 
                             let mut w = workers.lock().unwrap();
                             w.insert(name, Arc::new(Mutex::new(child_handle)));
                          },
                          Err(e) => { 
-                            error!("Error running worker: {:?}", e);
+                            error!(logger, "Error running worker: {:?}", e);
                          },
                      }
                 },
                 None => { 
-                    warn!("Add_Node ({}) action Failed. Worker configuration not found in available_workers pool.", &name);
+                    warn!(logger, "Add_Node ({}) action Failed. Worker configuration not found in available_workers pool.", &name);
                 },
             }
         });
@@ -360,12 +379,13 @@ impl Master {
 
     fn testaction_kill_node(&self, name : String, time : u64) -> Result<JoinHandle<()>, MasterError> {
         let workers = Arc::clone(&self.workers);
-        
+        let logger = self.logger.clone();
+
         let handle = thread::spawn(move || {
             let killtime = Duration::from_millis(time);
-            info!("Kill_Node ({}) action: Scheduled for {:?}", &name, &killtime);
+            info!(logger, "Kill_Node ({}) action: Scheduled for {:?}", &name, &killtime);
             thread::sleep(killtime);
-            info!("Kill_Node ({}) action: Starting", &name);
+            info!(logger, "Kill_Node ({}) action: Starting", &name);
 
             let workers = workers.lock();
             match workers {
@@ -375,16 +395,16 @@ impl Master {
                         match c.kill() {
                             Ok(_) => {
                                 let exit_status = c.wait();
-                                info!("Kill_Node ({}) action: Process {} killed. Exit status: {:?}", &name, c.id(), exit_status); 
+                                info!(logger, "Kill_Node ({}) action: Process {} killed. Exit status: {:?}", &name, c.id(), exit_status); 
                             },
-                            Err(e) => error!("Kill_Node ({}) action: Failed to kill process with error {}", &name, e),
+                            Err(e) => error!(logger, "Kill_Node ({}) action: Failed to kill process with error {}", &name, e),
                         }
                     } else {
-                        error!("Kill_Node ({}) action: Process not found in Master's collection.", &name);
+                        error!(logger, "Kill_Node ({}) action: Process not found in Master's collection.", &name);
                     }
                 },
                 Err(e) => { 
-                    error!("Kill_Node ({}) action: Could not obtain lock to workers: {}. Process not killed.", &name, e);
+                    error!(logger, "Kill_Node ({}) action: Could not obtain lock to workers: {}. Process not killed.", &name, e);
                 },
             }
         });
@@ -393,12 +413,13 @@ impl Master {
 
     fn testaction_ping_node(&self, source : String, destination : String, time : u64) -> Result<JoinHandle<()>, MasterError> {
         let workers = Arc::clone(&self.workers);
-        
+        let logger = self.logger.clone();
+
         let handle = thread::spawn(move || {
             let pingtime = Duration::from_millis(time);
-            info!("Ping {}->{} action: Scheduled for {:?}", &source, &destination, &pingtime);
+            info!(logger, "Ping {}->{} action: Scheduled for {:?}", &source, &destination, &pingtime);
             thread::sleep(pingtime);
-            info!("Ping {}->{} action: Starting", &source, &destination);
+            info!(logger, "Ping {}->{} action: Starting", &source, &destination);
 
             let workers = workers.lock();
             match workers {
@@ -409,11 +430,11 @@ impl Master {
                         let payload = format!("SEND {} {}\n", &destination, &ping_data);
                         let res = c.stdin.as_mut().unwrap().write_all(payload.as_bytes());
                     } else {
-                        error!("Ping {}->{} action: Process {} not found in Master's collection.", &source, &destination, &source);
+                        error!(logger, "Ping {}->{} action: Process {} not found in Master's collection.", &source, &destination, &source);
                     }
                 },
                 Err(e) => { 
-                    error!("Ping {}->{} action: Could not obtain lock to workers, Action aborted.", &source, &destination);
+                    error!(logger, "Ping {}->{} action: Could not obtain lock to workers, Action aborted.", &source, &destination);
                 },
             }
         });
@@ -424,15 +445,16 @@ impl Master {
         let tb = thread::Builder::new();
         let start_time = Duration::from_millis(time);
         let workers = Arc::clone(&self.workers);
+        let logger = self.logger.clone();
 
         let handle = tb.name(format!("[Source]:{}", &source))
         .spawn(move || { 
-            info!("[Source]:{}: Scheduled to start in {:?}", &source, &start_time);
+            info!(logger, "[Source]:{}: Scheduled to start in {:?}", &source, &start_time);
             thread::sleep(start_time);
 
             match profile {
                 SourceProfiles::CBR(dest, pps, size, dur) => {
-                    let _res = Master::start_cbr_source(source, dest, pps, size, dur, workers);
+                    let _res = Master::start_cbr_source(source, dest, pps, size, dur, workers, &logger);
                 }
             }
         })?;
@@ -445,7 +467,8 @@ impl Master {
                         packets_per_second : usize, 
                         packet_size : usize,
                         duration : u64,
-                        workers : Arc<Mutex<HashMap<String, Arc<Mutex<Child>>>>>) -> Result<(), MasterError> { 
+                        workers : Arc<Mutex<HashMap<String, Arc<Mutex<Child>>>>>,
+                        logger : &Logger) -> Result<(), MasterError> { 
         let mut rng = thread_rng();
         let mut data : Vec<u8>= iter::repeat(0u8).take(packet_size).collect();
         let trans_time = std::time::Instant::now();
@@ -475,7 +498,7 @@ impl Master {
                     }
                     Err(e) => {
                         let err = format!("Process {} is not in the Master list. Can't send data. Aborting CBR.", &source);
-                        error!("{}", &err);
+                        error!(logger, "{}", &err);
                         return Err(MasterError::Sync(err))
                     }
                 }
@@ -496,8 +519,9 @@ impl Master {
         let duration = self.duration;
         let db_path = self.work_dir.clone();
         let m_model = self.mobility_model.clone();
+        let logger = self.logger.clone();
 
-        let conn = match get_db_connection(&self.work_dir) {
+        let conn = match get_db_connection(&self.work_dir, &logger) {
             Ok(c) => c,
             //This is a gross workaround for the error handling but it works for now. 
             //Clean up later. Or never. Probably never.
@@ -522,17 +546,17 @@ impl Master {
                 //Update worker positions
                 match update_worker_positions(&conn) {
                     Ok(rows) => { 
-                        info!("The position of {} workers has been updated", rows);
+                        info!(logger, "The position of {} workers has been updated", rows);
                     },
                     Err(e) => { 
-                        error!("Error updating worker positions: {}", e);
+                        error!(logger, "Error updating worker positions: {}", e);
                     },
                 }
 
                 // ****** DEBUG ******* //
                 let workers = get_all_worker_positions(&conn)?;
                 for w in workers {
-                    debug!("{}({}): ({}, {})", w.1, w.0, w.2, w.3);
+                    debug!(logger, "{}({}): ({}, {})", w.1, w.0, w.2, w.3);
                 }
 
                 if let Some(model) = &m_model {
@@ -544,7 +568,8 @@ impl Master {
                                                             &walking_sample, 
                                                             &wait_sample, 
                                                             &mut rng, 
-                                                            &db_path);
+                                                            &db_path,
+                                                            &logger);
                         },
                     }
                 }
@@ -561,27 +586,28 @@ impl Master {
                               walking_sample : &Normal,
                               wait_sample : &Uniform<u64>,
                               rng : &mut RngCore,
-                              db_path : &String  ) {
+                              db_path : &String,
+                              logger : &Logger,  ) {
         //Select workers that reached their destination
         let rows = match select_final_positions(&conn) {
             Ok(rows) => {
                 rows
             },
             Err(e) => { 
-                error!("Error updating worker positions: {}", e);
+                error!(logger, "Error updating worker positions: {}", e);
                 vec![]
             },
         };
 
         if rows.len() > 0 {
-            info!("{} workers have reached their destinations", rows.len());
+            info!(logger, "{} workers have reached their destinations", rows.len());
             //Stop workers that have reached their destination
             match stop_workers(&conn, &rows) {
                 Ok(r) => {
-                    info!("{} workers have been stopped", r);
+                    info!(logger, "{} workers have been stopped", r);
                 },
                 Err(e) => {
-                    error!("Could not stop workers: {}", e);
+                    error!(logger, "Could not stop workers: {}", e);
                 }
             }
 
@@ -602,13 +628,14 @@ impl Master {
                 let y_vel = (next_y - current_y) / time;
 
                 //Update worker target position
-                let _res = update_worker_target(&conn, w_id, Position{x : next_x, y : next_y});
+                let _res = update_worker_target(&conn, w_id, Position{x : next_x, y : next_y}, &logger);
 
                 //Schedule thread
                 let _h = Master::schedule_new_worker_velocity(pause_time, 
                                                               w_id,
                                                               db_path.clone(),
-                                                              Velocity{x : x_vel,  y : y_vel});
+                                                              Velocity{x : x_vel,  y : y_vel},
+                                                              &logger);
             }
         }
     }
@@ -616,21 +643,23 @@ impl Master {
     fn schedule_new_worker_velocity(pause_time : u64, 
                                     worker_id : i64,
                                     db_path : String,
-                                    velocity : Velocity,  ) -> JoinHandle<()> {
+                                    velocity : Velocity,
+                                    logger : &Logger,  ) -> JoinHandle<()> {
+        let the_logger =logger.clone();
         let handle = thread::spawn(move || {
             let dur = Duration::from_millis(pause_time);
-            info!("Worker_id {} will wait for {}ms", worker_id, pause_time);
+            info!(the_logger, "Worker_id {} will wait for {}ms", worker_id, pause_time);
             thread::sleep(dur);
-            if let Ok(conn) = get_db_connection(&db_path) {
-                let _res = match update_worker_vel(&conn, &velocity, worker_id,) {
+            if let Ok(conn) = get_db_connection(&db_path, &the_logger) {
+                let _res = match update_worker_vel(&conn, &velocity, worker_id, &the_logger) {
                     Ok(r) => { r },
                     Err(e) => { 
-                        error!("Failed updating target for worker_id {}: {}", worker_id, e);
+                        error!(the_logger, "Failed updating target for worker_id {}: {}", worker_id, e);
                         0
                     },
                 };
             } else {
-                error!("Failed updating target for worker_id {}: Could not connect to DB", worker_id);
+                error!(the_logger, "Failed updating target for worker_id {}: Could not connect to DB", worker_id);
             }
         });
         handle
@@ -693,12 +722,12 @@ impl Master {
 mod tests {
     use super::*;
 
-    //**** Create master with 0 workers ****
-    //Unit test for: Master::new
-    #[test]
-    fn test_master_new() {
-        let m = Master::new();
-        let obj_str = r#"Master { workers: Mutex { data: {} }, work_dir: ".", worker_binary: "./worker_cli", available_nodes: {}, duration: 0, test_area: Area { width: 0.0, height: 0.0 }, mobility_model: None }"#;
-        assert_eq!(format!("{:?}", m), String::from(obj_str));
-    }
+    // //**** Create master with 0 workers ****
+    // //Unit test for: Master::new
+    // #[test]
+    // fn test_master_new() {
+    //     let m = Master::new();
+    //     let obj_str = r#"Master { workers: Mutex { data: {} }, work_dir: ".", worker_binary: "./worker_cli", available_nodes: {}, duration: 0, test_area: Area { width: 0.0, height: 0.0 }, mobility_model: None }"#;
+    //     assert_eq!(format!("{:?}", m), String::from(obj_str));
+    // }
 }

@@ -4,7 +4,6 @@
 extern crate socket2;
 
 use worker::*;
-use std::thread;
 use self::socket2::Socket;
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it 
@@ -27,6 +26,7 @@ pub struct SimulatedListener {
     reliability : f64,
     rng : Arc<Mutex<StdRng>>,
     r_type : RadioTypes,
+    logger : Logger,
 }
 
 impl Listener for SimulatedListener {
@@ -68,11 +68,11 @@ impl Listener for SimulatedListener {
         //let listener = UnixDatagram::bind(&self.address)?;
         let mut buffer = [0; MAX_UDP_PAYLOAD_SIZE+1];
         
-        info!("Listening for messages");
+        info!(self.logger, "Listening for messages");
         loop {
             match self.socket.recv_from(&mut buffer) {
                 Ok((bytes_read, peer_addr)) => { 
-                    info!("Incoming connection from {:?}", &peer_addr);
+                    info!(self.logger, "Incoming connection from {:?}", &peer_addr);
                     
                     if bytes_read > 0 {
                         let data = buffer[..bytes_read].to_vec();
@@ -95,7 +95,7 @@ impl Listener for SimulatedListener {
                     }
                 },
                 Err(e) => { 
-                    warn!("Failed to read incoming message. Error: {}", e);
+                    warn!(self.logger, "Failed to read incoming message. Error: {}", e);
                 }
             }
         }
@@ -112,7 +112,7 @@ impl Listener for SimulatedListener {
                         Ok(m) => { Some(m) },
                         Err(e) => { 
                             //Read bytes but could not form a MessageHeader
-                            error!("Failed reading message: {}", e);
+                            error!(self.logger, "Failed reading message: {}", e);
                             None
                         } 
                     }
@@ -138,11 +138,16 @@ impl Listener for SimulatedListener {
 
 impl SimulatedListener {
     ///Creates a new instance of SimulatedListener
-    pub fn new( socket : Socket, reliability : f64, rng : Arc<Mutex<StdRng>>, r_type : RadioTypes) -> SimulatedListener {
+    pub fn new( socket : Socket, 
+                reliability : f64, 
+                rng : Arc<Mutex<StdRng>>, 
+                r_type : RadioTypes,
+                logger : Logger) -> SimulatedListener {
         SimulatedListener{ socket : socket, 
                            reliability : reliability,
                            rng : rng,
-                           r_type : r_type }
+                           r_type : r_type,
+                           logger : logger }
     }
 
     // ///Handles client connections
@@ -190,6 +195,7 @@ pub struct DeviceListener {
     mdns_handler : Option<Child>,
     rng : Arc<Mutex<StdRng>>,
     r_type : RadioTypes,
+    logger : Logger,
 }
 
 impl Listener for DeviceListener {
@@ -227,11 +233,11 @@ impl Listener for DeviceListener {
         //let listener = UnixDatagram::bind(&self.address)?;
         let mut buffer = [0; MAX_UDP_PAYLOAD_SIZE+1];
         
-        info!("Listening for messages");
+        info!(self.logger, "Listening for messages");
         loop {
             match self.socket.recv_from(&mut buffer) {
                 Ok((bytes_read, peer_addr)) => { 
-                    info!("Incoming connection from {:?}", &peer_addr);
+                    info!(self.logger, "Incoming connection from {:?}", &peer_addr);
                     
                     // if bytes_read > 0 {
                     //     let data = buffer[..bytes_read].to_vec();
@@ -252,7 +258,7 @@ impl Listener for DeviceListener {
                     // }
                 },
                 Err(e) => { 
-                    warn!("Failed to read incoming message. Error: {}", e);
+                    warn!(self.logger, "Failed to read incoming message. Error: {}", e);
                 }
             }
         }
@@ -269,7 +275,7 @@ impl Listener for DeviceListener {
                         Ok(m) => { Some(m) },
                         Err(e) => { 
                             //Read bytes but could not form a MessageHeader
-                            error!("Failed reading message: {}", e);
+                            error!(self.logger, "Failed reading message: {}", e);
                             None
                         } 
                     }
@@ -294,11 +300,16 @@ impl Listener for DeviceListener {
 
 impl DeviceListener {
     ///Creates a new instance of DeviceListener
-    pub fn new( socket : Socket, h : Option<Child>, rng : Arc<Mutex<StdRng>>, r_type : RadioTypes) -> DeviceListener {
+    pub fn new( socket : Socket, 
+                h : Option<Child>, 
+                rng : Arc<Mutex<StdRng>>, 
+                r_type : RadioTypes,
+                logger : Logger ) -> DeviceListener {
         DeviceListener{ socket : socket,
                         mdns_handler : h,
                         rng : rng,
-                        r_type : r_type }
+                        r_type : r_type,
+                        logger : logger }
     }
 
     // fn handle_client(data : Vec<u8>, mut client : DeviceClient, protocol : Arc<Box<Protocol>>, r_type : RadioTypes) -> Result<(), WorkerError> {

@@ -9,12 +9,23 @@
         unused_import_braces, unused_qualifications)]
 
 extern crate serde_json;
+extern crate slog_async;
+extern crate slog_json;
+extern crate slog_term;
+extern crate slog_stdlog;
 
 use std::io;
 use std::path::Path;
-use std::fs::File;
 use std::io::BufRead;
 use self::serde_json::Value;
+use std::fs::{OpenOptions, File};
+use ::slog::{Logger, Drain};
+use worker::WorkerError;
+
+/// Directory name for where the logs will be placed.
+pub const LOG_DIR_NAME : &'static str = "log";
+/// Default log file name for the mater process
+pub const DEFAULT_MASTER_LOG : &'static str = "Master.log";
 
 // struct LogRecord {
 //     msg : String,
@@ -45,4 +56,40 @@ pub fn find_log_record<'a, 'b>(log_key : &'a str, log_value : &'a str, records :
         }
     }
     None
+}
+
+/// Create a duplicate logger for the terminal and the file passed as parameter.
+pub fn create_logger<P: AsRef<Path>>(log_file_name : P) -> Result<Logger, WorkerError>  { 
+    //Make sure the full path is valid
+    if let Some(parent) = log_file_name.as_ref().parent() {
+        let _res = std::fs::create_dir_all(parent)?;
+    }
+
+    let log_file = try!(OpenOptions::new()
+                        .create(true)
+                        .write(true)
+                        .truncate(true)
+                        .open(log_file_name));
+    
+    //Create the terminal drain
+    let decorator = slog_term::TermDecorator::new().build();
+    let d1 = slog_term::CompactFormat::new(decorator).build().fuse();
+    let d1 = slog_async::Async::new(d1).build().fuse();
+
+    //Create the file drain
+    let d2 = slog_json::Json::new(log_file)
+        .add_default_keys()
+        .build()
+        .fuse();
+    let d2 = slog_async::Async::new(d2).build().fuse();
+
+    //Fuse the drains and create the logger
+    let logger = slog::Logger::root(slog::Duplicate::new(d1, d2).fuse(), o!());
+
+    Ok(logger)
+} 
+
+/// Creates a logger that discards all records. Used for tests that don't need logs.
+pub fn create_discard_logger() -> Logger {
+    slog::Logger::root(slog::Discard, o!())
 }

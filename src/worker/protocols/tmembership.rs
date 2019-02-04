@@ -12,7 +12,8 @@ use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
-use self::rand::{Rng, StdRng, RngCore};
+use self::rand::{StdRng, RngCore};
+use ::slog::Logger;
 
 const HEARTBEAT_TIMER : u64 = 3000; //3000 ms
 
@@ -25,6 +26,7 @@ pub struct TMembership {
     worker_id : String,
     short_radio : Arc<Radio>,
     rng : StdRng,
+    logger : Logger,
 }
 
 /// This enum represents the types of network messages supported in the protocol as well as the
@@ -72,7 +74,7 @@ impl Protocol for TMembership {
         let data = match header.payload.take() {
             Some(d) => { d },
             None => {
-                warn!("Messaged received from {:?} had empty payload.", header.sender);
+                warn!(self.logger, "Messaged received from {:?} had empty payload.", header.sender);
                 return Ok(None)
             }
         };
@@ -80,7 +82,7 @@ impl Protocol for TMembership {
         let msg = try!(TMembership::build_protocol_message(data));
         let nl = Arc::clone(&self.neighbours);
         let gl = Arc::clone(&self.network_members);
-        TMembership::handle_message_internal(header, msg, self.get_self_peer(), nl, gl)
+        TMembership::handle_message_internal(header, msg, self.get_self_peer(), nl, gl, &self.logger)
     }
 
     fn init_protocol(&self) -> Result<Option<MessageHeader>, WorkerError>{
@@ -91,7 +93,7 @@ impl Protocol for TMembership {
         let h = self.heartbeat_thread()?;
         
         //Create a thread to join on the threads and log any errors.
-        TMembership::log_thread_errors(vec![h]);
+        TMembership::log_thread_errors(vec![h], &self.logger);
         
         Ok(None)
     }
@@ -103,7 +105,11 @@ impl Protocol for TMembership {
 
 impl TMembership {
     ///Get a new empty TMembership object.
-    pub fn new(sr : Arc<Radio>, seed : u32, id : String, name : String) -> TMembership {
+    pub fn new(sr : Arc<Radio>, 
+               seed : u32, 
+               id : String, 
+               name : String,
+               logger : Logger) -> TMembership {
         let n = Arc::new(Mutex::new(HashSet::new()));
         
         let mut members = HashSet::new();
@@ -120,24 +126,26 @@ impl TMembership {
                      worker_name : name,
                      worker_id : id,
                      short_radio : sr,
-                     rng : rng }
+                     rng : rng,
+                     logger : logger, }
     }
 
     fn handle_message_internal(hdr : MessageHeader, msg : Messages, me : Peer,
                                neighbours : Arc<Mutex<HashSet<Peer>>>,
-                               network_members : Arc<Mutex<HashSet<Peer>>>,) -> Result<Option<MessageHeader>, WorkerError> {
+                               network_members : Arc<Mutex<HashSet<Peer>>>,
+                               logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
         let response = match msg {
                             Messages::Join(m) => {
-                                TMembership::process_join_message(hdr, m, me, neighbours, network_members)
+                                TMembership::process_join_message(hdr, m, me, neighbours, network_members, logger)
                             },
                             Messages::Ack(m) => {
-                                TMembership::process_ack_message(hdr, m, neighbours, network_members)
+                                TMembership::process_ack_message(hdr, m, neighbours, network_members, logger)
                             },
                             Messages::Heartbeat(m) => {
-                                TMembership::process_heartbeat_message(hdr, m, neighbours, network_members)
+                                TMembership::process_heartbeat_message(hdr, m, neighbours, network_members, logger)
                             },
                             Messages::Alive(m) => {
-                                TMembership::process_alive_message(hdr, m, neighbours, network_members)
+                                TMembership::process_alive_message(hdr, m, neighbours, network_members, logger)
                             }
                        };
         response
@@ -154,10 +162,10 @@ impl TMembership {
     /// Receiver: All Nearby peers.
     /// Payload: Self Peer object.
     /// Actions: None.
-    fn create_join_message(sender : Peer, destination : Peer) -> Result<MessageHeader, WorkerError> {
+    fn create_join_message(sender : Peer, destination : Peer, logger : &Logger) -> Result<MessageHeader, WorkerError> {
         let join_msg = Messages::Join(JoinMessage);
         let payload = to_vec(&join_msg)?;
-        info!("Built JOIN message for peer: {}, id {:?}", &destination.name, destination.id);
+        info!(logger, "Built JOIN message for peer: {}, id {:?}", &destination.name, destination.id);
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : sender, 
@@ -175,8 +183,9 @@ impl TMembership {
     ///   2. Construct an ACK message and reply with it.
     fn process_join_message(hdr : MessageHeader, _msg : JoinMessage, me : Peer,
                             neighbours : Arc<Mutex<HashSet<Peer>>>,
-                            network_members : Arc<Mutex<HashSet<Peer>>>) -> Result<Option<MessageHeader>, WorkerError> {
-        info!("Received JOIN message from {}", hdr.sender.name);
+                            network_members : Arc<Mutex<HashSet<Peer>>>,
+                            logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
+        info!(logger, "Received JOIN message from {}", hdr.sender.name);
 
         {
             //LOCK : GET : NEAR
@@ -199,7 +208,7 @@ impl TMembership {
             //Build the ACK message for the sender
             let ack_msg = Messages::Ack(msg_data);
             let payload = try!(to_vec(&ack_msg));
-            info!("Built ACK message for sender: {}, id {:?}", &hdr.destination.name, &hdr.destination.id);
+            info!(logger, "Built ACK message for sender: {}, id {:?}", &hdr.destination.name, &hdr.destination.id);
             
             //Build the message header that's ready for sending.
             let response = MessageHeader{   sender : me, 
@@ -217,14 +226,15 @@ impl TMembership {
     ///   1. Add the difference between the payload and current GNL to the GNL.
     fn process_ack_message( hdr : MessageHeader, msg : AckMessage,
                             neighbours : Arc<Mutex<HashSet<Peer>>>,
-                            network_members : Arc<Mutex<HashSet<Peer>>>) -> Result<Option<MessageHeader>, WorkerError> {        
-        info!("Received ACK message from {}", hdr.sender.name);
+                            network_members : Arc<Mutex<HashSet<Peer>>>,
+                            logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {        
+        info!(logger, "Received ACK message from {}", hdr.sender.name);
         {
             //LOCK : GET : NEAR
             let mut near = try!(neighbours.lock());
             
             let _res = near.insert(hdr.sender.clone());
-            info!("Added peer {}/{} to neighbours list", &hdr.sender.name, &hdr.sender.id);
+            info!(logger, "Added peer {}/{} to neighbours list", &hdr.sender.name, &hdr.sender.id);
         }   //LOCK : RELEASE : NEAR
 
         {
@@ -235,15 +245,15 @@ impl TMembership {
             let gnl_cache = gnl.clone();
             let diff = msg.global_peer_list.difference(&gnl_cache);
 
-            debug!("{} GNL:", &hdr.sender.name);
+            debug!(logger, "{} GNL:", &hdr.sender.name);
             for n in &msg.global_peer_list {
-                debug!("{}/{}", &n.name, &n.id);
+                debug!(logger, "{}/{}", &n.name, &n.id);
             }
 
             //Add those elements to the current GNL
             for x in diff { 
                 let _res = gnl.insert(x.clone());
-                info!("Added peer {}/{} to membership list", x.name, x.id);            
+                info!(logger, "Added peer {}/{} to membership list", x.name, x.id);            
 
             }
         } //LOCK : RELEASE : GNL
@@ -258,11 +268,11 @@ impl TMembership {
     /// Payload: global node list.
     /// Actions: 
     ///   1. Add the sent peers to the suspected list.
-    fn create_heartbeat_message(sender : Peer, destination : Peer) -> Result<MessageHeader, WorkerError> {
+    fn create_heartbeat_message(sender : Peer, destination : Peer, logger : &Logger) -> Result<MessageHeader, WorkerError> {
         let data = HeartbeatMessage;
         let hb_msg = Messages::Heartbeat(data);
         let payload = try!(to_vec(&hb_msg));
-        info!("Built HEARTBEAT message for peer: {}, id {:?}", &destination.name, destination.id);
+        info!(logger, "Built HEARTBEAT message for peer: {}, id {:?}", &destination.name, destination.id);
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : sender, 
@@ -280,8 +290,9 @@ impl TMembership {
     ///   2. Add the sender to the neighbor list (if not there already)
     fn process_heartbeat_message(hdr : MessageHeader, msg : HeartbeatMessage,
                                  neighbours : Arc<Mutex<HashSet<Peer>>>,
-                                 network_members : Arc<Mutex<HashSet<Peer>>>) -> Result<Option<MessageHeader>, WorkerError> {
-        info!("Received Heartbeat message from {}, id {:?}", hdr.sender.name, hdr.sender.id);
+                                 network_members : Arc<Mutex<HashSet<Peer>>>,
+                                 logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
+        info!(logger, "Received Heartbeat message from {}, id {:?}", hdr.sender.name, hdr.sender.id);
         
         {
             //LOCK : GET : NL
@@ -306,7 +317,7 @@ impl TMembership {
         //debug!("Message payload: {:?}", &data);
         let alive_msg = Messages::Alive(data);
         let payload = try!(to_vec(&alive_msg));
-        info!("Built Alive message for peer: {}, id {:?}", &hdr.sender.name, hdr.sender.id);
+        info!(logger, "Built Alive message for peer: {}, id {:?}", &hdr.sender.name, hdr.sender.id);
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : hdr.destination, 
@@ -325,8 +336,9 @@ impl TMembership {
     ///   2. Remove the sender from the list of suspected dead peers.
     fn process_alive_message(hdr : MessageHeader, msg : AliveMessage,
                              _neighbours : Arc<Mutex<HashSet<Peer>>>,
-                             network_members : Arc<Mutex<HashSet<Peer>>>) -> Result<Option<MessageHeader>, WorkerError> {
-        info!("Received Alive message from {}.", hdr.sender.name);
+                             network_members : Arc<Mutex<HashSet<Peer>>>,
+                             logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
+        info!(logger, "Received Alive message from {}.", hdr.sender.name);
 
         {
             //LOCK : GET : GNL
@@ -336,15 +348,15 @@ impl TMembership {
             let gnl_cache = gnl.clone();
             let diff = msg.global_peer_list.difference(&gnl_cache);
 
-            debug!("{} GNL:", &hdr.sender.name);
+            debug!(logger, "{} GNL:", &hdr.sender.name);
             for n in &msg.global_peer_list {
-                debug!("{}/{}", &n.name, &n.id);
+                debug!(logger, "{}/{}", &n.name, &n.id);
             }
 
             //Add those elements to the current GNL
             for x in diff { 
                 gnl.insert(x.clone());
-                info!("Added peer {}/{} to membership list", x.name, x.id);            
+                info!(logger, "Added peer {}/{} to membership list", x.name, x.id);            
 
             }
         } //LOCK : RELEASE : GNL
@@ -354,7 +366,7 @@ impl TMembership {
 
     fn initial_join_scan(&self) -> Result<(), WorkerError> {
         let destination = Peer::new(); //TODO: remove
-        let msg = TMembership::create_join_message(self.get_self_peer().clone(), destination)?;
+        let msg = TMembership::create_join_message(self.get_self_peer().clone(), destination, &self.logger)?;
         self.short_radio.broadcast(msg)
     }
 
@@ -364,9 +376,10 @@ impl TMembership {
         let short_radio = Arc::clone(&self.short_radio);
         let neighbours = Arc::clone(&self.neighbours);
         let network_members = Arc::clone(&self.network_members);
+        let logger = self.logger.clone();
 
         let handle = thread::spawn(move || -> Result<(), WorkerError> {
-            info!("Starting the heartbeat thread.");
+            info!(logger, "Starting the heartbeat thread.");
 
             let sleep_duration = Duration::from_millis(HEARTBEAT_TIMER);
 
@@ -403,17 +416,17 @@ impl TMembership {
                 }   //LOCK : RELEASE : NEAR
 
                 //Initial message of the heartbeat handshake.
-                let msg = TMembership::create_heartbeat_message(sender.clone(), selected_peer.clone())?; 
+                let msg = TMembership::create_heartbeat_message(sender.clone(), selected_peer.clone(), &logger)?; 
                 match short_radio.broadcast(msg) {
                     Ok(_) => { },
                     Err(e) => { 
-                        error!("Failed to send message to {}", &selected_peer.name);
+                        error!(logger, "Failed to send message to {}", &selected_peer.name);
                     },
                 }
 
                 //Print the membership lists at the end of the cycle
-                let _ = TMembership::print_membership_list("Neighbors", Arc::clone(&neighbours));
-                let _ = TMembership::print_membership_list("Membership", Arc::clone(&network_members));
+                let _ = TMembership::print_membership_list("Neighbors", Arc::clone(&neighbours), &logger);
+                let _ = TMembership::print_membership_list("Membership", Arc::clone(&network_members), &logger);
             }
         });
         Ok(handle)
@@ -426,24 +439,28 @@ impl TMembership {
               long_address : None }
     }
 
-    fn print_membership_list<'a>(name : &'a str, list : Arc<Mutex<HashSet<Peer>>>) -> Result<(), WorkerError> {
+    fn print_membership_list<'a>(name : &'a str, 
+                                 list : Arc<Mutex<HashSet<Peer>>>,
+                                 logger : &Logger) -> Result<(), WorkerError> {
         let l = try!(list.lock());
 
-        info!("{}. {} members", name, l.len());
+        info!(logger, "{}. {} members", name, l.len());
         for m in l.iter() {
-            info!("{} : {}", m.name, m.id);
+            info!(logger, "{} : {}", m.name, m.id);
         }
         Ok(())
     }
 
-    fn log_thread_errors(handles : Vec<JoinHandle<Result<(), WorkerError>>>) {    
+    fn log_thread_errors(handles : Vec<JoinHandle<Result<(), WorkerError>>>,
+                        logger : &Logger) {
+        let this_logger = logger.clone();
         let _ = thread::spawn(move || {
             for h in handles {
                 let exit = h.join();
                 match exit {
                     Ok(_) => { /* All good */ },
                     Err(e) => {
-                        error!("{:?}", e);
+                        error!(this_logger, "{:?}", e);
                     }
                 }
             }

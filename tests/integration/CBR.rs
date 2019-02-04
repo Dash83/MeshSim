@@ -1,4 +1,7 @@
+extern crate mesh_simulator;
+
 use super::super::*;
+use mesh_simulator::logging::*;
 
 #[test]
 fn test_cbr_basic() {
@@ -15,11 +18,20 @@ fn test_cbr_basic() {
     assert_cli::Assert::command(&[&program])
     .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
     .succeeds()
-    .and()
-    .stdout()
-    .contains("End_Test action: Finished. 3 processes terminated.")
     .unwrap();
 
+    //Check the test ended with the correct number of processes.
+    let master_log_file = format!("{}{}{}{}{}", &work_dir,
+                                                std::path::MAIN_SEPARATOR,
+                                                LOG_DIR_NAME,
+                                                std::path::MAIN_SEPARATOR,
+                                                DEFAULT_MASTER_LOG);
+    let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
+    let master_node_num = logging::find_log_record("msg", 
+                                                   "End_Test action: Finished. 3 processes terminated.", 
+                                                   &master_log_records);
+    assert!(master_node_num.is_some());
+    
     let node3_log_file = &format!("{}/log/node3.log", &work_dir);
     let node3_log_records = logging::get_log_records_from_file(&node3_log_file).unwrap();
     let mut received_packets = 0;

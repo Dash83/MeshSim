@@ -36,14 +36,14 @@ use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
 //     assert_eq!(radio.broadcast_groups, vec![String::from("group1")]);
 // }
 
-fn setup<'a>(path : &'a str ) {
-    use self::mesh_simulator::worker::mobility::*;
+// fn setup<'a>(path : &'a str ) {
+//     use self::mesh_simulator::worker::mobility::*;
 
-    let db_path = format!("{}{}{}", path, std::path::MAIN_SEPARATOR, &DB_NAME);
-    println!("DB path: {}", &db_path);
-    let conn = get_db_connection(&db_path).expect("Could not create DB file");
-    let _res = create_db_objects(&conn).expect("Could not create positions table");
-}
+//     let db_path = format!("{}{}{}", path, std::path::MAIN_SEPARATOR, &DB_NAME);
+//     println!("DB path: {}", &db_path);
+//     let conn = get_db_connection(&db_path).expect("Could not create DB file");
+//     let _res = create_db_objects(&conn).expect("Could not create positions table");
+// }
 
 //TODO: Review if this test is still needed.
 // //Unit test for: Radio::scan_for_peers
@@ -145,10 +145,11 @@ fn test_broadcast_simulated() {
     //Setup
     //Get general test settings
     let test_path = create_test_dir("sim_bcast");
+    let logger = logging::create_discard_logger();
     println!("Test results placed in {}", &test_path);
 
-    let conn = get_db_connection(&test_path).expect("Could not create DB file");
-    let _res = create_db_objects(&conn).expect("Could not create positions table");
+    let conn = get_db_connection(&test_path, &logger).expect("Could not create DB file");
+    let _res = create_db_objects(&conn, &logger).expect("Could not create positions table");
 
     //Worker1
     let mut sr_config1 = RadioConfig::new();
@@ -159,7 +160,7 @@ fn test_broadcast_simulated() {
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72a"); //arbitrary
     let random_seed = 1;
     let r1 = sr_config1.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
-                                     worker_id.clone(), random_seed, None);
+                                     worker_id.clone(), random_seed, None, logger.clone());
     let listener1 = r1.init().unwrap();
     let pos = Position{ x : -60.0, y : 0.0};
     let vel = Velocity{ x : 0.0, y : 0.0};
@@ -169,7 +170,8 @@ fn test_broadcast_simulated() {
                                                &vel,
                                                &None,
                                                Some(r1.get_address().into()), 
-                                               None).expect("Could not register worker");
+                                               None, 
+                                               &logger).expect("Could not register worker");
 
     //Worker2
     let mut sr_config2 = RadioConfig::new();
@@ -179,7 +181,7 @@ fn test_broadcast_simulated() {
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72b"); //arbitrary
     let random_seed = 1;
     let r2 = sr_config2.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
-                                     worker_id.clone(), random_seed, None);
+                                     worker_id.clone(), random_seed, None, logger.clone());
     let _listener2 = r2.init().unwrap();
     let pos = Position{ x : 0.0, y : 0.0};
     let _worker_db_id = register_worker(&conn, worker_name, 
@@ -188,7 +190,8 @@ fn test_broadcast_simulated() {
                                                &vel,
                                                &None,
                                                Some(r2.get_address().into()), 
-                                               None).expect("Could not register worker");
+                                               None, 
+                                               &logger).expect("Could not register worker");
     
     //Worker3
     let mut sr_config3= RadioConfig::new();
@@ -199,7 +202,7 @@ fn test_broadcast_simulated() {
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72c"); //arbitrary
     let random_seed = 1;
     let r3 = sr_config3.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
-                                     worker_id.clone(), random_seed, None);
+                                     worker_id.clone(), random_seed, None, logger.clone());
     let listener3 = r3.init().unwrap();
     let pos = Position{ x : 60.0, y : 0.0};
     let _worker_db_id = register_worker(&conn, worker_name, 
@@ -208,7 +211,8 @@ fn test_broadcast_simulated() {
                                                &vel, 
                                                &None,
                                                Some(r3.get_address().into()), 
-                                               None).expect("Could not register worker");
+                                               None, 
+                                               &logger).expect("Could not register worker");
 
     //Test checks
     let bcast_msg = MessageHeader::new();
@@ -230,6 +234,8 @@ fn test_broadcast_device() -> TestResult {
     //Setup
     //Get general test settings
     let test_path = create_test_dir("dev_bcast");
+    let log_file = format!("{}{}test.log", &test_path, std::path::MAIN_SEPARATOR);
+    let logger = logging::create_logger(&log_file).expect("Could not create logger");
     let host = env::var("MESHSIM_HOST").unwrap_or(String::from(""));
     //This test should ONLY run on my lab development machine due to required configuration of device_mode.
     if !host.eq("kaer-morhen") {
@@ -250,7 +256,7 @@ fn test_broadcast_device() -> TestResult {
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72a"); //arbitrary
     let random_seed = 1;
     let r1 = sr_config1.create_radio(OperationMode::Device, RadioTypes::ShortRange, work_dir, worker_name, 
-                                     worker_id, random_seed, None);
+                                     worker_id, random_seed, None, logger.clone());
     let listener1 = r1.init().unwrap();
 
     //Test checks
