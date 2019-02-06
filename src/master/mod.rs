@@ -243,9 +243,6 @@ impl Master {
         info!(self.logger, "Running test {}", &spec.name);
         info!(self.logger, "Test results will be placed under {}", &self.work_dir);
 
-        //Start mobility thread
-        let _mt_h = self.start_mobility_thread()?;
-
         //Start all workers and add save their child process handle.
         {
             let mut workers = self.workers.lock().unwrap(); // LOCK : GET : WORKERS
@@ -257,6 +254,9 @@ impl Master {
                 workers.insert(val.worker_name.clone(), Arc::new(Mutex::new(child_handle)));
             }
         } // LOCK : RELEASE : WORKERS
+
+        //Start mobility thread
+        let _mt_h = self.start_mobility_thread()?;
 
         //Add the available_nodes pool to the master.
         self.available_nodes = Arc::new(spec.available_nodes);

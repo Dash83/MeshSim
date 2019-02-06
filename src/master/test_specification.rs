@@ -133,7 +133,7 @@ impl FromStr for TestActions {
                 "ADD_SOURCE" => {
                     if parts.len() < 7 {
                         //Error out
-                        return Err(MasterError::TestParsing(format!("Add_Source needs the following parameters: \n*Source \n*Destination \n*Packets per Second \n*Packet size \n* \n*Start time \n*Duration")))
+                        return Err(MasterError::TestParsing(format!("Add_Source needs the following parameters: \n*Source \n*Destination \n*Packets per Second \n*Packet size \n*Duration \n*Start time")))
                     }
                     let src = parts[1].to_owned();
                     let dst = parts[2].to_owned();

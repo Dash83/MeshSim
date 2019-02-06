@@ -505,7 +505,7 @@ impl Worker {
                     Ok(_bytes) => {
                         match input.parse::<commands::Commands>() {
                             Ok(command) => {
-                                info!(logger, "Command received");
+                                debug!(logger, "Command received");
                                 match Worker::process_command(command, Arc::clone(&protocol_handler)) {
                                     Ok(_) => { /* All good! */ },
                                     Err(e) => {

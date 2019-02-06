@@ -26,6 +26,10 @@ use worker::WorkerError;
 pub const LOG_DIR_NAME : &'static str = "log";
 /// Default log file name for the mater process
 pub const DEFAULT_MASTER_LOG : &'static str = "Master.log";
+// const LOG_CHANNEL_SIZE : usize = 104857600; //100Mb
+// const LOG_CHANNEL_SIZE : usize = 2097152; //2Mb 1572864
+const LOG_CHANNEL_SIZE : usize = 1048576; //1Mb 
+const LOG_THREAD_NAME : &'static str = "LoggerThread";
 
 // struct LogRecord {
 //     msg : String,
@@ -74,7 +78,11 @@ pub fn create_logger<P: AsRef<Path>>(log_file_name : P) -> Result<Logger, Worker
     //Create the terminal drain
     let decorator = slog_term::TermDecorator::new().build();
     let d1 = slog_term::CompactFormat::new(decorator).build().fuse();
-    let d1 = slog_async::Async::new(d1).build().fuse();
+    let d1 = slog_async::Async::new(d1)
+                // .chan_size(LOG_CHANNEL_SIZE)
+                // .overflow_strategy(slog_async::OverflowStrategy::Block)
+                .thread_name(LOG_THREAD_NAME.into())
+                .build().fuse();
 
     //Create the file drain
     let d2 = slog_json::Json::new(log_file)

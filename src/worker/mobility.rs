@@ -18,7 +18,7 @@ pub const DB_NAME : &'static str = "worker_positions.db";
 pub const HUMAN_SPEED_MEAN : f64 = 1.462; //meters per second.
 /// Standard deviation of human walking speeds
 pub const HUMAN_SPEED_STD_DEV : f64 = 0.164;
-const MAX_DBOPEN_RETRY : i32 = 4;
+const MAX_DBOPEN_RETRY : i32 = 11;
 
 //region Queries
 const CREATE_WORKERS_TBL_QRY : &'static str = "CREATE TABLE IF NOT EXISTS workers (
@@ -374,8 +374,9 @@ fn busy_callback(i : i32) -> bool {
         return false
     }
 
-    let wait_time = rng.next_u64() % 100;
-    eprintln!("Database busy. Will retry operation in {}", wait_time);
+    let base : u64 = 2;
+    let wait_time = (rng.next_u64() % 30) * base.pow(i as u32);
+    eprintln!("Database busy({}). Will retry operation in {}", i, wait_time);
     let wait_dur = Duration::from_millis(wait_time);
     thread::sleep(wait_dur);
     
