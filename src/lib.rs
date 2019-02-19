@@ -6,6 +6,8 @@ extern crate serde_derive;
 extern crate lazy_static;
 #[macro_use]
 extern crate slog;
+#[macro_use]
+extern crate pretty_assertions;
 
 pub mod master;
 pub mod worker;

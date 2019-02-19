@@ -1,2 +1,1 @@
-scp ~/src/mesh_simulator/target/x86_64-unknown-linux-musl/release/worker_cli marco@arial.sm.cl.cam.ac.uk:/media/marco/Data/Experiments/bin
-scp ~/src/mesh_simulator/target/x86_64-unknown-linux-musl/release/master_cli marco@arial.sm.cl.cam.ac.uk:/media/marco/Data/Experiments/bin
+scp ~/src/mesh_simulator/target/x86_64-unknown-linux-musl/release/*_cli marco@arial.sm.cl.cam.ac.uk:/media/marco/Data/Experiments/bin

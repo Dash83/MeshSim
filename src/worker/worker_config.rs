@@ -86,6 +86,7 @@ impl RadioConfig {
         }
     }
 }
+
 /// Configuration for a worker object. This struct encapsulates several of the properties
 /// of a worker. Its use is for the external interfaces of the worker module. This facilitates
 /// that an external client such as worker_cli can create WorkerConfig objects from CLI parameters
@@ -95,6 +96,8 @@ impl RadioConfig {
 pub struct WorkerConfig {
     ///Name of the worker.
     pub worker_name : String,
+    ///Unique id for the worker.
+    pub worker_id : Option<String>,
     ///Directory for the worker to operate. Must have RW access to it. Operational files and 
     ///log files will be written here.
     pub work_dir : String,
@@ -124,6 +127,7 @@ impl WorkerConfig {
     pub fn new() -> WorkerConfig {
         WorkerConfig{worker_name : String::from("worker1"),
                      work_dir : String::from("."),
+                     worker_id : None,
                      random_seed : 0, //The random seed itself doesn't need to be random. Also, that makes testing more difficult.
                      operation_mode : OperationMode::Simulated,
                      protocol : Protocols::TMembership,
@@ -136,11 +140,15 @@ impl WorkerConfig {
     }
 
     ///Creates a new Worker object configured with the values of this configuration object.
-    pub fn create_worker(self, logger: Logger) -> Result<Worker, WorkerError> {
+    pub fn create_worker(self, register_worker : bool, 
+                               logger: Logger) -> Result<Worker, WorkerError> {
         //Create the RNG
         let gen = Worker::rng_from_seed(self.random_seed);
-        //Generate the worker_id
-        let id = WorkerConfig::gen_id(self.random_seed);
+        //Check if a worker_id is present
+        let id = match self.worker_id { 
+            Some(id) => id.clone(),
+            None => WorkerConfig::gen_id(self.random_seed)
+        };
         //Wrap the rng in the shared-mutable-state smart pointers
         let rng = Arc::new(Mutex::new(gen));
 
@@ -177,25 +185,23 @@ impl WorkerConfig {
             None => { (None, None) }
         };
 
-        let db_id = match self.operation_mode {
-            OperationMode::Device => 0,
-            OperationMode::Simulated => {
-                let conn = mobility::get_db_connection(&self.work_dir, &logger)?;
-                // debug!("DB Connection obtained.");
-                let _rows = mobility::create_db_objects(&conn, &logger)?;
-                // debug!("create_positions_db returned {}", _rows);
-                let id = mobility::register_worker(&conn, self.worker_name.clone(), 
-                                                          &id, 
-                                                          &self.position, 
-                                                          &self.velocity, 
-                                                          &self.destination,
-                                                          sr_addr, 
-                                                          lr_addr,
-                                                          &logger)?;
-                debug!(logger, "Worker registered correcly with id {}", &id);
-                id
-            },
-        };
+        if self.operation_mode == OperationMode::Simulated &&
+           register_worker == true {
+            let conn = mobility::get_db_connection(&self.work_dir, &logger)?;
+            // debug!("DB Connection obtained.");
+            let _rows = mobility::create_db_objects(&conn, &logger)?;
+            // debug!("create_positions_db returned {}", _rows);
+            let id = mobility::register_worker(&conn, self.worker_name.clone(), 
+                                                    &id, 
+                                                    &self.position, 
+                                                    &self.velocity, 
+                                                    &self.destination,
+                                                    sr_addr, 
+                                                    lr_addr,
+                                                    &logger)?;
+            debug!(logger, "Worker registered correcly with id {}", &id);
+        }
+
 
         let w = Worker{ name : self.worker_name,
                         short_radio : sr,
@@ -206,7 +212,7 @@ impl WorkerConfig {
                         operation_mode : self.operation_mode,
                         id : id,
                         protocol : self.protocol,
-                        db_id : db_id,
+                        // db_id : db_id,
                         logger : logger };
         Ok(w)
     }
@@ -250,7 +256,7 @@ mod tests {
     #[test]
     fn test_workerconfig_new() {
         let config = WorkerConfig::new();
-        let config_str = "WorkerConfig { worker_name: \"worker1\", work_dir: \".\", random_seed: 0, operation_mode: Simulated, protocol: TMembership, position: Position { x: 0.0, y: 0.0 }, destination: None, velocity: Velocity { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
+        let config_str = "WorkerConfig { worker_name: \"worker1\", worker_id: None, work_dir: \".\", random_seed: 0, operation_mode: Simulated, protocol: TMembership, position: Position { x: 0.0, y: 0.0 }, destination: None, velocity: Velocity { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
 
         assert_eq!(format!("{:?}", config), config_str);
     }
@@ -271,7 +277,7 @@ mod tests {
         let log_file = "/tmp/test.log";
         let logger = logging::create_logger(log_file).expect("Could not create logger");
 
-        let res = config.create_worker(logger);
+        let res = config.create_worker(false, logger);
         
         assert!(res.is_ok());
     }

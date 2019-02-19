@@ -257,10 +257,7 @@ impl SimulatedRadio {
                 rng : Arc<Mutex<StdRng>>,
                 logger : Logger ) -> SimulatedRadio {
         //$WORK_DIR/SIMULATED_SCAN_DIR/ID_RANGE.sock
-        let range_dir : String = r_type.clone().into();
-        let address = format!("{}{}{}{}{}_{}.sock", work_dir, std::path::MAIN_SEPARATOR,
-                                                    SIMULATED_SCAN_DIR, std::path::MAIN_SEPARATOR,
-                                                    id, range_dir);
+        let address = SimulatedRadio::format_address(&work_dir, &id, r_type);
         SimulatedRadio{ reliability : reliability,
                         work_dir : work_dir,
                         id : id,
@@ -271,10 +268,15 @@ impl SimulatedRadio {
                         logger : logger }
     }
 
-    // ///Function for adding broadcast groups in simulated mode
-    // pub fn add_bcast_group(&mut self, group: String) {
-    //     self.broadcast_groups.push(group);
-    // }
+    ///Function used to form the listening point of a SimulatedRadio
+    pub fn format_address(work_dir : &str, 
+                          id : &str, 
+                          r_type : RadioTypes) -> String {
+        let range_dir : String = r_type.clone().into();
+        format!("{}{}{}{}{}_{}.sock", work_dir, std::path::MAIN_SEPARATOR,
+                                                    SIMULATED_SCAN_DIR, std::path::MAIN_SEPARATOR,
+                                                    id, range_dir)
+    }
 }
 
 /// A radio object that maps directly to a network interface of the system.

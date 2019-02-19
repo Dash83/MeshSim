@@ -27,6 +27,7 @@ const ARG_WORKER_NAME : &'static str = "worker_name";
 const ARG_WORK_DIR : &'static str = "work_dir";
 const ARG_RANDOM_SEED : &'static str = "random_seed";
 const ARG_OPERATION_MODE : &'static str = "operation_mode";
+const ARG_REGISTER_WORKER : &'static str = "register_worker";
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const CONFIG_FILE_NAME  : &'static str = "worker.toml";
 const ERROR_EXECUTION_FAILURE : i32 = 1;
@@ -117,8 +118,8 @@ impl From<toml::de::Error> for CLIError {
 }
 // ***************End Errors****************
 
-fn run(config : WorkerConfig, logger : Logger) -> Result<(), CLIError> {
-   let mut obj =  config.create_worker(logger)?;
+fn run(config : WorkerConfig, register_worker : bool, logger : Logger) -> Result<(), CLIError> {
+   let mut obj =  config.create_worker(register_worker, logger)?;
    //debug!("Worker Obj: {:?}", obj);
    try!(obj.start());
    Ok(())
@@ -146,34 +147,22 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                                 .value_name("FILE")
                                 .help("Configuration file for the worker.")
                                 .takes_value(true))
-                          .arg(Arg::with_name(ARG_WORKER_NAME)
-                                .short("worker")
-                                .value_name("NAME")
-                                .long("worker_name")
-                                .help("Friendly name for this worker.")
-                                .takes_value(true))
-                          .arg(Arg::with_name(ARG_OPERATION_MODE)
-                                .short("mode")
-                                .value_name("MODE")
-                                .long("operation_mode")
-                                .help("Should the worker operte in DEVICE or SIMULATED mode?")
-                                .takes_value(true))
-                          .arg(Arg::with_name(ARG_RANDOM_SEED)
-                                .short("random")
-                                .value_name("SEED")
-                                .long("random_seed")
-                                .help("Random seed usef for all RNG operations.")
-                                .takes_value(true))
                           .arg(Arg::with_name(ARG_WORK_DIR)
                                 .short("dir")
                                 .long("work_dir")
                                 .value_name("DIR")
                                 .help("Operating directory for the program, where results and logs will be placed.")
                                 .takes_value(true))
+                          .arg(Arg::with_name(ARG_REGISTER_WORKER)
+                                .short("register")
+                                .long("register_worker")
+                                .value_name("true/false")
+                                .help("Should the worker register in the DB. Option should be NO when started by the Master.")
+                                .takes_value(true))
                           .get_matches()
 }
 
-fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<(), CLIError> {
+fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<bool, CLIError> {
     // Mandatory values should have been validated when loading the TOML file, just check the values are appropriate.
     // Worker_name
     config.worker_name = matches.value_of(ARG_WORKER_NAME).unwrap_or(config.worker_name.as_str()).to_string();
@@ -190,19 +179,24 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
         return Err(CLIError::Configuration("work_dir is not a valid directory or it's not writable.".to_string()))
     }
 
-    // Operation_mode and broadcast group
-    // If operation_mode is "Simulated", at least 1 broadcast group must be provided.
+    // Operation_mode
     let op_mode_param = matches.value_of(ARG_OPERATION_MODE).unwrap_or("");
     if !op_mode_param.is_empty() {
         config.operation_mode = try!(op_mode_param.parse::<worker::OperationMode>());
     }
 
-    Ok(())
+    // Register worker
+    let register_worker : bool = matches.value_of(ARG_REGISTER_WORKER)
+                                    .unwrap_or("true")
+                                    .parse()
+                                    .expect("Only true or false are valid values for register_worker");
+
+    Ok(register_worker)
 }
 
 /// The init process performs all initialization required for the worker_cli.
 /// It performs 2 main tasks: read the configuration file and process the command line parameters.
-fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
+fn init(matches : &ArgMatches) -> Result<(bool, WorkerConfig), CLIError> {
     //Read the configuration file.
     let mut current_dir = env::current_dir()?;
     let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
@@ -213,9 +207,9 @@ fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
     let mut configuration = load_conf_file(config_file_path)?;
     
     //Validate the current configuration
-    let _res = validate_config(&mut configuration, &matches)?;
+    let register_worker = validate_config(&mut configuration, &matches)?;
 
-    Ok(configuration)
+    Ok((register_worker, configuration))
 }
 
 fn main() {
@@ -223,7 +217,7 @@ fn main() {
     let matches = get_cli_parameters();
 
     //Initialization
-    let config = init(&matches).unwrap_or_else(|e| {
+    let (register_worker, config) = init(&matches).unwrap_or_else(|e| {
                             println!("worker_cli failed with the following error: {}", e);
                             ::std::process::exit(ERROR_INITIALIZATION);
                         });
@@ -239,7 +233,7 @@ fn main() {
     });
 
     //Main loop
-    if let Err(ref e) = run(config, logger.clone()) {
+    if let Err(ref e) = run(config, register_worker, logger.clone()) {
         error!(logger, "worker_cli failed with the following error: {}", e);
         ::std::process::exit(ERROR_EXECUTION_FAILURE);
     }

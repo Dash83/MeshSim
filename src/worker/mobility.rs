@@ -89,7 +89,7 @@ const STOP_WORKERS_QRY : &'static str = "
                                 UPDATE worker_velocities
                                 SET  vel_x = 0,
                                         vel_y = 0
-                                WHERE worker_velocities.worker_id in (?);";
+                                WHERE worker_velocities.worker_id in ";
 const SELECT_REMAINING_DIST_QRY : &'static str = "
                                 select workers.ID,
                                         worker_destinations.dest_x,
@@ -427,9 +427,21 @@ pub fn select_final_positions(conn : &Connection) -> Result<Vec<(i64, f64, f64)>
 
 /// Function exported exclusively for the use of the Master module.
 /// Sets the velocity of the worker ids to zero.
-pub fn stop_workers(conn : &Connection, w_ids : &[(i64, f64, f64)]) -> Result<usize, WorkerError> {
-    let ids : Vec<i64> = w_ids.into_iter().map(|(id, _x, _y)| id.clone()).collect();
-    let rows = conn.execute(STOP_WORKERS_QRY, ids)?;
+pub fn stop_workers(conn : &Connection, 
+                    w_ids : &[(i64, f64, f64)],
+                    logger : &Logger) -> Result<usize, WorkerError> {
+    let mut query_builder = String::from(STOP_WORKERS_QRY);
+    query_builder.push('(');
+    for (id, _x, _y) in w_ids.into_iter() {
+        query_builder.push_str(&format!("{}, ", id));
+    }
+    let _c = query_builder.pop();//remove the new line char
+    let _c = query_builder.pop();//remove last comma
+    //Close query
+    query_builder.push_str(&format!(");"));
+
+    // eprintln!("Prepared stmt: {}", &query_builder);
+    let rows = conn.execute(&query_builder, NO_PARAMS)?;
     Ok(rows)
 }
 
@@ -854,5 +866,63 @@ mod tests {
         let w3 = positions.get("416d77337e24399dc7a5aa058039f72c").unwrap();
         assert_eq!(w3.0, 27.0);
         assert_eq!(w3.1, 46.5);
+    }
+
+    #[test]
+    fn test_stop_workers() {
+        let mut rng = rand::thread_rng();
+        let num : u64 = rng.gen::<u64>() % 10000;
+
+        let path = create_test_dir(&format!("stop_workers{}", num));
+        let logger = logging::create_discard_logger();
+
+        info!(logger, "Test results placed in {}", &path);
+
+        let conn = get_db_connection(&path, &logger).expect("Could not create DB file");
+        let _res = create_db_objects(&conn, &logger).expect("Could not create positions table");
+
+        //Create test worker1
+        let source_name = String::from("worker1");
+        let source_id = String::from("416d77337e24399dc7a5aa058039f72a"); //arbitrary id
+        let x1 = 0.0;
+        let y1 = 0.0;
+        let source_pos = Position{ x : 0.0, y : 0.0 };
+        let vel = Velocity{ x : 1.0, y : 0.7 };
+        let source_sr = String::from("/tmp/sr_1.socket");
+        let source_lr = String::from("/tmp/lr_1.socket");
+        let id1 = register_worker(&conn, 
+                                  source_name, 
+                                  &source_id, 
+                                  &source_pos, 
+                                  &vel, 
+                                  &None, 
+                                  Some(source_sr), 
+                                  Some(source_lr),
+                                  &logger).expect("Could not register worker1");
+
+        //Create test worker2
+        //This worker should be in range.
+        let name = String::from("worker2");
+        let id = String::from("416d77337e24399dc7a5aa058039f72b");
+        let x2 = 50.0;
+        let y2 = -25.50;
+        let pos = Position{ x : 50.0, y : -25.50 };
+        let vel = Velocity{ x : -1.0, y : 2.1 };
+        let sr = String::from("/tmp/sr_2.socket");
+        let lr = String::from("/tmp/lr_2.socket");
+        let id2 = register_worker(&conn, 
+                                  name, 
+                                  &id, 
+                                  &pos, 
+                                  &vel, 
+                                  &None, 
+                                  Some(sr), 
+                                  Some(lr),
+                                  &logger).expect("Could not register worker2");
+
+        let rows = stop_workers(&conn, &[(id1, x1, y1), (id2, x2, y2)], &logger).expect("Could not stop workers");
+
+        assert_eq!(rows, 2);
+
     }
 }

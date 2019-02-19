@@ -27,6 +27,8 @@ extern crate rand;
 extern crate rusqlite;
 
 use worker::worker_config::WorkerConfig;
+use worker::mobility;
+use worker::radio::{SimulatedRadio, RadioTypes};
 use std::process::{Command, Child, Stdio};
 use std::io;
 use std::error;
@@ -83,7 +85,7 @@ impl FromStr for MobilityModels {
 #[derive(Debug)]
 pub struct Master {
     /// Collection of worker processes the Master controls.
-    pub workers : Arc<Mutex<HashMap<String, Arc<Mutex<Child>>>>>,
+    pub workers : Arc<Mutex<HashMap<String, (i64,Arc<Mutex<Child>>)>>>,
     ///Working directory for the master under which it will place the files it needs.
     pub work_dir : String,
     /// Path to the worker binary for experiments.
@@ -98,7 +100,7 @@ pub struct Master {
     /// Current mobility model (if any)
     pub mobility_model : Option<MobilityModels>,
     /// The logger to be usef by the Master
-    logger : Logger,
+    pub logger : Logger,
     /// The log file to which the master will log
     pub log_file : String,
 }
@@ -229,6 +231,8 @@ impl Master {
         command.arg(format!("{}", &file_dir.display()));
         command.arg("--work_dir");
         command.arg(format!("{}", work_dir));
+        command.arg("--register_worker");
+        command.arg(format!("{}", false));
         command.stdin(Stdio::piped());
 
         //Starting the worker process
@@ -239,19 +243,46 @@ impl Master {
     }
 
     ///Runs the test defined in the specification passed to the master.
-    pub fn run_test(&mut self, mut spec : test_specification::TestSpec) -> Result<(), MasterError> {
+    pub fn run_test(&mut self, 
+                    mut spec : test_specification::TestSpec,
+                    logger : &Logger) -> Result<(), MasterError> {
         info!(self.logger, "Running test {}", &spec.name);
         info!(self.logger, "Test results will be placed under {}", &self.work_dir);
 
+        //Obtain database connection
+        let conn = get_db_connection(&self.work_dir, logger)?;
+        
+        //Create the DB objects
+        let _rows = create_db_objects(&conn, &logger)?;
+        
         //Start all workers and add save their child process handle.
         {
             let mut workers = self.workers.lock().unwrap(); // LOCK : GET : WORKERS
             for (_, val) in spec.initial_nodes.iter_mut() {
+                //Start the child process
                 let child_handle = Master::run_worker(&self.worker_binary, 
                                                       &self.work_dir,
                                                       &val,
                                                       &self.logger)?;
-                workers.insert(val.worker_name.clone(), Arc::new(Mutex::new(child_handle)));
+
+                //Register the worker in the DB
+                let worker_id = match val.worker_id {
+                    Some(ref id) =>  id.clone(),
+                    None => WorkerConfig::gen_id(val.random_seed),
+                };
+                let sr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::ShortRange);
+                let lr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::LongRange);
+                let id = register_worker(&conn, val.worker_name.clone(), 
+                                                          &worker_id, 
+                                                          &val.position, 
+                                                          &val.velocity, 
+                                                          &val.destination,
+                                                          Some(sr_addr), 
+                                                          Some(lr_addr),
+                                                          &logger)?;
+
+                //Save the db_id of the worker as well as the handle to its process.
+                workers.insert(val.worker_name.clone(), (id, Arc::new(Mutex::new(child_handle))));
             }
         } // LOCK : RELEASE : WORKERS
 
@@ -328,7 +359,7 @@ impl Master {
             let mut workers_handle = workers_handle.lock().unwrap();
             let workers_handle = workers_handle.deref_mut();
             let mut i = 0;
-            for (_name, mut handle) in workers_handle {
+            for (_name, (_id, handle)) in workers_handle {
                 let mut h = handle.lock().unwrap();
                 info!(logger, "Killing worker pid {}", h.id());
                 match h.kill() {
@@ -350,6 +381,7 @@ impl Master {
         let worker_binary = self.worker_binary.clone();
         let work_dir = self.work_dir.clone();
         let logger = self.logger.clone();
+        let conn = get_db_connection(&work_dir, &logger)?;
 
         let handle = thread::spawn(move || {
             let test_endtime = Duration::from_millis(time);
@@ -359,14 +391,29 @@ impl Master {
 
             match available_nodes.get(&name) {
                 Some(config) => { 
+                    let worker_id = match config.worker_id {
+                        Some(ref id) =>  id.clone(),
+                        None => WorkerConfig::gen_id(config.random_seed),
+                    };
                      match Master::run_worker(&worker_binary, &work_dir, config, &logger) {
-                         Ok(child_handle) => { 
+                        Ok(child_handle) => { 
+                            //The process was started correctly. Now register it to the DB.
+                            let sr_addr = SimulatedRadio::format_address(&work_dir, &worker_id, RadioTypes::ShortRange);
+                            let lr_addr = SimulatedRadio::format_address(&work_dir, &worker_id, RadioTypes::LongRange);
+                            let id = register_worker(&conn, config.worker_name.clone(), 
+                                                            &worker_id, 
+                                                            &config.position, 
+                                                            &config.velocity, 
+                                                            &config.destination,
+                                                            Some(sr_addr), 
+                                                            Some(lr_addr),
+                                                            &logger).expect("Failed to register worker in the DB.");
                             let mut w = workers.lock().unwrap();
-                            w.insert(name, Arc::new(Mutex::new(child_handle)));
-                         },
-                         Err(e) => { 
+                            w.insert(name, (id, Arc::new(Mutex::new(child_handle))));
+                        },
+                        Err(e) => { 
                             error!(logger, "Error running worker: {:?}", e);
-                         },
+                        },
                      }
                 },
                 None => { 
@@ -391,7 +438,7 @@ impl Master {
             match workers {
                 Ok(mut w) => { 
                     if let Some(mut child) = w.get_mut(&name) {
-                        let mut c = child.lock().unwrap();
+                        let mut c = child.1.lock().unwrap();
                         match c.kill() {
                             Ok(_) => {
                                 let exit_status = c.wait();
@@ -425,7 +472,7 @@ impl Master {
             match workers {
                 Ok(mut w) => { 
                     if let Some(mut child) = w.get_mut(&source) {
-                        let mut c = child.lock().unwrap();
+                        let mut c = child.1.lock().unwrap();
                         let ping_data = base64::encode("PING".as_bytes());
                         let payload = format!("SEND {} {}\n", &destination, &ping_data);
                         let res = c.stdin.as_mut().unwrap().write_all(payload.as_bytes());
@@ -467,7 +514,7 @@ impl Master {
                         packets_per_second : usize, 
                         packet_size : usize,
                         duration : u64,
-                        workers : Arc<Mutex<HashMap<String, Arc<Mutex<Child>>>>>,
+                        workers : Arc<Mutex<HashMap<String, (i64, Arc<Mutex<Child>>)>>>,
                         logger : &Logger) -> Result<(), MasterError> { 
         let mut rng = thread_rng();
         let mut data : Vec<u8>= iter::repeat(0u8).take(packet_size).collect();
@@ -476,7 +523,7 @@ impl Master {
         let source_handle : Arc<Mutex<Child>> = match workers.lock() {
             Ok(worker_list) => { 
                 if let Some(w) = worker_list.get(&source) {
-                    Arc::clone(&w)
+                    Arc::clone(&w.1)
                 } else {
                     return Err(MasterError::Sync(format!("Could not find process for {}", &source)))
                 }
@@ -588,6 +635,8 @@ impl Master {
                               rng : &mut RngCore,
                               db_path : &String,
                               logger : &Logger,  ) {
+        debug!(logger, "Entered function handle_random_waypoint");
+
         //Select workers that reached their destination
         let rows = match select_final_positions(&conn) {
             Ok(rows) => {
@@ -602,7 +651,7 @@ impl Master {
         if rows.len() > 0 {
             info!(logger, "{} workers have reached their destinations", rows.len());
             //Stop workers that have reached their destination
-            match stop_workers(&conn, &rows) {
+            match stop_workers(&conn, &rows, logger) {
                 Ok(r) => {
                     info!(logger, "{} workers have been stopped", r);
                 },

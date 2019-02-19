@@ -25,6 +25,7 @@ use std::fmt;
 use std::error::Error;
 use mesh_simulator::logging;
 use std::time::Duration;
+use ::slog::Logger;
 
 //const ARG_CONFIG : &'static str = "config";
 const ARG_WORK_DIR : &'static str = "work_dir";
@@ -121,14 +122,15 @@ impl From<master::MasterError> for CLIError {
 
 fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {    
     //Has a test file been provided?
-    let test_file = matches.value_of(ARG_TEST_FILE); 
+    let test_file = matches.value_of(ARG_TEST_FILE);
+    let logger = master.logger.clone();
     if let Some(file) = test_file {
         let mut test_spec = test_specification::TestSpec::parse_test_spec(file)?;
         master.duration = test_spec.duration;
         master.test_area.height = test_spec.area_size.height;
         master.test_area.width = test_spec.area_size.width;
         master.mobility_model = test_spec.mobility_model.clone();
-        master.run_test(test_spec)?;
+        master.run_test(test_spec, &logger)?;
     }
 
     //Temporary fix. Since the logging now runs in a separate thread, the tests may end before
@@ -206,16 +208,16 @@ fn main() {
     let matches = get_cli_parameters();
     
     let master = init(&matches).unwrap_or_else(|e| {
-                                    println!("master_cli failed with the following error: {}", e);
+                                    eprintln!("master_cli failed with the following error: {}", e);
                                     ::std::process::exit(ERROR_LOG_INITIALIZATION);
                                 });
 
     if let Err(ref e) = run(master, &matches) {
-        error!("master_cli failed with the following error: {}", e);
-        error!("Error chain: ");
+        eprintln!("master_cli failed with the following error: {}", e);
+        eprintln!("Error chain: ");
         let mut chain = e.cause();
         while let Some(internal) = chain {
-            error!("Internal error: {}", internal);
+            eprintln!("Internal error: {}", internal);
             chain = internal.cause();
         }
 

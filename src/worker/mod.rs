@@ -357,8 +357,6 @@ impl FromStr for OperationMode {
 //#[derive(Debug, Clone)]
 #[derive(Debug)]
 pub struct Worker {
-    ///ID of this worker in the DB
-    db_id : i64,
     ///Name of the current worker.
     name : String,
     ///Unique ID composed of 16 random numbers represented in a Hex String.

@@ -275,7 +275,8 @@ fn command_add_nodes(node_type : String, num : usize, spec : &mut TestSpec, data
         w.random_seed = rng.next_u32();
         w.work_dir = data.work_dir.clone();
         w.protocol = data.protocol.clone();
-        
+        w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
+
         //Calculate the position
         let x = rng.sample(width_sample);
         let y = rng.sample(height_sample);
