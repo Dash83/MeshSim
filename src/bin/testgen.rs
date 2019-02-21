@@ -47,11 +47,14 @@ impl TestBasics {
 #[derive(Debug)]
 enum Commands {
     ///Finish this configuration and write test file to disk
-    finish,
+    Finish,
     ///Add nodes to the test. Params: Type of nodes [Initial/Available], Number of nodes.
-    add_nodes(String, usize),
+    AddNodes(String, usize),
     ///Add a test action to the configuration
-    add_action(String),
+    AddAction(String),
+    ///Adds a given number of sources
+    /// Params: Number of sources, Type of Source, other params (dependant on the source type)
+    AddSources(usize, String, String),
 }
 
 impl FromStr for Commands {
@@ -65,7 +68,7 @@ impl FromStr for Commands {
             match parts[0].to_uppercase().as_str() {
                 "FINISH" => {
 
-                    Ok(Commands::finish)
+                    Ok(Commands::Finish)
                 },
                 "ADD_NODES" => {
                    if parts.len() < 3 {
@@ -78,7 +81,7 @@ impl FromStr for Commands {
                         Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
                     };
 
-                    Ok(Commands::add_nodes(node_type, number))
+                    Ok(Commands::AddNodes(node_type, number))
                 },
                 "ADD_ACTION" => {
                    if parts.len() < 2 {
@@ -90,7 +93,21 @@ impl FromStr for Commands {
                         action.push_str(&format!("{} ", s));
                     }
 
-                    Ok(Commands::add_action(action))
+                    Ok(Commands::AddAction(action))
+                },
+                "ADD_SOURCES" => {
+                   if parts.len() < 3 {
+                        //Error out
+                        return Err(Errors::TestParsing(format!("Add_Sources requires NUM_SOURCES TYPE PARAMS")))
+                    }
+                    let num : usize = match parts[1].parse() {
+                        Ok(n) => n,
+                        Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
+                    };
+                    let source_type : String = parts[2].into();
+                    let params : String = parts[3..].join(" ");
+
+                    Ok(Commands::AddSources(num, source_type, params))
                 },
                 _ => Err(Errors::TestParsing(format!("Unsupported command: {:?}", parts))),
             }
@@ -166,6 +183,14 @@ fn start_command_loop(data : TestBasics) -> Result<(), Errors> {
     let mut spec = TestSpec::new();
     let mut stdout = io::stdout();
 
+    //Copy all the basic data to the spec before starting to take commands
+    //Get the test measurements
+    spec.area_size = Area { width : data.width, height : data.height };
+    //Get test duration
+    spec.duration = data.end_time;
+    //Get mobility model
+    spec.mobility_model = data.m_model.clone();
+
     println!("Input commands to continue building the test spec.");
     println!("Input ? for a list of commands or \"finish\" for writing the current configuration to file.");
     loop {
@@ -204,29 +229,22 @@ fn start_command_loop(data : TestBasics) -> Result<(), Errors> {
 
 fn process_command(com : Commands, spec : &mut TestSpec, data : &TestBasics) -> Result<bool, Errors> {
     match com {
-        Commands::finish => {
+        Commands::Finish => {
             command_finish(spec, data)
         },
-        Commands::add_nodes(node_type, num) => {
+        Commands::AddNodes(node_type, num) => {
             command_add_nodes(node_type, num, spec, data)
         },
-        Commands::add_action(parts) => {
+        Commands::AddAction(parts) => {
             command_add_action(parts, spec)
         },
-        
+        Commands::AddSources(num_sources, s_type, params) => {
+            command_add_sources(num_sources, s_type, params, spec)
+        },
     }
 }
 
 fn command_finish(spec : &mut TestSpec, data : &TestBasics) -> Result<bool, Errors> {
-    //Get the test measurements
-    spec.area_size = Area { width : data.width, height : data.height };
-
-    //Get test duration
-    spec.duration = data.end_time;
-
-    //Get mobility model
-    spec.mobility_model = data.m_model.clone();
-
     let mut p = PathBuf::from(".");
     //Determine file name to write
     spec.name = data.test_name.clone();
@@ -326,6 +344,79 @@ fn command_add_nodes(node_type : String, num : usize, spec : &mut TestSpec, data
 
 fn command_add_action(parts : String, spec : &mut TestSpec) -> Result<bool, Errors> {
     spec.actions.push(parts);
+    Ok(false)
+}
+
+fn command_add_sources(num_sources : usize, 
+                       source_type: String, 
+                       params : String, 
+                       spec : &mut TestSpec) -> Result<bool, Errors> {
+    eprintln!("num_sources: {}", num_sources);
+    eprintln!("initial_nodes: {}", spec.initial_nodes.len());
+    if num_sources > spec.initial_nodes.len() || spec.initial_nodes.len() < 2 {
+        return Err(Errors::TestParsing(format!("Not enough nodes in the spec to support {} sources", num_sources)))
+    }
+
+    match source_type.to_uppercase().as_str() {
+        "CBR" => {
+            add_cbr_sources(num_sources, params, spec)
+        }
+        _ => {
+            return Err(Errors::TestParsing(format!("Unsupported source type: {}", &source_type)))
+        },
+    }
+}
+
+fn add_cbr_sources(num_sources : usize, 
+                       params : String, 
+                       spec : &mut TestSpec)  -> Result<bool, Errors> {
+    let mut rng = thread_rng();
+    
+    //Earliest start time for any CBR source is when 10% of the sim time has started.
+    let sources_start : u64 = spec.duration / 10;
+    let start_times_sample = Uniform::new(sources_start, spec.duration);
+
+    let param_parts : Vec<&str> = params.split_whitespace().collect();
+    //get packet-rate
+    let packet_rate : usize = match param_parts[0].parse() {
+        Ok(n) => n,
+        Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
+    };
+    //select packet-size
+    let packet_size : usize = match param_parts[1].parse() {
+        Ok(n) => n,
+        Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
+    };
+
+    for i in 0..num_sources {
+        //select source
+        let source_index = rng.next_u32() as usize % spec.initial_nodes.len();
+        let source_name = spec.initial_nodes.keys().nth(source_index).unwrap();
+        
+        //select destination
+        let mut dest_index = rng.next_u32() as usize % spec.initial_nodes.len();
+        while dest_index == source_index {
+            dest_index = rng.next_u32() as usize % spec.initial_nodes.len();
+        }
+        let dest_name = spec.initial_nodes.keys().nth(dest_index).unwrap();
+
+        //select start_time
+        let start_time = rng.sample(start_times_sample);
+
+        //calculate duration of source
+        let duration_mean : f64 = (spec.duration - start_time) as f64 / 2.0;
+        let duration_std_dev : f64 = duration_mean * 0.20;
+        let duration_sample = Normal::new(duration_mean, duration_std_dev);
+        let duration : u64 = rng.sample(duration_sample) as u64;
+
+        let action = format!("ADD_SOURCE {} {} {} {} {} {}", &source_name, 
+                                                             &dest_name,
+                                                             packet_rate,
+                                                             packet_size,
+                                                             duration,
+                                                             start_time);
+        spec.actions.push(action);
+    }
     Ok(false)
 }
 
