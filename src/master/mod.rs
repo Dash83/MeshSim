@@ -141,8 +141,8 @@ impl From<io::Error> for MasterError {
     }
 }
 
-impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Arc<Mutex<Child>>>>>> for MasterError {
-    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, Arc<Mutex<Child>>>>>) -> MasterError {
+impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, (i64, Arc<Mutex<Child>>)>>>> for MasterError {
+    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, (i64, Arc<Mutex<Child>>)>>>) -> MasterError {
         MasterError::Sync(err.to_string())
     }
 }
@@ -257,7 +257,7 @@ impl Master {
         
         //Start all workers and add save their child process handle.
         {
-            let mut workers = self.workers.lock().unwrap(); // LOCK : GET : WORKERS
+            let mut workers = self.workers.lock()?; // LOCK : GET : WORKERS
             for (_, val) in spec.initial_nodes.iter_mut() {
                 //Start the child process
                 let child_handle = Master::run_worker(&self.worker_binary, 
@@ -356,7 +356,14 @@ impl Master {
             info!(logger, "End_Test action: Scheduled for {:?}", &test_endtime);
             thread::sleep(test_endtime);
             info!(logger, "End_Test action: Starting");
-            let mut workers_handle = workers_handle.lock().unwrap();
+            let mut workers_handle = match workers_handle.lock() { 
+                Ok(h) => h,
+                Err(e) => { 
+                    let msg = format!("Could not acquire lock to list of workers: {}", e);
+                    error!(logger, "{}", msg);
+                    return
+                },
+            };
             let workers_handle = workers_handle.deref_mut();
             let mut i = 0;
             for (_name, (_id, handle)) in workers_handle {
@@ -408,7 +415,14 @@ impl Master {
                                                             Some(sr_addr), 
                                                             Some(lr_addr),
                                                             &logger).expect("Failed to register worker in the DB.");
-                            let mut w = workers.lock().unwrap();
+                            let mut w = match workers.lock() { 
+                                Ok(h) => h,
+                                Err(e) => { 
+                                    let msg = format!("Could not acquire lock to list of workers: {}", e);
+                                    error!(logger, "{}", msg);
+                                    return
+                                },
+                            };
                             w.insert(name, (id, Arc::new(Mutex::new(child_handle))));
                         },
                         Err(e) => { 
@@ -520,6 +534,7 @@ impl Master {
         let mut data : Vec<u8>= iter::repeat(0u8).take(packet_size).collect();
         let trans_time = std::time::Instant::now();
         let dur = Duration::from_millis(duration);
+        let pause = 1000u64 / packets_per_second as u64;
         let source_handle : Arc<Mutex<Child>> = match workers.lock() {
             Ok(worker_list) => { 
                 if let Some(w) = worker_list.get(&source) {
@@ -534,24 +549,34 @@ impl Master {
         };
 
         while trans_time.elapsed() < dur {
-            for i in 0..packets_per_second {        
-                rng.fill_bytes(&mut data[..]);
-                let encoded_data = base64::encode(&data);
-                let payload = format!("SEND {} {}\n", &destination, &encoded_data);
+            rng.fill_bytes(&mut data[..]);
+            let encoded_data = base64::encode(&data);
+            let payload = format!("SEND {} {}\n", &destination, &encoded_data);
 
-                match source_handle.lock() {
-                    Ok(mut h) => {
-                        let res = h.deref_mut().stdin.as_mut().unwrap().write_all(payload.as_bytes());
-                    }
-                    Err(e) => {
-                        let err = format!("Process {} is not in the Master list. Can't send data. Aborting CBR.", &source);
-                        error!(logger, "{}", &err);
-                        return Err(MasterError::Sync(err))
+            match source_handle.lock() {
+                Ok(mut h) => {
+                    match h.stdin.as_mut() {
+                        Some(stdin) => {
+                            match stdin.write_all(payload.as_bytes()) {
+                                Ok(()) => { 
+                                    /* All good */ 
+                                    debug!(logger, "Send command written successfully");
+                                },
+                                Err(e) => error!(logger, "Error: {}", e),
+                            }
+                        },
+                        None => { 
+                            error!(logger, "Could not get mutable reference to stdin"; "node" => &source);
+                        },
                     }
                 }
-                let pause = 1000u64 / packets_per_second as u64;
-                thread::sleep(Duration::from_millis(pause));
+                Err(e) => {
+                    let err = format!("Process {} is not in the Master list. Can't send data. Aborting CBR.", &source);
+                    error!(logger, "{}", &err);
+                    return Err(MasterError::Sync(err))
+                }
             }
+            thread::sleep(Duration::from_millis(pause));
         }       
         Ok(())
     }

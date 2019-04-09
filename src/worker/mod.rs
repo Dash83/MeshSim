@@ -51,10 +51,12 @@ use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
 use self::rand::{StdRng, SeedableRng};
 use self::byteorder::{NativeEndian, WriteBytesExt};
-use std::thread::{self, JoinHandle};
+use std::thread::{self, JoinHandle, Builder};
 use self::md5::Digest;
 use worker::mobility::*;
 use ::slog::Logger;
+use std::io::BufRead;
+use std::time::Duration;
 
 //Sub-modules declaration
 pub mod worker_config;
@@ -242,7 +244,7 @@ impl MessageHeader {
     /// This is done instead of getting the md5sum of the entire structure for testability purposes
     pub fn get_hdr_hash(&self) -> Result<Digest, WorkerError> {
         let mut data = Vec::new();
-        data.append(&mut self.sender.name.clone().into_bytes());
+        // data.append(&mut self.sender.name.clone().into_bytes());
         data.append(&mut self.destination.name.clone().into_bytes());
         if let Some(mut p) = self.payload.clone() {
             data.append(&mut p);
@@ -421,19 +423,43 @@ impl Worker {
                             let prot = Arc::clone(&prot_handler);
                             let r_type = rx.get_radio_range();
                             let tx_channel = Arc::clone(&tx);
-
-                            let _handle = thread::spawn(move || -> Result<(), WorkerError> {
-                                let response = prot.handle_message(hdr, r_type)?;
+                            let log = logger.clone();
+                            
+                            let handle_result = Builder::new().spawn(move || -> Result<(), WorkerError> {
+                                let response = match prot.handle_message(hdr, r_type) {
+                                    Ok(resp) => { 
+                                        resp
+                                    },
+                                    Err(e) => {
+                                        error!(log, "Error handling message: {}", e);
+                                        None
+                                    },
+                                };
 
                                 match response {
                                     Some(r) => { 
-                                        tx_channel.broadcast(r)?;
+                                        match tx_channel.broadcast(r) {
+                                            Ok(()) => { /* All good */ },
+                                            Err(e) => {
+                                                error!(log, "Error sending response: {}", e);
+                                            }
+                                        }
+                                        // warn!(log, "There was a resposne");
                                     },
-                                    None => { }
+                                    None => { 
+                                        /* Nothing else to do in this thread */
+                                    }
                                 }
-                                   
+
                                 Ok(())
                             });
+
+                            match handle_result {
+                                Ok(_jh) => { /* All good */},
+                                Err(e) => {
+                                    error!(logger, "Failed to spawn thread: {}", e);
+                                }
+                            }
                         },
                         None => { 
                             warn!(logger, "Failed to read incoming message.");
@@ -445,6 +471,10 @@ impl Worker {
 
         let com_loop_thread = self.start_command_loop_thread(Arc::clone(&prot_handler))?;
         threads.push(com_loop_thread);
+
+        // //DEBUG LINE
+        // let alive_thread = self.start_second_counter_thread()?;
+        // threads.push(alive_thread);
 
         // let _exit_values = threads.map(|x| x.map(|t| t.join())); //This compact version does not work. It seems the lazy iterator is not evaluated.
         for x in threads {
@@ -496,45 +526,62 @@ impl Worker {
 
         tb.name(String::from("CommandLoop"))
         .spawn(move || { 
-            let mut input = String::new();
-            debug!(logger, "Command loop started");
-            loop {
-                match io::stdin().read_line(&mut input) {
-                    Ok(_bytes) => {
-                        match input.parse::<commands::Commands>() {
-                            Ok(command) => {
-                                debug!(logger, "Command received");
-                                match Worker::process_command(command, Arc::clone(&protocol_handler)) {
-                                    Ok(_) => { /* All good! */ },
-                                    Err(e) => {
-                                        error!(logger, "Error executing command: {}", e);
-                                    }
-                                }
-                            },
-                            Err(e) => { 
-                                error!(logger, "Error parsing command: {}", e);
-                            },
-                        }
-                    }
-                    Err(error) => { 
-                        error!(logger, "{}", error);
-                    }
-                }
-                input.clear();
+            Worker::command_loop(&logger, protocol_handler)
+        })
+    }
+
+    fn start_second_counter_thread(&self) -> io::Result<JoinHandle<Result<(), WorkerError>>> {
+        let tb = thread::Builder::new();
+        let logger = self.logger.clone();
+        let mut i = 0;
+
+        tb.name(String::from("AliveThread"))
+        .spawn(move || { 
+            loop{
+                thread::sleep(Duration::from_millis(1000));
+                info!(logger, "{}", i);
+                i += 1;
             }
             Ok(())
         })
     }
 
-    fn process_command(com : commands::Commands, ph : Arc<Protocol>) -> Result<(), WorkerError> {
+    fn command_loop(logger : &Logger,
+                    protocol_handler : Arc<Protocol>) -> Result<(), WorkerError> {
+        let mut input = String::new();
+        let stdin = io::stdin();
+
+        info!(logger, "Command loop started");
+        loop {
+            match stdin.read_line(&mut input) {
+                Ok(_bytes) => {
+                    match input.parse::<commands::Commands>() {
+                        Ok(command) => {
+                            match Worker::process_command(command, Arc::clone(&protocol_handler), logger) {
+                                Ok(_) => { /* All good! */ },
+                                Err(e) => {
+                                    error!(logger, "Error executing command: {}", e);
+                                }
+                            }
+                        },
+                        Err(e) => { 
+                            error!(logger, "Error parsing command: {}", e);
+                        },
+                    }
+                }
+                Err(error) => { 
+                    error!(logger, "{}", error);
+                }
+            }
+            input.clear();
+        }
+        Ok(())
+    }
+
+    fn process_command(com : commands::Commands, ph : Arc<Protocol>, logger : &Logger) -> Result<(), WorkerError> {
         match com {
-            commands::Commands::Add_bcg(radio, group) => { 
-                unimplemented!("Adding broadcast groups is not yet supported.");
-            },
-            commands::Commands::Rem_bcg(radio, group) => { 
-                unimplemented!("Removing broadcast groups is not yet supported.");
-            },
             commands::Commands::Send(destination, data) => {
+                info!(logger, "Send command received");
                 let _res = ph.send(destination, data)?;
             }
         }
@@ -614,17 +661,17 @@ mod tests {
         rng.fill_bytes(&mut data[..]);
         msg.payload = Some(data.clone());
         let hash = msg.get_hdr_hash().expect("Could not hash message");
-        assert_eq!(&format!("{:x}", &hash), "d14f74d26de34910b1808210c29db3f3");
+        assert_eq!(&format!("{:x}", &hash), "16c37d4dbeed437d377fc131b016cf38");
 
         rng.fill_bytes(&mut data[..]);
         msg.payload = Some(data.clone());
         let hash = msg.get_hdr_hash().expect("Could not hash message");
-        assert_eq!(&format!("{:x}", &hash), "5076bb3622b5b0e36f1e4d0980c8a9c0");
+        assert_eq!(&format!("{:x}", &hash), "48b9f1d803d6829bcab59056981e6771");
 
         rng.fill_bytes(&mut data[..]);
         msg.payload = Some(data.clone());
         let hash = msg.get_hdr_hash().expect("Could not hash message");
-        assert_eq!(&format!("{:x}", &hash), "5bd1d45704c00e3f39e762f4b607a57e");
+        assert_eq!(&format!("{:x}", &hash), "a6048051b8727b181a6c69edf820914f");
     }
 
 }

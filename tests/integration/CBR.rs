@@ -43,6 +43,6 @@ fn test_cbr_basic() {
     }
     
     //Since the CBR source is configured to transmit 3 packets per second for 5 seconds,
-    //we espect to count 15 received packets.
+    //we expect to count 15 received packets.
     assert_eq!(received_packets, 15);
 }

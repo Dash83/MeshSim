@@ -37,7 +37,7 @@ fn rgr_basic() {
     let node24_log_records = logging::get_log_records_from_file(&node24_log_file).unwrap();
 
     //node1 receives the command to start transmission
-    let node_24_data_recv = logging::find_log_record("msg", "Message 90ec6d3eef645f6ac1b82e1966100071 has reached it's destination", &node24_log_records);
+    let node_24_data_recv = logging::find_log_record("msg", "Message 01b903789ae7d54079e92398434cef61 has reached it's destination", &node24_log_records);
 
     assert!(node_24_data_recv.is_some());
 }

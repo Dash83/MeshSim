@@ -215,7 +215,8 @@ impl Radio  for SimulatedRadio {
             info!(self.logger, "No nodes in range. Message not sent");
             return Ok(())
         }
-        // debug!("{} peer in range", peers.len());
+        
+        info!(self.logger, "{} peer in range", peers.len());
 
         for p in peers.into_iter() {
             let selected_address = match self.r_type {
@@ -230,7 +231,7 @@ impl Radio  for SimulatedRadio {
                     let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
                     let debug_addr : SockAddr = SockAddr::unix(&addr)?;
                     let _res = socket.connect(&debug_addr)?;
-                    let data = try!(to_vec(&msg));
+                    let data = to_vec(&msg)?;
                     let _sent_bytes = socket.send(&data)?;
                     //info!("Message sent to {}", &peer_address);
                     Ok(())
