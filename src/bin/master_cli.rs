@@ -3,14 +3,13 @@ extern crate clap;
 extern crate rustc_serialize;
 extern crate serde;
 extern crate serde_cbor;
-#[macro_use]
+
 extern crate slog;
 // extern crate slog_stream;
 extern crate slog_term;
 extern crate slog_json;
 extern crate slog_stdlog;
-#[macro_use]
-extern crate log;
+extern crate color_backtrace;
 
 use mesh_simulator::master::*;
 use mesh_simulator::master;
@@ -204,6 +203,9 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
 }
 
 fn main() {
+    //Enable the a more readable version of backtraces
+    color_backtrace::install();
+
     //Build CLI interface
     let matches = get_cli_parameters();
     

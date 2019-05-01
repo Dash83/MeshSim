@@ -9,6 +9,7 @@ extern crate slog;
 
 extern crate toml;
 extern crate rand;
+extern crate color_backtrace;
 
 use mesh_simulator::worker::worker_config::WorkerConfig;
 use mesh_simulator::worker;
@@ -213,6 +214,9 @@ fn init(matches : &ArgMatches) -> Result<(bool, WorkerConfig), CLIError> {
 }
 
 fn main() {
+    //Enable the a more readable version of backtraces
+    color_backtrace::install();
+
     //Get the CLI parameters
     let matches = get_cli_parameters();
 
@@ -282,7 +286,14 @@ mod worker_cli_tests {
 
         assert!(res.is_ok());
     }
-    
+    //Used to test the output of colored panic.
+    #[test]
+    #[should_panic]
+    fn test_colored_panic() {
+        color_backtrace::install();
+        panic!("This is supposed to panic!");
+    }
+
     //Unit test for: get_cli_parameters
     // #[test]
     // #[ignore]
