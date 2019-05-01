@@ -215,10 +215,10 @@ fn main() {
     if let Err(ref e) = run(master, &matches) {
         eprintln!("master_cli failed with the following error: {}", e);
         eprintln!("Error chain: ");
-        let mut chain = e.cause();
+        let mut chain = e.source();
         while let Some(internal) = chain {
             eprintln!("Internal error: {}", internal);
-            chain = internal.cause();
+            chain = internal.source();
         }
 
         ::std::process::exit(ERROR_EXECUTION_FAILURE);

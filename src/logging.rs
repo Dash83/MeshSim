@@ -78,7 +78,7 @@ pub fn create_logger<P: AsRef<Path>>(log_file_name : P) -> Result<Logger, Worker
     let d1 = slog_term::CompactFormat::new(decorator).build().fuse();
     let d1 = slog_async::Async::new(d1)
                 .chan_size(LOG_CHANNEL_SIZE)
-                .overflow_strategy(slog_async::OverflowStrategy::Drop)
+                .overflow_strategy(slog_async::OverflowStrategy::Block)
                 .thread_name(format!("Term{}", LOG_THREAD_NAME))
                 .build().fuse();
 

@@ -209,7 +209,7 @@ impl Radio  for SimulatedRadio {
 
     fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
         let conn = get_db_connection(&self.work_dir, &self.logger)?;
-        let peers = get_workers_in_range(&conn, &self.id, self.range)?;  
+        let peers = get_workers_in_range(&conn, &self.id, self.range, &self.logger)?;  
 
         if peers.len() == 0 {
             info!(self.logger, "No nodes in range. Message not sent");
@@ -217,7 +217,10 @@ impl Radio  for SimulatedRadio {
         }
         
         info!(self.logger, "{} peer in range", peers.len());
-
+        
+        let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
+        let msg = hdr.clone();
+        let data = to_vec(&msg)?;
         for p in peers.into_iter() {
             let selected_address = match self.r_type {
                 RadioTypes::ShortRange => { p.short_address.clone() },
@@ -226,16 +229,31 @@ impl Radio  for SimulatedRadio {
             
             if let Some(addr) = selected_address {
                 // debug!("Sending data to {}", &addr);
-                let msg = hdr.clone();
-                let _res : JoinHandle<Result<(), WorkerError> > = thread::spawn(move || {
-                    let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
-                    let debug_addr : SockAddr = SockAddr::unix(&addr)?;
-                    let _res = socket.connect(&debug_addr)?;
-                    let data = to_vec(&msg)?;
-                    let _sent_bytes = socket.send(&data)?;
-                    //info!("Message sent to {}", &peer_address);
-                    Ok(())
-                });                
+                // let _res : JoinHandle<Result<(), WorkerError> > = thread::spawn(move || {
+                let connect_addr : SockAddr = match SockAddr::unix(&addr) {
+                    Ok(sock) => sock,
+                    Err(e) => {
+                        warn!(&self.logger, "Error: {}", e);
+                        continue;
+                    },
+                };
+                let _res = match socket.connect(&connect_addr) { 
+                    Ok(_) => { /* All good */ },
+                    Err(e) => {
+                        warn!(&self.logger, "Error: {}", e);
+                        continue;
+                    }
+                };
+                let _sent_bytes = match socket.send(&data) { 
+                    Ok(_) => { /* All good */ },
+                    Err(e) => {
+                        warn!(&self.logger, "Error: {}", e);
+                        continue;
+                    }
+                };
+                //     //info!("Message sent to {}", &peer_address);
+                //     Ok(())
+                // });
             } else {
                 error!(self.logger, "No known address for peer peer {} in range {:?}", p.name, self.r_type);
             }

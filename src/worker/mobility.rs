@@ -193,6 +193,7 @@ pub fn register_worker( conn : &Connection,
 
     //Insert worker
     let _res = insert_worker(&conn, name, &worker_id, sr, lr, logger)?;
+    // info!(&logger, "[DEBUG] worker inserted");
 
     //Get the ID that was generated for the worker
     let mut stmt = conn.prepare(GET_WORKER_QRY)?;
@@ -200,13 +201,16 @@ pub fn register_worker( conn : &Connection,
     
     //Insert position
     let _res = update_worker_position(&conn, x, y, db_id, logger)?;
+    // info!(&logger, "[DEBUG] position updated");
 
     //Insert velocity
     let _res = update_worker_vel(&conn, vel, db_id, logger)?;
-    
+    // info!(&logger, "[DEBUG] velocity updated");
+
     //Insert destination if any
     if let Some(d) = dest {
         let _res = update_worker_target(&conn, db_id, d.clone(), logger)?;
+        // info!(&logger, "[DEBUG] destination updated");
     }
 
     Ok(db_id)
@@ -445,50 +449,99 @@ pub fn stop_workers(conn : &Connection,
     Ok(rows)
 }
 
-/// Returns all workers within RANGE meters of the current position of WORKER_ID
-pub fn get_workers_in_range<'a>(conn : &Connection, worker_id : &String, range : f64) -> Result<Vec<Peer>, WorkerError> {
+/// Gets the current position and database id of a given worker
+pub fn get_worker_position(conn : &Connection, 
+                           worker_id : &String,
+                           logger : &Logger) -> Result<(Position, i64), WorkerError> {
+    let mut rng = rand::thread_rng();
+
     //Get the current position for the worker_id received
     let mut stmt = conn.prepare(GET_WORKER_POS_QRY)?;
-    let (worker_pos, db_id) : (Position, i64) = stmt.query_row(&[&worker_id], |row| { 
-        let db_id : i64 = row.get(0);
-        let x : f64 = row.get(1);
-        let y : f64 = row.get(2);
-        let pos = Position{ x : x, y : y};
-        (pos, db_id)
-    })?;
+    for _i in 0..MAX_DBOPEN_RETRY {
+        let (wp, id) = match stmt.query_row(&[&worker_id], |row| {
+            let db_id : i64 = row.get(0);
+            let x : f64 = row.get(1);
+            let y : f64 = row.get(2);
+            let pos = Position{ x : x, y : y};
+            (pos, db_id)
+        }) {
+            Ok((pos, id)) => {
+                (Some(pos), Some(id))
+            },
+            Err(e) => { 
+                warn!(logger, "Failed to get worker position: {}", e);
+                let wait_time = rng.next_u64() % 100;
+                let wait_dur = Duration::from_millis(wait_time);
+                thread::sleep(wait_dur);
+                (None, None)
+            },
+        };
+
+        if wp.is_some() && id.is_some() {
+            let worker_pos = wp.unwrap();
+            let db_id = id.unwrap();
+            return Ok((worker_pos, db_id))
+        }
+    }
+
+    error!(logger, "Could not get position for current worker");
+    Err(WorkerError::Sync(String::from("Could not get position for current worker")))
+
+}
+
+/// Returns all workers within RANGE meters of the current position of WORKER_ID
+pub fn get_workers_in_range<'a>(conn : &Connection, 
+                                worker_id : &String, 
+                                range : f64,
+                                logger : &Logger) -> Result<Vec<Peer>, WorkerError> {
+    let mut rng = rand::thread_rng();
+    let (worker_pos, db_id) = get_worker_position(&conn, worker_id, &logger)?;
 
     //Get all other workers and check if they are in range
     let mut stmt = conn.prepare(SELECT_OTHER_WORKERS_POS_QRY)?;
-    let workers_iter = stmt.query_map(&[&worker_id], |row| {
-        let name : String = row.get(0);
-        let id : String = row.get(1);
-        let sr : Option<String> = row.get(2);
-        let lr : Option<String> = row.get(3);
-        let x : f64 = row.get(4);
-        let y : f64 = row.get(5);
-        let d = euclidean_distance(worker_pos.x, worker_pos.y, x, y);
-        //debug!("Worker {} in range {}", &id, d);
-        if d <= range {
-            let mut p = Peer::new();
-            p.id = id;
-            p.name = name;
-            p.short_address = sr;
-            p.long_address = lr;
-            Some(p)
-        } else {
-            None
-        }
-    })?;
-        
-    // let data = workers_iter.filter(|x| x.unwrap().is_some()).map(|x| x.unwrap()).collect();
-    let mut data = Vec::new();
-    for p in workers_iter {
-        let p = p?;
-        if p.is_some() {
-            data.push(p.unwrap());
+    for _i in 0..MAX_DBOPEN_RETRY {
+        match stmt.query_map(&[&worker_id], |row| {
+            let name : String = row.get(0);
+            let id : String = row.get(1);
+            let sr : Option<String> = row.get(2);
+            let lr : Option<String> = row.get(3);
+            let x : f64 = row.get(4);
+            let y : f64 = row.get(5);
+            let d = euclidean_distance(worker_pos.x, worker_pos.y, x, y);
+            //debug!("Worker {} in range {}", &id, d);
+            if d <= range {
+                let mut p = Peer::new();
+                p.id = id;
+                p.name = name;
+                p.short_address = sr;
+                p.long_address = lr;
+                Some(p)
+            } else {
+                None
+            }
+        }) { 
+            Ok(workers_iter) => {
+                let mut data = Vec::new();
+                for p in workers_iter {
+                    let p = p?;
+                    if p.is_some() {
+                        data.push(p.unwrap());
+                    }
+                }
+                return Ok(data);
+            },
+            Err(e) => {
+                warn!(logger, "Failed to get workers in range: {}", e);
+                let wait_time = rng.next_u64() % 100;
+                let wait_dur = Duration::from_millis(wait_time);
+                thread::sleep(wait_dur);
+            },
         }
     }
-    Ok(data)
+
+    // let data = workers_iter.filter(|x| x.unwrap().is_some()).map(|x| x.unwrap()).collect();
+    error!(logger, "Could not get nodes in range of this worker");
+    Err(WorkerError::Sync(String::from("Could not get nodes in range of this worker")))
 }
 
 /// Calculate the euclidean distance between 2 points.
@@ -759,7 +812,7 @@ mod tests {
                                   Some(lr),
                                   &logger).expect("Could not register worker5");
 
-        let workers_in_range : Vec<Peer> = get_workers_in_range(&conn, &source_id, 100.0).unwrap();
+        let workers_in_range : Vec<Peer> = get_workers_in_range(&conn, &source_id, 100.0, &logger).unwrap();
         println!("{:?}", &workers_in_range);
         assert_eq!(workers_in_range.len(), 2);
     }

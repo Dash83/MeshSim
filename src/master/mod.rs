@@ -218,12 +218,14 @@ impl Master {
                            config : &WorkerConfig,
                            logger : &Logger, ) -> Result<Child, MasterError> {
         let worker_name = config.worker_name.clone();
+        info!(logger, "Starting worker process {}", &worker_name);
+        
         let file_name = format!("{}.toml", &worker_name);
         let mut file_dir = PathBuf::new();
         file_dir.push(work_dir);
         file_dir.push(&file_name);
         debug!(logger, "Writing config file {}.", &file_dir.display());
-        let _res = try!(config.write_to_file(file_dir.as_path()));
+        let _res = config.write_to_file(file_dir.as_path())?;
 
         //Constructing the external process call
         let mut command = Command::new(worker_binary);
@@ -236,9 +238,10 @@ impl Master {
         command.stdin(Stdio::piped());
 
         //Starting the worker process
-        info!(logger, "Starting worker process {}", &worker_name);
         //debug!("with command {:?}", command);
-        let child = try!(command.spawn());
+        let child = command.spawn()?;
+        info!(logger, "Worker process {} started", &worker_name);
+
         Ok(child)
     }
 
@@ -248,6 +251,13 @@ impl Master {
                     logger : &Logger) -> Result<(), MasterError> {
         info!(self.logger, "Running test {}", &spec.name);
         info!(self.logger, "Test results will be placed under {}", &self.work_dir);
+
+        //Handles for all the threads that will run test actions
+        let mut action_handles = Vec::new();
+
+        //First of all, schedule the End_test action, so that the test will finish even if things go wrong
+        let end_test_handle = self.testaction_end_test(self.duration)?;
+        action_handles.push(end_test_handle);
 
         //Obtain database connection
         let conn = get_db_connection(&self.work_dir, logger)?;
@@ -260,47 +270,67 @@ impl Master {
             let mut workers = self.workers.lock()?; // LOCK : GET : WORKERS
             for (_, val) in spec.initial_nodes.iter_mut() {
                 //Start the child process
-                let child_handle = Master::run_worker(&self.worker_binary, 
-                                                      &self.work_dir,
-                                                      &val,
-                                                      &self.logger)?;
+                let res = Master::run_worker(&self.worker_binary, 
+                                             &self.work_dir,
+                                             &val,
+                                             &self.logger);
 
-                //Register the worker in the DB
-                let worker_id = match val.worker_id {
-                    Some(ref id) =>  id.clone(),
-                    None => WorkerConfig::gen_id(val.random_seed),
-                };
-                let sr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::ShortRange);
-                let lr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::LongRange);
-                let id = register_worker(&conn, val.worker_name.clone(), 
-                                                          &worker_id, 
-                                                          &val.position, 
-                                                          &val.velocity, 
-                                                          &val.destination,
-                                                          Some(sr_addr), 
-                                                          Some(lr_addr),
-                                                          &logger)?;
+                match res {
+                    Ok(child_handle) => { 
+                        //Register the worker in the DB
+                        let worker_id = match val.worker_id {
+                            Some(ref id) =>  id.clone(),
+                            None => WorkerConfig::gen_id(val.random_seed),
+                        };
+                        let sr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::ShortRange);
+                        let lr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::LongRange);
+                        let res = register_worker(&conn, val.worker_name.clone(), 
+                                                                &worker_id, 
+                                                                &val.position, 
+                                                                &val.velocity, 
+                                                                &val.destination,
+                                                                Some(sr_addr), 
+                                                                Some(lr_addr),
+                                                                &logger);
+                        
+                        match res {
+                            Ok(id) => { 
+                                //Save the db_id of the worker as well as the handle to its process.
+                                workers.insert(val.worker_name.clone(), (id, Arc::new(Mutex::new(child_handle))));
+                            },
+                            Err(e) => { 
+                                error!(&self.logger, "Error registering new worker: {}", e);        
+                            },
+                        }
+                    },
+                    Err(e) => { 
+                        error!(&self.logger, "Error starting new worker: {}", e);
+                    },
+                }
 
-                //Save the db_id of the worker as well as the handle to its process.
-                workers.insert(val.worker_name.clone(), (id, Arc::new(Mutex::new(child_handle))));
             }
         } // LOCK : RELEASE : WORKERS
 
         //Start mobility thread
-        let _mt_h = self.start_mobility_thread()?;
+        match self.start_mobility_thread() {
+            Ok(h) => { 
+                info!(&self.logger, "Mobility thread started");
+                //action_handles.push(h);
+            },
+            Err(e) => { 
+                error!(&self.logger, "Failed to start mobility thread: {}", e);
+            },
+        }
 
         //Add the available_nodes pool to the master.
         self.available_nodes = Arc::new(spec.available_nodes);
         //debug!("Available nodes: {:?}", &self.available_nodes);
 
-        //Add a test action to end the test
-        let end_test_action = format!("END_TEST {}\n", &self.duration);
-        spec.actions.push(end_test_action);
-
-        //Run all test actions.
+        //Schedule all test actions.
         let actions = spec.actions.clone();
-        let action_handles = try!(self.schedule_test_actions(actions));
- 
+        action_handles.append(&mut self.schedule_test_actions(actions)?);
+        info!(&self.logger, "{} test actions scheduled", action_handles.len());
+
         //let cl = self.start_command_loop_thread()?;
 
         //All actions have been scheduled. Wait for all actions to be executed and then exit.
@@ -530,6 +560,8 @@ impl Master {
                         duration : u64,
                         workers : Arc<Mutex<HashMap<String, (i64, Arc<Mutex<Child>>)>>>,
                         logger : &Logger) -> Result<(), MasterError> { 
+        info!(logger, "[Source]:{}: Starting", &source);
+         
         let mut rng = thread_rng();
         let mut data : Vec<u8>= iter::repeat(0u8).take(packet_size).collect();
         let trans_time = std::time::Instant::now();
@@ -560,7 +592,7 @@ impl Master {
                             match stdin.write_all(payload.as_bytes()) {
                                 Ok(()) => { 
                                     /* All good */ 
-                                    debug!(logger, "Send command written successfully");
+                                    info!(logger, "Send command written successfully");
                                 },
                                 Err(e) => error!(logger, "Error: {}", e),
                             }
@@ -626,10 +658,10 @@ impl Master {
                 }
 
                 // ****** DEBUG ******* //
-                let workers = get_all_worker_positions(&conn)?;
-                for w in workers {
-                    debug!(logger, "{}({}): ({}, {})", w.1, w.0, w.2, w.3);
-                }
+                // let workers = get_all_worker_positions(&conn)?;
+                // for w in workers {
+                //     debug!(logger, "{}({}): ({}, {})", w.1, w.0, w.2, w.3);
+                // }
 
                 if let Some(model) = &m_model {
                     match model {

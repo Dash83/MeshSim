@@ -33,6 +33,7 @@ extern crate pnet;
 extern crate ipnetwork;
 extern crate md5;
 extern crate rusqlite;
+extern crate threadpool;
 
 use std::io::Write;
 use self::serde_cbor::de::*;
@@ -72,6 +73,7 @@ pub mod mobility;
 const DNS_SERVICE_NAME : &'static str = "meshsim";
 const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT : u16 = 23456;
+const WORKER_POOL_SIZE : usize = 10;
 
 // *****************************
 // ********** Structs **********
@@ -414,7 +416,8 @@ impl Worker {
         let mut threads : Vec<JoinHandle<Result<(), WorkerError>>> = resources.radio_channels.drain(..).map(|(rx, tx)| { 
             let prot_handler = Arc::clone(&prot_handler);
             let logger = self.logger.clone();
-
+            let thread_pool = threadpool::Builder::new().num_threads(WORKER_POOL_SIZE).build();
+            
             thread::spawn(move || {        
                 info!(logger, "Listening for messages");
                 loop {
@@ -425,7 +428,7 @@ impl Worker {
                             let tx_channel = Arc::clone(&tx);
                             let log = logger.clone();
                             
-                            let handle_result = Builder::new().spawn(move || -> Result<(), WorkerError> {
+                            thread_pool.execute(move || {
                                 let response = match prot.handle_message(hdr, r_type) {
                                     Ok(resp) => { 
                                         resp
@@ -450,16 +453,7 @@ impl Worker {
                                         /* Nothing else to do in this thread */
                                     }
                                 }
-
-                                Ok(())
                             });
-
-                            match handle_result {
-                                Ok(_jh) => { /* All good */},
-                                Err(e) => {
-                                    error!(logger, "Failed to spawn thread: {}", e);
-                                }
-                            }
                         },
                         None => { 
                             warn!(logger, "Failed to read incoming message.");
