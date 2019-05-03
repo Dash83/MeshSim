@@ -62,8 +62,6 @@ pub trait Radio : std::fmt::Debug + Send + Sync {
     // fn scan_for_peers(&self) -> Result<HashMap<String, (String, String)>, WorkerError>;
     ///Gets the current address at which the radio is listening.
     fn get_address(&self) -> &str;
-    ///Method for the Radio to perform the necessary initialization for it to function.
-    fn init(&self) -> Result<Box<Listener>, WorkerError>;
     ///Used to broadcast a message using the radio
     fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError>;
 }
@@ -92,119 +90,8 @@ pub struct SimulatedRadio {
 }
 
 impl Radio  for SimulatedRadio {
-    // fn scan_for_peers(&self) -> Result<HashMap<String, (String, String)>, WorkerError> {
-    //     let conn = get_db_connection(&self.work_dir)?;
-    //     let peers = get_workers_in_range(&conn, &self.id, self.range)?;
-
-    //     // let mut nodes_discovered = HashMap::new();
-
-    //     // //Obtain parent directory of broadcast groups
-    //     // let mut parent_dir = Path::new(&self.address).to_path_buf();
-    //     // let _ = parent_dir.pop(); //bcast group for main address
-    //     // let _ = parent_dir.pop(); //bcast group parent directory
-
-    //     // info!("Scanning for peers in range: {:?}", &self.range);
-    //     // debug!("Scanning in dir {}", parent_dir.display());
-    //     // for group in &self.broadcast_groups {
-    //     //     let dir = format!("{}{}{}", parent_dir.display(), std::path::MAIN_SEPARATOR, group);
-    //     //     if Path::new(&dir).is_dir() {
-    //     //         for path in fs::read_dir(dir)? {
-    //     //             let peer_file = try!(path);
-    //     //             let peer_file = peer_file.path();
-    //     //             let peer_file = peer_file.to_str().unwrap_or("");
-    //     //             let peer_key = extract_address_key(&peer_file);
-    //     //             if !peer_key.is_empty() && peer_key != self.id {
-    //     //                 let address = format!("{}", peer_file);
-    //     //                 let name = String::from("");
-    //     //                 let id = String::from(peer_key);
-
-    //     //                 if !nodes_discovered.contains_key(&id) {
-    //     //                     debug!("Found {}!", &id);
-    //     //                     nodes_discovered.insert(id, (name, address));
-    //     //                 }
-    //     //             }
-    //     //         }
-    //     //     }
-    //     // }
-    //     // Ok(nodes_discovered)
-    //     unimplemented!()
-    // }
-
     fn get_address(&self) -> &str {
         &self.address
-    }
-
-    fn init(&self) -> Result<Box<Listener>, WorkerError> {
-        let mut dir = try!(std::fs::canonicalize(&self.work_dir));
-
-        //Create directory for unix_domain sockets
-        dir.push(SIMULATED_SCAN_DIR);
-        if !dir.exists() {
-            //Create bcast_groups dir
-            try!(std::fs::create_dir(dir.as_path()));
-            info!(self.logger, "Created dir {} ", dir.as_path().display());
-        }
-
-        // //Create the scan dir that corresponds to this radio's range.
-        // let radio_type_dir = match self.range {
-        //     RadioTypes::ShortRange => SHORT_RANGE_DIR,
-        //     RadioTypes::LongRange => LONG_RANGE_DIR,
-        // };
-        // dir.push(radio_type_dir);
-        // if !dir.exists() {
-        //     //Create short/long dir
-        //     try!(std::fs::create_dir(dir.as_path()));
-        //     info!("Created dir {} ", dir.as_path().display());
-        // }
-
-        // //Create the main broadcast group directory and bind the socket file.
-        // let mut groups = self.broadcast_groups.clone();
-        // dir.push(groups.remove(0));
-        // if !dir.exists() {
-        //     //Create main broadcast dir
-        //     try!(std::fs::create_dir(dir.as_path()));
-        //     info!("Created dir {} ", dir.as_path().display());
-        // }
-        // dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR/$RANGE
-        // //Check if the socket file exists from a previous run.
-        // if Path::new(&self.address).exists() {
-        //     //Pipe already exists.
-        //     try!(fs::remove_file(&self.address));
-        // }
-
-        let listen_addr = SockAddr::unix(&self.address)?;
-        let sock = Socket::new(Domain::unix(), Type::dgram(), None)?;
-        let _ = sock.bind(&listen_addr)?;
-        let listener = SimulatedListener::new(sock, 
-                                              self.reliability, 
-                                              Arc::clone(&self.rng), 
-                                              self.r_type,
-                                              self.logger.clone() );
-        
-        // for group in groups.iter() {
-        //     dir.push(&group); //Dir is work_dir/$SIMULATED_SCAN_DIR/$RANGE/&group
-            
-        //     //Does broadcast group exist?
-        //     if !dir.exists() {
-        //         //Create group dir
-        //         try!(std::fs::create_dir(dir.as_path()));
-        //         //info!("Created dir file {} ", dir.as_path().display());
-        //     }
-
-        //     //Create address or symlink for this worker
-        //     let linked_address = format!("{}{}{}.socket", dir.as_path().display(), std::path::MAIN_SEPARATOR, self.id);
-        //     if Path::new(&linked_address).exists() {
-        //         //Pipe already exists
-        //         dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR/$RANGE
-        //         continue;
-        //     }
-        //     let _ = try!(std::os::unix::fs::symlink(&self.address, &linked_address));
-        //     //debug!("Pipe file {} created.", &linked_address);
-
-        //     dir.pop(); //Dir is work_dir/$SIMULATED_SCAN_DIR/$RANGE
-        // }
-        // debug!("Radio Configuration: {:?}", &self);
-        Ok(Box::new(listener))
     }
 
     fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
@@ -274,17 +161,19 @@ impl SimulatedRadio {
                 r_type : RadioTypes,
                 range : f64,
                 rng : Arc<Mutex<StdRng>>,
-                logger : Logger ) -> SimulatedRadio {
+                logger : Logger ) -> Result<(SimulatedRadio, Box<Listener>), WorkerError> {
         //$WORK_DIR/SIMULATED_SCAN_DIR/ID_RANGE.sock
         let address = SimulatedRadio::format_address(&work_dir, &id, r_type);
-        SimulatedRadio{ reliability : reliability,
-                        work_dir : work_dir,
-                        id : id,
-                        address : address,
-                        range : range,
-                        r_type : r_type,
-                        rng : rng,
-                        logger : logger }
+        let listener = SimulatedRadio::init(&work_dir, &address, reliability, &rng, r_type, &logger)?;
+        let sr = SimulatedRadio{reliability : reliability,
+                                work_dir : work_dir,
+                                id : id,
+                                address : address,
+                                range : range,
+                                r_type : r_type,
+                                rng : rng,
+                                logger : logger};
+        Ok((sr, listener))
     }
 
     ///Function used to form the listening point of a SimulatedRadio
@@ -295,6 +184,35 @@ impl SimulatedRadio {
         format!("{}{}{}{}{}_{}.sock", work_dir, std::path::MAIN_SEPARATOR,
                                                     SIMULATED_SCAN_DIR, std::path::MAIN_SEPARATOR,
                                                     id, range_dir)
+    }
+
+    fn init(work_dir : &String,
+            address : &String,
+            reliability : f64,
+            rng : &Arc<Mutex<StdRng>>,
+            r_type : RadioTypes,
+            logger : &Logger ) -> Result<Box<Listener>, WorkerError> {
+        let mut dir = std::fs::canonicalize(work_dir)?;
+
+        //Create directory for unix_domain sockets
+        dir.push(SIMULATED_SCAN_DIR);
+        if !dir.exists() {
+            //Create bcast_groups dir
+            std::fs::create_dir(dir.as_path())?;
+            info!(logger, "Created dir {} ", dir.as_path().display());
+        }
+
+        let listen_addr = SockAddr::unix(address)?;
+        let sock = Socket::new(Domain::unix(), Type::dgram(), None)?;
+        let _ = sock.bind(&listen_addr)?;
+        let listener = SimulatedListener::new(sock, 
+                                              reliability, 
+                                              Arc::clone(rng), 
+                                              r_type,
+                                              logger.clone() );
+        
+        println!("{}", &listener.get_address());
+        Ok(Box::new(listener))
     }
 }
 
@@ -372,38 +290,6 @@ impl Radio  for DeviceRadio{
         &self.address
     }
 
-    fn init(&self) -> Result<Box<Listener>, WorkerError> {
-        //Advertise the service to be discoverable by peers before we start listening for messages.
-        let mut service = ServiceRecord::new();
-        service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.id);
-        service.service_type = String::from(DNS_SERVICE_TYPE);
-        service.port = DNS_SERVICE_PORT;
-        service.txt_records.push(format!("PUBLIC_KEY={}", self.id));
-        service.txt_records.push(format!("NAME={}", self.name));
-        let mdns_handler = try!(ServiceRecord::publish_service(service));
-
-        //Now bind the socket
-        //debug!("Attempting to bind address: {:?}", &self.address);
-        //let listen_addr = &self.address.parse::<SocketAddr>().unwrap().into();
-        let sock = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
-        
-        //Join multicast group
-        sock.join_multicast_v6(&SERVICE_ADDRESS, self.interface_index)?;
-        sock.set_only_v6(true)?;
-
-        let debug_address = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,0)), DNS_SERVICE_PORT);
-        let _ = sock.bind(&SockAddr::from(debug_address))?;
-        let listener = DeviceListener::new(sock, 
-                                           Some(mdns_handler), 
-                                           Arc::clone(&self.rng), 
-                                           self.r_type,
-                                           self.logger.clone());
-
-        info!(self.logger, "Radio initialized.");
-
-        Ok(Box::new(listener))
-    }
-
     fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
         let sock_addr = SocketAddr::new(IpAddr::V6(*SERVICE_ADDRESS), DNS_SERVICE_PORT);
         let socket = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
@@ -461,19 +347,54 @@ impl DeviceRadio {
                 id : String, 
                 rng : Arc<Mutex<StdRng>>, 
                 r_type : RadioTypes,
-                logger : Logger ) -> DeviceRadio {
+                logger : Logger ) -> Result<(DeviceRadio, Box<Listener>), WorkerError> {
         let address = DeviceRadio::get_radio_address(&interface_name).expect("Could not get address for specified interface.");
         let interface_index = DeviceRadio::get_interface_index(&interface_name).expect("Could not get index for specified interface.");
         debug!(logger, "Obtained address {}", &address);
         let address = format!("[{}]:{}", address, DNS_SERVICE_PORT);
+        let listener = DeviceRadio::init(interface_index, r_type, &rng, &logger)?;
+        let radio = DeviceRadio{interface_name : interface_name,
+                                interface_index : interface_index,
+                                id : id, 
+                                name : worker_name, 
+                                address : address,
+                                rng : rng,
+                                r_type : r_type,
+                                logger : logger };
+        Ok((radio, listener))
+    }
 
-        DeviceRadio { interface_name : interface_name,
-                      interface_index : interface_index,
-                      id : id, 
-                      name : worker_name, 
-                      address : address,
-                      rng : rng,
-                      r_type : r_type,
-                      logger : logger }
+    fn init(interface_index : u32,
+            r_type : RadioTypes,
+            rng : &Arc<Mutex<StdRng>>,
+            logger : &Logger ) -> Result<Box<Listener>, WorkerError> {
+        //Advertise the service to be discoverable by peers before we start listening for messages.
+        // let mut service = ServiceRecord::new();
+        // service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.id);
+        // service.service_type = String::from(DNS_SERVICE_TYPE);
+        // service.port = DNS_SERVICE_PORT;
+        // service.txt_records.push(format!("PUBLIC_KEY={}", self.id));
+        // service.txt_records.push(format!("NAME={}", self.name));
+        // let mdns_handler = try!(ServiceRecord::publish_service(service));
+
+        //Now bind the socket
+        //debug!("Attempting to bind address: {:?}", &self.address);
+        //let listen_addr = &self.address.parse::<SocketAddr>().unwrap().into();
+        let sock = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
+        
+        //Join multicast group
+        sock.join_multicast_v6(&SERVICE_ADDRESS, interface_index)?;
+        sock.set_only_v6(true)?;
+
+        let debug_address = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,0)), DNS_SERVICE_PORT);
+        let _ = sock.bind(&SockAddr::from(debug_address))?;
+        let listener = DeviceListener::new(sock, 
+                                           None, 
+                                           Arc::clone(rng), 
+                                           r_type,
+                                           logger.clone());
+
+        println!("{}", &listener.get_address());
+        Ok(Box::new(listener))
     }
 }

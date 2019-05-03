@@ -55,6 +55,7 @@ use self::byteorder::{NativeEndian, WriteBytesExt};
 use std::thread::{self, JoinHandle, Builder};
 use self::md5::Digest;
 use worker::mobility::*;
+use worker::listener::Listener;
 use ::slog::Logger;
 use std::io::BufRead;
 use std::time::Duration;
@@ -366,9 +367,9 @@ pub struct Worker {
     ///Unique ID composed of 16 random numbers represented in a Hex String.
     pub id : String,
     /// Short-range radio for the worker.
-    short_radio : Option<Arc<Radio>>,
+    short_radio : Option<(Arc<Radio>, Box<Listener>)>,
     /// Long-range radio for the worker.
-    long_radio : Option<Arc<Radio>>,
+    long_radio : Option<(Arc<Radio>, Box<Listener>)>,
     ///Directory for the worker to operate. Must have RW access to it. Operational files and 
     ///log files will be written here.
     work_dir : String,

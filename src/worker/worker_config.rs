@@ -8,6 +8,7 @@ extern crate byteorder;
 use worker::{Worker, OperationMode, Write, WorkerError, DeviceRadio, SimulatedRadio};
 use worker::radio::*;
 use worker::protocols::*;
+use worker::listener::Listener;
 use std::path::Path;
 use std::fs::File;
 use std::iter;
@@ -54,7 +55,7 @@ impl RadioConfig {
                               worker_id : String,
                               seed : u32, 
                               r : Option<Arc<Mutex<StdRng>>>,
-                              logger : Logger) -> Arc<Radio> {
+                              logger : Logger) -> Result<(Arc<Radio>, Box<Listener>), WorkerError> {
         let rng = match r {
             Some(gen) => gen,
             None => { Arc::new(Mutex::new(Worker::rng_from_seed(seed))) }
@@ -63,25 +64,27 @@ impl RadioConfig {
         match operation_mode {
             OperationMode::Device => { 
                 let iname = self.interface_name.expect("An interface name for radio_short must be provided when operating in device_mode.");
-                Arc::new( DeviceRadio::new( iname, 
-                                            worker_name,
-                                            worker_id, 
-                                            rng,
-                                            r_type,
-                                            logger))
+                let (radio, listener) = DeviceRadio::new(iname, 
+                                                         worker_name,
+                                                         worker_id, 
+                                                         rng,
+                                                         r_type,
+                                                         logger)?;
+                Ok((Arc::new(radio), listener))
             },
             OperationMode::Simulated => { 
                 //let delay = self.delay.unwrap_or(0);
                 let reliability = self.reliability.unwrap_or(1.0);
                 //let bg = self.broadcast_groups;
-                Arc::new(SimulatedRadio::new(reliability, 
-                                             work_dir,
-                                             worker_id,
-                                             worker_name,
-                                             r_type,
-                                             self.range,
-                                             rng,
-                                             logger ))
+                let (radio, listener) = SimulatedRadio::new(reliability, 
+                                                            work_dir,
+                                                            worker_id,
+                                                            worker_name,
+                                                            r_type,
+                                                            self.range,
+                                                            rng,
+                                                            logger)?;
+                Ok((Arc::new(radio), listener))
             },
         }
     }
@@ -153,59 +156,57 @@ impl WorkerConfig {
         let rng = Arc::new(Mutex::new(gen));
 
         //Create the radios
-        let (sr, sr_addr) = match self.radio_short {
+        let sr_channels = match self.radio_short {
             Some(sr_config) => { 
-                let sr = sr_config.create_radio(self.operation_mode, 
+                let (sr, listener) = sr_config.create_radio(self.operation_mode, 
                                                 RadioTypes::ShortRange, 
                                                 self.work_dir.clone(), 
                                                 self.worker_name.clone(), 
                                                 id.clone(), 
                                                 self.random_seed, 
                                                 Some(Arc::clone(&rng)),
-                                                logger.clone(), );
-                let addr = sr.get_address().into();
-                (Some(sr), Some(addr))
+                                                logger.clone())?;
+                Some((sr, listener))
             },
-            None => { (None, None) }
+            None => { None }
         };
 
-        let (lr, lr_addr) = match self.radio_long {
+        let lr_channels = match self.radio_long {
             Some(lr_config) => { 
-                let lr = lr_config.create_radio(self.operation_mode, 
+                let (lr, listener) = lr_config.create_radio(self.operation_mode, 
                                                 RadioTypes::LongRange, 
                                                 self.work_dir.clone(), 
                                                 self.worker_name.clone(),
                                                 id.clone(), 
                                                 self.random_seed, 
                                                 Some(Arc::clone(&rng)),
-                                                logger.clone(), );
-                let addr = lr.get_address().into();
-                (Some(lr), Some(addr) )
+                                                logger.clone())?;
+                Some((lr, listener))
             },
-            None => { (None, None) }
+            None => { None }
         };
 
-        if self.operation_mode == OperationMode::Simulated &&
-           register_worker == true {
-            let conn = mobility::get_db_connection(&self.work_dir, &logger)?;
-            // debug!("DB Connection obtained.");
-            let _rows = mobility::create_db_objects(&conn, &logger)?;
-            // debug!("create_positions_db returned {}", _rows);
-            let id = mobility::register_worker(&conn, self.worker_name.clone(), 
-                                                    &id, 
-                                                    &self.position, 
-                                                    &self.velocity, 
-                                                    &self.destination,
-                                                    sr_addr, 
-                                                    lr_addr,
-                                                    &logger)?;
-            debug!(logger, "Worker registered correcly with id {}", &id);
-        }
+        // if self.operation_mode == OperationMode::Simulated &&
+        //    register_worker == true {
+        //     let conn = mobility::get_db_connection(&self.work_dir, &logger)?;
+        //     // debug!("DB Connection obtained.");
+        //     let _rows = mobility::create_db_objects(&conn, &logger)?;
+        //     // debug!("create_positions_db returned {}", _rows);
+        //     let db_id = mobility::register_worker(&conn, self.worker_name.clone(), 
+        //                                             &id, 
+        //                                             &self.position, 
+        //                                             &self.velocity, 
+        //                                             &self.destination,
+        //                                             sr_addr, 
+        //                                             lr_addr,
+        //                                             &logger)?;
+        //     debug!(logger, "Worker registered correcly with id {}", &db_id);
+        // }
 
 
         let w = Worker{ name : self.worker_name,
-                        short_radio : sr,
-                        long_radio : lr,
+                        short_radio : sr_channels,
+                        long_radio : lr_channels,
                         work_dir : self.work_dir, 
                         rng : Arc::clone(&rng),
                         seed : self.random_seed,

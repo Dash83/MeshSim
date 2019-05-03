@@ -82,8 +82,8 @@ pub struct ProtocolResources {
 
 /// Provides a new boxed reference to the struct matching the passed protocol.
 pub fn build_protocol_resources( p : Protocols, 
-                                 short_radio : Option<Arc<Radio>>,
-                                 long_radio : Option<Arc<Radio>>,
+                                 short_radio : Option<(Arc<Radio>, Box<Listener>)>,
+                                 long_radio  : Option<(Arc<Radio>, Box<Listener>)>,
                                  seed : u32, 
                                  id : String, 
                                  name : String,
@@ -91,9 +91,7 @@ pub fn build_protocol_resources( p : Protocols,
     match p {
         Protocols::TMembership => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
-            let sr = short_radio.expect("The TMembership protocol requires a short_radio to be provided.");
-            //Initialize the radio.
-            let listener = sr.init()?;
+            let (sr, listener) = short_radio.expect("The TMembership protocol requires a short_radio to be provided.");
             let handler : Arc<Protocol> = Arc::new(TMembership::new(Arc::clone(&sr), seed, id, name, logger));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
@@ -104,14 +102,12 @@ pub fn build_protocol_resources( p : Protocols,
 
         Protocols::TMembershipAdvanced => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
-            let sr = short_radio.expect("The TMembership_Advanced protocol requires a short_radio to be provided.");
+            let (sr, sr_listener) = short_radio.expect("The TMembership_Advanced protocol requires a short_radio to be provided.");
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
-            let lr = long_radio.expect("The TMembership_Advanced protocol requires a long_radio to be provided.");
+            let (lr, lr_listener) = long_radio.expect("The TMembership_Advanced protocol requires a long_radio to be provided.");
 
             //Build the listeners list
             let mut radio_channels = Vec::new();
-            let sr_listener = sr.init()?;
-            let lr_listener = lr.init()?;
             radio_channels.push((sr_listener, Arc::clone(&sr)));
             radio_channels.push((lr_listener, Arc::clone(&lr)));
 
@@ -126,9 +122,7 @@ pub fn build_protocol_resources( p : Protocols,
 
         Protocols::NaiveRouting => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
-            let sr = short_radio.expect("The NaiveRouting protocol requires a short_radio to be provided.");
-            //Initialize the radio.
-            let listener = sr.init()?;
+            let (sr, listener) = short_radio.expect("The NaiveRouting protocol requires a short_radio to be provided.");
             let handler : Arc<Protocol> = Arc::new(NaiveRouting::new(name, id, Arc::clone(&sr), logger));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
@@ -139,9 +133,7 @@ pub fn build_protocol_resources( p : Protocols,
 
         Protocols::ReactiveGossip => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
-            let sr = short_radio.expect("The ReactiveGossip protocol requires a short_radio to be provided.");
-            //Initialize the radio.
-            let listener = sr.init()?;
+            let (sr, listener) = short_radio.expect("The ReactiveGossip protocol requires a short_radio to be provided.");
             let rng = Worker::rng_from_seed(seed);
             let handler : Arc<Protocol> = Arc::new(ReactiveGossipRouting::new(name, id, Arc::clone(&sr), rng, logger));
             let mut radio_channels = Vec::new();
