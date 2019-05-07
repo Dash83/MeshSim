@@ -159,9 +159,10 @@ fn test_broadcast_simulated() {
     let worker_name = String::from("worker1");
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72a"); //arbitrary
     let random_seed = 1;
-    let r1 = sr_config1.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
-                                     worker_id.clone(), random_seed, None, logger.clone());
-    let listener1 = r1.init().unwrap();
+    let (r1, l1) = sr_config1.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(),
+                                     worker_id.clone(), random_seed, None, logger.clone()).expect("Could not create radio for worker1");
+
+    // let listener1 = r1.init().unwrap();
     let pos = Position{ x : -60.0, y : 0.0};
     let vel = Velocity{ x : 0.0, y : 0.0};
     let _worker_db_id = register_worker(&conn, worker_name, 
@@ -180,9 +181,10 @@ fn test_broadcast_simulated() {
     let worker_name = String::from("worker2");
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72b"); //arbitrary
     let random_seed = 1;
-    let r2 = sr_config2.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
-                                     worker_id.clone(), random_seed, None, logger.clone());
-    let _listener2 = r2.init().unwrap();
+    let (r2, l2) = sr_config2.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
+                                     worker_id.clone(), random_seed, None, logger.clone()).expect("Could not create radio for worker2");
+    // let _listener2 = r2.init().unwrap();
+
     let pos = Position{ x : 0.0, y : 0.0};
     let _worker_db_id = register_worker(&conn, worker_name, 
                                                &worker_id, 
@@ -192,7 +194,7 @@ fn test_broadcast_simulated() {
                                                Some(r2.get_address().into()), 
                                                None, 
                                                &logger).expect("Could not register worker");
-    
+
     //Worker3
     let mut sr_config3= RadioConfig::new();
     sr_config3.range = 100.0;
@@ -201,9 +203,10 @@ fn test_broadcast_simulated() {
     let worker_name = String::from("worker3");
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72c"); //arbitrary
     let random_seed = 1;
-    let r3 = sr_config3.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
-                                     worker_id.clone(), random_seed, None, logger.clone());
-    let listener3 = r3.init().unwrap();
+    let (r3, l3) = sr_config3.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
+                                     worker_id.clone(), random_seed, None, logger.clone()).expect("Could not create radio for worker3");
+
+    // let listener3 = r3.init().unwrap();
     let pos = Position{ x : 60.0, y : 0.0};
     let _worker_db_id = register_worker(&conn, worker_name, 
                                                &worker_id, 
@@ -218,10 +221,12 @@ fn test_broadcast_simulated() {
     let bcast_msg = MessageHeader::new();
     let _res = r2.broadcast(bcast_msg).unwrap();
 
-    let rec_msg1 = listener1.read_message();
+    let rec_msg1 = l1.read_message();
+
     assert!(rec_msg1.is_some());
 
-    let rec_msg3 = listener3.read_message();
+    let rec_msg3 = l3.read_message();
+
     assert!(rec_msg3.is_some());
 
     //Teardown
@@ -255,18 +260,17 @@ fn test_broadcast_device() -> TestResult {
     let worker_name = String::from("worker1");
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72a"); //arbitrary
     let random_seed = 1;
-    let r1 = sr_config1.create_radio(OperationMode::Device, RadioTypes::ShortRange, work_dir, worker_name, 
-                                     worker_id, random_seed, None, logger.clone());
-    let listener1 = r1.init().unwrap();
+    let (r1, l1) = sr_config1.create_radio(OperationMode::Device, RadioTypes::ShortRange, work_dir, worker_name, 
+                                     worker_id, random_seed, None, logger.clone()).expect("Could not create radio for worker1");
+    // let listener1 = r1.init().unwrap();
 
     //Test checks
     let bcast_msg = MessageHeader::new();
     let _res = r1.broadcast(bcast_msg.clone()).unwrap();
-    println!("Multicast message sent");
 
     //We only test that the broadcast was received by the broadcaster, since we can only deploy 1 device_mode worker
     //per machine.
-    let rec_msg1 = listener1.read_message();
+    let rec_msg1 = l1.read_message();
     assert!(rec_msg1.is_some());
     let rec_msg1 = rec_msg1.unwrap();
 

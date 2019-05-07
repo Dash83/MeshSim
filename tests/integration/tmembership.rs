@@ -9,6 +9,7 @@ use super::super::*;
 use mesh_simulator::logging::*;
 
 #[test]
+#[ignore]
 fn integration_tmembership_join() {
     let test = get_test_path("join_test.toml");
     let program = get_master_path();
@@ -52,6 +53,7 @@ fn integration_tmembership_join() {
 }
 
 #[test]
+#[ignore]
 fn heartbeat_test() {
     let test = get_test_path("heartbeat_test.toml");
     let program = get_master_path();
