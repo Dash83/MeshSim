@@ -9,7 +9,6 @@ use worker::*;
 use worker::listener::*;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
-use std::thread::JoinHandle;
 use ::slog::Logger;
 
 const SIMULATED_SCAN_DIR : &'static str = "addr";
@@ -47,7 +46,7 @@ impl FromStr for RadioTypes {
     type Err = WorkerError;
 
     fn from_str(s : &str) -> Result<RadioTypes, WorkerError> {
-        //println!("Received {}", s.to_lowercase().as_str());
+        // println!("[RadioTypes] Received {}", s.to_lowercase().as_str());
         let r = match s.to_lowercase().as_str() {
             LONG_RANGE_DIR => RadioTypes::LongRange,
             SHORT_RANGE_DIR => RadioTypes::ShortRange,
@@ -104,8 +103,9 @@ impl Radio  for SimulatedRadio {
         }
         
         info!(self.logger, "{} peer in range", peers.len());
-        
-        let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
+
+        // let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
+        let socket = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
         let msg = hdr.clone();
         let data = to_vec(&msg)?;
         for p in peers.into_iter() {
@@ -117,30 +117,24 @@ impl Radio  for SimulatedRadio {
             if let Some(addr) = selected_address {
                 // debug!("Sending data to {}", &addr);
                 // let _res : JoinHandle<Result<(), WorkerError> > = thread::spawn(move || {
-                let connect_addr : SockAddr = match SockAddr::unix(&addr) {
-                    Ok(sock) => sock,
+                let remote_addr : SocketAddr = match addr.parse::<SocketAddr>() {
+                    Ok(sock_addr) => sock_addr,
                     Err(e) => {
                         warn!(&self.logger, "Error: {}", e);
                         continue;
                     },
                 };
-                let _res = match socket.connect(&connect_addr) { 
-                    Ok(_) => { /* All good */ },
+
+                let _sent_bytes = match socket.send_to(&data, &socket2::SockAddr::from(remote_addr)) { 
+                    Ok(_) => { 
+                        /* All good */ 
+                        // debug!(&self.logger, "Message sent to {:?}", &remote_addr);
+                    },
                     Err(e) => {
                         warn!(&self.logger, "Error: {}", e);
                         continue;
                     }
                 };
-                let _sent_bytes = match socket.send(&data) { 
-                    Ok(_) => { /* All good */ },
-                    Err(e) => {
-                        warn!(&self.logger, "Error: {}", e);
-                        continue;
-                    }
-                };
-                //     //info!("Message sent to {}", &peer_address);
-                //     Ok(())
-                // });
             } else {
                 error!(self.logger, "No known address for peer peer {} in range {:?}", p.name, self.r_type);
             }
@@ -162,13 +156,13 @@ impl SimulatedRadio {
                 range : f64,
                 rng : Arc<Mutex<StdRng>>,
                 logger : Logger ) -> Result<(SimulatedRadio, Box<Listener>), WorkerError> {
-        //$WORK_DIR/SIMULATED_SCAN_DIR/ID_RANGE.sock
-        let address = SimulatedRadio::format_address(&work_dir, &id, r_type);
-        let listener = SimulatedRadio::init(&work_dir, &address, reliability, &rng, r_type, &logger)?;
+        // let address = SimulatedRadio::format_address(&work_dir, &id, r_type);
+        let listener = SimulatedRadio::init(reliability, &rng, r_type, &logger)?;
+        let listen_addres = listener.get_address();
         let sr = SimulatedRadio{reliability : reliability,
                                 work_dir : work_dir,
                                 id : id,
-                                address : address,
+                                address : listen_addres,
                                 range : range,
                                 r_type : r_type,
                                 rng : rng,
@@ -176,43 +170,73 @@ impl SimulatedRadio {
         Ok((sr, listener))
     }
 
-    ///Function used to form the listening point of a SimulatedRadio
-    pub fn format_address(work_dir : &str, 
-                          id : &str, 
-                          r_type : RadioTypes) -> String {
-        let range_dir : String = r_type.clone().into();
-        format!("{}{}{}{}{}_{}.sock", work_dir, std::path::MAIN_SEPARATOR,
-                                                    SIMULATED_SCAN_DIR, std::path::MAIN_SEPARATOR,
-                                                    id, range_dir)
-    }
+    // ///Function used to form the listening point of a SimulatedRadio
+    // pub fn format_address(work_dir : &str, 
+    //                       id : &str, 
+    //                       r_type : RadioTypes) -> String {
+    //     let range_dir : String = r_type.clone().into();
+    //     //$WORK_DIR/SIMULATED_SCAN_DIR/ID_RANGE.sock
+    //     format!("{}{}{}{}{}_{}.sock", work_dir, std::path::MAIN_SEPARATOR,
+    //                                                 SIMULATED_SCAN_DIR, std::path::MAIN_SEPARATOR,
+    //                                                 id, range_dir)
+    // }
 
-    fn init(work_dir : &String,
-            address : &String,
-            reliability : f64,
+    fn init(reliability : f64,
             rng : &Arc<Mutex<StdRng>>,
             r_type : RadioTypes,
             logger : &Logger ) -> Result<Box<Listener>, WorkerError> {
-        let mut dir = std::fs::canonicalize(work_dir)?;
 
-        //Create directory for unix_domain sockets
-        dir.push(SIMULATED_SCAN_DIR);
-        if !dir.exists() {
-            //Create bcast_groups dir
-            std::fs::create_dir(dir.as_path())?;
-            info!(logger, "Created dir {} ", dir.as_path().display());
-        }
+        let sock = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
+        sock.set_only_v6(true)?;
 
-        let listen_addr = SockAddr::unix(address)?;
-        let sock = Socket::new(Domain::unix(), Type::dgram(), None)?;
-        let _ = sock.bind(&listen_addr)?;
+        // Listen on port 0 to be auto-assigned an address
+        let base_addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,1)), 0);
+
+        let _ = sock.bind(&SockAddr::from(base_addr))?;
         let listener = SimulatedListener::new(sock, 
                                               reliability, 
                                               Arc::clone(rng), 
-                                              r_type,
+                                              r_type.clone(),
                                               logger.clone() );
-        
-        println!("{}", &listener.get_address());
+        let radio_type : String = r_type.into();
+        print!("{}-{};", radio_type, &listener.get_address());
+
         Ok(Box::new(listener))
+    }
+
+    ///Receives the output from a worker that initialized 1 or more radios, and returns
+    ///the respective listen addresses.
+    pub fn extract_radio_addresses(mut input : String) -> Result<(Option<String>, Option<String>), WorkerError> {
+        let mut sr_address = None;
+        let mut lr_address = None;
+
+        // If the last char is a new line, remove it.
+        let last_c = input.pop();
+        if let Some(c) = last_c {
+            if c != '\n' {
+                input.push(c);
+            }
+        }
+
+        for v in input.as_str().split(";") {
+            if v.len() == 0 {
+                continue;
+            }
+            let parts : Vec<&str> = v.split("-").collect();
+            // println!("Parts: {:?}", &parts);
+            let r_type : RadioTypes = parts[0].parse()?;
+
+            match r_type {
+                RadioTypes::ShortRange => { 
+                    sr_address = Some(parts[1].into());
+                },
+                RadioTypes::LongRange => { 
+                    lr_address = Some(parts[1].into());
+                },
+            }
+        }
+
+        Ok((sr_address, lr_address))
     }
 }
 

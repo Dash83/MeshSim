@@ -74,7 +74,7 @@ impl Listener for SimulatedListener {
         let mut buffer = [0; MAX_UDP_PAYLOAD_SIZE+1];
 
         let msg = match self.socket.recv_from(&mut buffer) {
-            Ok((bytes_read, _peer_addr)) => {                     
+            Ok((bytes_read, _peer_addr)) => {
                 if bytes_read > 0 {
                     let data = buffer[..bytes_read].to_vec();
                     match MessageHeader::from_vec(data) {
@@ -105,9 +105,8 @@ impl Listener for SimulatedListener {
 
     fn get_address(&self) -> String {
         let local_address = self.socket.local_addr().expect("Could not get local address");
-        // let v6_address = local_address.as_inet6().expect("Could not parse address as IPv6");
-        // v6_address.to_string()
-        format!("{:?}", local_address)
+        let v6_address = local_address.as_inet6().expect("Could not parse address as IPv6");
+        v6_address.to_string()
     }
 
 }

@@ -186,6 +186,9 @@ impl WorkerConfig {
             None => { None }
         };
 
+        //Need to add an endline char to stdout after both radios have been initialized.
+        println!("");
+        
         // if self.operation_mode == OperationMode::Simulated &&
         //    register_worker == true {
         //     let conn = mobility::get_db_connection(&self.work_dir, &logger)?;

@@ -27,10 +27,10 @@ extern crate rand;
 extern crate rusqlite;
 
 use worker::worker_config::WorkerConfig;
-use worker::mobility;
 use worker::radio::{SimulatedRadio, RadioTypes};
 use std::process::{Command, Child, Stdio};
 use std::io;
+use std::io::{BufRead, Write, BufReader};
 use std::error;
 use std::fmt;
 use self::test_specification::{TestActions, Area};
@@ -41,7 +41,6 @@ use std::sync::{Arc, Mutex};
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::collections::HashMap;
-use std::io::Write;
 use worker::mobility::*;
 use self::workloads::SourceProfiles;
 use self::rand::{thread_rng, Rng, RngCore};
@@ -236,6 +235,7 @@ impl Master {
         command.arg("--register_worker");
         command.arg(format!("{}", false));
         command.stdin(Stdio::piped());
+        command.stdout(Stdio::piped());
 
         //Starting the worker process
         //debug!("with command {:?}", command);
@@ -270,27 +270,37 @@ impl Master {
             let mut workers = self.workers.lock()?; // LOCK : GET : WORKERS
             for (_, val) in spec.initial_nodes.iter_mut() {
                 //Start the child process
-                let res = Master::run_worker(&self.worker_binary, 
+                let mut res = Master::run_worker(&self.worker_binary, 
                                              &self.work_dir,
                                              &val,
                                              &self.logger);
 
                 match res {
-                    Ok(child_handle) => { 
+                    Ok(mut child_handle) => {
+                        //Get it's listen address from stdout
+                        let mut output = String::new();
+                        {
+                            let mut child_out = BufReader::new(child_handle.stdout.as_mut().unwrap());
+                            // eprintln!("stdout acquired");
+                            let _num_bytes = child_out.read_line(&mut output)?;
+                            // eprintln!("stdout read: {}", &output);
+                        }
+
                         //Register the worker in the DB
                         let worker_id = match val.worker_id {
                             Some(ref id) =>  id.clone(),
                             None => WorkerConfig::gen_id(val.random_seed),
                         };
-                        let sr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::ShortRange);
-                        let lr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::LongRange);
+                        // let sr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::ShortRange);
+                        // let lr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::LongRange);
+                        let (sr_addr, lr_addr) = SimulatedRadio::extract_radio_addresses(output)?;
                         let res = register_worker(&conn, val.worker_name.clone(), 
                                                                 &worker_id, 
                                                                 &val.position, 
                                                                 &val.velocity, 
                                                                 &val.destination,
-                                                                Some(sr_addr), 
-                                                                Some(lr_addr),
+                                                                sr_addr, 
+                                                                lr_addr,
                                                                 &logger);
                         
                         match res {
@@ -433,17 +443,41 @@ impl Master {
                         None => WorkerConfig::gen_id(config.random_seed),
                     };
                      match Master::run_worker(&worker_binary, &work_dir, config, &logger) {
-                        Ok(child_handle) => { 
+                        Ok(mut child_handle) => { 
+                            //Get it's listen address from stdout
+                            let mut output = String::new();
+                            {
+                                let mut child_out = BufReader::new(child_handle.stdout.as_mut().unwrap());
+                                // eprintln!("stdout acquired");
+                                let _num_bytes = match child_out.read_line(&mut output) {
+                                    Ok(bytes) => bytes,
+                                    Err(e) => { 
+                                        let msg = format!("Could not read stdout from worker: {}", e);
+                                        error!(logger, "{}", msg);
+                                        return;
+                                    },
+                                };
+                                // eprintln!("stdout read: {}", &output);
+                            }
+
                             //The process was started correctly. Now register it to the DB.
-                            let sr_addr = SimulatedRadio::format_address(&work_dir, &worker_id, RadioTypes::ShortRange);
-                            let lr_addr = SimulatedRadio::format_address(&work_dir, &worker_id, RadioTypes::LongRange);
+                            // let sr_addr = SimulatedRadio::format_address(&work_dir, &worker_id, RadioTypes::ShortRange);
+                            // let lr_addr = SimulatedRadio::format_address(&work_dir, &worker_id, RadioTypes::LongRange);
+                            let (sr_addr, lr_addr) = match SimulatedRadio::extract_radio_addresses(output) {
+                                Ok(addresses) => addresses,
+                                Err(e) => {
+                                    let msg = format!("Could not extract addresses from output: {}", e);
+                                    error!(logger, "{}", msg);
+                                    return;                                    
+                                }
+                            };
                             let id = register_worker(&conn, config.worker_name.clone(), 
                                                             &worker_id, 
                                                             &config.position, 
                                                             &config.velocity, 
                                                             &config.destination,
-                                                            Some(sr_addr), 
-                                                            Some(lr_addr),
+                                                            sr_addr, 
+                                                            lr_addr,
                                                             &logger).expect("Failed to register worker in the DB.");
                             let mut w = match workers.lock() { 
                                 Ok(h) => h,
