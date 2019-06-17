@@ -108,6 +108,10 @@ pub struct WorkerConfig {
     pub random_seed : u32,
     ///Simulated or Device operation.
     pub operation_mode : OperationMode,
+    /// Should this worker accept commands
+    pub accept_commands : Option<bool>,
+    /// Should this worker log output to the terminal
+    pub term_log : Option<bool>,
     /// The protocol that this Worker should run for this configuration.
     pub protocol : Protocols,
     /// Initial position of the worker
@@ -133,6 +137,8 @@ impl WorkerConfig {
                      worker_id : None,
                      random_seed : 0, //The random seed itself doesn't need to be random. Also, that makes testing more difficult.
                      operation_mode : OperationMode::Simulated,
+                     accept_commands : None,
+                     term_log : None,
                      protocol : Protocols::TMembership,
                      radio_short : None,
                      radio_long : None,
@@ -143,8 +149,7 @@ impl WorkerConfig {
     }
 
     ///Creates a new Worker object configured with the values of this configuration object.
-    pub fn create_worker(self, register_worker : bool, 
-                               logger: Logger) -> Result<Worker, WorkerError> {
+    pub fn create_worker(self, logger: Logger) -> Result<Worker, WorkerError> {
         //Create the RNG
         let gen = Worker::rng_from_seed(self.random_seed);
         //Check if a worker_id is present
@@ -260,7 +265,7 @@ mod tests {
     #[test]
     fn test_workerconfig_new() {
         let config = WorkerConfig::new();
-        let config_str = "WorkerConfig { worker_name: \"worker1\", worker_id: None, work_dir: \".\", random_seed: 0, operation_mode: Simulated, protocol: TMembership, position: Position { x: 0.0, y: 0.0 }, destination: None, velocity: Velocity { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
+        let config_str = "WorkerConfig { worker_name: \"worker1\", worker_id: None, work_dir: \".\", random_seed: 0, operation_mode: Simulated, accept_commands: None, term_log: None, protocol: TMembership, position: Position { x: 0.0, y: 0.0 }, destination: None, velocity: Velocity { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
 
         assert_eq!(format!("{:?}", config), config_str);
     }
@@ -279,9 +284,9 @@ mod tests {
         
         println!("Worker config: {:?}", &config);
         let log_file = "/tmp/test.log";
-        let logger = logging::create_logger(log_file).expect("Could not create logger");
+        let logger = logging::create_logger(log_file, false).expect("Could not create logger");
 
-        let res = config.create_worker(false, logger);
+        let res = config.create_worker(logger);
         
         assert!(res.is_ok());
     }

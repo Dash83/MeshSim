@@ -30,6 +30,7 @@ use ::slog::Logger;
 const ARG_WORK_DIR : &'static str = "work_dir";
 const ARG_TEST_FILE : &'static str = "test_file";
 const ARG_WORKER_PATH : &'static str = "worker_path";
+const ARG_TERMINAL_LOG : &'static str = "term_log";
 
 const ERROR_LOG_INITIALIZATION : i32 = 1;
 const ERROR_EXECUTION_FAILURE : i32 = 2;
@@ -158,6 +159,12 @@ fn init(matches : &ArgMatches) -> Result<(Master), CLIError> {
         None => String::from("."),
     };
 
+    //Should we log to the terminal
+    let log_term : bool = matches.value_of(ARG_TERMINAL_LOG)
+        .unwrap_or("false")
+        .parse()
+        .unwrap_or(false);
+
     //if the workdir does not exists, create it
     let mut work_dir_path = PathBuf::from(&work_dir);
     if !work_dir_path.exists() {
@@ -167,7 +174,7 @@ fn init(matches : &ArgMatches) -> Result<(Master), CLIError> {
     work_dir_path.push(logging::DEFAULT_MASTER_LOG);
 
     let log_file = work_dir_path.to_str().unwrap().into();
-    let logger = logging::create_logger(&log_file).expect("Failed to set the logger for the Master.");
+    let logger = logging::create_logger(&log_file, log_term).expect("Failed to set the logger for the Master.");
     let mut master = Master::new(logger, log_file);
     master.work_dir = work_dir.clone();
     //What else was passed to the master?
@@ -198,6 +205,12 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                 .short("test_file")
                 .value_name("FILE")
                 .help("File that contains a valid test specification for the master to run.")
+                .takes_value(true))
+            .arg(Arg::with_name(ARG_TERMINAL_LOG)
+                .short("log_term")
+                .long("log_to_terminal")
+                .value_name("true/false")
+                .help("Should this worker log operations to the terminal as well")
                 .takes_value(true))
             .get_matches()
 }

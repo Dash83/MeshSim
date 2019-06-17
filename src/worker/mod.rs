@@ -20,7 +20,6 @@
 // Lint options for this module
 #![deny(missing_docs,
         trivial_casts, trivial_numeric_casts,
-        unsafe_code,
         unstable_features,
         unused_import_braces, unused_qualifications)]
 
@@ -34,6 +33,7 @@ extern crate ipnetwork;
 extern crate md5;
 extern crate rusqlite;
 extern crate threadpool;
+extern crate libc;
 
 use std::io::Write;
 use self::serde_cbor::de::*;
@@ -59,6 +59,7 @@ use worker::listener::Listener;
 use ::slog::Logger;
 use std::io::BufRead;
 use std::time::Duration;
+use self::libc::{nice, c_int};
 
 //Sub-modules declaration
 pub mod worker_config;
@@ -74,7 +75,8 @@ pub mod mobility;
 const DNS_SERVICE_NAME : &'static str = "meshsim";
 const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT : u16 = 23456;
-const WORKER_POOL_SIZE : usize = 10;
+const WORKER_POOL_SIZE : usize = 2;
+const SYSTEM_THREAD_NICE : c_int = -20; //Threads that need to run with a higher priority will use this
 
 // *****************************
 // ********** Structs **********
@@ -392,7 +394,7 @@ impl Worker {
     /// 2. Joins the network.
     /// 3. It starts to listen for messages of the network on all addresss
     ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
-    pub fn start(&mut self) -> Result<(), WorkerError> {        
+    pub fn start(&mut self, accept_commands : bool) -> Result<(), WorkerError> {
         //Init the worker
         let _res = try!(self.init());
 
@@ -455,6 +457,8 @@ impl Worker {
                                     }
                                 }
                             });
+                            debug!(logger, "Jobs in queue: {}", thread_pool.queued_count());
+                            debug!(logger, "Jobs that have paniced: {}", thread_pool.panic_count());
                         },
                         None => { 
                             warn!(logger, "Failed to read incoming message.");
@@ -464,8 +468,10 @@ impl Worker {
             })
         }).collect();
 
-        let com_loop_thread = self.start_command_loop_thread(Arc::clone(&prot_handler))?;
-        threads.push(com_loop_thread);
+        if accept_commands {
+            let com_loop_thread = self.start_command_loop_thread(Arc::clone(&prot_handler))?;
+            threads.push(com_loop_thread);
+        }
 
         // //DEBUG LINE
         // let alive_thread = self.start_second_counter_thread()?;
@@ -520,7 +526,11 @@ impl Worker {
         let logger = self.logger.clone();
 
         tb.name(String::from("CommandLoop"))
-        .spawn(move || { 
+        .spawn(move || {
+            unsafe {
+                let new_nice = nice(SYSTEM_THREAD_NICE);
+                debug!(logger, "[CommandLoop]: New priority: {}", new_nice);
+            }
             Worker::command_loop(&logger, protocol_handler)
         })
     }

@@ -240,7 +240,7 @@ fn test_broadcast_device() -> TestResult {
     //Get general test settings
     let test_path = create_test_dir("dev_bcast");
     let log_file = format!("{}{}test.log", &test_path, std::path::MAIN_SEPARATOR);
-    let logger = logging::create_logger(&log_file).expect("Could not create logger");
+    let logger = logging::create_logger(&log_file, false).expect("Could not create logger");
     let host = env::var("MESHSIM_HOST").unwrap_or(String::from(""));
     //This test should ONLY run on my lab development machine due to required configuration of device_mode.
     if !host.eq("kaer-morhen") {

@@ -13,7 +13,6 @@
 // Lint options for this module
 #![deny(missing_docs,
         trivial_casts, trivial_numeric_casts,
-        unsafe_code,
         unstable_features,
         unused_import_braces, unused_qualifications)]
 
@@ -25,6 +24,7 @@ extern crate toml;
 extern crate base64;
 extern crate rand;
 extern crate rusqlite;
+extern crate libc;
 
 use worker::worker_config::WorkerConfig;
 use worker::radio::{SimulatedRadio, RadioTypes};
@@ -40,7 +40,7 @@ use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 use std::ops::DerefMut;
 use std::path::PathBuf;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use worker::mobility::*;
 use self::workloads::SourceProfiles;
 use self::rand::{thread_rng, Rng, RngCore};
@@ -49,6 +49,7 @@ use self::rusqlite::Connection;
 use std::sync::{PoisonError, MutexGuard};
 use std::iter;
 use ::slog::Logger;
+use self::libc::{nice, c_int};
 
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
@@ -56,6 +57,7 @@ pub mod test_specification;
 mod workloads;
 
 const RANDOM_WAYPOINT_WAIT_TIME : u64 = 1000; //TODO: This must be parameterized
+const SYSTEM_THREAD_NICE : c_int = -20; //Threads that need to run with a higher priority will use this
 
 ///Different supported mobility models
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -213,11 +215,12 @@ impl Master {
 
     /// Adds a single worker to the worker vector with a specified name and starts the worker process
     pub fn run_worker<'a>( worker_binary : &'a str, 
-                           work_dir : &'a str, 
+                           work_dir : &'a str,
+                           listen_for_commands : bool,
                            config : &WorkerConfig,
                            logger : &Logger, ) -> Result<Child, MasterError> {
         let worker_name = config.worker_name.clone();
-        info!(logger, "Starting worker process {}", &worker_name);
+        debug!(logger, "Starting worker process {}", &worker_name);
         
         let file_name = format!("{}.toml", &worker_name);
         let mut file_dir = PathBuf::new();
@@ -234,13 +237,15 @@ impl Master {
         command.arg(format!("{}", work_dir));
         command.arg("--register_worker");
         command.arg(format!("{}", false));
+        command.arg("--accept_commands");
+        command.arg(format!("{}", listen_for_commands));
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
 
         //Starting the worker process
         //debug!("with command {:?}", command);
         let child = command.spawn()?;
-        info!(logger, "Worker process {} started", &worker_name);
+        debug!(logger, "Worker process {} started", &worker_name);
 
         Ok(child)
     }
@@ -251,6 +256,12 @@ impl Master {
                     logger : &Logger) -> Result<(), MasterError> {
         info!(self.logger, "Running test {}", &spec.name);
         info!(self.logger, "Test results will be placed under {}", &self.work_dir);
+
+        //Validate all read strings are valid test actions
+        let actions = Master::parse_test_actions(spec.actions.clone())?;
+
+        //Get a set of all nodes performing test actions
+        let active_nodes = Master::get_active_nodes(&actions);
 
         //Handles for all the threads that will run test actions
         let mut action_handles = Vec::new();
@@ -270,8 +281,11 @@ impl Master {
             let mut workers = self.workers.lock()?; // LOCK : GET : WORKERS
             for (_, val) in spec.initial_nodes.iter_mut() {
                 //Start the child process
+                let listen_for_commands = active_nodes.contains(&val.worker_name);
+
                 let mut res = Master::run_worker(&self.worker_binary, 
                                              &self.work_dir,
+                                             listen_for_commands,
                                              &val,
                                              &self.logger);
 
@@ -337,8 +351,7 @@ impl Master {
         //debug!("Available nodes: {:?}", &self.available_nodes);
 
         //Schedule all test actions.
-        let actions = spec.actions.clone();
-        action_handles.append(&mut self.schedule_test_actions(actions)?);
+        action_handles.append(&mut self.schedule_test_actions(actions, active_nodes)?);
         info!(&self.logger, "{} test actions scheduled", action_handles.len());
 
         //let cl = self.start_command_loop_thread()?;
@@ -360,17 +373,47 @@ impl Master {
         Ok(())
     }
 
-    fn schedule_test_actions(&self, actions : Vec<String>) -> Result<Vec<JoinHandle<()>>, MasterError> {
+    fn parse_test_actions(action_strings: Vec<String>) -> Result<Vec<TestActions>, MasterError> {
+        let mut actions = Vec::new();
+        for a in action_strings {
+            let action = TestActions::from_str(&a)?;
+            actions.push(action);
+        }
+        Ok(actions)
+    }
+
+    fn get_active_nodes(actions : &Vec<TestActions>) -> HashSet<String> {
+        let mut active_nodes = HashSet::new();
+
+        for a in actions {
+            match a {
+                TestActions::Ping(src, _dst, _time) => {
+                    active_nodes.insert(String::from(src.as_str()));
+                },
+                TestActions::AddSource(src, _profile, _time) => {
+                    active_nodes.insert(String::from(src.as_str()));
+                },
+                _ => {
+                    /* No other action requires communicating with the node during the test */
+                },
+            }
+        }
+
+        active_nodes
+    }
+
+    fn schedule_test_actions(&self,
+                             actions : Vec<TestActions>,
+                             active_nodes : HashSet<String> ) -> Result<Vec<JoinHandle<()>>, MasterError> {
         let mut thread_handles = Vec::new();
         
-        for action_str in actions {
-            let action = try!(TestActions::from_str(&action_str));
+        for action in actions {
             let action_handle = match action {
                 TestActions::EndTest(time) => {
                     self.testaction_end_test(time)?
                 },
                 TestActions::AddNode(name, time) => { 
-                    self.testaction_add_node(name, time)?
+                    self.testaction_add_node(name.clone(), active_nodes.contains(&name), time)?
                 },
                 TestActions::KillNode(name, time) => {
                     self.testaction_kill_node(name, time)?
@@ -422,7 +465,9 @@ impl Master {
         Ok(handle)
     }
 
-    fn testaction_add_node(&self, name : String, time : u64) -> Result<JoinHandle<()>, MasterError> {
+    fn testaction_add_node(&self, name : String,
+                                  accept_commands : bool,
+                                  time : u64) -> Result<JoinHandle<()>, MasterError> {
         let available_nodes = Arc::clone(&self.available_nodes);
         let workers = Arc::clone(&self.workers);
         let worker_binary = self.worker_binary.clone();
@@ -442,7 +487,7 @@ impl Master {
                         Some(ref id) =>  id.clone(),
                         None => WorkerConfig::gen_id(config.random_seed),
                     };
-                     match Master::run_worker(&worker_binary, &work_dir, config, &logger) {
+                     match Master::run_worker(&worker_binary, &work_dir, accept_commands, config, &logger) {
                         Ok(mut child_handle) => { 
                             //Get it's listen address from stdout
                             let mut output = String::new();
@@ -573,7 +618,11 @@ impl Master {
         let logger = self.logger.clone();
 
         let handle = tb.name(format!("[Source]:{}", &source))
-        .spawn(move || { 
+        .spawn(move || {
+            unsafe {
+                let new_nice = nice(SYSTEM_THREAD_NICE);
+                debug!(logger, "[Source]:{}: New priority: {}", &source, new_nice);
+            }
             info!(logger, "[Source]:{}: Scheduled to start in {:?}", &source, &start_time);
             thread::sleep(start_time);
 
@@ -593,14 +642,15 @@ impl Master {
                         packet_size : usize,
                         duration : u64,
                         workers : Arc<Mutex<HashMap<String, (i64, Arc<Mutex<Child>>)>>>,
-                        logger : &Logger) -> Result<(), MasterError> { 
-        info!(logger, "[Source]:{}: Starting", &source);
-         
+                        logger : &Logger) -> Result<(), MasterError> {
+        let dur = Duration::from_millis(duration);
+        info!(logger, "[Source]:{}: Starting. Will run for {}.{} seconds", &source, &dur.as_secs(), &dur.subsec_nanos());
+        info!(logger, "[Source]:{}: Sending {} packets per second of size {} bytes", &source, packets_per_second, packet_size);
+
         let mut rng = thread_rng();
         let mut data : Vec<u8>= iter::repeat(0u8).take(packet_size).collect();
-        let trans_time = std::time::Instant::now();
-        let dur = Duration::from_millis(duration);
-        let pause = 1000u64 / packets_per_second as u64;
+        let iter_threshold = 1000_000_000u32 / packets_per_second as u32; //In nanoseconds
+        let mut packet_counter : u64 = 0;
         let source_handle : Arc<Mutex<Child>> = match workers.lock() {
             Ok(worker_list) => { 
                 if let Some(w) = worker_list.get(&source) {
@@ -613,20 +663,29 @@ impl Master {
                 return Err(MasterError::Sync(String::from("Could not lock workers list")))
             },
         };
+        let trans_time = Instant::now();
 
         while trans_time.elapsed() < dur {
+            let iteration_start = Instant::now();
+//            let e = trans_time.elapsed();
+//            info!(logger, "[Source]:{}: Running for {}.{} seconds", &source, &e.as_secs(), &e.subsec_nanos());
+
+            packet_counter += 1;
+
             rng.fill_bytes(&mut data[..]);
             let encoded_data = base64::encode(&data);
             let payload = format!("SEND {} {}\n", &destination, &encoded_data);
 
+//            info!(logger, "[Source]:{}: acquiring lock", &source);
             match source_handle.lock() {
                 Ok(mut h) => {
+//                    info!(logger, "[Source]:{}: lock acquired", &source);
                     match h.stdin.as_mut() {
                         Some(stdin) => {
                             match stdin.write_all(payload.as_bytes()) {
                                 Ok(()) => { 
-                                    /* All good */ 
-                                    info!(logger, "Send command written successfully");
+                                    /* All good */
+                                    info!(logger, "Send command {} written successfully", packet_counter);
                                 },
                                 Err(e) => error!(logger, "Error: {}", e),
                             }
@@ -642,8 +701,14 @@ impl Master {
                     return Err(MasterError::Sync(err))
                 }
             }
-            thread::sleep(Duration::from_millis(pause));
-        }       
+            //Calculating pause time
+            let iter_duration = iteration_start.elapsed().subsec_nanos();
+            let pause_time = std::cmp::max(iter_threshold - iter_duration, 0u32);
+            let pause = Duration::from_nanos(pause_time as u64);
+//            info!(logger, "[Source]:{} sleeping for {}.{} seconds", &source, &p.as_secs(), &p.subsec_nanos());
+            thread::sleep(pause);
+        }
+        info!(logger, "[Source]:{}: Finished", &source);
         Ok(())
     }
 
@@ -673,47 +738,50 @@ impl Master {
             let height_sample = Uniform::new(0.0, height);
             let walking_sample = Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV);
 
-            while Instant::now().duration_since(sim_start_time) < sim_end_time {
-                //Wait times will be uniformilet sampled from the remain simulation time.
-                let mut lower_bound : u64 = sim_start_time.elapsed().as_secs() * 1000;
-                lower_bound += sim_start_time.elapsed().subsec_millis() as u64;
-                let wait_sample = Uniform::new(lower_bound, duration);
+            if let Some(model) = &m_model {
+                while Instant::now().duration_since(sim_start_time) < sim_end_time {
+                    //Wait times will be uniformly sampled from the remain simulation time.
+                    let mut lower_bound: u64 = sim_start_time.elapsed().as_secs() * 1000;
+                    lower_bound += sim_start_time.elapsed().subsec_millis() as u64;
+                    let wait_sample = Uniform::new(lower_bound, duration);
 
-                thread::sleep(update_time);
+                    thread::sleep(update_time);
 
-                //Update worker positions
-                match update_worker_positions(&conn) {
-                    Ok(rows) => { 
-                        info!(logger, "The position of {} workers has been updated", rows);
-                    },
-                    Err(e) => { 
-                        error!(logger, "Error updating worker positions: {}", e);
-                    },
-                }
+                    //Update worker positions
+                    match update_worker_positions(&conn) {
+                        Ok(rows) => {
+                            debug!(logger, "The position of {} workers has been updated", rows);
+                        },
+                        Err(e) => {
+                            error!(logger, "Error updating worker positions: {}", e);
+                        },
+                    }
 
-                // ****** DEBUG ******* //
-                // let workers = get_all_worker_positions(&conn)?;
-                // for w in workers {
-                //     debug!(logger, "{}({}): ({}, {})", w.1, w.0, w.2, w.3);
-                // }
+                    // ****** DEBUG ******* //
+                    // let workers = get_all_worker_positions(&conn)?;
+                    // for w in workers {
+                    //     debug!(logger, "{}({}): ({}, {})", w.1, w.0, w.2, w.3);
+                    // }
 
-                if let Some(model) = &m_model {
                     match model {
                         MobilityModels::RandomWaypoint => {
-                            Master::handle_random_waypoint( &conn, 
-                                                            &width_sample, 
-                                                            &height_sample, 
-                                                            &walking_sample, 
-                                                            &wait_sample, 
-                                                            &mut rng, 
-                                                            &db_path,
-                                                            &logger);
+                            Master::handle_random_waypoint(&conn,
+                                                           &width_sample,
+                                                           &height_sample,
+                                                           &walking_sample,
+                                                           &wait_sample,
+                                                           &mut rng,
+                                                           &db_path,
+                                                           &logger);
                         },
                     }
                 }
-
-
+            } else {
+                //No mobility model defined
+                info!(logger, "No mobility model defined. Exiting mobility thread.");
+                return Ok(())
             }
+
             Ok(())
         })
     }
