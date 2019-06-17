@@ -11,7 +11,7 @@ extern crate toml;
 extern crate rand;
 extern crate color_backtrace;
 
-use mesh_simulator::worker::worker_config::{WorkerConfig, RuntimeConfig};
+use mesh_simulator::worker::worker_config::WorkerConfig;
 use mesh_simulator::worker;
 use mesh_simulator::logging;
 use clap::{Arg, App, ArgMatches};
@@ -27,9 +27,9 @@ const ARG_CONFIG : &'static str = "config";
 const ARG_WORKER_NAME : &'static str = "worker_name";
 const ARG_WORK_DIR : &'static str = "work_dir";
 const ARG_RANDOM_SEED : &'static str = "random_seed";
-const ARG_OPERATION_MODE : &'static str = "operation_mode";
 const ARG_REGISTER_WORKER : &'static str = "register_worker";
 const ARG_ACCEPT_COMMANDS : &'static str = "accept_commands";
+const ARG_TERMINAL_LOG : &'static str = "term_log";
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const CONFIG_FILE_NAME  : &'static str = "worker.toml";
 const ERROR_EXECUTION_FAILURE : i32 = 1;
@@ -120,22 +120,23 @@ impl From<toml::de::Error> for CLIError {
 }
 // ***************End Errors****************
 
-fn run(config : WorkerConfig, runtime_config : RuntimeConfig, logger : Logger) -> Result<(), CLIError> {
-   let mut obj =  config.create_worker(runtime_config.register_worker, logger)?;
+fn run(config : WorkerConfig, logger : Logger) -> Result<(), CLIError> {
+    let ac = config.accept_commands.unwrap_or(false);
+   let mut obj =  config.create_worker(logger)?;
    //debug!("Worker Obj: {:?}", obj);
-   try!(obj.start(runtime_config.accept_commands));
+   let _res = obj.start(ac)?;
    Ok(())
 }
 
 fn load_conf_file<'a>(file_path : &'a str) -> Result<WorkerConfig, CLIError> {
     //Check that configuration file passed exists.
     //If it doesn't exist, error out
-    let mut file = try!(File::open(file_path));
+    let mut file = File::open(file_path)?;
     let mut file_content = String::new();
     //Not checking bytes read since all we can check without scanning the file is that is not empty.
     //The serialization framework however, will do the appropriate validations.
-    try!(file.read_to_string(&mut file_content));
-    let configuration : WorkerConfig = try!(toml::from_str(&file_content));
+    let _res = file.read_to_string(&mut file_content)?;
+    let configuration : WorkerConfig = toml::from_str(&file_content)?;
     Ok(configuration)
 }
 
@@ -167,10 +168,16 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                                 .value_name("true/false")
                                 .help("Should this worker start a thread to listen for commands")
                                 .takes_value(true))
+                          .arg(Arg::with_name(ARG_TERMINAL_LOG)
+                                .short("log_term")
+                                .long("log_to_terminal")
+                                .value_name("true/false")
+                                .help("Should this worker log operations to the terminal as well")
+                                .takes_value(true))
                           .get_matches()
 }
 
-fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<RuntimeConfig, CLIError> {
+fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<(), CLIError> {
     // Mandatory values should have been validated when loading the TOML file, just check the values are appropriate.
     // Worker_name
     config.worker_name = matches.value_of(ARG_WORKER_NAME).unwrap_or(config.worker_name.as_str()).to_string();
@@ -181,37 +188,28 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
 
     //work_dir
     config.work_dir = matches.value_of(ARG_WORK_DIR).unwrap_or(config.work_dir.as_str()).to_string();
-    let dir_info = try!(fs::metadata(std::path::Path::new(config.work_dir.as_str())));
+    let dir_info = fs::metadata(std::path::Path::new(config.work_dir.as_str()))?;
     if !dir_info.is_dir() || dir_info.permissions().readonly() {
         eprintln!("work_dir is not a valid directory or it's not writable.");
         return Err(CLIError::Configuration("work_dir is not a valid directory or it's not writable.".to_string()))
     }
 
-    // Operation_mode
-    let op_mode_param = matches.value_of(ARG_OPERATION_MODE).unwrap_or("");
-    if !op_mode_param.is_empty() {
-        config.operation_mode = try!(op_mode_param.parse::<worker::OperationMode>());
-    }
-
-    // Register worker
-    let register_worker : bool = matches.value_of(ARG_REGISTER_WORKER)
-                                    .unwrap_or("true")
-                                    .parse()
-                                    .expect("Only true or false are valid values for register_worker");
-
     // Accept commands
-    let accept_commands : bool = matches.value_of(ARG_ACCEPT_COMMANDS)
-        .unwrap_or("true")
-        .parse()
-        .expect("Only true or false are valid values for accept_commands");
+    config.accept_commands = matches.value_of(ARG_ACCEPT_COMMANDS)
+                                    .map(|v| v.parse::<bool>().unwrap_or(false))
+                                    .or(config.accept_commands);
 
-    Ok(RuntimeConfig{ register_worker : register_worker,
-                      accept_commands : accept_commands})
+    // Log to terminal
+    config.term_log = matches.value_of(ARG_TERMINAL_LOG)
+                                    .map(|v| v.parse::<bool>().unwrap_or(false))
+                                    .or(config.term_log);
+
+    Ok(())
 }
 
 /// The init process performs all initialization required for the worker_cli.
 /// It performs 2 main tasks: read the configuration file and process the command line parameters.
-fn init(matches : &ArgMatches) -> Result<(RuntimeConfig, WorkerConfig), CLIError> {
+fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
     //Read the configuration file.
     let mut current_dir = env::current_dir()?;
     let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
@@ -222,9 +220,9 @@ fn init(matches : &ArgMatches) -> Result<(RuntimeConfig, WorkerConfig), CLIError
     let mut configuration = load_conf_file(config_file_path)?;
     
     //Validate the current configuration
-    let rt_config = validate_config(&mut configuration, &matches)?;
+    let _res = validate_config(&mut configuration, &matches)?;
 
-    Ok((rt_config, configuration))
+    Ok(configuration)
 }
 
 fn main() {
@@ -235,7 +233,7 @@ fn main() {
     let matches = get_cli_parameters();
 
     //Initialization
-    let (rt_config, config) = init(&matches).unwrap_or_else(|e| {
+    let config = init(&matches).unwrap_or_else(|e| {
                             println!("worker_cli failed with the following error: {}", e);
                             ::std::process::exit(ERROR_INITIALIZATION);
                         });
@@ -245,13 +243,14 @@ fn main() {
                                                 logging::LOG_DIR_NAME,
                                                 std::path::MAIN_SEPARATOR,
                                                 &config.worker_name );
-    let logger = logging::create_logger(&log_file_name).unwrap_or_else(|e| {
+    let logger = logging::create_logger(&log_file_name,
+                                        config.term_log.clone().unwrap_or(false)).unwrap_or_else(|e| {
                             println!("worker_cli failed with the following error: {}", e);
                             ::std::process::exit(ERROR_INITIALIZATION);
     });
 
     //Main loop
-    if let Err(ref e) = run(config, rt_config, logger.clone()) {
+    if let Err(ref e) = run(config, logger.clone()) {
         error!(logger, "worker_cli failed with the following error: {}", e);
         ::std::process::exit(ERROR_EXECUTION_FAILURE);
     }
