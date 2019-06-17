@@ -25,6 +25,15 @@ pub const DEFAULT_LONG_RADIO_RANGE : f64 = 500.0;
 ///Default range in meters for long-range radios
 pub const DEFAULT_INTERFACE_NAME : &'static str = "wlan";
 
+/// Struct used for possible runtime configurations
+#[derive(Debug)]
+pub struct RuntimeConfig {
+    /// Should this worker register with the DB (used for Simulated mode)
+    pub register_worker : bool,
+    /// Should this worker accept commands
+    pub accept_commands : bool,
+}
+
 //TODO: Cleanup this struct
 ///Configuration pertaining to a given radio of the worker.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]

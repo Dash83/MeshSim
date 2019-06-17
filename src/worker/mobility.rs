@@ -102,6 +102,7 @@ const SELECT_REMAINING_DIST_QRY : &'static str = "
                                 order by workers.Worker_Name;";
 const SET_WAL_MODE : &'static str = "PRAGMA journal_mode=WAL;";
 const WAL_MODE_QRY : &'static str = "PRAGMA journal_mode;";
+const SET_TMP_MODE : &'static str = "PRAGMA temp_store=2"; //Instruct the database to keep temp tables in memory
 //endregion Queries
 
 ///Struct to encapsule the 2D position of the worker
@@ -158,6 +159,9 @@ pub fn get_db_connection<'a>(path : &'a str, logger : &Logger ) -> Result<Connec
 pub fn create_db_objects(conn : &Connection, logger : &Logger) -> Result<usize, WorkerError> {
     //Set the DB journaling mode to WAL first.
     let _ = set_wal_mode(conn, logger)?;
+
+    //Set the temp store mode
+//    let _ = set_tmp_mode(conn, logger)?;
 
     //Create workers table
     let rows = conn.execute(CREATE_WORKERS_TBL_QRY, NO_PARAMS,)?;
@@ -368,6 +372,33 @@ fn set_wal_mode(conn : &Connection, logger : &Logger) -> Result<(), WorkerError>
     }
 
     debug!(logger, "Journal mode: {}", journal_mode);
+    Ok(())
+}
+
+fn set_tmp_mode(conn : &Connection, logger : &Logger) -> Result<(), WorkerError> {
+    let mut rng = rand::thread_rng();
+    let mut temp_store_mode = String::from("");
+    let mut stmt = conn.prepare(SET_TMP_MODE)?;
+
+    for _i in 0..MAX_DBOPEN_RETRY {
+        temp_store_mode = match stmt.query_row(NO_PARAMS, |row| row.get(0)) {
+            Ok(mode) => mode,
+            Err(e) => {
+                let wait_time = rng.next_u64() % 100;
+                warn!(logger, "Could not set temp store mode: {}", e);
+                warn!(logger, "Will retry in {}ms", wait_time);
+                let wait_dur = Duration::from_millis(wait_time);
+                thread::sleep(wait_dur);
+                String::from("")
+            },
+        };
+
+        if temp_store_mode != String::from("") {
+            break;
+        }
+    }
+
+    debug!(logger, "Journal mode: {}", temp_store_mode);
     Ok(())
 }
 

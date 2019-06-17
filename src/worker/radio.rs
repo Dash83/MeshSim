@@ -120,7 +120,7 @@ impl Radio  for SimulatedRadio {
                 let remote_addr : SocketAddr = match addr.parse::<SocketAddr>() {
                     Ok(sock_addr) => sock_addr,
                     Err(e) => {
-                        warn!(&self.logger, "Error: {}", e);
+                        warn!(&self.logger, "Unable to parse {} into SocketAddr: {}", &addr, e);
                         continue;
                     },
                 };
@@ -131,7 +131,7 @@ impl Radio  for SimulatedRadio {
                         // debug!(&self.logger, "Message sent to {:?}", &remote_addr);
                     },
                     Err(e) => {
-                        warn!(&self.logger, "Error: {}", e);
+                        warn!(&self.logger, "Failed to send data to {}. Error: {}", &remote_addr, e);
                         continue;
                     }
                 };

@@ -318,8 +318,11 @@ fn command_add_nodes(node_type : String, num : usize, spec : &mut TestSpec, data
             }
         } else {
             //Calculate velocity
-            let x_vel = rng.sample(walking_sample);
-            let y_vel = rng.sample(walking_sample);
+            // let x_vel = rng.sample(walking_sample);
+            // let y_vel = rng.sample(walking_sample);
+            //Since no mobility model is provided, assume velocity of 0
+             let x_vel = 0.0f64;
+             let y_vel = 0.0f64;
             w.velocity = Velocity{ x : x_vel, y : y_vel};
         }
 

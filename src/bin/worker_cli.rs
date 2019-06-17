@@ -11,7 +11,7 @@ extern crate toml;
 extern crate rand;
 extern crate color_backtrace;
 
-use mesh_simulator::worker::worker_config::WorkerConfig;
+use mesh_simulator::worker::worker_config::{WorkerConfig, RuntimeConfig};
 use mesh_simulator::worker;
 use mesh_simulator::logging;
 use clap::{Arg, App, ArgMatches};
@@ -29,6 +29,7 @@ const ARG_WORK_DIR : &'static str = "work_dir";
 const ARG_RANDOM_SEED : &'static str = "random_seed";
 const ARG_OPERATION_MODE : &'static str = "operation_mode";
 const ARG_REGISTER_WORKER : &'static str = "register_worker";
+const ARG_ACCEPT_COMMANDS : &'static str = "accept_commands";
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const CONFIG_FILE_NAME  : &'static str = "worker.toml";
 const ERROR_EXECUTION_FAILURE : i32 = 1;
@@ -119,10 +120,10 @@ impl From<toml::de::Error> for CLIError {
 }
 // ***************End Errors****************
 
-fn run(config : WorkerConfig, register_worker : bool, logger : Logger) -> Result<(), CLIError> {
-   let mut obj =  config.create_worker(register_worker, logger)?;
+fn run(config : WorkerConfig, runtime_config : RuntimeConfig, logger : Logger) -> Result<(), CLIError> {
+   let mut obj =  config.create_worker(runtime_config.register_worker, logger)?;
    //debug!("Worker Obj: {:?}", obj);
-   try!(obj.start());
+   try!(obj.start(runtime_config.accept_commands));
    Ok(())
 }
 
@@ -160,10 +161,16 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                                 .value_name("true/false")
                                 .help("Should the worker register in the DB. Option should be NO when started by the Master.")
                                 .takes_value(true))
+                          .arg(Arg::with_name(ARG_ACCEPT_COMMANDS)
+                                .short("accept")
+                                .long("accept_commands")
+                                .value_name("true/false")
+                                .help("Should this worker start a thread to listen for commands")
+                                .takes_value(true))
                           .get_matches()
 }
 
-fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<bool, CLIError> {
+fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<RuntimeConfig, CLIError> {
     // Mandatory values should have been validated when loading the TOML file, just check the values are appropriate.
     // Worker_name
     config.worker_name = matches.value_of(ARG_WORKER_NAME).unwrap_or(config.worker_name.as_str()).to_string();
@@ -192,12 +199,19 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
                                     .parse()
                                     .expect("Only true or false are valid values for register_worker");
 
-    Ok(register_worker)
+    // Accept commands
+    let accept_commands : bool = matches.value_of(ARG_ACCEPT_COMMANDS)
+        .unwrap_or("true")
+        .parse()
+        .expect("Only true or false are valid values for accept_commands");
+
+    Ok(RuntimeConfig{ register_worker : register_worker,
+                      accept_commands : accept_commands})
 }
 
 /// The init process performs all initialization required for the worker_cli.
 /// It performs 2 main tasks: read the configuration file and process the command line parameters.
-fn init(matches : &ArgMatches) -> Result<(bool, WorkerConfig), CLIError> {
+fn init(matches : &ArgMatches) -> Result<(RuntimeConfig, WorkerConfig), CLIError> {
     //Read the configuration file.
     let mut current_dir = env::current_dir()?;
     let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
@@ -208,9 +222,9 @@ fn init(matches : &ArgMatches) -> Result<(bool, WorkerConfig), CLIError> {
     let mut configuration = load_conf_file(config_file_path)?;
     
     //Validate the current configuration
-    let register_worker = validate_config(&mut configuration, &matches)?;
+    let rt_config = validate_config(&mut configuration, &matches)?;
 
-    Ok((register_worker, configuration))
+    Ok((rt_config, configuration))
 }
 
 fn main() {
@@ -221,7 +235,7 @@ fn main() {
     let matches = get_cli_parameters();
 
     //Initialization
-    let (register_worker, config) = init(&matches).unwrap_or_else(|e| {
+    let (rt_config, config) = init(&matches).unwrap_or_else(|e| {
                             println!("worker_cli failed with the following error: {}", e);
                             ::std::process::exit(ERROR_INITIALIZATION);
                         });
@@ -237,7 +251,7 @@ fn main() {
     });
 
     //Main loop
-    if let Err(ref e) = run(config, register_worker, logger.clone()) {
+    if let Err(ref e) = run(config, rt_config, logger.clone()) {
         error!(logger, "worker_cli failed with the following error: {}", e);
         ::std::process::exit(ERROR_EXECUTION_FAILURE);
     }

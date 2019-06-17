@@ -51,7 +51,9 @@ pub fn get_log_records_from_file<P: AsRef<Path>>(path : P) -> Result<Vec<Value>,
 }
 
 ///Given a log key (such as ts) will return the first log record that matches the log_value passed. 
-pub fn find_log_record<'a, 'b>(log_key : &'a str, log_value : &'a str, records : &'b Vec<Value>) -> Option<&'b Value> {
+pub fn find_log_record<'a, 'b>(log_key : &'a str,
+                               log_value : &'a str,
+                               records : &'b Vec<Value>) -> Option<&'b Value> {
     for rec in records {
         if rec[log_key] == log_value {
             return Some(rec)
@@ -61,26 +63,33 @@ pub fn find_log_record<'a, 'b>(log_key : &'a str, log_value : &'a str, records :
 }
 
 /// Create a duplicate logger for the terminal and the file passed as parameter.
-pub fn create_logger<P: AsRef<Path>>(log_file_name : P) -> Result<Logger, WorkerError>  { 
+pub fn create_logger<P: AsRef<Path>>(log_file_name : P ) -> Result<Logger, WorkerError>  {
     //Make sure the full path is valid
     if let Some(parent) = log_file_name.as_ref().parent() {
         let _res = std::fs::create_dir_all(parent)?;
     }
 
-    let log_file = try!(OpenOptions::new()
+    let log_file = OpenOptions::new()
                         .create(true)
                         .write(true)
                         .truncate(true)
-                        .open(log_file_name));
-    
-    //Create the terminal drain
-    let decorator = slog_term::TermDecorator::new().build();
-    let d1 = slog_term::CompactFormat::new(decorator).build().fuse();
-    let d1 = slog_async::Async::new(d1)
-                .chan_size(LOG_CHANNEL_SIZE)
-                .overflow_strategy(slog_async::OverflowStrategy::Block)
-                .thread_name(format!("Term{}", LOG_THREAD_NAME))
-                .build().fuse();
+                        .open(log_file_name)?;
+//
+//    //Create the terminal drain
+//    let decorator = slog_term::TermDecorator::new().build();
+//    let d1 = match term_logging {
+//        True => {
+//            slog_term::CompactFormat::new(decorator).build().fuse()
+//        },
+//        False => {
+//            create_discard_logger()
+//        },
+//    };
+//    let d1 = slog_async::Async::new(d1)
+//        .chan_size(LOG_CHANNEL_SIZE)
+//        .overflow_strategy(slog_async::OverflowStrategy::Drop)
+//        .thread_name(format!("Term{}", LOG_THREAD_NAME))
+//        .build().fuse();
 
     //Create the file drain
     let d2 = slog_json::Json::new(log_file)
@@ -88,13 +97,14 @@ pub fn create_logger<P: AsRef<Path>>(log_file_name : P) -> Result<Logger, Worker
         .build()
         .fuse();
     let d2 = slog_async::Async::new(d2)
-                .chan_size(LOG_CHANNEL_SIZE)
-                .overflow_strategy(slog_async::OverflowStrategy::Block)
-                .thread_name(format!("File{}", LOG_THREAD_NAME))
-                .build().fuse();
+        .chan_size(LOG_CHANNEL_SIZE)
+        .overflow_strategy(slog_async::OverflowStrategy::Drop)
+        .thread_name(format!("File{}", LOG_THREAD_NAME))
+        .build().fuse();
 
-    //Fuse the drains and create the logger
-    let logger = slog::Logger::root(slog::Duplicate::new(d1, d2).fuse(), o!());
+//    //Fuse the drains and create the logger
+//    let logger = slog::Logger::root(slog::Duplicate::new(d1, d2).fuse(), o!());
+    let logger = slog::Logger::root(d2, o!());
 
     Ok(logger)
 } 
