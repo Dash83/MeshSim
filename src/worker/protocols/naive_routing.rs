@@ -18,7 +18,6 @@ const MSG_CACHE_SIZE : usize = 200;
 
 #[derive(Debug)]
 struct CacheEntry {
-    sender : String,
     msg_id : Digest,
 }
 
@@ -120,7 +119,7 @@ impl NaiveRouting {
             };
             
             for entry in cache.iter() {
-                if entry.sender == hdr.sender.id && entry.msg_id == msg_hash {
+                if entry.msg_id == msg_hash {
                     info!(logger, "Dropping repeated message {:x}", &msg_hash);
                     return Ok(None)
                 }
@@ -132,7 +131,7 @@ impl NaiveRouting {
                 let _res = cache.remove(0);
             }
             //Log message
-            cache.push(CacheEntry{ sender : hdr.sender.id, msg_id : msg_hash});
+            cache.push(CacheEntry{ msg_id : msg_hash});
 
         } // LOCK:RELEASE:MSG_CACHE
 

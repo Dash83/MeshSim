@@ -664,9 +664,10 @@ impl Master {
             },
         };
         let trans_time = Instant::now();
+        let mut iteration = Instant::now();
 
         while trans_time.elapsed() < dur {
-            let iteration_start = Instant::now();
+//            let iteration_start = Instant::now();
 //            let e = trans_time.elapsed();
 //            info!(logger, "[Source]:{}: Running for {}.{} seconds", &source, &e.as_secs(), &e.subsec_nanos());
 
@@ -702,10 +703,12 @@ impl Master {
                 }
             }
             //Calculating pause time
-            let iter_duration = iteration_start.elapsed().subsec_nanos();
-            let pause_time = std::cmp::max(iter_threshold - iter_duration, 0u32);
+            let iter_duration = iteration.elapsed().subsec_nanos();
+            let pause_time = std::cmp::max(iter_threshold -
+                                               (std::cmp::max(iter_duration as i32 - iter_threshold as i32, 0i32)) as u32, 0u32);
+            iteration = Instant::now();
             let pause = Duration::from_nanos(pause_time as u64);
-//            info!(logger, "[Source]:{} sleeping for {}.{} seconds", &source, &p.as_secs(), &p.subsec_nanos());
+            debug!(logger, "[Source]:{} sleeping for {}.{} seconds", &source, &pause.as_secs(), &pause.subsec_nanos());
             thread::sleep(pause);
         }
         info!(logger, "[Source]:{}: Finished", &source);
