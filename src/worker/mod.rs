@@ -222,6 +222,8 @@ pub struct MessageHeader {
     pub sender : Peer,
     ///Destination of the message
     pub destination : Peer,
+    ///Number of hops this message has taken
+    pub hops : u16,
     ///Optional, serialized payload of the message. 
     /// It's the responsibility of the underlying protocol to know how to deserialize this payload
     /// into a protocol-specific message.
@@ -237,8 +239,9 @@ impl MessageHeader {
 
     ///Create new, empty MessageHeader.
     pub fn new() -> MessageHeader {
-        MessageHeader{  sender : Peer::new(), 
+        MessageHeader{  sender : Peer::new(),
                         destination : Peer::new(),
+                        hops : 0u16,
                         payload : None }
     }
 

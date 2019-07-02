@@ -237,7 +237,8 @@ impl TMembershipAdvanced {
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : sender, 
-                                 destination : destination, 
+                                 destination : destination,
+                                 hops : 0,
                                  payload : Some(payload) };
         Ok(msg)
     }
@@ -257,7 +258,8 @@ impl TMembershipAdvanced {
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : sender, 
-                                 destination : destination, 
+                                 destination : destination,
+                                 hops : 0,
                                  payload : Some(payload) };
         Ok(msg)
     }
@@ -300,7 +302,8 @@ impl TMembershipAdvanced {
             
             //Build the message header that's ready for sending.
             let response = MessageHeader{   sender : me, 
-                                            destination : hdr.sender, 
+                                            destination : hdr.sender,
+                                            hops : 0,
                                             payload : Some(payload) };
             Ok(Some(response))
         } //LOCK : RELEASE : GNL
@@ -384,7 +387,8 @@ impl TMembershipAdvanced {
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : hdr.destination, 
-                                 destination : hdr.sender, 
+                                 destination : hdr.sender,
+                                 hops : 0,
                                  payload : Some(payload) };
         //debug!("Message: {:?}", &msg);
         Ok(Some(msg))

@@ -61,14 +61,14 @@ impl Protocol for NaiveRouting {
         NaiveRouting::handle_message_internal(header, msg, self.get_self_peer(), msg_hash, msg_cache, &self.logger)
     }
 
-    fn send(&self, destination : String, data : Vec<u8>) -> Result<(), WorkerError> {
+    fn send(&self, destination: String, data: Vec<u8>) -> Result<(), WorkerError> {
         let mut dest = Peer::new();
         dest.name = destination;
-        let msg = Messages::Data(data);
-        let payload = to_vec(&msg)?;
-        let hdr = MessageHeader{ sender : self.get_self_peer(),
-                                 destination : dest,
-                                 payload : Some(payload) };
+
+        let hdr = NaiveRouting::create_data_message(self.get_self_peer(),
+                                                    dest,
+                                                    1,
+                                                    data)?;
         let _res = self.short_radio.broadcast(hdr)?;
         Ok(())
     }
@@ -89,14 +89,18 @@ impl NaiveRouting {
                       logger : logger }
     }
 
-    fn create_data_message(sender : Peer, destination : Peer, data : Vec<u8>) -> Result<MessageHeader, WorkerError> {
+    fn create_data_message(sender : Peer,
+                           destination : Peer,
+                           hops : u16,
+                           data : Vec<u8>) -> Result<MessageHeader, WorkerError> {
         let data_msg = Messages::Data(data);
         let payload = to_vec(&data_msg)?;
         //info!("Built DATA message for peer: {}, id {:?}", &destination.name, destination.id);
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : sender, 
-                                 destination : destination, 
+                                 destination : destination,
+                                 hops : hops,
                                  payload : Some(payload) };
         Ok(msg)
     }
@@ -135,13 +139,16 @@ impl NaiveRouting {
 
         } // LOCK:RELEASE:MSG_CACHE
 
-        //Check if this node is the intenteded recipient of the message.
+        //Check if this node is the intended recipient of the message.
         if hdr.destination.name == me.name {
-            info!(logger, "Message {:x} reached its destination", &msg_hash);
+            info!(logger, "Message {:x} reached its destination", &msg_hash; "route_length" => hdr.hops);
             return Ok(None)
         }
 
-        let response = NaiveRouting::create_data_message(me, hdr.destination, data)?;
+        let response = NaiveRouting::create_data_message(me,
+                                                         hdr.destination,
+                                                         hdr.hops + 1,
+                                                         data)?;
 
         Ok(Some(response))
     }
