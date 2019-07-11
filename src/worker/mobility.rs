@@ -147,7 +147,19 @@ pub fn get_db_connection<'a>(path : &'a str, logger : &Logger ) -> Result<Connec
         }
 
         if let Some(c) = conn {
+            //Add busy handler
             let _res = c.busy_handler(Some(busy_callback));
+            //Add User-defined functions
+            let _res = c.create_scalar_function("distance", 4, true, move |ctx| {
+                assert_eq!(ctx.len(), 4);
+
+                let x1 = ctx.get::<f64>(0)?;
+                let y1 = ctx.get::<f64>(1)?;
+                let x2 = ctx.get::<f64>(2)?;
+                let y2 = ctx.get::<f64>(3)?;
+                let d = euclidean_distance(x1, y1, x2, y2);
+                Ok(d)
+            })?;
             return Ok(c)
         }
     }
@@ -623,6 +635,7 @@ mod tests {
     extern crate chrono;
     extern crate rand;
     extern crate slog;
+    extern crate rusqlite;
 
     use super::*;
     use self::chrono::prelude::*;
@@ -632,6 +645,8 @@ mod tests {
     use std::time::Duration;
     use logging;
     use slog::Drain;
+    use self::rusqlite::Connection;
+    use self::rusqlite::functions::*;
 
 /******************************************* 
  *********** Utility functions *************
@@ -1007,6 +1022,36 @@ mod tests {
         let rows = stop_workers(&conn, &[(id1, x1, y1), (id2, x2, y2)], &logger).expect("Could not stop workers");
 
         assert_eq!(rows, 2);
+
+    }
+
+    #[test]
+    fn test_dist_func() {
+        //Add random wait to avoid collitions on the same DB file
+        let mut rng = rand::thread_rng();
+        let wait : u64 = rng.gen::<u64>() % 100;
+        std::thread::sleep(Duration::from_millis(wait));
+        let path = create_test_dir("distance_func");
+        let logger = logging::create_discard_logger();
+
+        let conn = get_db_connection(&path, &logger).expect("Could not create DB file");
+        let expected_distance : f64 = 141.4213562373095;
+        let obtained_distance : f64 = conn.query_row("SELECT distance(0, 0, 100, 100)", NO_PARAMS, |r| r.get(0)).expect("Could not exec query");
+
+        assert_eq!(expected_distance, obtained_distance);
+
+//        //Add random wait to avoid collitions on the same DB file
+//        let mut rng = rand::thread_rng();
+//        let wait : u64 = rng.gen::<u64>() % 100;
+//        std::thread::sleep(Duration::from_millis(wait));
+//
+//        let path = create_test_dir("func");
+//        let logger = logging::create_discard_logger();
+//
+//        info!(logger, "Test results placed in {}", &path);
+//
+//        let conn = get_db_connection(&path, &logger).expect("Could not create DB file");
+
 
     }
 }
