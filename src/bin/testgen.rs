@@ -55,6 +55,13 @@ enum Commands {
     ///Adds a given number of sources
     /// Params: Number of sources, Type of Source, other params (dependant on the source type)
     AddSources(usize, String, String),
+    ///Add a grid-arrangement of nodes of size X * Y. The separation of the nodes depends on the
+    ///radio ranged passed.
+    /// Params:
+    /// X - number of columns.
+    /// Y - number of rows.
+    /// Range - radio range used for node placement.
+    AddGrid(usize, usize, f64, f64),
 }
 
 impl FromStr for Commands {
@@ -98,7 +105,7 @@ impl FromStr for Commands {
                 "ADD_SOURCES" => {
                    if parts.len() < 3 {
                         //Error out
-                        return Err(Errors::TestParsing(format!("Add_Sources requires NUM_SOURCES TYPE PARAMS")))
+                        return Err(Errors::TestParsing(format!("Add_Sources requires NUM_SOURCES TYPE params")))
                     }
                     let num : usize = match parts[1].parse() {
                         Ok(n) => n,
@@ -108,6 +115,29 @@ impl FromStr for Commands {
                     let params : String = parts[3..].join(" ");
 
                     Ok(Commands::AddSources(num, source_type, params))
+                },
+                "ADD_GRID" => {
+                    if parts.len() < 4 {
+                        //Error out
+                        return Err(Errors::TestParsing(format!("Add_Grid requires X, Y RANGE params")))
+                    }
+                    let x : usize = match parts[1].parse() {
+                        Ok(n) => n,
+                        Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
+                    };
+                    let y : usize = match parts[2].parse() {
+                        Ok(n) => n,
+                        Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
+                    };
+                    let sr_range : f64 = match parts[3].parse() {
+                        Ok(n) => n,
+                        Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
+                    };
+                    let lr_range : f64 = match parts[4].parse() {
+                        Ok(n) => n,
+                        Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
+                    };
+                    Ok(Commands::AddGrid(x, y, sr_range, lr_range))
                 },
                 _ => Err(Errors::TestParsing(format!("Unsupported command: {:?}", parts))),
             }
@@ -240,6 +270,9 @@ fn process_command(com : Commands, spec : &mut TestSpec, data : &TestBasics) -> 
         },
         Commands::AddSources(num_sources, s_type, params) => {
             command_add_sources(num_sources, s_type, params, spec)
+        },
+        Commands::AddGrid(x, y, sr_range, lr_range) => {
+            command_add_grid(x, y, sr_range, lr_range, spec, &data)
         },
     }
 }
@@ -501,6 +534,53 @@ fn capture_basic_data() -> Result<TestBasics, Errors> {
     input.clear();
 
     Ok(data)
+}
+
+fn command_add_grid(num_columns : usize,
+                    num_rows : usize,
+                    sr_range : f64,
+                    lr_range : f64,
+                    spec : &mut TestSpec,
+                    data : &TestBasics) -> Result<bool, Errors> {
+    let start_x : usize = 0;
+    let start_y : usize = 0;
+    let effective_range = sr_range * 0.80;
+    let mut rng = rand::thread_rng();
+    let ref mut nodes = &mut spec.initial_nodes;
+    let mut count = 0;
+
+    for j in start_x..num_rows {
+        for i in start_y..num_columns {
+            let x = i as f64 * effective_range;
+            let y = j as f64 * effective_range;
+
+            let mut w = WorkerConfig::new();
+            count += 1;
+            w.worker_name = format!("{}{}", DEFAULT_NODE_NAME, count);
+            w.operation_mode = worker::OperationMode::Simulated; //All test files are for simulated mode.
+            w.random_seed = rng.next_u32();
+            w.work_dir = data.work_dir.clone();
+            w.protocol = data.protocol.clone();
+            w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
+            w.position = Position{ x : x, y : y};
+            w.velocity = Velocity{ x : 0.0, y : 0.0};
+
+            //Create the radio configurations
+            let mut sr = RadioConfig::new();
+            sr.range = sr_range;
+            w.radio_short = Some(sr);
+
+            let mut lr = RadioConfig::new();
+            lr.range = lr_range;
+            lr.interface_name = Some(format!("{}1", DEFAULT_INTERFACE_NAME));
+            w.radio_long = Some(lr);
+
+            //Add the configuration to the nodes
+            nodes.insert(w.worker_name.clone(), w);
+        }
+    }
+
+    Ok(false)
 }
 
 fn main() {
