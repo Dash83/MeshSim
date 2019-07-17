@@ -137,14 +137,14 @@ impl Protocol for ReactiveGossipRouting {
                                                          Arc::clone(&self.short_radio))?;
             info!(self.logger, "Data has been transmitted");
         } else {
-            let pending_routes = self.pending_destinations.lock()?;
+            let mut pending_routes = self.pending_destinations.lock()?;
             let qt = Arc::clone(&self.queued_transmissions);
-            let route_id = match pending_routes.get(&destination) {
-                Some(route_id) => {
+            let route_id = match pending_routes.insert(destination.clone()) {
+                false => {
                     info!(self.logger, "Route discovery process already started for {}", &destination);
-                    route_id.to_owned()
+                    pending_routes.get(&destination).unwrap().to_owned()
                 },
-                None => {
+                true => {
                     info!(self.logger, "No known route to {}. Starting discovery process.", &destination);
                     //If no route exists, start a new route discovery process...
                     let route_id = self.start_route_discovery(destination.clone())?;
@@ -311,6 +311,7 @@ impl ReactiveGossipRouting {
         //Are we part of this route?
         let rl = known_routes.lock()?;
         if !rl.contains(&data_msg.route_id) {
+            info!(logger, "Not part of this route. Dropping");
             return Ok(None)
         }
 
@@ -390,38 +391,8 @@ impl ReactiveGossipRouting {
                                      short_radio : Arc<Radio>,
                                      logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
         info!(logger, "Received ROUTE_ESTABLISH message"; "route_id" => &msg.route_id, "source" => &hdr.sender.name);
-        //Is this the intended recipient of the msg?
-        if hdr.destination.name == self_peer.name {
-            info!(logger, "Route establish succeeded! Route_id: {}", &msg.route_id);
 
-            //Update known_routes and dest_routes
-            //Add the this route to the known_routes list...
-            {
-                let mut kr = known_routes.lock()?;
-                let _res = kr.insert(msg.route_id.clone());
-            }
-            //...and the destination-route list
-            {
-                let mut dr = dest_routes.lock()?;
-                let _res = dr.insert(hdr.sender.id.clone(), msg.route_id.clone());
-            }
-            //...and remove this node from the pending destinations
-            {
-                let mut pd = pending_destinations.lock()?;
-                let _res = pd.remove(&self_peer.name);
-            }
-
-            //Start any flows that were waiting on the route
-            let _res = ReactiveGossipRouting::start_queued_flows(queued_transmissions, 
-                                                                 msg.route_id.clone(), 
-                                                                 hdr.sender.name.clone(),
-                                                                 self_peer,
-                                                                 short_radio,
-                                                                 logger);
-            return Ok(None)
-        }
-
-        //Am I part of the route?
+        //Who's the next hop in the route?
         let next_hop = match msg.route.pop() {
             Some(h) => h,
             None => {
@@ -430,12 +401,15 @@ impl ReactiveGossipRouting {
                 return Ok(None)
             }
         };
+        //Is the message meant for this node?
         if next_hop != self_peer.name {
             //Not us. Discard message
             return Ok(None)
         }
         
-        //We are part of the route then. 
+        //This is the next hop in the route. Update route to reflect this.
+        msg.route.insert(0, next_hop);
+
         //Add the this route to the known_routes list...
         {
             let mut kr = known_routes.lock()?;
@@ -444,10 +418,35 @@ impl ReactiveGossipRouting {
         //...and the destination-route list
         {
             let mut dr = dest_routes.lock()?;
-            let _res = dr.insert(hdr.sender.id.clone(), msg.route_id.clone());
+            let _res = dr.insert(hdr.sender.name.clone(), msg.route_id.clone());
         }
-        //Finally, update the message and forward it.
-        msg.route.insert(0, next_hop);
+
+        // DEBUG
+        info!(logger, "Known_routes: {:?}", &known_routes);
+        info!(logger, "Destination_routes: {:?}", &dest_routes);
+
+        //Is this the final destination of the route?
+        if hdr.destination.name == self_peer.name {
+            info!(logger, "Route establish succeeded! Route_id: {}", &msg.route_id);
+            info!(logger, "Route: {:?}", &msg.route);
+
+            //...and remove this node from the pending destinations
+            {
+                let mut pd = pending_destinations.lock()?;
+                let _res = pd.remove(&hdr.sender.name);
+            }
+
+            //Start any flows that were waiting on the route
+            let _res = ReactiveGossipRouting::start_queued_flows(queued_transmissions,
+                                                                 msg.route_id.clone(),
+                                                                 hdr.sender.name.clone(),
+                                                                 self_peer,
+                                                                 short_radio,
+                                                                 logger);
+            return Ok(None)
+        }
+
+        //Finally, forward the message
         hdr.payload = Some(to_vec(&Messages::RouteEstablish(msg))?);
         Ok(Some(hdr))
     }
