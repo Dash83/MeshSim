@@ -162,13 +162,26 @@ impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Peer>>>> for WorkerErro
     }
 }
 
+impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, bool>>>> for WorkerError {
+    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, bool>>>) -> WorkerError {
+        WorkerError::Sync(err.to_string())
+    }
+}
+
 impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, String>>>> for WorkerError {
     fn from(err : PoisonError<MutexGuard<'a, HashMap<String, String>>>) -> WorkerError {
         WorkerError::Sync(err.to_string())
     }
 }
+
 impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Vec<Vec<u8>>>>>> for WorkerError {
     fn from(err : PoisonError<MutexGuard<'a, HashMap<String, Vec<Vec<u8>>>>>) -> WorkerError {
+        WorkerError::Sync(err.to_string())
+    }
+}
+
+impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing::DataCacheEntry>>>> for WorkerError {
+    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing::DataCacheEntry>>>) -> WorkerError {
         WorkerError::Sync(err.to_string())
     }
 }

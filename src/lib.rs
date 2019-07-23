@@ -8,6 +8,7 @@ extern crate lazy_static;
 extern crate slog;
 #[macro_use]
 extern crate pretty_assertions;
+extern crate serde_json;
 
 pub mod master;
 pub mod worker;
