@@ -436,8 +436,12 @@ impl Worker {
             let logger = self.logger.clone();
             let thread_pool = threadpool::Builder::new().num_threads(WORKER_POOL_SIZE).build();
             
-            thread::spawn(move || {        
-                info!(logger, "Listening for messages");
+            thread::spawn(move || {
+                let radio_label : String = match rx.get_radio_range() {
+                    RadioTypes::LongRange => String::from("LoraRadio"),
+                    RadioTypes::ShortRange => String::from("WifiRadio"),
+                };
+                info!(logger, "[{}] Listening for messages", &radio_label);
                 loop {
                     match rx.read_message() {
                         Some(hdr) => { 
