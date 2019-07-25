@@ -53,7 +53,7 @@ pub struct ReactiveGossipRouting {
     /// established.
     queued_transmissions : Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
     /// RNG used for routing calculations
-    rng : StdRng,
+    rng : StdRng, //TODO: MUST USE THIS RNG!
     /// The logger to use in this protocol
     logger : Logger,
 }

@@ -32,7 +32,7 @@ fn test_placement() {
                                                    &master_log_records);
     assert!(master_node_num.is_some());
 
-    //Check the handshake between the nodes
+    //Check the upper left corner of the grid
     let node1_log_file = format!("{}/log/node1.log", &work_dir);
     let node1_log_records = logging::get_log_records_from_file(&node1_log_file).unwrap();
     let mut received_packets_wifi = 0;
@@ -48,5 +48,23 @@ fn test_placement() {
     }
 
     assert_eq!(received_packets_wifi, 20);
-    assert_eq!(received_packets_lora, 20);
+    assert_eq!(received_packets_lora, 50);
+
+    //Check a central node
+    let node7_log_file = format!("{}/log/node7.log", &work_dir);
+    let node7_log_records = logging::get_log_records_from_file(&node7_log_file).unwrap();
+    let mut received_packets_wifi = 0;
+    let mut received_packets_lora = 0;
+    for record in node7_log_records.iter() {
+        if record["msg"].as_str().unwrap().contains("Beacon received over wifi from") {
+            received_packets_wifi += 1;
+        }
+
+        if record["msg"].as_str().unwrap().contains("Beacon received over lora from") {
+            received_packets_lora += 1;
+        }
+    }
+
+    assert_eq!(received_packets_wifi, 40);
+    assert_eq!(received_packets_lora, 100);
 }

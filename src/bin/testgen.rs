@@ -544,7 +544,7 @@ fn command_add_grid(num_columns : usize,
                     data : &TestBasics) -> Result<bool, Errors> {
     let start_x : usize = 0;
     let start_y : usize = 0;
-    let effective_range = sr_range * 0.80;
+    let effective_range = sr_range * 0.90;
     let mut rng = rand::thread_rng();
     let ref mut nodes = &mut spec.initial_nodes;
     let mut count = 0;

@@ -307,7 +307,7 @@ impl WifiRadio {
                 }
             }
         }
-        Err(WorkerError::Configuration(String::from("Network interface specified in configuration not found.")))
+        Err(WorkerError::Configuration(format!("Network interface {} not found.", name)))
     }
 
     ///Get the index of the passed interface name
