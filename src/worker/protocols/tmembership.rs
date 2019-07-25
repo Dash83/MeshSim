@@ -12,7 +12,7 @@ use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
-use self::rand::{StdRng, RngCore};
+use self::rand::{rngs::StdRng, RngCore};
 use ::slog::Logger;
 
 const HEARTBEAT_TIMER : u64 = 3000; //3000 ms

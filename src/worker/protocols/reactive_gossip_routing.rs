@@ -9,7 +9,7 @@ use worker::radio::*;
 use std::sync::{Arc, Mutex};
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
-use self::rand::{StdRng, Rng};
+use self::rand::{rngs::StdRng, Rng};
 use self::md5::Digest;
 use worker::rand::prelude::*;
 use ::slog::Logger;
@@ -771,56 +771,4 @@ mod tests {
         unimplemented!();
     }
 
-    //This test will me removed at some point, but it's useful at the moment for the message size calculations
-    //that will be needed to do segmentation of large pieces of data for transmission.
-    #[ignore]
-    #[test]
-    fn test_message_size() {
-        use std::mem;
-        
-        let mut self_peer = Peer::new();
-        self_peer.name = String::from("Foo");
-        self_peer.id = String::from("kajsndlkajsndaskdnlkjsadnks");
-
-        let mut dest_peer = Peer::new();
-        dest_peer.name = String::from("Bar");
-        dest_peer.id = String::from("oija450njjcdlhbaslijdblahsd");
-
-        let mut hdr = MessageHeader::new();
-        hdr.sender = self_peer.clone();
-        hdr.destination = dest_peer.clone();
-
-        println!("Size of MessageHeader: {}", mem::size_of::<MessageHeader>());
-        let hdr_size = mem::size_of_val(&hdr);
-        println!("Size of a MessageHeader instance: {}", hdr_size);
-
-        let mut msg = DataMessage{ route_id : String::from("SOME_ROUTE"),
-                                   payload :  String::from("SOME DATA TO TRANSMIT").as_bytes().to_vec() };
-        println!("Size of DataMessage: {}", mem::size_of::<DataMessage>());
-        let msg_size = mem::size_of_val(&msg);
-        println!("Size of a MessageHeader instance: {}", msg_size);
-        let ser_msg = to_vec(&msg).expect("Could not serialize");
-        println!("Size of ser_msg: {}", mem::size_of_val(&ser_msg));
-        println!("Len of ser_msg: {}", ser_msg.len());
-        let ser_hdr = to_vec(&hdr).expect("Could not serialize");
-        println!("Len of ser_hdr: {}", ser_hdr.len());
-        hdr.payload = Some(ser_msg);
-
-        let final_hdr = to_vec(&hdr).expect("Could not serialize");
-        println!("Len of final_hdr: {}", final_hdr.len());
-        
-        println!("Size of SampleStruct: {}", mem::size_of::<SampleStruct>());
-        let s = SampleStruct;
-        let xs = to_vec(&s).expect("Could not serialize");
-        println!("Size of serialized SampleStruct: {}", xs.len());
-        println!("xs: {:?}", &xs);
-        
-        let sample_data = [1u8; 2048];
-        println!("sample data len: {}", sample_data.len());
-        println!("sample data sizeof: {}", mem::size_of_val(&sample_data));
-        let ser_sample_data = to_vec(&sample_data.to_vec()).expect("Could not serialize");
-        println!("ser_sample_data len: {}", ser_sample_data.len());
-        assert!(false);
-
-    }
 }

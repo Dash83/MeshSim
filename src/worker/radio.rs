@@ -4,12 +4,20 @@ extern crate pnet;
 extern crate ipnetwork;
 extern crate socket2;
 extern crate md5;
+#[cfg(target_os="linux")]
+extern crate linux_embedded_hal as hal;
+#[cfg(target_os="linux")]
+extern crate sx1276;
 
 use worker::*;
 use worker::listener::*;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
 use ::slog::Logger;
+use std::sync::Arc;
+
+#[cfg(target_os="linux")]
+use self::sx1276::socket::{Link, LoRa};
 
 const SIMULATED_SCAN_DIR : &'static str = "addr";
 const SHORT_RANGE_DIR : &'static str = "short";
@@ -136,7 +144,7 @@ impl Radio  for SimulatedRadio {
                     }
                 };
             } else {
-                error!(self.logger, "No known address for peer peer {} in range {:?}", p.name, self.r_type);
+                error!(self.logger, "No known address for peer {} in range {:?}", p.name, self.r_type);
             }
         }      
         
@@ -242,7 +250,7 @@ impl SimulatedRadio {
 
 /// A radio object that maps directly to a network interface of the system.
 #[derive(Debug)]
-pub struct DeviceRadio {
+pub struct WifiRadio {
     ///Name of the network interface that maps to this Radio object.
     pub interface_name : String,
     ///Index of the interface
@@ -261,55 +269,7 @@ pub struct DeviceRadio {
     logger : Logger,
 }
 
-impl Radio  for DeviceRadio{
-    // fn scan_for_peers(&self) -> Result<HashMap<String, (String, String)>, WorkerError> {
-    //     let mut nodes_discovered = HashMap::new();
-
-    //     //Constructing the external process call
-    //     let mut command = Command::new("avahi-browse");
-    //     command.arg("-r");
-    //     command.arg("-p");
-    //     command.arg("-t");
-    //     command.arg("-l");
-    //     command.arg("_http._tcp");
-
-    //     //Starting the worker process
-    //     let mut child = try!(command.stdout(Stdio::piped()).spawn());
-    //     let exit_status = child.wait().unwrap();
-
-    //     if exit_status.success() {
-    //         let mut buffer = String::new();
-    //         let mut output = child.stdout.unwrap();
-    //         output.read_to_string(&mut buffer)?;
-
-    //         for l in buffer.lines() {
-    //             let tokens : Vec<&str> = l.split(';').collect();
-    //             if tokens.len() > 6 {
-    //                 let serv = ServiceRecord{ service_name : String::from(tokens[3]),
-    //                                         service_type: String::from(tokens[4]), 
-    //                                         host_name : String::from(tokens[6]), 
-    //                                         address : String::from(tokens[7]), 
-    //                                         address_type : String::from(tokens[2]), 
-    //                                         port : u16::from_str_radix(tokens[8], 10).unwrap(),
-    //                                         txt_records : Vec::new() };
-                    
-    //                 if serv.service_name.starts_with(DNS_SERVICE_NAME) {
-    //                     //Found a Peer
-    //                     let id = serv.get_txt_record("PUBLIC_KEY").unwrap_or(String::from("(NO_KEY)"));
-    //                     let name = serv.get_txt_record("NAME").unwrap_or(String::from("(NO_NAME)"));
-    //                     let address = format!("{}:{}", serv.address, DNS_SERVICE_PORT);
-
-    //                     info!("Found peer {}, address {}", &name, &address);
-    //                     if !nodes_discovered.contains_key(&id) {
-    //                         nodes_discovered.insert(id, (name, address));
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     Ok(nodes_discovered)
-    // }
-
+impl Radio  for WifiRadio {
     fn get_address(&self) -> &str {
         &self.address
     }
@@ -326,12 +286,11 @@ impl Radio  for DeviceRadio{
     }
 }
 
-impl DeviceRadio {
+impl WifiRadio {
     /// Get the public address of the OS-NIC that maps to this Radio object.
     /// It will return the first IPv4 address from a NIC that exactly matches the name.
     fn get_radio_address<'a>(name : &'a str) -> Result<String, WorkerError> {
         use self::pnet::datalink;
-        use self::ipnetwork;
 
         for iface in datalink::interfaces() {
             if &iface.name == name {
@@ -371,13 +330,13 @@ impl DeviceRadio {
                 id : String, 
                 rng : Arc<Mutex<StdRng>>, 
                 r_type : RadioTypes,
-                logger : Logger ) -> Result<(DeviceRadio, Box<Listener>), WorkerError> {
-        let address = DeviceRadio::get_radio_address(&interface_name).expect("Could not get address for specified interface.");
-        let interface_index = DeviceRadio::get_interface_index(&interface_name).expect("Could not get index for specified interface.");
+                logger : Logger ) -> Result<(WifiRadio, Box<Listener>), WorkerError> {
+        let address = WifiRadio::get_radio_address(&interface_name).expect("Could not get address for specified interface.");
+        let interface_index = WifiRadio::get_interface_index(&interface_name).expect("Could not get index for specified interface.");
         debug!(logger, "Obtained address {}", &address);
         let address = format!("[{}]:{}", address, DNS_SERVICE_PORT);
-        let listener = DeviceRadio::init(interface_index, r_type, &rng, &logger)?;
-        let radio = DeviceRadio{interface_name : interface_name,
+        let listener = WifiRadio::init(interface_index, r_type, &rng, &logger)?;
+        let radio = WifiRadio {interface_name : interface_name,
                                 interface_index : interface_index,
                                 id : id, 
                                 name : worker_name, 
@@ -412,13 +371,101 @@ impl DeviceRadio {
 
         let debug_address = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,0)), DNS_SERVICE_PORT);
         let _ = sock.bind(&SockAddr::from(debug_address))?;
-        let listener = DeviceListener::new(sock, 
-                                           None, 
-                                           Arc::clone(rng), 
-                                           r_type,
-                                           logger.clone());
+        let listener = WifiListener::new(sock,
+                                         None,
+                                         Arc::clone(rng),
+                                         r_type,
+                                         logger.clone());
 
         println!("{}", &listener.get_address());
         Ok(Box::new(listener))
     }
+}
+
+
+const NSS_PIN: u64 = 25;
+const IRQ_PIN: u64 = 4;
+const RESET_PIN: u64 = 17;
+
+///Operation frequencies (Mhz) for Lora radios
+#[derive(Debug)]
+pub enum LoraFrequencies {
+    ///Frequency for the USA
+    USA = 915,
+    ///Frequency for Europe
+    Europe = 868,
+    ///Frequency for other regions
+    Other = 433,
+}
+
+//************************************************//
+//************ Linux Implementation **************//
+//************************************************//
+#[cfg(target_os="linux")]
+impl<T> Radio for LoRa<T>
+    where
+        T: 'static + Send + Sync + Link,
+{
+    fn get_address(&self) -> &str {
+        "LoraRadio"
+    }
+
+    fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
+        self.transmit(to_vec(&hdr)?.as_slice());
+        Ok(())
+    }
+}
+
+#[cfg(target_os="linux")]
+///Used to produce a Lora Radio trait object
+pub fn new_lora_radio(
+    frequency: u64,
+    spreading_factor: u32,
+    transmission_power: u8,
+) -> Result<(Arc<Radio>, Box<Listener>), WorkerError> {
+    use worker::radio::hal::spidev::{self, SpidevOptions};
+    use worker::radio::hal::sysfs_gpio::Direction;
+    use worker::radio::hal::{Pin, Spidev};
+
+    let mut spi = Spidev::open("/dev/spidev0.0").unwrap();
+    let options = SpidevOptions::new()
+        .bits_per_word(8)
+        .max_speed_hz(1_000_000)
+        .mode(spidev::SPI_MODE_0)
+        .build();
+    spi.configure(&options).unwrap();
+
+    let cs = Pin::new(NSS_PIN);
+    cs.export().unwrap();
+    cs.set_direction(Direction::Out).unwrap();
+
+    let irq = Pin::new(IRQ_PIN);
+    irq.export().unwrap();
+    irq.set_direction(Direction::In).unwrap();
+
+    let reset = Pin::new(RESET_PIN);
+    reset.export().unwrap();
+    reset.set_direction(Direction::Out).unwrap();
+
+    let lora = LoRa::from({
+        let sx1276 = sx1276::SX1276::new(spi, cs, irq, reset, frequency)
+            .unwrap();
+        sx1276.set_transmission_power(transmission_power);
+        sx1276
+    });
+
+    Ok((Arc::new(lora.clone()) as Arc<Radio>, Box::new(lora) as Box<Listener>))
+}
+
+//************************************************//
+//********** Non-Linux Implementation ************//
+//************************************************//
+#[cfg(not(target_os="linux"))]
+///Used to produce a Lora Radio trait object
+pub fn new_lora_radio(
+    frequency: u64,
+    spreading_factor: u32,
+    transmission_power: u8,
+) -> Result<(Arc<Radio>, Box<Listener>), WorkerError> {
+    panic!("Lora radio creation is only supported on Linux");
 }

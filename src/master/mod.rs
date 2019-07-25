@@ -27,7 +27,7 @@ extern crate rusqlite;
 extern crate libc;
 
 use worker::worker_config::WorkerConfig;
-use worker::radio::{SimulatedRadio, RadioTypes};
+use worker::radio::SimulatedRadio;
 use std::process::{Command, Child, Stdio};
 use std::io;
 use std::io::{BufRead, Write, BufReader};

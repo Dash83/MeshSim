@@ -5,7 +5,7 @@ extern crate rustc_serialize;
 extern crate rand;
 extern crate byteorder;
 
-use worker::{Worker, OperationMode, Write, WorkerError, DeviceRadio, SimulatedRadio};
+use worker::{Worker, OperationMode, Write, WorkerError};
 use worker::radio::*;
 use worker::protocols::*;
 use worker::listener::Listener;
@@ -13,10 +13,11 @@ use std::path::Path;
 use std::fs::File;
 use std::iter;
 use self::rustc_serialize::hex::*;
-use self::rand::{StdRng, RngCore};
+use self::rand::{rngs::StdRng, RngCore};
 use std::sync::{Mutex, Arc};
-use worker::mobility::{self, Position, Velocity};
+use worker::mobility::{Position, Velocity};
 use ::slog::Logger;
+use worker::radio::{self, WifiRadio, SimulatedRadio, LoraFrequencies};
 
 ///Default range in meters for short-range radios
 pub const DEFAULT_SHORT_RADIO_RANGE : f64 = 100.0;
@@ -24,6 +25,10 @@ pub const DEFAULT_SHORT_RADIO_RANGE : f64 = 100.0;
 pub const DEFAULT_LONG_RADIO_RANGE : f64 = 500.0;
 ///Default range in meters for long-range radios
 pub const DEFAULT_INTERFACE_NAME : &'static str = "wlan";
+
+const DEFAULT_SPREADING_FACTOR : u32 = 0;
+const DEFAULT_LORA_FREQ : LoraFrequencies = LoraFrequencies::Europe;
+const DEFAULT_LORA_TRANS_POWER : u8 = 15;
 
 //TODO: Cleanup this struct
 ///Configuration pertaining to a given radio of the worker.
@@ -35,6 +40,12 @@ pub struct RadioConfig {
     pub interface_name : Option<String>,
     ///Range in meters of this radio.
     pub range : f64,
+    ///Frequency for the Lora radio. Varies by country.
+    pub frequency : Option<u64>,
+    ///Spreading factor for the Lora radio.
+    pub spreading_factor : Option<u32>,
+    ///Transmission power for the Lora radio.
+    pub transmission_power : Option<u8>,
 }
 
 impl RadioConfig {
@@ -44,6 +55,9 @@ impl RadioConfig {
         RadioConfig{ reliability : Some(1.0),
                      interface_name : Some(format!("{}0", DEFAULT_INTERFACE_NAME)),
                      range : 0.0,
+                     frequency : None,
+                     spreading_factor : None,
+                     transmission_power : None,
                     }
     }
 
@@ -64,13 +78,25 @@ impl RadioConfig {
         match operation_mode {
             OperationMode::Device => { 
                 let iname = self.interface_name.expect("An interface name for radio_short must be provided when operating in device_mode.");
-                let (radio, listener) = DeviceRadio::new(iname, 
-                                                         worker_name,
-                                                         worker_id, 
-                                                         rng,
-                                                         r_type,
-                                                         logger)?;
-                Ok((Arc::new(radio), listener))
+                let (radio, listener) : (Arc<Radio>, Box<Listener>) = match r_type {
+                    RadioTypes::ShortRange => {
+                        let (r, l) = WifiRadio::new(iname,
+                                       worker_name,
+                                       worker_id,
+                                       rng,
+                                       r_type,
+                                       logger)?;
+                        (Arc::new(r), l)
+                    },
+                    RadioTypes::LongRange => {
+                        let sf = self.spreading_factor.unwrap_or(DEFAULT_SPREADING_FACTOR);
+                        let freq = self.frequency.unwrap_or(DEFAULT_LORA_FREQ as u64);
+                        let power = self.transmission_power.unwrap_or(DEFAULT_LORA_TRANS_POWER);
+                        let (r, l) = radio::new_lora_radio(freq, sf, power)?;
+                        (r, l)
+                    },
+                };
+                Ok((radio, listener))
             },
             OperationMode::Simulated => { 
                 //let delay = self.delay.unwrap_or(0);

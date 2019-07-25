@@ -19,9 +19,9 @@
 
 // Lint options for this module
 #![deny(missing_docs,
-        trivial_casts, trivial_numeric_casts,
+        trivial_numeric_casts,
         unstable_features,
-        unused_import_braces, unused_qualifications)]
+        unused_import_braces)]
 
 extern crate rand;
 extern crate rustc_serialize;
@@ -50,14 +50,13 @@ use worker::protocols::*;
 use worker::radio::*;
 use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
-use self::rand::{StdRng, SeedableRng};
+use self::rand::{rngs::StdRng, SeedableRng};
 use self::byteorder::{NativeEndian, WriteBytesExt};
-use std::thread::{self, JoinHandle, Builder};
+use std::thread::{self, JoinHandle};
 use self::md5::Digest;
 use worker::mobility::*;
 use worker::listener::Listener;
 use ::slog::Logger;
-use std::io::BufRead;
 use std::time::Duration;
 use self::libc::{nice, c_int};
 
@@ -412,7 +411,7 @@ impl Worker {
     ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
     pub fn start(&mut self, accept_commands : bool) -> Result<(), WorkerError> {
         //Init the worker
-        let _res = try!(self.init());
+        let _res = self.init()?;
 
         //Init the radios and get their respective listeners.
         let short_radio = self.short_radio.take();
@@ -428,7 +427,7 @@ impl Worker {
         info!(self.logger, "Worker finished initializing.");
         
         //Initialize protocol.
-        let _res = try!(resources.handler.init_protocol());
+        let _res = resources.handler.init_protocol()?;
 
         //Start listening for messages
         let prot_handler = Arc::clone(&resources.handler);
@@ -695,6 +694,66 @@ mod tests {
         assert_eq!(&format!("{:x}", &hash), "a6048051b8727b181a6c69edf820914f");
     }
 
+    //This test will me removed at some point, but it's useful at the moment for the message size calculations
+    //that will be needed to do segmentation of large pieces of data for transmission.
+    #[ignore]
+    #[test]
+    fn test_message_size() {
+        use std::mem;
+        use self::serde_cbor::de::*;
+        use self::serde_cbor::ser::*;
+
+        let mut self_peer = Peer::new();
+        self_peer.name = String::from("Foo");
+        self_peer.id = String::from("kajsndlkajsndaskdnlkjsadnks");
+
+        let mut dest_peer = Peer::new();
+        dest_peer.name = String::from("Bar");
+        dest_peer.id = String::from("oija450njjcdlhbaslijdblahsd");
+
+        let mut hdr = MessageHeader::new();
+//        hdr.sender = self_peer.clone();
+//        hdr.destination = dest_peer.clone();
+
+        println!("Size of MessageHeader: {}", mem::size_of::<MessageHeader>());
+        let serialized_hdr = to_vec(&hdr).expect("Could not serialize");
+        let hdr_size = mem::size_of_val(&serialized_hdr);
+        println!("Size of a serialized MessageHeader: {}", hdr_size);
+
+        println!("Size of Peer: {}", mem::size_of::<Peer>());
+        let serialized_peer = to_vec(&self_peer).expect("Could not serialize");
+        let peer_size = mem::size_of_val(&serialized_peer);
+        println!("Size of a Peer instance: {}", peer_size);
+
+//        let mut msg = DataMessage{ route_id : String::from("SOME_ROUTE"),
+//            payload :  String::from("SOME DATA TO TRANSMIT").as_bytes().to_vec() };
+//        println!("Size of DataMessage: {}", mem::size_of::<DataMessage>());
+//        let msg_size = mem::size_of_val(&msg);
+//        println!("Size of a MessageHeader instance: {}", msg_size);
+//        let ser_msg = to_vec(&msg).expect("Could not serialize");
+//        println!("Size of ser_msg: {}", mem::size_of_val(&ser_msg));
+//        println!("Len of ser_msg: {}", ser_msg.len());
+//        let ser_hdr = to_vec(&hdr).expect("Could not serialize");
+//        println!("Len of ser_hdr: {}", ser_hdr.len());
+//        hdr.payload = Some(ser_msg);
+
+//        let final_hdr = to_vec(&hdr).expect("Could not serialize");
+//        println!("Len of final_hdr: {}", final_hdr.len());
+//
+//        println!("Size of SampleStruct: {}", mem::size_of::<SampleStruct>());
+//        let s = SampleStruct;
+//        let xs = to_vec(&s).expect("Could not serialize");
+//        println!("Size of serialized SampleStruct: {}", xs.len());
+//        println!("xs: {:?}", &xs);
+
+//        let sample_data = [1u8; 2048];
+//        println!("sample data len: {}", sample_data.len());
+//        println!("sample data sizeof: {}", mem::size_of_val(&sample_data));
+//        let ser_sample_data = to_vec(&sample_data.to_vec()).expect("Could not serialize");
+//        println!("ser_sample_data len: {}", ser_sample_data.len());
+        assert!(false);
+
+    }
 }
 
 // *****************************
