@@ -1,5 +1,6 @@
 name = "lora_wifi_beacon_placement"
 gen_logs = false
+log_dir = "results/lora_wifi_beacon_placement/log"
 
 command = "cargo"
 args = ["build", "--release"]
@@ -8,7 +9,7 @@ args = ["build", "--release"]
 [hosts.rogue1]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue1.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -16,7 +17,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue1.t
 [hosts.rogue2]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue2.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -24,7 +25,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue2.t
 [hosts.rogue3]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue3.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -32,7 +33,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue3.t
 [hosts.rogue4]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue4.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -40,7 +41,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue4.t
 [hosts.rogue5]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue5.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -48,7 +49,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue5.t
 [hosts.rogue6]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue6.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -56,7 +57,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue6.t
 [hosts.rogue7]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue7.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -64,7 +65,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue7.t
 [hosts.rogue8]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue8.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -72,7 +73,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue8.t
 [hosts.rogue9]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue9.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -80,7 +81,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue9.t
 [hosts.rogue10]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue10.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -88,7 +89,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue10.
 [hosts.rogue11]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue11.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -96,7 +97,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue11.
 [hosts.rogue12]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue12.toml",
-        "--work_dir", "~/results/lora_wifi_beacon_placement",
+        "--work_dir", "results/lora_wifi_beacon_placement",
         "--register_worker", "false",
         "--accept_commands", "false",
         "--log_to_terminal", "true"]
@@ -104,7 +105,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue12.
 [hosts.rogue13]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue13.toml",
-       "--work_dir", "~/results/lora_wifi_beacon_placement",
+       "--work_dir", "results/lora_wifi_beacon_placement",
        "--register_worker", "false",
        "--accept_commands", "false",
        "--log_to_terminal", "true"]
@@ -112,7 +113,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue13.
 [hosts.rogue14]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue14.toml",
-       "--work_dir", "~/results/lora_wifi_beacon_placement",
+       "--work_dir", "results/lora_wifi_beacon_placement",
        "--register_worker", "false",
        "--accept_commands", "false",
        "--log_to_terminal", "true"]
@@ -120,7 +121,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue14.
 [hosts.rogue15]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue15.toml",
-       "--work_dir", "~/results/lora_wifi_beacon_placement",
+       "--work_dir", "results/lora_wifi_beacon_placement",
        "--register_worker", "false",
        "--accept_commands", "false",
        "--log_to_terminal", "true"]
@@ -128,7 +129,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue15.
 [hosts.rogue16]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue16.toml",
-       "--work_dir", "~/results/lora_wifi_beacon_placement",
+       "--work_dir", "results/lora_wifi_beacon_placement",
        "--register_worker", "false",
        "--accept_commands", "false",
        "--log_to_terminal", "true"]
@@ -136,7 +137,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue16.
 [hosts.rogue17]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue17.toml",
-       "--work_dir", "~/results/lora_wifi_beacon_placement",
+       "--work_dir", "results/lora_wifi_beacon_placement",
        "--register_worker", "false",
        "--accept_commands", "false",
        "--log_to_terminal", "true"]
@@ -144,7 +145,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue17.
 [hosts.rogue18]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue18.toml",
-       "--work_dir", "~/results/lora_wifi_beacon_placement",
+       "--work_dir", "results/lora_wifi_beacon_placement",
        "--register_worker", "false",
        "--accept_commands", "false",
        "--log_to_terminal", "true"]
@@ -152,7 +153,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue18.
 [hosts.rogue19]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue19.toml",
-       "--work_dir", "~/results/lora_wifi_beacon_placement",
+       "--work_dir", "results/lora_wifi_beacon_placement",
        "--register_worker", "false",
        "--accept_commands", "false",
        "--log_to_terminal", "true"]
@@ -160,7 +161,7 @@ args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue19.
 [hosts.rogue20]
 command = "./target/release/worker_cli"
 args = ["--config", "tests/experiments/specs/lora_wifi_beacon_placement/rogue20.toml",
-       "--work_dir", "~/results/lora_wifi_beacon_placement",
+       "--work_dir", "results/lora_wifi_beacon_placement",
        "--register_worker", "false",
        "--accept_commands", "false",
        "--log_to_terminal", "true"]
