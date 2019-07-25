@@ -1,7 +1,7 @@
-worker_name = "rogue2"
-worker_id = "0fe453ddfda62d5454de89d63ca1a11f"
+worker_name = "rogue15"
+worker_id = "ccc46dcf9c05ff14c1196336db3f2702"
 work_dir = "/tmp/lora_wifi_beacon_placement307062120"
-random_seed = 3573741273
+random_seed = 242834126
 operation_mode = "Device"
 protocol = "LoraWifiBeacon"
 x = 0.0 #ignored
@@ -12,7 +12,7 @@ y = 0.0
 
 [radio_short]
 reliability = 1.0 #ignored
-interface_name = "en9"
+interface_name = "wlan0"
 range = 20.0 #ignored
 
 [radio_long]
