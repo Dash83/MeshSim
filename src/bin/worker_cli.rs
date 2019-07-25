@@ -43,7 +43,7 @@ const ERROR_INITIALIZATION : i32 = 2;
 
 #[derive(Debug)]
 enum CLIError {
-    SetLogger(log::SetLoggerError),
+    SetLogger(String),
     IO(io::Error),
     Worker(worker::WorkerError),
     Serialization(serde_cbor::Error),
@@ -54,7 +54,7 @@ enum CLIError {
 impl error::Error for CLIError {
     fn description(&self) -> &str {
         match *self {
-            CLIError::SetLogger(ref err) => err.description(),
+            CLIError::SetLogger(ref desc) => &desc,
             CLIError::IO(ref err) => err.description(),
             CLIError::Worker(ref err) => err.description(),
             CLIError::Serialization(ref err) => err.description(),
@@ -65,7 +65,7 @@ impl error::Error for CLIError {
 
     fn cause(&self) -> Option<&error::Error> {
         match *self {
-            CLIError::SetLogger(ref err) => Some(err),
+            CLIError::SetLogger(_) => None,
             CLIError::IO(ref err) => Some(err),
             CLIError::Worker(ref err) => Some(err),
             CLIError::Serialization(ref err) => Some(err),
@@ -95,11 +95,11 @@ impl From<io::Error> for CLIError {
     }
 }
 
-impl From<log::SetLoggerError> for CLIError {
-    fn from(err : log::SetLoggerError) -> CLIError {
-        CLIError::SetLogger(err)
-    }
-}
+// impl From<log::SetLoggerError> for CLIError {
+//     fn from(err : log::SetLoggerError) -> CLIError {
+//         CLIError::SetLogger(err)
+//     }
+// }
 
 impl From<serde_cbor::Error> for CLIError {
     fn from(err : serde_cbor::Error) -> CLIError {
