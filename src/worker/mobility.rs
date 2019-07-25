@@ -638,6 +638,7 @@ mod tests {
     extern crate rusqlite;
 
     use super::*;
+
     use self::chrono::prelude::*;
     use std::path::{PathBuf, Path};
     use std::fs;

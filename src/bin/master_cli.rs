@@ -11,6 +11,7 @@ extern crate slog_json;
 extern crate slog_stdlog;
 extern crate color_backtrace;
 
+
 use mesh_simulator::master::*;
 use mesh_simulator::master;
 use clap::{Arg, App, ArgMatches};
@@ -37,7 +38,7 @@ const ERROR_EXECUTION_FAILURE : i32 = 2;
 
 #[derive(Debug)]
 enum CLIError {
-    SetLogger(log::SetLoggerError),
+    SetLogger(String),
     IO(io::Error),
     Master(master::MasterError),
     TestParsing(String),
@@ -46,7 +47,7 @@ enum CLIError {
 impl error::Error for CLIError {
     fn description(&self) -> &str {
         match *self {
-            CLIError::SetLogger(ref err) => err.description(),
+            CLIError::SetLogger(ref desc) => &desc,
             CLIError::IO(ref err) => err.description(),
             CLIError::Master(ref err) => err.description(),
             CLIError::TestParsing(ref err_str) => err_str,
@@ -55,7 +56,7 @@ impl error::Error for CLIError {
 
     fn cause(&self) -> Option<&error::Error> {
         match *self {
-            CLIError::SetLogger(ref err) => Some(err),
+            CLIError::SetLogger(_) => None,
             CLIError::IO(ref err) => Some(err),
             CLIError::Master(ref err) => Some(err),
             CLIError::TestParsing(_) => None,
@@ -78,12 +79,6 @@ impl fmt::Display for CLIError {
 impl From<io::Error> for CLIError {
     fn from(err : io::Error) -> CLIError {
         CLIError::IO(err)
-    }
-}
-
-impl From<log::SetLoggerError> for CLIError {
-    fn from(err : log::SetLoggerError) -> CLIError {
-        CLIError::SetLogger(err)
     }
 }
 
