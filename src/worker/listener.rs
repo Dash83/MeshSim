@@ -248,29 +248,27 @@ impl<T> Listener for LoRa<T>
     /// Reads a message (if possible) from the underlying socket
     fn read_message(&self) -> Option<MessageHeader> {
         let mut buffer = [0; sx1276::LORA_MTU];
-        let msg = match self.receive(&mut buffer) {
-            Ok(bytes_read) => {
-                if bytes_read > 0 {
-                    let data = buffer[..bytes_read].to_vec();
-                    match MessageHeader::from_vec(data) {
-                        Ok(m) => { Some(m) },
-                        Err(e) => {
-                            //Read bytes but could not form a MessageHeader
+        loop {
+            match self.receive(&mut buffer) {
+                Ok(bytes_read) => {
+                    if bytes_read > 0 {
+                        let data = buffer[..bytes_read].to_vec();
+                        match MessageHeader::from_vec(data) {
+                            Ok(m) => { return Some(m) },
+                            Err(e) => {
+                                //Read bytes but could not form a MessageHeader
 //                            error!(self.logger, "Failed reading message: {}", e);
-                            None
+                            }
                         }
+                    } else {
+                        //0 bytes read
                     }
-                } else {
-                    //0 bytes read
-                    None
+                },
+                Err(_e) => {
+                    //No message read
                 }
-            },
-            Err(_e) => {
-                //No message read
-                None
-            }
-        };
-        msg
+            };
+        }
     }
     /// Get's the radio-range of the current listener.
     fn get_radio_range(&self) -> RadioTypes {

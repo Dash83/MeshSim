@@ -66,7 +66,7 @@ pub fn find_log_record<'a, 'b>(log_key : &'a str,
 pub fn create_logger<P: AsRef<Path>>(log_file_name : P, log_term : bool ) -> Result<Logger, WorkerError>  {
     //Make sure the full path is valid
     if let Some(parent) = log_file_name.as_ref().parent() {
-        let _res = std::fs::create_dir_all(parent)?;
+        let _res = std::fs::create_dir_all(parent).expect("Could not create log directory structure");
     }
 
     let log_file = OpenOptions::new()

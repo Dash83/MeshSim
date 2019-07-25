@@ -515,7 +515,7 @@ impl Worker {
         dir.push("log"); //Dir is work_dir/log
         if !dir.exists() {
             //Create log dir
-            std::fs::create_dir_all(dir.as_path())?;
+            std::fs::create_dir_all(dir.as_path()).unwrap_or(());
             info!(self.logger, "Created dir {} ", dir.as_path().display());
         }
         dir.pop(); //Dir is work_dir
