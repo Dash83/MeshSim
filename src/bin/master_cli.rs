@@ -3,34 +3,35 @@ extern crate clap;
 extern crate rustc_serialize;
 extern crate serde;
 extern crate serde_cbor;
-#[macro_use]
+
 extern crate slog;
+// extern crate slog_stream;
 extern crate slog_term;
 extern crate slog_json;
 extern crate slog_stdlog;
-extern crate slog_async;
-extern crate slog_scope;
-#[macro_use]
-extern crate log;
+extern crate color_backtrace;
+
 
 use mesh_simulator::master::*;
 use mesh_simulator::master;
 use clap::{Arg, App, ArgMatches};
 use std::str::FromStr;
-use slog::DrainExt;
-use std::thread;
-use slog::Drain;
+// use slog::DrainExt;
 use std::fs::{OpenOptions};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::io;
 use std::error;
 use std::fmt;
 use std::error::Error;
+use mesh_simulator::logging;
+use std::time::Duration;
+use ::slog::Logger;
 
 //const ARG_CONFIG : &'static str = "config";
 const ARG_WORK_DIR : &'static str = "work_dir";
 const ARG_TEST_FILE : &'static str = "test_file";
 const ARG_WORKER_PATH : &'static str = "worker_path";
+const ARG_TERMINAL_LOG : &'static str = "term_log";
 
 const ERROR_LOG_INITIALIZATION : i32 = 1;
 const ERROR_EXECUTION_FAILURE : i32 = 2;
@@ -41,23 +42,6 @@ enum CLIError {
     IO(io::Error),
     Master(master::MasterError),
     TestParsing(String),
-}
-
-enum MeshTests {
-    BasicTest,
-    SixNodeTest,
-}
-
-impl FromStr for MeshTests {
-    type Err = CLIError;
-
-    fn from_str(s : &str) -> Result<MeshTests, CLIError> {
-        match s {
-            "BasicTest" => Ok(MeshTests::BasicTest),
-            "SixNodeTest" => Ok(MeshTests::SixNodeTest),
-            _ => Err(CLIError::TestParsing("Unsupported test".to_string())),
-        }
-    }
 }
 
 impl error::Error for CLIError {
@@ -105,87 +89,89 @@ impl From<master::MasterError> for CLIError {
 }
 
 
-fn init_logger(work_dir : &Path) -> Result<(), CLIError> {
-    let mut log_dir_buf = work_dir.to_path_buf();
-    log_dir_buf.push("log");
+// fn init_logger(work_dir : &Path) -> Result<(), CLIError> {
+//     let mut log_dir_buf = work_dir.to_path_buf();
+//     log_dir_buf.push("log");
     
-    if !log_dir_buf.exists() {
-        try!(std::fs::create_dir(log_dir_buf.as_path()));
-    }
+//     if !log_dir_buf.exists() {
+//         try!(std::fs::create_dir(log_dir_buf.as_path()));
+//     }
 
-    log_dir_buf.push("MeshMaster.log");
-    //At this point the log folder has been created, so the path should be valid.
-    let log_file_name = log_dir_buf.to_str().unwrap();
+//     log_dir_buf.push("MeshMaster.log");
+//     //At this point the log folder has been created, so the path should be valid.
+//     let log_file_name = log_dir_buf.to_str().unwrap();
 
-    let log_file = try!(OpenOptions::new()
-                        .create(true)
-                        .write(true)
-                        .truncate(true)
-                        .open(log_file_name));
+//     let log_file = try!(OpenOptions::new()
+//                         .create(true)
+//                         .write(true)
+//                         .truncate(true)
+//                         .open(log_file_name));
     
-    //Create the terminal drain
-    let decorator = slog_term::TermDecorator::new().build();
-    let d1 = slog_term::FullFormat::new(decorator).build().fuse();
-    let d1 = slog_async::Async::new(d1).build().fuse();
+//     // let console_drain = slog_term::streamer().build();
+//     // let file_drain = slog_stream::stream(log_file, slog_json::default());
+//     // let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!());
+//     // try!(slog_stdlog::set_logger(logger));
 
-    //Create the file drain
-    let d2 = slog_json::Json::new(log_file)
-        .add_default_keys()
-        .build()
-        .fuse();
-    let d2 = slog_async::Async::new(d2).build().fuse();
-
-    //Fuse the drains and create the logger
-    let logger = slog::Logger::root(slog::Duplicate::new(d1, d2).fuse(), o!());
-
-    //slog_stdlog uses the logger from slog_scope, so set a logger there
-    let _guard = slog_scope::set_global_logger(logger);
-
-    // register slog_stdlog as the log handler with the log crate
-    let result = match slog_stdlog::init() {
-        Ok(_) => Ok(()),
-        Err(err) => Err( CLIError::SetLogger(format!("Error setting logger: {}", err))),
-    };
-
-    result
-} 
+//     Ok(())
+// } 
 
 fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {    
     //Has a test file been provided?
-    let test_file = matches.value_of(ARG_TEST_FILE); 
+    let test_file = matches.value_of(ARG_TEST_FILE);
+    let logger = master.logger.clone();
     if let Some(file) = test_file {
         let mut test_spec = test_specification::TestSpec::parse_test_spec(file)?;
-        master.run_test(test_spec)?;
+        master.duration = test_spec.duration;
+        master.test_area.height = test_spec.area_size.height;
+        master.test_area.width = test_spec.area_size.width;
+        master.mobility_model = test_spec.mobility_model.clone();
+        master.run_test(test_spec, &logger)?;
     }
 
+    //Temporary fix. Since the logging now runs in a separate thread, the tests may end before
+    //all the data is captured. Check if the log file is still changing.
+    let md = std::fs::metadata(&master.log_file)?;
+    let mut size1 = md.len();
+    let max_wait = 20;
+    for _i in 0..max_wait {
+        std::thread::sleep(Duration::from_millis(100));
+        let size2 = md.len();
+        if size1 < size2 {
+            //File is still changing
+            size1 = size2;
+        } else {
+            //We are good. Exit.
+            break;
+        }
+    }
     Ok(())
 }
 
 fn init(matches : &ArgMatches) -> Result<(Master), CLIError> {
-    //Read the configuration file.
-    // let mut current_dir = try!(env::current_dir());
-    // let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
-    //     //No configuration file was passed. Look for default option: current_dir + default name.
-    //      current_dir.push(CONFIG_FILE_NAME);
-    //      current_dir.to_str().expect("No configuration file was provided and current directory is not readable.")
-    // });
-    // let mut configuration = try!(load_conf_file(config_file_path));
-    let mut master = Master::new();
-
-    //Initialize logger
+    //Determine the work_dir    
     let work_dir = match matches.value_of(ARG_WORK_DIR) {
         Some(arg) => String::from(arg),
-        None => master.work_dir,
+        None => String::from("."),
     };
 
-    master.work_dir = work_dir.clone();
+    //Should we log to the terminal
+    let log_term : bool = matches.value_of(ARG_TERMINAL_LOG)
+        .unwrap_or("false")
+        .parse()
+        .unwrap_or(false);
 
-    let work_dir_path = Path::new(&work_dir);
+    //if the workdir does not exists, create it
+    let mut work_dir_path = PathBuf::from(&work_dir);
     if !work_dir_path.exists() {
-        let _ = try!(std::fs::create_dir(&work_dir));
+        let _ = std::fs::create_dir(&work_dir_path)?;
     }
-    try!(init_logger(work_dir_path));
+    work_dir_path.push(logging::LOG_DIR_NAME);
+    work_dir_path.push(logging::DEFAULT_MASTER_LOG);
 
+    let log_file = work_dir_path.to_str().unwrap().into();
+    let logger = logging::create_logger(&log_file, log_term).expect("Failed to set the logger for the Master.");
+    let mut master = Master::new(logger, log_file);
+    master.work_dir = work_dir.clone();
     //What else was passed to the master?
     master.worker_binary = match matches.value_of(ARG_WORKER_PATH) {
                                 Some(path_arg) => String::from(path_arg),
@@ -215,25 +201,34 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                 .value_name("FILE")
                 .help("File that contains a valid test specification for the master to run.")
                 .takes_value(true))
+            .arg(Arg::with_name(ARG_TERMINAL_LOG)
+                .short("log_term")
+                .long("log_to_terminal")
+                .value_name("true/false")
+                .help("Should this worker log operations to the terminal as well")
+                .takes_value(true))
             .get_matches()
 }
 
 fn main() {
+    //Enable the a more readable version of backtraces
+    color_backtrace::install();
+
     //Build CLI interface
     let matches = get_cli_parameters();
     
     let master = init(&matches).unwrap_or_else(|e| {
-                                    println!("master_cli failed with the following error: {}", e);
+                                    eprintln!("master_cli failed with the following error: {}", e);
                                     ::std::process::exit(ERROR_LOG_INITIALIZATION);
                                 });
 
     if let Err(ref e) = run(master, &matches) {
-        error!("master_cli failed with the following error: {}", e);
-        error!("Error chain: ");
-        let mut chain = e.cause();
+        eprintln!("master_cli failed with the following error: {}", e);
+        eprintln!("Error chain: ");
+        let mut chain = e.source();
         while let Some(internal) = chain {
-            error!("Internal error: {}", internal);
-            chain = internal.cause();
+            eprintln!("Internal error: {}", internal);
+            chain = internal.source();
         }
 
         ::std::process::exit(ERROR_EXECUTION_FAILURE);

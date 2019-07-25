@@ -1,0 +1,124 @@
+name = "random_waypoint_test"
+duration = 10000
+actions = []
+width = 200.0
+height = 200.0
+mobility_model = "RandomWaypoint"
+
+[initial_nodes.node5]
+worker_name = "node5"
+work_dir = "/tmp/random_waypoint_test702227155"
+random_seed = 1218975512
+operation_mode = "Simulated"
+protocol = "NaiveRouting"
+x = 23.193072053280204
+y = 167.65950690522308
+[initial_nodes.node5.destination]
+x = 136.21628033575152
+y = 56.73766094636825
+[initial_nodes.node5.velocity]
+x = 1.5850469760252526
+y = 1.6058060054376644
+[initial_nodes.node5.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 100.0
+[initial_nodes.node5.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 500.0
+
+[initial_nodes.node4]
+worker_name = "node4"
+work_dir = "/tmp/random_waypoint_test702227155"
+random_seed = 3056050512
+operation_mode = "Simulated"
+protocol = "NaiveRouting"
+x = 70.6135154143138
+y = 5.568666745198403
+[initial_nodes.node4.destination]
+x = 35.054717662749454
+y = 174.70424106323185
+[initial_nodes.node4.velocity]
+x = 1.3234553623404068
+y = 1.6328533313180085
+[initial_nodes.node4.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 100.0
+[initial_nodes.node4.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 500.0
+
+[initial_nodes.node1]
+worker_name = "node1"
+work_dir = "/tmp/random_waypoint_test702227155"
+random_seed = 1679700806
+operation_mode = "Simulated"
+protocol = "NaiveRouting"
+x = 90.25481402667567
+y = 142.35026995113373
+[initial_nodes.node1.destination]
+x = 14.843397195895447
+y = 183.36088556388242
+[initial_nodes.node1.velocity]
+x = 1.4967963305572298
+y = 1.6538105421471005
+[initial_nodes.node1.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 100.0
+[initial_nodes.node1.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 500.0
+
+[initial_nodes.node2]
+worker_name = "node2"
+work_dir = "/tmp/random_waypoint_test702227155"
+random_seed = 2053388715
+operation_mode = "Simulated"
+protocol = "NaiveRouting"
+x = 61.988841002229435
+y = 191.78870425578677
+[initial_nodes.node2.destination]
+x = 158.41796502414857
+y = 75.99956084409523
+[initial_nodes.node2.velocity]
+x = 1.4680407640677786
+y = 1.5155867542243384
+[initial_nodes.node2.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 100.0
+[initial_nodes.node2.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 500.0
+
+[initial_nodes.node3]
+worker_name = "node3"
+work_dir = "/tmp/random_waypoint_test702227155"
+random_seed = 2010235849
+operation_mode = "Simulated"
+protocol = "NaiveRouting"
+x = 35.67717793843044
+y = 154.95544393513381
+[initial_nodes.node3.destination]
+x = 50.00078524832547
+y = 145.3740226798606
+[initial_nodes.node3.velocity]
+x = 3.2435651276483305
+y = 2.8453621406105302
+# x = 1.3435651276483305
+# y = 1.2453621406105302
+[initial_nodes.node3.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 100.0
+[initial_nodes.node3.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 500.0
+[available_nodes]

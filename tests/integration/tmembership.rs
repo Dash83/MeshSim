@@ -3,10 +3,13 @@
 //! basic functionality of it (startup handshake, heartbeat handshake) as well ast the test_action features.
 //! 
 //! Future tests might cover the protocol in more detail and corner cases.
+extern crate mesh_simulator;
 
 use super::super::*;
+use mesh_simulator::logging::*;
 
 #[test]
+#[ignore]
 fn integration_tmembership_join() {
     let test = get_test_path("join_test.toml");
     let program = get_master_path();
@@ -19,10 +22,19 @@ fn integration_tmembership_join() {
     assert_cli::Assert::command(&[&program])
     .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
     .succeeds()
-    .and()
-    .stdout()
-    .contains("End_Test action: Finished. 2 processes terminated.")
     .unwrap();
+
+    //Check the test ended with the correct number of processes.
+    let master_log_file = format!("{}{}{}{}{}", &work_dir,
+                                                std::path::MAIN_SEPARATOR,
+                                                LOG_DIR_NAME,
+                                                std::path::MAIN_SEPARATOR,
+                                                DEFAULT_MASTER_LOG);
+    let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
+    let master_node_num = logging::find_log_record("msg", 
+                                                   "End_Test action: Finished. 2 processes terminated.", 
+                                                   &master_log_records);
+    assert!(master_node_num.is_some());
 
     //Check the handshake between the nodes
     let node1_log_file = format!("{}/log/node1.log", &work_dir);
@@ -41,6 +53,7 @@ fn integration_tmembership_join() {
 }
 
 #[test]
+#[ignore]
 fn heartbeat_test() {
     let test = get_test_path("heartbeat_test.toml");
     let program = get_master_path();
@@ -53,10 +66,18 @@ fn heartbeat_test() {
     assert_cli::Assert::command(&[&program])
     .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
     .succeeds()
-    .and()
-    .stdout()
-    .contains("End_Test action: Finished. 2 processes terminated.")
     .unwrap();
+
+    //Check the test ended with the correct number of processes.
+    let master_log_file = format!("{}{}{}{}{}", &work_dir,
+                                                std::path::MAIN_SEPARATOR,
+                                                LOG_DIR_NAME,
+                                                std::path::MAIN_SEPARATOR,
+                                                DEFAULT_MASTER_LOG);
+    let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
+    let master_node_num = logging::find_log_record("msg", 
+                                                   "End_Test action: Finished. 2 processes terminated.", 
+                                                   &master_log_records);
 
     //Check the handshake between the nodes
     let node1_log_file = format!("{}/log/node1.log", &work_dir);
@@ -70,6 +91,7 @@ fn heartbeat_test() {
 
 
     //assert!(node_2_discovery.is_some());
+    assert!(master_node_num.is_some());
     assert!(node_1_alive.is_some());
     assert!(node_2_alive.is_some());
 }
@@ -89,13 +111,24 @@ fn killnode_test() {
     assert_cli::Assert::command(&[&program])
     .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
     .succeeds()
-    .and()
-    .stdout()
-    .contains("End_Test action: Finished. 2 processes terminated.")
     .unwrap();
+
+    //Check the test ended with the correct number of processes.
+    let master_log_file = format!("{}{}{}{}{}", &work_dir,
+                                                std::path::MAIN_SEPARATOR,
+                                                LOG_DIR_NAME,
+                                                std::path::MAIN_SEPARATOR,
+                                                DEFAULT_MASTER_LOG);
+    let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
+    let master_node_num = logging::find_log_record("msg", 
+                                                   "End_Test action: Finished. 2 processes terminated.", 
+                                                   &master_log_records);
+    assert!(master_node_num.is_some());
+
 }
 
 #[test]
+#[ignore]
 fn sustained_test() {
     use std;
     
@@ -113,11 +146,19 @@ fn sustained_test() {
     assert_cli::Assert::command(&[&program])
     .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
     .succeeds()
-    .and()
-    .stdout()
-    .contains("End_Test action: Finished. 14 processes terminated.")
     .unwrap();
 
+    //Check the test ended with the correct number of processes.
+    let master_log_file = format!("{}{}{}{}{}", &work_dir,
+                                                std::path::MAIN_SEPARATOR,
+                                                LOG_DIR_NAME,
+                                                std::path::MAIN_SEPARATOR,
+                                                DEFAULT_MASTER_LOG);
+    let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
+    let master_node_num = logging::find_log_record("msg", 
+                                                   "End_Test action: Finished. 14 processes terminated.", 
+                                                   &master_log_records);
+    assert!(master_node_num.is_some());
     //Assert all processes had a full membership list
     for i in 1..15 {
         let node_number = if i < 10 {

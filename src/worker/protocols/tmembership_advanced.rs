@@ -4,7 +4,7 @@ extern crate serde_cbor;
 extern crate rand;
 
 use worker::protocols::Protocol;
-use worker::{WorkerError, Peer, MessageHeader, Worker, AddressType};
+use worker::{WorkerError, Peer, MessageHeader, Worker};
 use worker::radio::*;
 use std::collections::HashMap;
 use std::sync::{Mutex, Arc, MutexGuard};
@@ -12,7 +12,8 @@ use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
-use self::rand::{StdRng, Rng};
+use self::rand::{rngs::StdRng, RngCore};
+use ::slog::Logger;
 
 const HEARTBEAT_TIMER : u64 = 3000; //3000 ms
 
@@ -27,6 +28,7 @@ pub struct TMembershipAdvanced {
     rng : StdRng,
     worker_name : String,
     worker_id : String,
+    logger : Logger,
 }
 
 /// This enum represents the types of network messages supported in the protocol as well as the
@@ -71,15 +73,20 @@ pub struct AliveMessage {
 
 impl TMembershipAdvanced {
     ///Get a new TMembershipAdvanced object
-    pub fn new(sr : Arc<Radio>, lr : Arc<Radio>, seed : u32, id : String, name : String) -> TMembershipAdvanced {
+    pub fn new(sr : Arc<Radio>, 
+               lr : Arc<Radio>, 
+               seed : u32, 
+               id : String, 
+               name : String,
+               logger : Logger) -> TMembershipAdvanced {
         let n_short = Arc::new(Mutex::new(HashMap::new()));
         let n_long = Arc::new(Mutex::new(HashMap::new()));
         
         let mut members = HashMap::new();
         let p = Peer{ id: id.clone(),
                       name : name.clone(),
-                      addresses : vec![ AddressType::ShortRange(String::from(sr.get_address())),
-                                        AddressType::LongRange(String::from(lr.get_address())) ]};
+                      short_address : Some(sr.get_address().into()),
+                      long_address : Some(lr.get_address().into()) };
         members.insert(id.clone(), p);
         let m = Arc::new(Mutex::new(members));
         let rng = Worker::rng_from_seed(seed);
@@ -91,7 +98,8 @@ impl TMembershipAdvanced {
                              long_radio : lr,
                              rng : rng,
                              worker_name : name,
-                             worker_id : id }
+                             worker_id : id,
+                             logger : logger }
     }
 }
 
@@ -100,7 +108,7 @@ impl Protocol for TMembershipAdvanced {
         let data = match header.payload.take() {
             Some(d) => { d },
             None => {
-                warn!("Messaged received from {:?} had empty payload.", header.sender);
+                warn!(self.logger, "Messaged received from {:?} had empty payload.", header.sender);
                 return Ok(None)
             }
         };
@@ -110,14 +118,14 @@ impl Protocol for TMembershipAdvanced {
         let fl = Arc::clone(&self.neighbours_long);
         let gl = Arc::clone(&self.network_members);
         let me = self.get_self_peer();
-        TMembershipAdvanced::handle_message_internal(header, msg, me, nl, fl, gl, r_type)
+        TMembershipAdvanced::handle_message_internal(header, msg, me, nl, fl, gl, r_type, &self.logger)
     }
 
     fn init_protocol(&self) -> Result<Option<MessageHeader>, WorkerError>{
         //Perform initial scan
         let handles = try!(self.initial_join_scan());
         //Create a thread to join on the threads and log any errors.
-        TMembershipAdvanced::log_thread_errors(handles);
+        TMembershipAdvanced::log_thread_errors(handles, &self.logger);
 
         // Start thread for heartbeat messages.
         let _res = try!(self.heartbeat_thread());
@@ -132,57 +140,58 @@ impl Protocol for TMembershipAdvanced {
 }
 
 impl TMembershipAdvanced {
+    //TODO: Fix the scan process
     fn initial_join_scan(&self) -> Result<Vec<JoinHandle<Result<(), WorkerError>>>, WorkerError> {
         let mut handles = Vec::new();
-        //Perform radio-scan.
-        let nearby_peers = try!(self.short_radio.scan_for_peers());
-        let mut far_peers = try!(self.long_radio.scan_for_peers());
+        // //Perform radio-scan.
+        // let nearby_peers = try!(self.short_radio.scan_for_peers());
+        // let mut far_peers = try!(self.long_radio.scan_for_peers());
 
-        //In a lot of cases, the devices detected by the Long-range radio will have a large intersection
-        //with those detected by the short-range one (or even be a superset of it). So, we remove those elements from
-        //those scanned by the long-range radio to not dupplicate the join handshakes
-        debug!("Far_peers.len(): {}", far_peers.len());
-        for (key, _val) in nearby_peers.iter() {
-            if far_peers.contains_key(key) {
-                debug!("Removed peer {} already present in near_peers", &key);
-                let _val = far_peers.remove(key);
-            }
-        }
-        debug!("Far_peers.len(): {}", far_peers.len());
+        // //In a lot of cases, the devices detected by the Long-range radio will have a large intersection
+        // //with those detected by the short-range one (or even be a superset of it). So, we remove those elements from
+        // //those scanned by the long-range radio to not dupplicate the join handshakes
+        // debug!("Far_peers.len(): {}", far_peers.len());
+        // for (key, _val) in nearby_peers.iter() {
+        //     if far_peers.contains_key(key) {
+        //         debug!("Removed peer {} already present in near_peers", &key);
+        //         let _val = far_peers.remove(key);
+        //     }
+        // }
+        // debug!("Far_peers.len(): {}", far_peers.len());
 
-        //Send join messages to all scanned devices with short_range radio.
-        for (key, val) in nearby_peers.iter() {
-            //Get all required resources
-            let sender = self.get_self_peer();
-            let short_radio = Arc::clone(&self.short_radio);
-            let ns = Arc::clone(&self.neighbours_short);
-            let nl = Arc::clone(&self.neighbours_long);
-            let network_members = Arc::clone(&self.network_members);
-            let name = val.0.clone();
-            let address = val.1.clone();
-            let id = key.clone();
+        // //Send join messages to all scanned devices with short_range radio.
+        // for (key, val) in nearby_peers.iter() {
+        //     //Get all required resources
+        //     let sender = self.get_self_peer();
+        //     let short_radio = Arc::clone(&self.short_radio);
+        //     let ns = Arc::clone(&self.neighbours_short);
+        //     let nl = Arc::clone(&self.neighbours_long);
+        //     let network_members = Arc::clone(&self.network_members);
+        //     let name = val.0.clone();
+        //     let address = val.1.clone();
+        //     let id = key.clone();
 
-            let jh = try!(TMembershipAdvanced::new_handshake_thread(sender, address, name, id, short_radio, RadioTypes::ShortRange, 
-                                                                    ns, nl, network_members));
-            handles.push(jh);
-        }
+        //     let jh = try!(TMembershipAdvanced::new_handshake_thread(sender, address, name, id, short_radio, RadioTypes::ShortRange, 
+        //                                                             ns, nl, network_members));
+        //     handles.push(jh);
+        // }
 
-        //Send join messages to all scanned devices with long_range radio.
-        for (key, val) in far_peers.iter() {
-            //Get all required resources
-            let sender = self.get_self_peer();
-            let long_radio = Arc::clone(&self.long_radio);
-            let ns = Arc::clone(&self.neighbours_short);
-            let nl = Arc::clone(&self.neighbours_long);
-            let network_members = Arc::clone(&self.network_members);
-            let name = val.0.clone();
-            let address = val.1.clone();
-            let id = key.clone();
+        // //Send join messages to all scanned devices with long_range radio.
+        // for (key, val) in far_peers.iter() {
+        //     //Get all required resources
+        //     let sender = self.get_self_peer();
+        //     let long_radio = Arc::clone(&self.long_radio);
+        //     let ns = Arc::clone(&self.neighbours_short);
+        //     let nl = Arc::clone(&self.neighbours_long);
+        //     let network_members = Arc::clone(&self.network_members);
+        //     let name = val.0.clone();
+        //     let address = val.1.clone();
+        //     let id = key.clone();
 
-            let jh = try!(TMembershipAdvanced::new_handshake_thread(sender, address, name, id, long_radio, RadioTypes::LongRange, 
-                                                                    ns, nl, network_members));
-            handles.push(jh);
-        }
+        //     let jh = try!(TMembershipAdvanced::new_handshake_thread(sender, address, name, id, long_radio, RadioTypes::LongRange, 
+        //                                                             ns, nl, network_members));
+        //     handles.push(jh);
+        // }
     
         Ok(handles)
     }
@@ -191,7 +200,8 @@ impl TMembershipAdvanced {
                                neighbours_short : Arc<Mutex<HashMap<String, Peer>>>,
                                neighbours_long : Arc<Mutex<HashMap<String, Peer>>>,
                                network_members : Arc<Mutex<HashMap<String, Peer>>>,
-                               r_type : RadioTypes) -> Result<Option<MessageHeader>, WorkerError> {
+                               r_type : RadioTypes,
+                               logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
         let neighbours = match r_type {
             RadioTypes::ShortRange => neighbours_short,
             RadioTypes::LongRange => neighbours_long,
@@ -199,16 +209,16 @@ impl TMembershipAdvanced {
 
         let response = match msg {
                             Messages::Join(m) => {
-                                TMembershipAdvanced::process_join_message(hdr, m, me, neighbours, network_members)
+                                TMembershipAdvanced::process_join_message(hdr, m, me, neighbours, network_members, logger)
                             },
                             Messages::Ack(m) => {
-                                TMembershipAdvanced::process_ack_message(hdr, m, neighbours, network_members)
+                                TMembershipAdvanced::process_ack_message(hdr, m, neighbours, network_members, logger)
                             },
                             Messages::Heartbeat(m) => {
-                                TMembershipAdvanced::process_heartbeat_message(hdr, m, neighbours, network_members)
+                                TMembershipAdvanced::process_heartbeat_message(hdr, m, neighbours, network_members, logger)
                             },
                             Messages::Alive(m) => {
-                                TMembershipAdvanced::process_alive_message(hdr, m, neighbours, network_members)
+                                TMembershipAdvanced::process_alive_message(hdr, m, neighbours, network_members, logger)
                             }
                        };
         response
@@ -219,15 +229,16 @@ impl TMembershipAdvanced {
     /// Receiver: All Nearby peers.
     /// Payload: Self Peer object.
     /// Actions: None.
-    fn create_join_message(sender : Peer, destination : Peer) -> Result<MessageHeader, WorkerError> {
+    fn create_join_message(sender : Peer, destination : Peer, logger : &Logger) -> Result<MessageHeader, WorkerError> {
         let data = JoinMessage;
         let join_msg = Messages::Join(data);
         let payload = try!(to_vec(&join_msg));
-        info!("Built JOIN message for peer: {}, id {}", &destination.name, destination.id);
+        info!(logger, "Built JOIN message for peer: {}, id {}", &destination.name, destination.id);
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : sender, 
-                                 destination : destination, 
+                                 destination : destination,
+                                 hops : 0,
                                  payload : Some(payload) };
         Ok(msg)
     }
@@ -239,15 +250,16 @@ impl TMembershipAdvanced {
     /// Payload: global node list.
     /// Actions: 
     ///   1. Add the sent peers to the suspected list.
-    fn create_heartbeat_message(sender : Peer, destination : Peer) -> Result<MessageHeader, WorkerError> {
+    fn create_heartbeat_message(sender : Peer, destination : Peer, logger : &Logger) -> Result<MessageHeader, WorkerError> {
         let data = HeartbeatMessage;
         let hb_msg = Messages::Heartbeat(data);
         let payload = try!(to_vec(&hb_msg));
-        info!("Built HEARTBEAT message for peer: {}, id {}", &destination.name, destination.id);
+        info!(logger, "Built HEARTBEAT message for peer: {}, id {}", &destination.name, destination.id);
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : sender, 
-                                 destination : destination, 
+                                 destination : destination,
+                                 hops : 0,
                                  payload : Some(payload) };
         Ok(msg)
     }
@@ -261,8 +273,9 @@ impl TMembershipAdvanced {
     ///   2. Construct an ACK message and reply with it.
     fn process_join_message(hdr : MessageHeader, _msg : JoinMessage, me : Peer,
                             neighbours : Arc<Mutex<HashMap<String, Peer>>>,
-                            network_members : Arc<Mutex<HashMap<String, Peer>>>) -> Result<Option<MessageHeader>, WorkerError> {
-        info!("Received JOIN message from {}", hdr.sender.name);
+                            network_members : Arc<Mutex<HashMap<String, Peer>>>,
+                            logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
+        info!(logger, "Received JOIN message from {}", hdr.sender.name);
 
         {
             //LOCK : GET : NEAR
@@ -285,11 +298,12 @@ impl TMembershipAdvanced {
             //Build the ACK message for the sender
             let ack_msg = Messages::Ack(msg_data);
             let payload = try!(to_vec(&ack_msg));
-            info!("Built ACK message for sender: {}, id {}", &hdr.sender.name, hdr.sender.id);
+            info!(logger, "Built ACK message for sender: {}, id {}", &hdr.sender.name, hdr.sender.id);
             
             //Build the message header that's ready for sending.
             let response = MessageHeader{   sender : me, 
-                                            destination : hdr.sender, 
+                                            destination : hdr.sender,
+                                            hops : 0,
                                             payload : Some(payload) };
             Ok(Some(response))
         } //LOCK : RELEASE : GNL
@@ -303,30 +317,31 @@ impl TMembershipAdvanced {
     ///   1. Add the difference between the payload and current GNL to the GNL.
     fn process_ack_message( hdr : MessageHeader, msg : AckMessage,
                             neighbours : Arc<Mutex<HashMap<String, Peer>>>,
-                            network_members : Arc<Mutex<HashMap<String, Peer>>>) -> Result<Option<MessageHeader>, WorkerError> {        
-        info!("Received ACK message from {}", hdr.sender.name);
+                            network_members : Arc<Mutex<HashMap<String, Peer>>>,
+                            logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {        
+        info!(logger, "Received ACK message from {}", hdr.sender.name);
         {
             //LOCK : GET : NEAR
             let mut near = try!(neighbours.lock());
             
             let _res = near.insert(hdr.sender.id.clone(), hdr.sender.clone());
-            info!("Added peer {}/{} to neighbours list", &hdr.sender.name, &hdr.sender.id);
+            info!(logger, "Added peer {}/{} to neighbours list", &hdr.sender.name, &hdr.sender.id);
         }   //LOCK : RELEASE : NEAR
 
         {
             //LOCK : GET : GNL
             let mut gnl = try!(network_members.lock());
 
-            debug!("{} GNL:", &hdr.sender.name);
+            debug!(logger, "{} GNL:", &hdr.sender.name);
             for (key, p) in &msg.global_peer_list {
-                debug!("{}/{}", &p.name, &key);
+                debug!(logger, "{}/{}", &p.name, &key);
             }
 
             //Get the peers (if any) in the senders GNL that are not in the current node's list.
             for (key, p) in &msg.global_peer_list {
                 if !gnl.contains_key(key) {
                     let _old = gnl.insert(key.clone(), p.clone());
-                    info!("Added peer {}/{} to membership list", &p.name, &key);
+                    info!(logger, "Added peer {}/{} to membership list", &p.name, &key);
                 }
             }
         } //LOCK : RELEASE : GNL
@@ -343,8 +358,9 @@ impl TMembershipAdvanced {
     ///   2. Add the sender to the neighbor list (if not there already)
     fn process_heartbeat_message(hdr : MessageHeader, msg : HeartbeatMessage,
                                  neighbours : Arc<Mutex<HashMap<String, Peer>>>,
-                                 network_members : Arc<Mutex<HashMap<String, Peer>>>) -> Result<Option<MessageHeader>, WorkerError> {
-        info!("Received Heartbeat message from {}, id {}", hdr.sender.name, hdr.sender.id);
+                                 network_members : Arc<Mutex<HashMap<String, Peer>>>,
+                                 logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
+        info!(logger, "Received Heartbeat message from {}, id {}", hdr.sender.name, hdr.sender.id);
         
         {
             //LOCK : GET : NL
@@ -367,11 +383,12 @@ impl TMembershipAdvanced {
         //debug!("Message payload: {:?}", &data);
         let alive_msg = Messages::Alive(data);
         let payload = try!(to_vec(&alive_msg));
-        info!("Built Alive message for peer: {}, id {}", &hdr.sender.name, hdr.sender.id);
+        info!(logger, "Built Alive message for peer: {}, id {}", &hdr.sender.name, hdr.sender.id);
         
         //Build the message header that's ready for sending.
         let msg = MessageHeader{ sender : hdr.destination, 
-                                 destination : hdr.sender, 
+                                 destination : hdr.sender,
+                                 hops : 0,
                                  payload : Some(payload) };
         //debug!("Message: {:?}", &msg);
         Ok(Some(msg))
@@ -386,23 +403,24 @@ impl TMembershipAdvanced {
     ///   2. Remove the sender from the list of suspected dead peers.
     fn process_alive_message(hdr : MessageHeader, msg : AliveMessage,
                              _neighbours : Arc<Mutex<HashMap<String, Peer>>>,
-                             network_members : Arc<Mutex<HashMap<String, Peer>>>) -> Result<Option<MessageHeader>, WorkerError> {
-        info!("Received Alive message from {}, id {}.", hdr.sender.name, hdr.sender.id);
+                             network_members : Arc<Mutex<HashMap<String, Peer>>>,
+                             logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
+        info!(logger, "Received Alive message from {}, id {}.", hdr.sender.name, hdr.sender.id);
 
         {
             //LOCK : GET : GNL
             let mut gnl = try!(network_members.lock());
 
-            debug!("{} GNL:", &hdr.sender.name);
+            debug!(logger, "{} GNL:", &hdr.sender.name);
             for (key, p) in &msg.global_peer_list {
-                debug!("{}/{}", &p.name, &key);
+                debug!(logger, "{}/{}", &p.name, &key);
             }
 
             //Get the peers (if any) in the senders GNL that are not in the current node's list.
             for (key, p) in &msg.global_peer_list {
                 if !gnl.contains_key(key) {
                     let _old = gnl.insert(key.clone(), p.clone());
-                    info!("Added peer {}/{} to membership list", &p.name, &key);
+                    info!(logger, "Added peer {}/{} to membership list", &p.name, &key);
                 }
             }
         } //LOCK : RELEASE : GNL
@@ -414,11 +432,13 @@ impl TMembershipAdvanced {
                             r : Arc<Radio>, r_type : RadioTypes, 
                             neighbours_short : Arc<Mutex<HashMap<String, Peer>>>,
                             neighbours_long : Arc<Mutex<HashMap<String, Peer>>>, 
-                            network_members : Arc<Mutex<HashMap<String, Peer>>>,) -> Result<JoinHandle<Result<(), WorkerError>>, WorkerError> {
+                            network_members : Arc<Mutex<HashMap<String, Peer>>>,
+                            logger : &Logger) -> Result<JoinHandle<Result<(), WorkerError>>, WorkerError> {
         //Destination peer
         let p = Peer { name : name,
-                        id : id,
-                        addresses : vec![ AddressType::ShortRange(address.clone()) ]};
+                      id : id,
+                      short_address : Some(address.clone()),
+                      long_address : None };
 
         let h = thread::spawn(move || -> Result<(), WorkerError> {
             //Create join message
@@ -474,9 +494,10 @@ impl TMembershipAdvanced {
         let sn = Arc::clone(&self.neighbours_short);
         let ln = Arc::clone(&self.neighbours_long);
         let network_members = Arc::clone(&self.network_members);
+        let logger = self.logger.clone();
 
         let handle = thread::spawn(move || -> Result<(), WorkerError> {
-            info!("Starting the heartbeat thread.");
+            info!(logger, "Starting the heartbeat thread.");
 
             let sleep_duration = Duration::from_millis(HEARTBEAT_TIMER);
 
@@ -489,7 +510,8 @@ impl TMembershipAdvanced {
                                                                           RadioTypes::ShortRange,
                                                                           Arc::clone(&sn), 
                                                                           Arc::clone(&ln),
-                                                                          Arc::clone(&network_members) );
+                                                                          Arc::clone(&network_members),
+                                                                          &logger );
                 random_choice = rng.next_u32();
                 let _res = TMembershipAdvanced::start_heartbeat_handshake(sender.clone(), 
                                                                           random_choice, 
@@ -497,11 +519,12 @@ impl TMembershipAdvanced {
                                                                           RadioTypes::LongRange,
                                                                           Arc::clone(&sn),
                                                                           Arc::clone(&ln), 
-                                                                          Arc::clone(&network_members) );
+                                                                          Arc::clone(&network_members),
+                                                                          &logger );
                 //Print the membership lists at the end of the cycle
-                let _ = TMembershipAdvanced::print_membership_list("Near neighbors", Arc::clone(&sn));
-                let _ = TMembershipAdvanced::print_membership_list("Far neighbors", Arc::clone(&ln));
-                let _ = TMembershipAdvanced::print_membership_list("Membership", Arc::clone(&network_members));
+                let _ = TMembershipAdvanced::print_membership_list("Near neighbors", Arc::clone(&sn), &logger);
+                let _ = TMembershipAdvanced::print_membership_list("Far neighbors", Arc::clone(&ln), &logger);
+                let _ = TMembershipAdvanced::print_membership_list("Membership", Arc::clone(&network_members), &logger);
             }
         });
         Ok(handle)
@@ -510,7 +533,8 @@ impl TMembershipAdvanced {
     fn start_heartbeat_handshake(sender : Peer,  random_choice : u32, radio : Arc<Radio>, r_type : RadioTypes,
                                  neighbours_short : Arc<Mutex<HashMap<String, Peer>>>,
                                  neighbours_long : Arc<Mutex<HashMap<String, Peer>>>, 
-                                 network_members : Arc<Mutex<HashMap<String, Peer>>>) -> Result<(), WorkerError> {
+                                 network_members : Arc<Mutex<HashMap<String, Peer>>>,
+                                 logger : &Logger) -> Result<(), WorkerError> {
         let nl = Arc::clone(&neighbours_short);
         let fl = Arc::clone(&neighbours_long);
 
@@ -542,18 +566,18 @@ impl TMembershipAdvanced {
         }   //LOCK : RELEASE : NEAR
 
         //Initial message of the heartbeat handshake.
-        let msg = TMembershipAdvanced::create_heartbeat_message(sender.clone(), selected_peer.clone())?; 
+        let msg = TMembershipAdvanced::create_heartbeat_message(sender.clone(), selected_peer.clone(), logger)?; 
         match radio.broadcast(msg) {
             Ok(_) => { },
             Err(e) => { 
-                error!("Failed to send message to {}", &selected_peer.name);
+                error!(logger, "Failed to send message to {}", &selected_peer.name);
             },
         }
 
         //Print the membership lists at the end of the cycle
-        let _ = TMembershipAdvanced::print_membership_list("Neighbors short", Arc::clone(&nl));
-        let _ = TMembershipAdvanced::print_membership_list("Neighbors long", Arc::clone(&fl));
-        let _ = TMembershipAdvanced::print_membership_list("Membership", Arc::clone(&network_members));
+        let _ = TMembershipAdvanced::print_membership_list("Neighbors short", Arc::clone(&nl), logger);
+        let _ = TMembershipAdvanced::print_membership_list("Neighbors long", Arc::clone(&fl), logger);
+        let _ = TMembershipAdvanced::print_membership_list("Membership", Arc::clone(&network_members), logger);
 
         Ok(())
     }
@@ -566,27 +590,33 @@ impl TMembershipAdvanced {
     fn get_self_peer(&self) -> Peer {
         Peer{ name : self.worker_name.clone(),
               id : self.worker_id.clone(),
-              addresses : vec![ AddressType::ShortRange( self.short_radio.get_address().to_string()) ]}
+              short_address : Some(self.short_radio.get_address().into()),
+              long_address : None, }
     }
 
-    fn print_membership_list<'a>(name : &'a str, list : Arc<Mutex<HashMap<String, Peer>>>) -> Result<(), WorkerError> {
+    fn print_membership_list<'a>(name : &'a str, 
+                                 list : Arc<Mutex<HashMap<String, Peer>>>,
+                                 logger : &Logger) -> Result<(), WorkerError> {
         let l = try!(list.lock());
 
-        info!("{}. {} members:", name, l.len());
+        info!(logger, "{}. {} members:", name, l.len());
         for (id, p) in l.iter() {
-            info!("{} : {}", p.name, id);
+            info!(logger, "{} : {}", p.name, id);
         }
         Ok(())
     }
 
-    fn log_thread_errors(handles : Vec<JoinHandle<Result<(), WorkerError>>>) {    
+    fn log_thread_errors(handles : Vec<JoinHandle<Result<(), WorkerError>>>,
+                         logger : &Logger) {
+        let this_logger = logger.clone();
+
         let _ = thread::spawn(move || {
             for h in handles {
                 let exit = h.join();
                 match exit {
                     Ok(_) => { /* All good */ },
                     Err(e) => {
-                        error!("{:?}", e);
+                        error!(this_logger, "{:?}", e);
                     }
                 }
             }

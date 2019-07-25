@@ -3,34 +3,33 @@ extern crate clap;
 extern crate rustc_serialize;
 extern crate serde;
 extern crate serde_cbor;
+
 #[macro_use]
 extern crate slog;
-extern crate slog_term;
-extern crate slog_json;
-extern crate slog_stdlog;
-extern crate slog_async;
-extern crate slog_scope;
-#[macro_use]
-extern crate log;
+
 extern crate toml;
 extern crate rand;
+extern crate color_backtrace;
 
 use mesh_simulator::worker::worker_config::WorkerConfig;
 use mesh_simulator::worker;
+use mesh_simulator::logging;
 use clap::{Arg, App, ArgMatches};
-use slog::Drain;
 use std::fs::{OpenOptions, File, self};
 use std::io::{self, Read};
 use std::fmt;
 use std::error;
 use std::env;
 use std::path::Path;
+use slog::{Drain, Logger};
 
 const ARG_CONFIG : &'static str = "config";
 const ARG_WORKER_NAME : &'static str = "worker_name";
 const ARG_WORK_DIR : &'static str = "work_dir";
 const ARG_RANDOM_SEED : &'static str = "random_seed";
-const ARG_OPERATION_MODE : &'static str = "operation_mode";
+const ARG_REGISTER_WORKER : &'static str = "register_worker";
+const ARG_ACCEPT_COMMANDS : &'static str = "accept_commands";
+const ARG_TERMINAL_LOG : &'static str = "term_log";
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const CONFIG_FILE_NAME  : &'static str = "worker.toml";
 const ERROR_EXECUTION_FAILURE : i32 = 1;
@@ -121,77 +120,23 @@ impl From<toml::de::Error> for CLIError {
 }
 // ***************End Errors****************
 
-fn init_logger<'a>(work_dir : &'a str, worker_name : &'a str) -> Result<(), CLIError>  { 
-    let log_dir_name = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "log");
-    let log_dir = Path::new(log_dir_name.as_str());
-    
-    if !log_dir.exists() {
-        try!(std::fs::create_dir(log_dir));
-    }
-
-    let mut log_dir_buf = log_dir.to_path_buf();
-    log_dir_buf.push(format!("{}{}", worker_name, ".log"));
-    
-    //At this point the log folder has been created, so the path should be valid.
-    let log_file_name = log_dir_buf.to_str().unwrap();
-
-    let log_file = try!(OpenOptions::new()
-                        .create(true)
-                        .write(true)
-                        .truncate(true)
-                        .open(log_file_name));
-
-    //Create the terminal drain
-    let decorator = slog_term::TermDecorator::new().build();
-    let d1 = slog_term::FullFormat::new(decorator).build().fuse();
-    let d1 = slog_async::Async::new(d1).build().fuse();
-
-    //Create the file drain
-    let d2 = slog_json::Json::new(log_file)
-        .add_default_keys()
-        .build()
-        .fuse();
-    let d2 = slog_async::Async::new(d2).build().fuse();
-
-    let process_name = String::from(worker_name);
-    //Fuse the drains and create the logger
-    let logger = slog::Logger::root(slog::Duplicate::new(d1, d2).fuse(), o!("Process" => process_name));
-    //let logger = slog::Logger::root(d2, o!("Process" => process_name));
-
-    // let console_drain = slog_term::streamer().build();
-    // let file_drain = slog_stream::stream(log_file, slog_json::default());
-    // let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!("Process" => process_name));
-    
-    //slog_stdlog uses the logger from slog_scope, so set a logger there
-    let _guard = slog_scope::set_global_logger(logger);
-    
-    // register slog_stdlog as the log handler with the log crate
-    // let result = match slog_stdlog::init() {
-    //     Ok(_) => Ok(()),
-    //     Err(err) => Err( CLIError::SetLogger(format!("Error setting logger: {}", err))),
-    // };
-
-    // result
-    slog_stdlog::init().unwrap();
-    Ok(())
-} 
-
-fn run(config : WorkerConfig) -> Result<(), CLIError> {
-   let mut obj =  config.create_worker()?;
+fn run(config : WorkerConfig, logger : Logger) -> Result<(), CLIError> {
+    let ac = config.accept_commands.unwrap_or(false);
+   let mut obj =  config.create_worker(logger)?;
    //debug!("Worker Obj: {:?}", obj);
-   try!(obj.start());
+   let _res = obj.start(ac)?;
    Ok(())
 }
 
 fn load_conf_file<'a>(file_path : &'a str) -> Result<WorkerConfig, CLIError> {
     //Check that configuration file passed exists.
     //If it doesn't exist, error out
-    let mut file = try!(File::open(file_path));
+    let mut file = File::open(file_path)?;
     let mut file_content = String::new();
     //Not checking bytes read since all we can check without scanning the file is that is not empty.
     //The serialization framework however, will do the appropriate validations.
-    try!(file.read_to_string(&mut file_content));
-    let configuration : WorkerConfig = try!(toml::from_str(&file_content));
+    let _res = file.read_to_string(&mut file_content)?;
+    let configuration : WorkerConfig = toml::from_str(&file_content)?;
     Ok(configuration)
 }
 
@@ -205,29 +150,29 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                                 .value_name("FILE")
                                 .help("Configuration file for the worker.")
                                 .takes_value(true))
-                          .arg(Arg::with_name(ARG_WORKER_NAME)
-                                .short("worker")
-                                .value_name("NAME")
-                                .long("worker_name")
-                                .help("Friendly name for this worker.")
-                                .takes_value(true))
-                          .arg(Arg::with_name(ARG_OPERATION_MODE)
-                                .short("mode")
-                                .value_name("MODE")
-                                .long("operation_mode")
-                                .help("Should the worker operte in DEVICE or SIMULATED mode?")
-                                .takes_value(true))
-                          .arg(Arg::with_name(ARG_RANDOM_SEED)
-                                .short("random")
-                                .value_name("SEED")
-                                .long("random_seed")
-                                .help("Random seed usef for all RNG operations.")
-                                .takes_value(true))
                           .arg(Arg::with_name(ARG_WORK_DIR)
                                 .short("dir")
                                 .long("work_dir")
                                 .value_name("DIR")
                                 .help("Operating directory for the program, where results and logs will be placed.")
+                                .takes_value(true))
+                          .arg(Arg::with_name(ARG_REGISTER_WORKER)
+                                .short("register")
+                                .long("register_worker")
+                                .value_name("true/false")
+                                .help("Should the worker register in the DB. Option should be NO when started by the Master.")
+                                .takes_value(true))
+                          .arg(Arg::with_name(ARG_ACCEPT_COMMANDS)
+                                .short("accept")
+                                .long("accept_commands")
+                                .value_name("true/false")
+                                .help("Should this worker start a thread to listen for commands")
+                                .takes_value(true))
+                          .arg(Arg::with_name(ARG_TERMINAL_LOG)
+                                .short("log_term")
+                                .long("log_to_terminal")
+                                .value_name("true/false")
+                                .help("Should this worker log operations to the terminal as well")
                                 .takes_value(true))
                           .get_matches()
 }
@@ -237,53 +182,53 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
     // Worker_name
     config.worker_name = matches.value_of(ARG_WORKER_NAME).unwrap_or(config.worker_name.as_str()).to_string();
     if config.worker_name.is_empty() {
-        error!("worker_name can't be empty.");
+        eprintln!("worker_name can't be empty.");
         return Err(CLIError::Configuration("Worker name was empty.".to_string()))
     }
 
     //work_dir
     config.work_dir = matches.value_of(ARG_WORK_DIR).unwrap_or(config.work_dir.as_str()).to_string();
-    let dir_info = try!(fs::metadata(std::path::Path::new(config.work_dir.as_str())));
+    let dir_info = fs::metadata(std::path::Path::new(config.work_dir.as_str()))?;
     if !dir_info.is_dir() || dir_info.permissions().readonly() {
-        error!("work_dir is not a valid directory or it's not writable.");
+        eprintln!("work_dir is not a valid directory or it's not writable.");
         return Err(CLIError::Configuration("work_dir is not a valid directory or it's not writable.".to_string()))
     }
 
-    // Operation_mode and broadcast group
-    // If operation_mode is "Simulated", at least 1 broadcast group must be provided.
-    let op_mode_param = matches.value_of(ARG_OPERATION_MODE).unwrap_or("");
-    if !op_mode_param.is_empty() {
-        config.operation_mode = try!(op_mode_param.parse::<worker::OperationMode>());
-    }
+    // Accept commands
+    config.accept_commands = matches.value_of(ARG_ACCEPT_COMMANDS)
+                                    .map(|v| v.parse::<bool>().unwrap_or(false))
+                                    .or(config.accept_commands);
+
+    // Log to terminal
+    config.term_log = matches.value_of(ARG_TERMINAL_LOG)
+                                    .map(|v| v.parse::<bool>().unwrap_or(false))
+                                    .or(config.term_log);
 
     Ok(())
 }
 
 /// The init process performs all initialization required for the worker_cli.
-/// It performs 3 main tasks: read the configuration file, process the command line parameters,
-/// and initialize the logger.
+/// It performs 2 main tasks: read the configuration file and process the command line parameters.
 fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
     //Read the configuration file.
-    let mut current_dir = try!(env::current_dir());
+    let mut current_dir = env::current_dir()?;
     let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
         //No configuration file was passed. Look for default option: current_dir + default name.
          current_dir.push(CONFIG_FILE_NAME);
          current_dir.to_str().expect("No configuration file was provided and current directory is not readable.")
     });
-    let mut configuration = try!(load_conf_file(config_file_path));
+    let mut configuration = load_conf_file(config_file_path)?;
     
     //Validate the current configuration
-    //This mus always be done before initializing the logger, as it can change the work dir.
-    try!(validate_config(&mut configuration, &matches));
-    //debug!("Config: {:?}", configuration);
-
-    //Initialize logger
-    try!(init_logger(&configuration.work_dir, &configuration.worker_name));
+    let _res = validate_config(&mut configuration, &matches)?;
 
     Ok(configuration)
 }
 
 fn main() {
+    //Enable the a more readable version of backtraces
+    color_backtrace::install();
+
     //Get the CLI parameters
     let matches = get_cli_parameters();
 
@@ -293,9 +238,20 @@ fn main() {
                             ::std::process::exit(ERROR_INITIALIZATION);
                         });
 
+    let log_file_name = format!("{}{}{}{}{}.log", &config.work_dir,
+                                                std::path::MAIN_SEPARATOR,
+                                                logging::LOG_DIR_NAME,
+                                                std::path::MAIN_SEPARATOR,
+                                                &config.worker_name );
+    let logger = logging::create_logger(&log_file_name,
+                                        config.term_log.clone().unwrap_or(false)).unwrap_or_else(|e| {
+                            println!("worker_cli failed with the following error: {}", e);
+                            ::std::process::exit(ERROR_INITIALIZATION);
+    });
+
     //Main loop
-    if let Err(ref e) = run(config) {
-        error!("worker_cli failed with the following error: {}", e);
+    if let Err(ref e) = run(config, logger.clone()) {
+        error!(logger, "worker_cli failed with the following error: {}", e);
         ::std::process::exit(ERROR_EXECUTION_FAILURE);
     }
 }
@@ -314,15 +270,15 @@ mod worker_cli_tests {
        */ 
     // }
 
-    //Unit test for: init_logger
-    #[test]
-    fn test_init_logger() {
-        let worker_name = "test_worker";
-        let dir = std::env::temp_dir();
-        let res = init_logger(dir.to_str().unwrap(), worker_name);
+    // //Unit test for: init_logger
+    // #[test]
+    // fn test_init_logger() {
+    //     let worker_name = "test_worker";
+    //     let dir = std::env::temp_dir();
+    //     let res = init_logger(dir.to_str().unwrap(), worker_name);
         
-        assert!(res.is_ok());
-    }
+    //     assert!(res.is_ok());
+    // }
 
     //Unit test for: run
     // #[test]
@@ -343,7 +299,14 @@ mod worker_cli_tests {
 
         assert!(res.is_ok());
     }
-    
+    //Used to test the output of colored panic.
+    #[test]
+    #[should_panic]
+    fn test_colored_panic() {
+        color_backtrace::install();
+        panic!("This is supposed to panic!");
+    }
+
     //Unit test for: get_cli_parameters
     // #[test]
     // #[ignore]
