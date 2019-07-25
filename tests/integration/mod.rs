@@ -8,3 +8,4 @@ mod random_waypoint;
 mod tmembership;
 mod naive_routing;
 mod reactive_gossip;
+mod lora_wifi_beacon;

@@ -1,0 +1,487 @@
+name = "lora_wifi_beacon_placement"
+duration = 10500
+actions = []
+width = 200.0
+height = 200.0
+
+[initial_nodes.node2]
+worker_name = "node2"
+worker_id = "0fe453ddfda62d5454de89d63ca1a11f"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 3573741273
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 16.0
+y = 0.0
+
+[initial_nodes.node2.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node2.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node2.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node18]
+worker_name = "node18"
+worker_id = "3cbcef39e65823bc900064b938965866"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 955505385
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 32.0
+y = 48.0
+
+[initial_nodes.node18.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node18.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node18.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node6]
+worker_name = "node6"
+worker_id = "74b858ae763bffd49b395054b718f636"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 1776752763
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 0.0
+y = 16.0
+
+[initial_nodes.node6.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node6.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node6.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node3]
+worker_name = "node3"
+worker_id = "5f02cc09da5f99c62d2e10d1b476fb05"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 175154281
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 32.0
+y = 0.0
+
+[initial_nodes.node3.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node3.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node3.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node12]
+worker_name = "node12"
+worker_id = "b6d4a63bd4182fb16464a702d7209957"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 3479760243
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 16.0
+y = 32.0
+
+[initial_nodes.node12.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node12.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node12.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node15]
+worker_name = "node15"
+worker_id = "146608182b2f1f867039de58821aed37"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 3224122612
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 64.0
+y = 32.0
+
+[initial_nodes.node15.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node15.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node15.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node10]
+worker_name = "node10"
+worker_id = "25847cabddb1f75be4e0b464cad0bfd4"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 672013004
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 64.0
+y = 16.0
+
+[initial_nodes.node10.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node10.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node10.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node19]
+worker_name = "node19"
+worker_id = "cd90ed5c5e409a90ed1b97a6cd701791"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 966391095
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 48.0
+y = 48.0
+
+[initial_nodes.node19.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node19.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node19.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node11]
+worker_name = "node11"
+worker_id = "44b47754d205d4d2d22008b8271d8047"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 198793749
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 0.0
+y = 32.0
+
+[initial_nodes.node11.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node11.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node11.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node9]
+worker_name = "node9"
+worker_id = "63ee9bdfdc17195fbc95182abb7b748f"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 2739271429
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 48.0
+y = 16.0
+
+[initial_nodes.node9.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node9.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node9.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node13]
+worker_name = "node13"
+worker_id = "5fff9039ae73c196014760a9a4131843"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 326049953
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 32.0
+y = 32.0
+
+[initial_nodes.node13.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node13.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node13.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node1]
+worker_name = "node1"
+worker_id = "4fe8996ed8abed7fa7b1bb86869162af"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 2267954642
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 0.0
+y = 0.0
+
+[initial_nodes.node1.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node1.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node1.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node17]
+worker_name = "node17"
+worker_id = "b8f54b1a5704f5efb0ea369d14cf0831"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 482835388
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 16.0
+y = 48.0
+
+[initial_nodes.node17.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node17.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node17.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node16]
+worker_name = "node16"
+worker_id = "549705d0979a384d374bf865517932ba"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 3968879406
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 0.0
+y = 48.0
+
+[initial_nodes.node16.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node16.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node16.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node8]
+worker_name = "node8"
+worker_id = "23d8d0fc7f630deedc7d131b75d45678"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 1322032587
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 32.0
+y = 16.0
+
+[initial_nodes.node8.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node8.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node8.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node4]
+worker_name = "node4"
+worker_id = "cf517f9608e8e4f2581b5b9932b7a4be"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 426831726
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 48.0
+y = 0.0
+
+[initial_nodes.node4.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node4.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node4.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node20]
+worker_name = "node20"
+worker_id = "8bda1930d307ada0c1544d02e9b43e1c"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 2999963010
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 64.0
+y = 48.0
+
+[initial_nodes.node20.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node20.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node20.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node7]
+worker_name = "node7"
+worker_id = "b9678c75090d5117c054e5261e24edeb"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 4281626524
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 16.0
+y = 16.0
+
+[initial_nodes.node7.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node7.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node7.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node5]
+worker_name = "node5"
+worker_id = "701f01c52e608f7c4e9c2f0e95f7d09b"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 1718013781
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 64.0
+y = 0.0
+
+[initial_nodes.node5.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node5.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node5.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[initial_nodes.node14]
+worker_name = "node14"
+worker_id = "fc9665f1b663cd5f50859d5c612dd482"
+work_dir = "/tmp/lora_wifi_beacon_placement307062120"
+random_seed = 1563022962
+operation_mode = "Simulated"
+protocol = "LoraWifiBeacon"
+x = 48.0
+y = 32.0
+
+[initial_nodes.node14.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node14.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 20.0
+
+[initial_nodes.node14.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 38.0
+
+[available_nodes]

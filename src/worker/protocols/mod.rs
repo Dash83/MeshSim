@@ -13,6 +13,7 @@ use self::tmembership::TMembership;
 use self::tmembership_advanced::*;
 use self::naive_routing::*;
 use self::reactive_gossip_routing::*;
+use self::lora_wifi_beacon::*;
 use ::slog::Logger;
 
 use std;
@@ -23,6 +24,7 @@ pub mod tmembership;
 pub mod tmembership_advanced;
 pub mod naive_routing;
 pub mod reactive_gossip_routing;
+pub mod lora_wifi_beacon;
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should 
@@ -50,6 +52,8 @@ pub enum Protocols {
     NaiveRouting,
     ///  Adaptive, gossip-based routing protocol
     ReactiveGossip,
+    /// Test protocol for Lora-Wifi integration
+    LoraWifiBeacon,
 }
 
 impl FromStr for Protocols {
@@ -66,6 +70,7 @@ impl FromStr for Protocols {
             "TMEMBERSHIP_ADVANCED" => Ok(Protocols::TMembershipAdvanced),
             "NAIVEROUTING" => Ok(Protocols::NaiveRouting),
             "REACTIVEGOSSIP" => Ok(Protocols::ReactiveGossip),
+            "LORAWIFIBEACON" => Ok(Protocols::LoraWifiBeacon),
             _ => Err(WorkerError::Configuration(String::from("The specified protocol is not supported."))),
         }
     }
@@ -141,7 +146,29 @@ pub fn build_protocol_resources( p : Protocols,
             let resources = ProtocolResources{  handler : handler, 
                                                 radio_channels : radio_channels };
             Ok(resources)            
-        }
+        },
+
+        Protocols::LoraWifiBeacon => {
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let (sr, sr_listener) = short_radio.expect("The LoraWifiBeacon protocol requires a Wifi radio to be provided.");
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let (lr, lr_listener) = long_radio.expect("The LoraWifiBeacon protocol requires a Lora radio to be provided.");
+
+            //Build the listeners list
+            let mut radio_channels = Vec::new();
+            radio_channels.push((sr_listener, Arc::clone(&sr)));
+            radio_channels.push((lr_listener, Arc::clone(&lr)));
+
+            let rng = Worker::rng_from_seed(seed);
+
+            //Build the protocol handler
+            let handler : Arc<Protocol> = Arc::new(LoraWifiBeacon::new(name, id, sr, lr,  logger));
+
+            //Build the resources context
+            let resources = ProtocolResources{ handler : handler,
+                                               radio_channels : radio_channels };
+            Ok(resources)
+        },
 
     }
 }
