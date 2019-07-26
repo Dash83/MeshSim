@@ -9,6 +9,7 @@ extern crate slog;
 #[macro_use]
 extern crate pretty_assertions;
 extern crate serde_json;
+extern crate rand;
 
 pub mod master;
 pub mod worker;

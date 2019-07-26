@@ -16,9 +16,11 @@ use std::thread;
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
 use self::md5::Digest;
+use rand::thread_rng;
+use rand::RngCore;
 
-const WIFI_BEACON_TIMEOUT : u64 = 1_000;
-const LORA_BEACON_TIMEOUT : u64 = 1_000;
+const WIFI_BEACON_TIMEOUT : u64 = 2_000;
+const LORA_BEACON_TIMEOUT : u64 = 2_000;
 
 ///Base structure to hold the state of the LoraWifiBeacon protocol
 #[derive(Debug)]
@@ -52,6 +54,11 @@ impl Protocol for LoraWifiBeacon {
                 return Ok(None)
             }
         };
+
+        //Filter out packets coming from this node, as we get many from the multicast.
+        if hdr.sender.name == self.worker_name {
+            return Ok(None)
+        }
 
         let msg = LoraWifiBeacon::build_protocol_message(data)?;
         let self_peer = self.get_self_peer();
@@ -91,6 +98,8 @@ impl Protocol for LoraWifiBeacon {
         let logger = self.logger.clone();
         let link = String::from("lora");
         let lora_beacon_handle = thread::spawn(move || {
+            let initial_offset : u64 = thread_rng().next_u64() % 3_000u64;
+            thread::sleep(Duration::from_millis(initial_offset));
             LoraWifiBeacon::beacon_loop(lora_radio,
                                         LORA_BEACON_TIMEOUT,
                                         self_peer,
