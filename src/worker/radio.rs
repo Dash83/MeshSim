@@ -1,6 +1,6 @@
 //! This module defines the abstraction and functionality for what a Radio is in MeshSim
 
-extern crate pnet;
+extern crate pnet_datalink;
 extern crate ipnetwork;
 extern crate socket2;
 extern crate md5;
@@ -290,9 +290,7 @@ impl WifiRadio {
     /// Get the public address of the OS-NIC that maps to this Radio object.
     /// It will return the first IPv4 address from a NIC that exactly matches the name.
     fn get_radio_address<'a>(name : &'a str) -> Result<String, WorkerError> {
-        use self::pnet::datalink;
-
-        for iface in datalink::interfaces() {
+        for iface in pnet_datalink::interfaces() {
             if &iface.name == name {
                 for address in iface.ips {
                     match address {
@@ -312,9 +310,7 @@ impl WifiRadio {
 
     ///Get the index of the passed interface name
     fn get_interface_index<'a>(name : &'a str) -> Option<u32> {
-        use self::pnet::datalink;
-
-        for iface in datalink::interfaces() {
+        for iface in pnet_datalink::interfaces() {
             if &iface.name == name {
                 return Some(iface.index)
             }
