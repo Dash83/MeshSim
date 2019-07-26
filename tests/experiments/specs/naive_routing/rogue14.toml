@@ -1,9 +1,9 @@
-worker_name = "rogue1"
-worker_id = "d58c2de34089d0dc012e2a0837f35801"
-work_dir = "/tmp/lora_wifi_beacon_placement3759956228"
-random_seed = 4177468631
+worker_name = "rogue14"
+worker_id = "a70f6acd92ea15138b105b5e64dc7b58"
+work_dir = "/tmp/naive_routing307062120"
+random_seed = 2064441343
 operation_mode = "Device"
-protocol = "LoraWifiBeacon"
+protocol = "NaiveRouting"
 x = 0.0 #ignored
 y = 0.0 #ignored
 [velocity]
