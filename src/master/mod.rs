@@ -26,8 +26,8 @@ extern crate rand;
 extern crate rusqlite;
 extern crate libc;
 
-use worker::worker_config::WorkerConfig;
-use worker::radio::SimulatedRadio;
+use crate::worker::worker_config::WorkerConfig;
+use crate::worker::radio::SimulatedRadio;
 use std::process::{Command, Child, Stdio};
 use std::io;
 use std::io::{BufRead, Write, BufReader};
@@ -41,7 +41,7 @@ use std::sync::{Arc, Mutex};
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::collections::{HashMap, HashSet};
-use worker::mobility::*;
+use crate::worker::mobility::*;
 use self::workloads::SourceProfiles;
 use self::rand::{thread_rng, Rng, RngCore};
 use self::rand::distributions::{Uniform, Normal};
@@ -115,7 +115,7 @@ pub enum MasterError {
     /// Errors generated when doing IO operations.
     IO(io::Error),
     ///Errors generated in the worker module.
-    Worker(::worker::WorkerError),
+    Worker(crate::worker::WorkerError),
     ///Errors when deserializing TOML files.
     TOML(toml::de::Error),
     ///Error produced when Master fails to parse a Test specification.
@@ -148,8 +148,8 @@ impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, (i64, Arc<Mutex<Child>>
     }
 }
 
-impl From<::worker::WorkerError> for MasterError {
-    fn from(err : ::worker::WorkerError) -> MasterError {
+impl From<crate::worker::WorkerError> for MasterError {
+    fn from(err : crate::worker::WorkerError) -> MasterError {
         MasterError::Worker(err)
     }
 }
@@ -337,7 +337,7 @@ impl Master {
 
         //Start mobility thread
         match self.start_mobility_thread() {
-            Ok(h) => { 
+            Ok(_h) => { 
                 info!(&self.logger, "Mobility thread started");
                 //action_handles.push(h);
             },
@@ -598,12 +598,12 @@ impl Master {
                         let mut c = child.1.lock().unwrap();
                         let ping_data = base64::encode("PING".as_bytes());
                         let payload = format!("SEND {} {}\n", &destination, &ping_data);
-                        let res = c.stdin.as_mut().unwrap().write_all(payload.as_bytes());
+                        let _res = c.stdin.as_mut().unwrap().write_all(payload.as_bytes());
                     } else {
                         error!(logger, "Ping {}->{} action: Process {} not found in Master's collection.", &source, &destination, &source);
                     }
                 },
-                Err(e) => { 
+                Err(_e) => { 
                     error!(logger, "Ping {}->{} action: Could not obtain lock to workers, Action aborted.", &source, &destination);
                 },
             }
@@ -659,7 +659,7 @@ impl Master {
                     return Err(MasterError::Sync(format!("Could not find process for {}", &source)))
                 }
             },
-            Err(e) => { 
+            Err(_e) => { 
                 return Err(MasterError::Sync(String::from("Could not lock workers list")))
             },
         };
@@ -696,7 +696,7 @@ impl Master {
                         },
                     }
                 }
-                Err(e) => {
+                Err(_e) => {
                     let err = format!("Process {} is not in the Master list. Can't send data. Aborting CBR.", &source);
                     error!(logger, "{}", &err);
                     return Err(MasterError::Sync(err))
@@ -731,7 +731,7 @@ impl Master {
             Ok(c) => c,
             //This is a gross workaround for the error handling but it works for now. 
             //Clean up later. Or never. Probably never.
-            Err(e) => return Err(io::Error::new(io::ErrorKind::Other, MasterError::Sync(String::from("Could not connect to DB"))))
+            Err(_e) => return Err(io::Error::new(io::ErrorKind::Other, MasterError::Sync(String::from("Could not connect to DB"))))
         };
 
         tb.name(String::from("MobilityThread"))
@@ -793,7 +793,7 @@ impl Master {
                               width_sample : &Uniform<f64>,
                               height_sample : &Uniform<f64>,
                               walking_sample : &Normal,
-                              wait_sample : &Uniform<u64>,
+                              _wait_sample : &Uniform<u64>,
                               rng : &mut RngCore,
                               db_path : &String,
                               logger : &Logger,  ) {
@@ -931,7 +931,7 @@ impl Master {
 // *****************************
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
 
     // //**** Create master with 0 workers ****
     // //Unit test for: Master::new

@@ -1,8 +1,8 @@
 //! This module implements the features to give the worker commands after it has started.
 extern crate base64;
 
-use worker::radio::RadioTypes;
-use worker::WorkerError;
+
+use crate::worker::WorkerError;
 use std::str::FromStr;
 
 /// Enummeration of all the commands the worker supports

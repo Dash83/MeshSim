@@ -15,17 +15,17 @@ extern crate color_backtrace;
 use mesh_simulator::master::*;
 use mesh_simulator::master;
 use clap::{Arg, App, ArgMatches};
-use std::str::FromStr;
+
 // use slog::DrainExt;
-use std::fs::{OpenOptions};
-use std::path::{Path, PathBuf};
+
+use std::path::{PathBuf};
 use std::io;
 use std::error;
 use std::fmt;
 use std::error::Error;
 use mesh_simulator::logging;
 use std::time::Duration;
-use ::slog::Logger;
+
 
 //const ARG_CONFIG : &'static str = "config";
 const ARG_WORK_DIR : &'static str = "work_dir";

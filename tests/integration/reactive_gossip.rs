@@ -66,7 +66,7 @@ fn test_route_teardown() {
                                   std::path::MAIN_SEPARATOR,
                                   DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_log_record("msg",
+    let _master_node_num = logging::find_log_record("msg",
                                                    "End_Test action: Finished. 23 processes terminated.",
                                                    &master_log_records);
 

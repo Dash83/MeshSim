@@ -9,8 +9,8 @@ extern crate linux_embedded_hal as hal;
 #[cfg(target_os="linux")]
 extern crate sx1276;
 
-use worker::*;
-use worker::listener::*;
+use crate::worker::*;
+use crate::worker::listener::*;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
 use ::slog::Logger;
@@ -159,7 +159,7 @@ impl SimulatedRadio {
     pub fn new( reliability : f64, 
                 work_dir : String,
                 id : String,
-                worker_name : String,
+                _worker_name : String,
                 r_type : RadioTypes,
                 range : f64,
                 rng : Arc<Mutex<StdRng>>,
@@ -463,9 +463,9 @@ pub fn new_lora_radio(
 #[cfg(not(target_os="linux"))]
 ///Used to produce a Lora Radio trait object
 pub fn new_lora_radio(
-    frequency: u64,
-    spreading_factor: u32,
-    transmission_power: u8,
+    _frequency: u64,
+    _spreading_factor: u32,
+    _transmission_power: u8,
 ) -> Result<(Arc<Radio>, Box<Listener>), WorkerError> {
     panic!("Lora radio creation is only supported on Linux");
 }

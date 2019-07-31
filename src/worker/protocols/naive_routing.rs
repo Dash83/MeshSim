@@ -5,9 +5,9 @@ extern crate serde_cbor;
 extern crate rand;
 extern crate md5;
 
-use worker::protocols::Protocol;
-use worker::{WorkerError, Peer, MessageHeader};
-use worker::radio::*;
+use crate::worker::protocols::Protocol;
+use crate::worker::{WorkerError, Peer, MessageHeader};
+use crate::worker::radio::*;
 use std::sync::{Arc, Mutex};
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
@@ -45,7 +45,7 @@ impl Protocol for NaiveRouting {
         Ok(None)
     }
 
-    fn handle_message(&self, mut header : MessageHeader, r_type : RadioTypes) -> Result<Option<MessageHeader>, WorkerError> {
+    fn handle_message(&self, mut header : MessageHeader, _r_type : RadioTypes) -> Result<Option<MessageHeader>, WorkerError> {
         let msg_hash = header.get_hdr_hash()?;
 
         let data = match header.payload.take() {
