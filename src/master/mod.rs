@@ -283,7 +283,7 @@ impl Master {
                 //Start the child process
                 let listen_for_commands = active_nodes.contains(&val.worker_name);
 
-                let mut res = Master::run_worker(&self.worker_binary, 
+                let res = Master::run_worker(&self.worker_binary, 
                                              &self.work_dir,
                                              listen_for_commands,
                                              &val,
@@ -357,7 +357,7 @@ impl Master {
         //let cl = self.start_command_loop_thread()?;
 
         //All actions have been scheduled. Wait for all actions to be executed and then exit.
-        for mut h in action_handles {
+        for h in action_handles {
              match h.join() {
                 Ok(_) => { 
 
@@ -560,7 +560,7 @@ impl Master {
             let workers = workers.lock();
             match workers {
                 Ok(mut w) => { 
-                    if let Some(mut child) = w.get_mut(&name) {
+                    if let Some(child) = w.get_mut(&name) {
                         let mut c = child.1.lock().unwrap();
                         match c.kill() {
                             Ok(_) => {
@@ -594,7 +594,7 @@ impl Master {
             let workers = workers.lock();
             match workers {
                 Ok(mut w) => { 
-                    if let Some(mut child) = w.get_mut(&source) {
+                    if let Some(child) = w.get_mut(&source) {
                         let mut c = child.1.lock().unwrap();
                         let ping_data = base64::encode("PING".as_bytes());
                         let payload = format!("SEND {} {}\n", &destination, &ping_data);

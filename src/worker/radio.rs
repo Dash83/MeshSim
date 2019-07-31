@@ -4,10 +4,6 @@ extern crate pnet;
 extern crate ipnetwork;
 extern crate socket2;
 extern crate md5;
-#[cfg(target_os="linux")]
-extern crate linux_embedded_hal as hal;
-#[cfg(target_os="linux")]
-extern crate sx1276;
 
 use crate::worker::*;
 use crate::worker::listener::*;
@@ -18,6 +14,10 @@ use std::sync::Arc;
 
 #[cfg(target_os="linux")]
 use self::sx1276::socket::{Link, LoRa};
+#[cfg(target_os="linux")]
+use linux_embedded_hal as hal;
+#[cfg(target_os="linux")]
+use sx1276;
 
 const SIMULATED_SCAN_DIR : &'static str = "addr";
 const SHORT_RANGE_DIR : &'static str = "short";
@@ -423,9 +423,9 @@ pub fn new_lora_radio(
     spreading_factor: u32,
     transmission_power: u8,
 ) -> Result<(Arc<Radio>, Box<Listener>), WorkerError> {
-    use worker::radio::hal::spidev::{self, SpidevOptions};
-    use worker::radio::hal::sysfs_gpio::Direction;
-    use worker::radio::hal::{Pin, Spidev};
+    use crate::worker::radio::hal::spidev::{self, SpidevOptions};
+    use crate::worker::radio::hal::sysfs_gpio::Direction;
+    use crate::worker::radio::hal::{Pin, Spidev};
 
     let mut spi = Spidev::open("/dev/spidev0.0").unwrap();
     let options = SpidevOptions::new()
