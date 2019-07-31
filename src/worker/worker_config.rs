@@ -165,7 +165,7 @@ impl WorkerConfig {
                      operation_mode : OperationMode::Simulated,
                      accept_commands : None,
                      term_log : None,
-                     protocol : Protocols::TMembership,
+                     protocol : Protocols::NaiveRouting,
                      radio_short : None,
                      radio_long : None,
                      position : Position{ x : 0.0, y : 0.0 },
@@ -291,7 +291,7 @@ mod tests {
     #[test]
     fn test_workerconfig_new() {
         let config = WorkerConfig::new();
-        let config_str = "WorkerConfig { worker_name: \"worker1\", worker_id: None, work_dir: \".\", random_seed: 0, operation_mode: Simulated, accept_commands: None, term_log: None, protocol: TMembership, position: Position { x: 0.0, y: 0.0 }, destination: None, velocity: Velocity { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
+        let config_str = "WorkerConfig { worker_name: \"worker1\", worker_id: None, work_dir: \".\", random_seed: 0, operation_mode: Simulated, accept_commands: None, term_log: None, protocol: NaiveRouting, position: Position { x: 0.0, y: 0.0 }, destination: None, velocity: Velocity { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
 
         assert_eq!(format!("{:?}", config), config_str);
     }
@@ -334,7 +334,7 @@ mod tests {
         //Assert the file was written.
         assert!(path.exists());
 
-        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"TMembership\"\nx = 0.0\ny = 0.0\n\n[velocity]\nx = 0.0\ny = 0.0\n\n[radio_short]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n\n[radio_long]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n";
+        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"NaiveRouting\"\nx = 0.0\ny = 0.0\n\n[velocity]\nx = 0.0\ny = 0.0\n\n[radio_short]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n\n[radio_long]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n";
         
         let mut file_content = String::new();
         let _res = File::open(path).unwrap().read_to_string(&mut file_content);

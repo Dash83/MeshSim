@@ -37,7 +37,7 @@ impl TestBasics {
     pub fn new() -> TestBasics {
         TestBasics{ test_name : String::from(""),
                     end_time : 0,
-                    protocol : Protocols::TMembership,
+                    protocol : Protocols::NaiveRouting,
                     width : 0.0,
                     height : 0.0,
                     m_model : None,
