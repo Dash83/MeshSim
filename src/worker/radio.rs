@@ -4,13 +4,9 @@ extern crate pnet;
 extern crate ipnetwork;
 extern crate socket2;
 extern crate md5;
-#[cfg(target_os="linux")]
-extern crate linux_embedded_hal as hal;
-#[cfg(target_os="linux")]
-extern crate sx1276;
 
-use worker::*;
-use worker::listener::*;
+use crate::worker::*;
+use crate::worker::listener::*;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
 use ::slog::Logger;
@@ -18,6 +14,10 @@ use std::sync::Arc;
 
 #[cfg(target_os="linux")]
 use self::sx1276::socket::{Link, LoRa};
+#[cfg(target_os="linux")]
+use linux_embedded_hal as hal;
+#[cfg(target_os="linux")]
+use sx1276;
 
 const SIMULATED_SCAN_DIR : &'static str = "addr";
 const SHORT_RANGE_DIR : &'static str = "short";
@@ -159,7 +159,7 @@ impl SimulatedRadio {
     pub fn new( reliability : f64, 
                 work_dir : String,
                 id : String,
-                worker_name : String,
+                _worker_name : String,
                 r_type : RadioTypes,
                 range : f64,
                 rng : Arc<Mutex<StdRng>>,
@@ -423,9 +423,9 @@ pub fn new_lora_radio(
     spreading_factor: u32,
     transmission_power: u8,
 ) -> Result<(Arc<Radio>, Box<Listener>), WorkerError> {
-    use worker::radio::hal::spidev::{self, SpidevOptions};
-    use worker::radio::hal::sysfs_gpio::Direction;
-    use worker::radio::hal::{Pin, Spidev};
+    use crate::worker::radio::hal::spidev::{self, SpidevOptions};
+    use crate::worker::radio::hal::sysfs_gpio::Direction;
+    use crate::worker::radio::hal::{Pin, Spidev};
 
     let mut spi = Spidev::open("/dev/spidev0.0").unwrap();
     let options = SpidevOptions::new()
@@ -463,9 +463,9 @@ pub fn new_lora_radio(
 #[cfg(not(target_os="linux"))]
 ///Used to produce a Lora Radio trait object
 pub fn new_lora_radio(
-    frequency: u64,
-    spreading_factor: u32,
-    transmission_power: u8,
+    _frequency: u64,
+    _spreading_factor: u32,
+    _transmission_power: u8,
 ) -> Result<(Arc<Radio>, Box<Listener>), WorkerError> {
     panic!("Lora radio creation is only supported on Linux");
 }

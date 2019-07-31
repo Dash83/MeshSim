@@ -3,17 +3,17 @@ extern crate chrono;
 extern crate mesh_simulator;
 extern crate socket2;
 
-use self::chrono::prelude::*;
-use std::path::{PathBuf, Path};
+
+
 use std::env;
-use std::fs;
+
 use self::mesh_simulator::logging;
 use self::mesh_simulator::worker::worker_config::*;
 use self::mesh_simulator::worker::*;
 use self::mesh_simulator::worker::radio::*;
 use super::super::*;
-use std::net:: SocketAddr;
-use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
+
+
 
 //**** Radio unit tests ****
 //TODO: Implement test
@@ -181,7 +181,7 @@ fn test_broadcast_simulated() {
     let worker_name = String::from("worker2");
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72b"); //arbitrary
     let random_seed = 1;
-    let (r2, l2) = sr_config2.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
+    let (r2, _l2) = sr_config2.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
                                      worker_id.clone(), random_seed, None, logger.clone()).expect("Could not create radio for worker2");
     // let _listener2 = r2.init().unwrap();
 
@@ -255,7 +255,7 @@ fn test_broadcast_device() -> TestResult {
     println!("Test results placed in {}", &test_path);
     
     //Worker1
-    let mut sr_config1 = RadioConfig::new();
+    let sr_config1 = RadioConfig::new();
     let work_dir = test_path.clone();
     let worker_name = String::from("worker1");
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72a"); //arbitrary

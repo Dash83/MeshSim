@@ -6,9 +6,9 @@ extern crate rand;
 extern crate toml;
 extern crate rustc_serialize;
 
-use worker::{MessageHeader, WorkerError, Worker };
-use worker::radio::*;
-use worker::listener::*;
+use crate::worker::{MessageHeader, WorkerError, Worker };
+use crate::worker::radio::*;
+use crate::worker::listener::*;
 use self::naive_routing::NaiveRouting;
 use self::reactive_gossip_routing::ReactiveGossipRouting;
 use self::reactive_gossip_routing_II::ReactiveGossipRoutingII;
@@ -134,7 +134,7 @@ pub fn build_protocol_resources( p : Protocols,
             radio_channels.push((sr_listener, Arc::clone(&sr)));
             radio_channels.push((lr_listener, Arc::clone(&lr)));
 
-            let rng = Worker::rng_from_seed(seed);
+            let _rng = Worker::rng_from_seed(seed);
 
             //Build the protocol handler
             let handler : Arc<Protocol> = Arc::new(LoraWifiBeacon::new(name, id, sr, lr,  logger));

@@ -6,7 +6,7 @@ extern crate rand;
 use self::rusqlite::types::ToSql;
 use self::rusqlite::{Connection, NO_PARAMS, OpenFlags};
 use std::path::PathBuf;
-use worker::{WorkerError, Peer};
+use crate::worker::{WorkerError, Peer};
 use self::rand::RngCore;
 use std::time::Duration;
 use std::thread;
@@ -176,13 +176,13 @@ pub fn create_db_objects(conn : &Connection, logger : &Logger) -> Result<usize, 
 //    let _ = set_tmp_mode(conn, logger)?;
 
     //Create workers table
-    let rows = conn.execute(CREATE_WORKERS_TBL_QRY, NO_PARAMS,)?;
+    let _rows = conn.execute(CREATE_WORKERS_TBL_QRY, NO_PARAMS,)?;
 
     //Create positions table
-    let rows = conn.execute(CREATE_WORKER_POS_TBL_QRY, NO_PARAMS,)?;
+    let _rows = conn.execute(CREATE_WORKER_POS_TBL_QRY, NO_PARAMS,)?;
 
     //Create velocities table
-    let rows = conn.execute(CREATE_WORKER_VEL_TBL_QRY, NO_PARAMS,)?;
+    let _rows = conn.execute(CREATE_WORKER_VEL_TBL_QRY, NO_PARAMS,)?;
     
     //Create destinations table
     let rows = conn.execute(CREATE_WORKER_DEST_TBL_QRY, NO_PARAMS,)?;
@@ -342,10 +342,10 @@ fn set_wal_mode(conn : &Connection, logger : &Logger) -> Result<(), WorkerError>
     let mut stmt = conn.prepare(WAL_MODE_QRY)?;
     let mut journal_mode = String::from("");
     
-    for i in 0..MAX_DBOPEN_RETRY {
+    for _i in 0..MAX_DBOPEN_RETRY {
         journal_mode = match stmt.query_row(NO_PARAMS, |row| row.get(0)) {
             Ok(mode) => mode,
-            Err(e) => {
+            Err(_e) => {
                 let wait_time = rng.next_u64() % 100;
                 warn!(logger, "Could not read journal mode. Will retry in {}ms", wait_time);
                 let wait_dur = Duration::from_millis(wait_time);
@@ -476,7 +476,7 @@ pub fn select_final_positions(conn : &Connection) -> Result<Vec<(i64, f64, f64)>
 /// Sets the velocity of the worker ids to zero.
 pub fn stop_workers(conn : &Connection, 
                     w_ids : &[(i64, f64, f64)],
-                    logger : &Logger) -> Result<usize, WorkerError> {
+                    _logger : &Logger) -> Result<usize, WorkerError> {
     let mut query_builder = String::from(STOP_WORKERS_QRY);
     query_builder.push('(');
     for (id, _x, _y) in w_ids.into_iter() {
@@ -538,7 +538,7 @@ pub fn get_workers_in_range<'a>(conn : &Connection,
                                 range : f64,
                                 logger : &Logger) -> Result<Vec<Peer>, WorkerError> {
     let mut rng = rand::thread_rng();
-    let (worker_pos, db_id) = get_worker_position(&conn, worker_id, &logger)?;
+    let (worker_pos, _db_id) = get_worker_position(&conn, worker_id, &logger)?;
 
     //Get all other workers and check if they are in range
     let mut stmt = conn.prepare(SELECT_OTHER_WORKERS_POS_QRY)?;
@@ -604,7 +604,7 @@ pub fn update_worker_target(conn : &Connection,
     let dest_x : &ToSql = &target_pos.x;
     let dest_y : &ToSql = &target_pos.y;
 
-    let rows = conn.execute(UPDATE_WORKER_DEST_QRY, &[w_id, dest_x, dest_y],)?;
+    let _rows = conn.execute(UPDATE_WORKER_DEST_QRY, &[w_id, dest_x, dest_y],)?;
     info!(logger, "Worker_id {} destination updated", worker_id);
     
     Ok(())
@@ -644,10 +644,10 @@ mod tests {
     use std::fs;
     use self::rand::Rng;
     use std::time::Duration;
-    use logging;
+    use crate::logging;
     use slog::Drain;
-    use self::rusqlite::Connection;
-    use self::rusqlite::functions::*;
+    
+    
 
 /******************************************* 
  *********** Utility functions *************

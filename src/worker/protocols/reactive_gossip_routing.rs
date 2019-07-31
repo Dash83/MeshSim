@@ -3,22 +3,22 @@ extern crate serde_cbor;
 extern crate rand;
 extern crate md5;
 
-use worker::protocols::Protocol;
-use worker::{WorkerError, Peer, MessageHeader};
-use worker::radio::*;
+use crate::worker::protocols::Protocol;
+use crate::worker::{WorkerError, Peer, MessageHeader};
+use crate::worker::radio::*;
 use std::sync::{Arc, Mutex};
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
 use self::rand::{rngs::StdRng, Rng};
 use self::md5::Digest;
-use worker::rand::prelude::*;
+use crate::worker::rand::prelude::*;
 use ::slog::Logger;
 
 use std::collections::{HashMap, HashSet};
 use std::thread;
 use std::time::Duration;
-use worker::protocols::Protocols::ReactiveGossip;
-use serde_json::error::ErrorCode::Message;
+
+
 
 //TODO: Parameterize these
 const DEFAULT_MIN_HOPS : usize = 1;
@@ -376,7 +376,7 @@ impl ReactiveGossipRouting {
             //Is this a new message?
             if let Some((msg, mut entry)) = d_cache.remove_entry(&format!("{:x}", &msg_hash)) {
                 match entry.state {
-                    DataMessageStates::Pending(route_id) => {
+                    DataMessageStates::Pending(_route_id) => {
                         entry.state = DataMessageStates::Confirmed;
                         let unused_data = entry.data.take();
                         drop(unused_data);
@@ -424,7 +424,7 @@ impl ReactiveGossipRouting {
                                     known_routes : Arc<Mutex<HashMap<String, bool>>>,
                                     route_msg_cache : Arc<Mutex<HashSet<String>>>,
                                     self_peer : Peer,
-                                    msg_hash : Digest,
+                                    _msg_hash : Digest,
                                     logger : &Logger ) -> Result<Option<MessageHeader>, WorkerError> {
         info!(logger, "Received ROUTE_DISCOVERY message"; "route_id" => &msg.route_id, "source" => &hdr.sender.name);
 
@@ -564,15 +564,15 @@ impl ReactiveGossipRouting {
         Ok(Some(hdr))
     }
 
-    fn process_route_teardown_msg(mut hdr : MessageHeader,
-                                     mut msg : RouteMessage,
+    fn process_route_teardown_msg(_hdr : MessageHeader,
+                                     msg : RouteMessage,
                                      known_routes : Arc<Mutex<HashMap<String, bool>>>,
                                      dest_routes : Arc<Mutex<HashMap<String, String>>>,
-                                     pending_destinations : Arc<Mutex<HashSet<String>>>,
-                                     queued_transmissions : Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
-                                     data_msg_cache : Arc<Mutex<HashMap<String, DataCacheEntry>>>,
+                                     _pending_destinations : Arc<Mutex<HashSet<String>>>,
+                                     _queued_transmissions : Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+                                     _data_msg_cache : Arc<Mutex<HashMap<String, DataCacheEntry>>>,
                                      self_peer : Peer,
-                                     short_radio : Arc<Radio>,
+                                     _short_radio : Arc<Radio>,
                                      logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
         info!(logger, "Route TEARDOWN msg received for route {}", &msg.route_id);
 
@@ -617,7 +617,7 @@ impl ReactiveGossipRouting {
         //Lock released
 
         let thread_pool = threadpool::Builder::new().num_threads(CONCCURENT_THREADS_PER_FLOW).build();
-        if let Some((key, flows)) = entry {
+        if let Some((_key, flows)) = entry {
             info!(logger, "Processing {} queued transmissions.", &flows.len());
             for data in flows {
                 let r_id = route_id.clone();
@@ -673,7 +673,7 @@ impl ReactiveGossipRouting {
             thread::sleep(sleep_time);
             let mut cache = data_msg_cache.lock()?;
             for (msg_hash, entry) in cache.iter_mut()
-                .filter(|(msg_hash, entry)| entry.state.is_pending()) {
+                .filter(|(_msg_hash, entry)| entry.state.is_pending()) {
                     debug!(logger, "Message {} is pending confirmation", &msg_hash);
 
                     if let Some(hdr) = entry.data.take() {
@@ -760,7 +760,7 @@ impl ReactiveGossipRouting {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
     
     #[derive(Debug, Serialize)]
     struct SampleStruct;
