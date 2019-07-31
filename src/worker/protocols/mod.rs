@@ -10,10 +10,11 @@ use worker::{MessageHeader, WorkerError, Worker };
 use worker::radio::*;
 use worker::listener::*;
 use self::tmembership::TMembership;
-use self::tmembership_advanced::*;
-use self::naive_routing::*;
-use self::reactive_gossip_routing::*;
-use self::lora_wifi_beacon::*;
+use self::tmembership_advanced::TMembershipAdvanced;
+use self::naive_routing::NaiveRouting;
+use self::reactive_gossip_routing::ReactiveGossipRouting;
+use self::reactive_gossip_routing_II::ReactiveGossipRoutingII;
+use self::lora_wifi_beacon::LoraWifiBeacon;
 use ::slog::Logger;
 
 use std;
@@ -25,6 +26,7 @@ pub mod tmembership_advanced;
 pub mod naive_routing;
 pub mod reactive_gossip_routing;
 pub mod lora_wifi_beacon;
+pub mod reactive_gossip_routing_II;
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should 
@@ -54,6 +56,8 @@ pub enum Protocols {
     ReactiveGossip,
     /// Test protocol for Lora-Wifi integration
     LoraWifiBeacon,
+    /// Improved version of RGR
+    ReactiveGossipII,
 }
 
 impl FromStr for Protocols {
@@ -146,6 +150,18 @@ pub fn build_protocol_resources( p : Protocols,
             let resources = ProtocolResources{  handler : handler, 
                                                 radio_channels : radio_channels };
             Ok(resources)            
+        },
+
+        Protocols::ReactiveGossipII => {
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let (sr, listener) = short_radio.expect("The ReactiveGossip protocol requires a short_radio to be provided.");
+            let rng = Worker::rng_from_seed(seed);
+            let handler : Arc<Protocol> = Arc::new(ReactiveGossipRoutingII::new(name, id, Arc::clone(&sr), rng, logger));
+            let mut radio_channels = Vec::new();
+            radio_channels.push((listener, sr));
+            let resources = ProtocolResources{  handler : handler,
+                radio_channels : radio_channels };
+            Ok(resources)
         },
 
         Protocols::LoraWifiBeacon => {

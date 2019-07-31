@@ -185,6 +185,12 @@ impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gos
     }
 }
 
+impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing_II::DataCacheEntry>>>> for WorkerError {
+    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing_II::DataCacheEntry>>>) -> WorkerError {
+        WorkerError::Sync(err.to_string())
+    }
+}
+
 impl<'a> From<PoisonError<MutexGuard<'a, HashSet<String>>>> for WorkerError {
     fn from(err : PoisonError<MutexGuard<'a, HashSet<String>>>) -> WorkerError {
         WorkerError::Sync(err.to_string())
