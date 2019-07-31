@@ -7,13 +7,13 @@ extern crate linux_embedded_hal as hal;
 #[cfg(target_os="linux")]
 extern crate sx1276;
 
-use worker::*;
+use crate::worker::*;
 use self::socket2::Socket;
 #[cfg(target_os="linux")]
 use self::sx1276::SX1276;
 #[cfg(target_os="linux")]
 use self::sx1276::socket::{Link, LoRa};
-use worker::radio::RadioTypes;
+use crate::worker::radio::RadioTypes;
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it 
 /// and listen for incoming connections.

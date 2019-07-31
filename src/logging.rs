@@ -20,7 +20,7 @@ use std::io::BufRead;
 use self::serde_json::Value;
 use std::fs::{OpenOptions, File};
 use ::slog::{Logger, Drain};
-use worker::WorkerError;
+use crate::worker::WorkerError;
 
 /// Directory name for where the logs will be placed.
 pub const LOG_DIR_NAME : &'static str = "log";

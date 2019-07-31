@@ -46,16 +46,16 @@ use std::path::Path;
 use std::collections::{HashSet, HashMap};
 use std::process::{Command, Child};
 use std::sync::{PoisonError, MutexGuard};
-use worker::protocols::*;
-use worker::radio::*;
+use crate::worker::protocols::*;
+use crate::worker::radio::*;
 use self::serde_cbor::ser::*;
 use std::sync::{Mutex, Arc};
 use self::rand::{rngs::StdRng, SeedableRng};
 use self::byteorder::{NativeEndian, WriteBytesExt};
 use std::thread::{self, JoinHandle};
 use self::md5::Digest;
-use worker::mobility::*;
-use worker::listener::Listener;
+use crate::worker::mobility::*;
+use crate::worker::listener::Listener;
 use ::slog::Logger;
 use std::time::Duration;
 use self::libc::{nice, c_int};
@@ -181,6 +181,12 @@ impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Vec<Vec<u8>>>>>> for Wo
 
 impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing::DataCacheEntry>>>> for WorkerError {
     fn from(err : PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing::DataCacheEntry>>>) -> WorkerError {
+        WorkerError::Sync(err.to_string())
+    }
+}
+
+impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing_II::DataCacheEntry>>>> for WorkerError {
+    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing_II::DataCacheEntry>>>) -> WorkerError {
         WorkerError::Sync(err.to_string())
     }
 }
@@ -337,7 +343,7 @@ impl ServiceRecord {
         // debug!("Registering service with command: {:?}", command);
 
         //Starting the worker process
-        let child = try!(command.spawn());
+        let child = command.spawn()?;
         // info!("Process {} started.", child.id());
 
         Ok(child)
@@ -507,11 +513,11 @@ impl Worker {
         Ok(())
     }
 
-    //TODO: Remove the creationg of the log dir. That should be done in the create_logger function
+    //TODO: Remove the creation of the log dir. Already done in the create_logger function.
     fn init(&mut self) -> Result<(), WorkerError> {
         //Make sure the required directories are there and writable or create them.
         //check log dir is there
-        let mut dir = try!(std::fs::canonicalize(&self.work_dir));
+        let mut dir = std::fs::canonicalize(&self.work_dir)?;
         dir.push("log"); //Dir is work_dir/log
         if !dir.exists() {
             //Create log dir
@@ -634,7 +640,7 @@ fn extract_address_key<'a>(address : &'a str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use worker::rand::RngCore;
+    use crate::worker::rand::RngCore;
     use std::iter;
 
     //use worker::worker_config::*;
@@ -704,7 +710,7 @@ mod tests {
     #[test]
     fn test_message_size() {
         use std::mem;
-        use self::serde_cbor::de::*;
+        
         use self::serde_cbor::ser::*;
 
         let mut self_peer = Peer::new();
@@ -715,7 +721,7 @@ mod tests {
         dest_peer.name = String::from("Bar");
         dest_peer.id = String::from("oija450njjcdlhbaslijdblahsd");
 
-        let mut hdr = MessageHeader::new();
+        let hdr = MessageHeader::new();
 //        hdr.sender = self_peer.clone();
 //        hdr.destination = dest_peer.clone();
 

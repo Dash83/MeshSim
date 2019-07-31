@@ -7,15 +7,15 @@
 
 //extern crate mesh_simulator;
 
-use super::super::*;
-use self::mesh_simulator::worker::*;
-use std;
-use std::process::Command;
-use std::thread;
-use std::time::Duration;
-use std::io::Read;
-use std::process::Stdio;
-use std::fs::File;
+
+
+
+
+
+
+
+
+
 
 /// This test makes sure that the basic components of device mode are activated when running the worker on device mode.
 /// At the moment, this test is tied up to my lab computer due to network-interface names. Not sure this will be addressed later.

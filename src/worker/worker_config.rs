@@ -5,19 +5,19 @@ extern crate rustc_serialize;
 extern crate rand;
 extern crate byteorder;
 
-use worker::{Worker, OperationMode, Write, WorkerError};
-use worker::radio::*;
-use worker::protocols::*;
-use worker::listener::Listener;
+use crate::worker::{Worker, OperationMode, Write, WorkerError};
+use crate::worker::radio::*;
+use crate::worker::protocols::*;
+use crate::worker::listener::Listener;
 use std::path::Path;
 use std::fs::File;
 use std::iter;
 use self::rustc_serialize::hex::*;
 use self::rand::{rngs::StdRng, RngCore};
 use std::sync::{Mutex, Arc};
-use worker::mobility::{Position, Velocity};
+use crate::worker::mobility::{Position, Velocity};
 use ::slog::Logger;
-use worker::radio::{self, WifiRadio, SimulatedRadio, LoraFrequencies};
+use crate::worker::radio::{self, WifiRadio, SimulatedRadio, LoraFrequencies};
 
 ///Default range in meters for short-range radios
 pub const DEFAULT_SHORT_RADIO_RANGE : f64 = 100.0;
@@ -165,7 +165,7 @@ impl WorkerConfig {
                      operation_mode : OperationMode::Simulated,
                      accept_commands : None,
                      term_log : None,
-                     protocol : Protocols::TMembership,
+                     protocol : Protocols::NaiveRouting,
                      radio_short : None,
                      radio_long : None,
                      position : Position{ x : 0.0, y : 0.0 },
@@ -256,12 +256,12 @@ impl WorkerConfig {
     ///the worker_cli binary.
     pub fn write_to_file<P: AsRef<Path>>(&self, file_path: P) -> Result<(), WorkerError> {
         //Create configuration file
-        let mut file = try!(File::create(&file_path));
+        let mut file = File::create(&file_path)?;
         let data = match toml::to_string(self) {
             Ok(d) => d,
             Err(e) => return Err(WorkerError::Configuration(format!("Error writing configuration to file: {}", e)))
         };
-        let _res = try!(write!(file, "{}", data));
+        let _res = write!(file, "{}", data)?;
 
         Ok(())
     }
@@ -285,13 +285,13 @@ mod tests {
     use std::io::Read;
     use super::*;
     use std::env;
-    use logging;
+    use crate::logging;
 
     //Unit test for: WorkerConfig_new
     #[test]
     fn test_workerconfig_new() {
         let config = WorkerConfig::new();
-        let config_str = "WorkerConfig { worker_name: \"worker1\", worker_id: None, work_dir: \".\", random_seed: 0, operation_mode: Simulated, accept_commands: None, term_log: None, protocol: TMembership, position: Position { x: 0.0, y: 0.0 }, destination: None, velocity: Velocity { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
+        let config_str = "WorkerConfig { worker_name: \"worker1\", worker_id: None, work_dir: \".\", random_seed: 0, operation_mode: Simulated, accept_commands: None, term_log: None, protocol: NaiveRouting, position: Position { x: 0.0, y: 0.0 }, destination: None, velocity: Velocity { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
 
         assert_eq!(format!("{:?}", config), config_str);
     }
@@ -329,12 +329,12 @@ mod tests {
         let mut path = env::temp_dir();
         path.push("worker.toml");
 
-        let val = config.write_to_file(&path).expect("Could not write configuration file.");
+        let _val = config.write_to_file(&path).expect("Could not write configuration file.");
         
         //Assert the file was written.
         assert!(path.exists());
 
-        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"TMembership\"\nx = 0.0\ny = 0.0\n\n[velocity]\nx = 0.0\ny = 0.0\n\n[radio_short]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n\n[radio_long]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n";
+        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"NaiveRouting\"\nx = 0.0\ny = 0.0\n\n[velocity]\nx = 0.0\ny = 0.0\n\n[radio_short]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n\n[radio_long]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n";
         
         let mut file_content = String::new();
         let _res = File::open(path).unwrap().read_to_string(&mut file_content);

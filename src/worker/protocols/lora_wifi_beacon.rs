@@ -5,11 +5,11 @@ extern crate slog;
 extern crate serde_cbor;
 extern crate md5;
 
-use worker::protocols::Protocol;
-use worker::{WorkerError, Peer, MessageHeader};
-use worker::radio::{RadioTypes, Radio};
+use crate::worker::protocols::Protocol;
+use crate::worker::{WorkerError, Peer, MessageHeader};
+use crate::worker::radio::{RadioTypes, Radio};
 use std::sync::Arc;
-use self::rand::{rngs::StdRng, SeedableRng};
+
 use self::slog::Logger;
 use std::time::Duration;
 use std::thread;
@@ -85,7 +85,7 @@ impl Protocol for LoraWifiBeacon {
         let self_peer = self.get_self_peer();
         let logger = self.logger.clone();
         let link = String::from("wifi");
-        let wifi_beacon_handle = thread::spawn(move || {
+        let _wifi_beacon_handle = thread::spawn(move || {
             LoraWifiBeacon::beacon_loop(wifi_radio,
                                         WIFI_BEACON_TIMEOUT,
                                         self_peer,
@@ -97,7 +97,7 @@ impl Protocol for LoraWifiBeacon {
         let self_peer = self.get_self_peer();
         let logger = self.logger.clone();
         let link = String::from("lora");
-        let lora_beacon_handle = thread::spawn(move || {
+        let _lora_beacon_handle = thread::spawn(move || {
             let initial_offset : u64 = thread_rng().next_u64() % 3_000u64;
             thread::sleep(Duration::from_millis(initial_offset));
             LoraWifiBeacon::beacon_loop(lora_radio,
@@ -110,7 +110,7 @@ impl Protocol for LoraWifiBeacon {
     }
 
     /// Function to send command to another node in the network
-    fn send(&self, destination : String, data : Vec<u8>) -> Result<(), WorkerError> {
+    fn send(&self, _destination : String, _data : Vec<u8>) -> Result<(), WorkerError> {
         unimplemented!("LoraWifiBeacon does not support send commands");
     }
 }
@@ -168,10 +168,10 @@ impl LoraWifiBeacon {
         hdr : MessageHeader,
         msg : Messages,
         link : String,
-        self_peer : Peer,
-        msg_hash : Digest,
-        wifi_radio : Arc<Radio>,
-        lora_radio : Arc<Radio>,
+        _self_peer : Peer,
+        _msg_hash : Digest,
+        _wifi_radio : Arc<Radio>,
+        _lora_radio : Arc<Radio>,
         logger : Logger,
     ) -> Result<Option<MessageHeader>, WorkerError> {
         match msg {
@@ -182,7 +182,7 @@ impl LoraWifiBeacon {
     }
 
     fn process_beacon_msg(
-        mut hdr : MessageHeader,
+        hdr : MessageHeader,
         counter : u64,
         link : String,
         logger : Logger,

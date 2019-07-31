@@ -1,7 +1,7 @@
 extern crate toml;
 
-use master::{MasterError, MobilityModels};
-use worker::worker_config::WorkerConfig;
+use crate::master::{MasterError, MobilityModels};
+use crate::worker::worker_config::WorkerConfig;
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
@@ -45,12 +45,12 @@ impl TestSpec {
         // info!("Parsing test file {}.", file_path);
         //Check that the test file passed exists.
         //If it doesn't exist, error out
-        let mut file = try!(File::open(file_path));
+        let mut file = File::open(file_path)?;
         let mut file_content = String::new();
         //Not checking bytes read since all we can check without scanning the file is that is not empty.
         //The serialization framework however, will do the appropriate validations.
-        let _bytes_read = try!(file.read_to_string(&mut file_content));
-        let configuration : TestSpec = try!(toml::from_str(&file_content));
+        let _bytes_read = file.read_to_string(&mut file_content)?;
+        let configuration : TestSpec = toml::from_str(&file_content)?;
         Ok(configuration)
     }
 

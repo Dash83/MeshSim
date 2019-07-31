@@ -15,12 +15,12 @@ use mesh_simulator::worker::worker_config::WorkerConfig;
 use mesh_simulator::worker;
 use mesh_simulator::logging;
 use clap::{Arg, App, ArgMatches};
-use std::fs::{OpenOptions, File, self};
+use std::fs::{File, self};
 use std::io::{self, Read};
 use std::fmt;
 use std::error;
 use std::env;
-use std::path::Path;
+
 use slog::{Drain, Logger};
 
 const ARG_CONFIG : &'static str = "config";

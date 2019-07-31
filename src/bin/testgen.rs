@@ -37,7 +37,7 @@ impl TestBasics {
     pub fn new() -> TestBasics {
         TestBasics{ test_name : String::from(""),
                     end_time : 0,
-                    protocol : Protocols::TMembership,
+                    protocol : Protocols::NaiveRouting,
                     width : 0.0,
                     height : 0.0,
                     m_model : None,
@@ -424,7 +424,7 @@ fn add_cbr_sources(num_sources : usize,
         Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
     };
 
-    for i in 0..num_sources {
+    for _i in 0..num_sources {
         //select source
         let source_index = rng.next_u32() as usize % spec.initial_nodes.len();
         let source_name = spec.initial_nodes.keys().nth(source_index).unwrap();
@@ -480,7 +480,7 @@ fn capture_basic_data() -> Result<TestBasics, Errors> {
     input.clear();
 
     println!("Input the duration for the test in milliseconds: ");
-    let bytes_read = io::stdin().read_line(&mut input)?;
+    let _bytes_read = io::stdin().read_line(&mut input)?;
     data.end_time = match input[0..input.len()-1].parse() {
         Ok(t) => t,
         Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
@@ -488,7 +488,7 @@ fn capture_basic_data() -> Result<TestBasics, Errors> {
     input.clear();
 
     println!("What protocol will the workers be running? ");
-    let bytes_read = io::stdin().read_line(&mut input)?;
+    let _bytes_read = io::stdin().read_line(&mut input)?;
     let prot_input : String = input[0..input.len()-1].into();
     data.protocol = match prot_input.parse::<Protocols>() {
         Ok(p) => p,
@@ -497,7 +497,7 @@ fn capture_basic_data() -> Result<TestBasics, Errors> {
     input.clear();
 
     println!("Simulation area Width (in meters):");
-    let bytes_read = io::stdin().read_line(&mut input)?;
+    let _bytes_read = io::stdin().read_line(&mut input)?;
     data.width = match input[0..input.len()-1].parse() {
         Ok(t) => t,
         Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
@@ -505,7 +505,7 @@ fn capture_basic_data() -> Result<TestBasics, Errors> {
     input.clear();
 
     println!("Simulation area height (in meters):");
-    let bytes_read = io::stdin().read_line(&mut input)?;
+    let _bytes_read = io::stdin().read_line(&mut input)?;
     data.height = match input[0..input.len()-1].parse() {
         Ok(t) => t,
         Err(e) => return Err(Errors::TestParsing(format!("{}", e)))
@@ -513,7 +513,7 @@ fn capture_basic_data() -> Result<TestBasics, Errors> {
     input.clear();
 
     println!("Mobility model:");
-    let bytes_read = io::stdin().read_line(&mut input)?;
+    let _bytes_read = io::stdin().read_line(&mut input)?;
     data.m_model = match input[0..input.len()-1].parse::<MobilityModels>() {
         Ok(t) => Some(t),
         Err(e) => { 

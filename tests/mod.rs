@@ -12,9 +12,9 @@ extern crate lazy_static;
 use self::chrono::prelude::*;
 use std::path::{PathBuf, Path};
 use std::env;
-use std::fs::{OpenOptions, self};
+use std::fs::{self};
 use self::mesh_simulator::logging;
-use std::{sync::Mutex, thread::sleep, time::Duration};
+use std::{sync::Mutex};
 
 
 /***********************************************/

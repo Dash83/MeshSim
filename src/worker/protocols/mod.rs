@@ -6,25 +6,23 @@ extern crate rand;
 extern crate toml;
 extern crate rustc_serialize;
 
-use worker::{MessageHeader, WorkerError, Worker };
-use worker::radio::*;
-use worker::listener::*;
-use self::tmembership::TMembership;
-use self::tmembership_advanced::*;
-use self::naive_routing::*;
-use self::reactive_gossip_routing::*;
-use self::lora_wifi_beacon::*;
+use crate::worker::{MessageHeader, WorkerError, Worker };
+use crate::worker::radio::*;
+use crate::worker::listener::*;
+use self::naive_routing::NaiveRouting;
+use self::reactive_gossip_routing::ReactiveGossipRouting;
+use self::reactive_gossip_routing_II::ReactiveGossipRoutingII;
+use self::lora_wifi_beacon::LoraWifiBeacon;
 use ::slog::Logger;
 
 use std;
 use std::sync::Arc;
 use std::str::FromStr;
 
-pub mod tmembership;
-pub mod tmembership_advanced;
 pub mod naive_routing;
 pub mod reactive_gossip_routing;
 pub mod lora_wifi_beacon;
+pub mod reactive_gossip_routing_II;
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should 
@@ -44,16 +42,14 @@ pub trait Protocol : std::fmt::Debug + Send + Sync {
 ///Current list of supported protocols by MeshSim.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Copy)]
 pub enum Protocols {
-    /// ToyMembership protocol implemented in order to test and develop MeshSim.
-    TMembership,
-    /// 2-Radio variation of the TMembership protocol.
-    TMembershipAdvanced,
     /// Broadcast-based routing
     NaiveRouting,
     ///  Adaptive, gossip-based routing protocol
     ReactiveGossip,
     /// Test protocol for Lora-Wifi integration
     LoraWifiBeacon,
+    /// Improved version of RGR
+    ReactiveGossipII,
 }
 
 impl FromStr for Protocols {
@@ -66,8 +62,6 @@ impl FromStr for Protocols {
         assert!(parts.len() > 0);
         let prot = parts[0];
         match prot {
-            "TMEMBERSHIP" => Ok(Protocols::TMembership),
-            "TMEMBERSHIP_ADVANCED" => Ok(Protocols::TMembershipAdvanced),
             "NAIVEROUTING" => Ok(Protocols::NaiveRouting),
             "REACTIVEGOSSIP" => Ok(Protocols::ReactiveGossip),
             "LORAWIFIBEACON" => Ok(Protocols::LoraWifiBeacon),
@@ -94,37 +88,6 @@ pub fn build_protocol_resources( p : Protocols,
                                  name : String,
                                  logger : Logger ) -> Result<ProtocolResources, WorkerError> {
     match p {
-        Protocols::TMembership => {
-            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
-            let (sr, listener) = short_radio.expect("The TMembership protocol requires a short_radio to be provided.");
-            let handler : Arc<Protocol> = Arc::new(TMembership::new(Arc::clone(&sr), seed, id, name, logger));
-            let mut radio_channels = Vec::new();
-            radio_channels.push((listener, sr));
-            let resources = ProtocolResources{  handler : handler, 
-                                                radio_channels : radio_channels };
-            Ok(resources)
-        },
-
-        Protocols::TMembershipAdvanced => {
-            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
-            let (sr, sr_listener) = short_radio.expect("The TMembership_Advanced protocol requires a short_radio to be provided.");
-            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
-            let (lr, lr_listener) = long_radio.expect("The TMembership_Advanced protocol requires a long_radio to be provided.");
-
-            //Build the listeners list
-            let mut radio_channels = Vec::new();
-            radio_channels.push((sr_listener, Arc::clone(&sr)));
-            radio_channels.push((lr_listener, Arc::clone(&lr)));
-
-            //Build the protocol handler
-            let handler : Arc<Protocol> = Arc::new(TMembershipAdvanced::new(sr, lr, seed, id, name, logger));
-
-            //Build the resources context
-            let resources = ProtocolResources{ handler : handler,
-                                               radio_channels : radio_channels };
-            Ok(resources)
-        },
-
         Protocols::NaiveRouting => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio.expect("The NaiveRouting protocol requires a short_radio to be provided.");
@@ -148,6 +111,18 @@ pub fn build_protocol_resources( p : Protocols,
             Ok(resources)            
         },
 
+        Protocols::ReactiveGossipII => {
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let (sr, listener) = short_radio.expect("The ReactiveGossip protocol requires a short_radio to be provided.");
+            let rng = Worker::rng_from_seed(seed);
+            let handler : Arc<Protocol> = Arc::new(ReactiveGossipRoutingII::new(name, id, Arc::clone(&sr), rng, logger));
+            let mut radio_channels = Vec::new();
+            radio_channels.push((listener, sr));
+            let resources = ProtocolResources{  handler : handler,
+                radio_channels : radio_channels };
+            Ok(resources)
+        },
+
         Protocols::LoraWifiBeacon => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, sr_listener) = short_radio.expect("The LoraWifiBeacon protocol requires a Wifi radio to be provided.");
@@ -159,7 +134,7 @@ pub fn build_protocol_resources( p : Protocols,
             radio_channels.push((sr_listener, Arc::clone(&sr)));
             radio_channels.push((lr_listener, Arc::clone(&lr)));
 
-            let rng = Worker::rng_from_seed(seed);
+            let _rng = Worker::rng_from_seed(seed);
 
             //Build the protocol handler
             let handler : Arc<Protocol> = Arc::new(LoraWifiBeacon::new(name, id, sr, lr,  logger));
