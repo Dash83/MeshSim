@@ -19,7 +19,7 @@ impl FromStr for Commands {
         let parts : Vec<&str> = s.split_whitespace().collect();
 
         //Assuming here we can have actions with 0 parameters.
-        if parts.len() > 0 {
+        if !parts.is_empty() {
             match parts[0].to_uppercase().as_str() {
                 // "ADD_BCG" => {
                 //     if parts.len() < 2 {
@@ -44,7 +44,7 @@ impl FromStr for Commands {
                 "SEND" => {
                     if parts.len() < 2 {
                         //Error out
-                        return Err(WorkerError::Command(format!("Send needs two parameters: Radio type (short/long) and data.")))
+                        return Err(WorkerError::Command(String::from("Send needs two parameters: Radio type (short/long) and data.")))
                     }
                     let destination = parts[1].into();
                     let data = match base64::decode(parts[2].as_bytes()) {

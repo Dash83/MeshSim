@@ -23,11 +23,11 @@ use ::slog::{Logger, Drain};
 use crate::worker::WorkerError;
 
 /// Directory name for where the logs will be placed.
-pub const LOG_DIR_NAME : &'static str = "log";
+pub const LOG_DIR_NAME : &str = "log";
 /// Default log file name for the mater process
-pub const DEFAULT_MASTER_LOG : &'static str = "Master.log";
+pub const DEFAULT_MASTER_LOG : &str = "Master.log";
 const LOG_CHANNEL_SIZE : usize = 512; //Default is 128
-const LOG_THREAD_NAME : &'static str = "LoggerThread";
+const LOG_THREAD_NAME : &str = "LoggerThread";
 
 // struct LogRecord {
 //     msg : String,
@@ -53,7 +53,7 @@ pub fn get_log_records_from_file<P: AsRef<Path>>(path : P) -> Result<Vec<Value>,
 ///Given a log key (such as ts) will return the first log record that matches the log_value passed. 
 pub fn find_log_record<'a, 'b>(log_key : &'a str,
                                log_value : &'a str,
-                               records : &'b Vec<Value>) -> Option<&'b Value> {
+                               records : &'b [Value]) -> Option<&'b Value> {
     for rec in records {
         if rec[log_key] == log_value {
             return Some(rec)
@@ -66,7 +66,7 @@ pub fn find_log_record<'a, 'b>(log_key : &'a str,
 pub fn create_logger<P: AsRef<Path>>(log_file_name : P, log_term : bool ) -> Result<Logger, WorkerError>  {
     //Make sure the full path is valid
     if let Some(parent) = log_file_name.as_ref().parent() {
-        let _res = std::fs::create_dir_all(parent).expect("Could not create log directory structure");
+        std::fs::create_dir_all(parent).expect("Could not create log directory structure");
     }
 
     let log_file = OpenOptions::new()
@@ -75,9 +75,10 @@ pub fn create_logger<P: AsRef<Path>>(log_file_name : P, log_term : bool ) -> Res
                         .truncate(true)
                         .open(log_file_name)?;
 
-    match log_term {
-        true => create_term_and_file_logger(log_file),
-        false => create_file_logger(log_file)
+    if log_term {
+        create_term_and_file_logger(log_file)
+    } else {
+        create_file_logger(log_file)
     }
 
 }

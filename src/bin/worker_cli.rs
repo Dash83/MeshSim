@@ -21,17 +21,16 @@ use std::fmt;
 use std::error;
 use std::env;
 
-use slog::{Drain, Logger};
+use slog::Logger;
 
-const ARG_CONFIG : &'static str = "config";
-const ARG_WORKER_NAME : &'static str = "worker_name";
-const ARG_WORK_DIR : &'static str = "work_dir";
-const ARG_RANDOM_SEED : &'static str = "random_seed";
-const ARG_REGISTER_WORKER : &'static str = "register_worker";
-const ARG_ACCEPT_COMMANDS : &'static str = "accept_commands";
-const ARG_TERMINAL_LOG : &'static str = "term_log";
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-const CONFIG_FILE_NAME  : &'static str = "worker.toml";
+const ARG_CONFIG : &str = "config";
+const ARG_WORKER_NAME : &str = "worker_name";
+const ARG_WORK_DIR : &str = "work_dir";
+const ARG_REGISTER_WORKER : &str = "register_worker";
+const ARG_ACCEPT_COMMANDS : &str = "accept_commands";
+const ARG_TERMINAL_LOG : &str = "term_log";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const CONFIG_FILE_NAME  : &str = "worker.toml";
 const ERROR_EXECUTION_FAILURE : i32 = 1;
 const ERROR_INITIALIZATION : i32 = 2;
 
@@ -124,11 +123,11 @@ fn run(config : WorkerConfig, logger : Logger) -> Result<(), CLIError> {
     let ac = config.accept_commands.unwrap_or(false);
    let mut obj =  config.create_worker(logger)?;
    //debug!("Worker Obj: {:?}", obj);
-   let _res = obj.start(ac)?;
+   obj.start(ac)?;
    Ok(())
 }
 
-fn load_conf_file<'a>(file_path : &'a str) -> Result<WorkerConfig, CLIError> {
+fn load_conf_file(file_path : &str) -> Result<WorkerConfig, CLIError> {
     //Check that configuration file passed exists.
     //If it doesn't exist, error out
     let mut file = File::open(file_path)?;
@@ -180,14 +179,14 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
 fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<(), CLIError> {
     // Mandatory values should have been validated when loading the TOML file, just check the values are appropriate.
     // Worker_name
-    config.worker_name = matches.value_of(ARG_WORKER_NAME).unwrap_or(config.worker_name.as_str()).to_string();
+    config.worker_name = matches.value_of(ARG_WORKER_NAME).unwrap_or_else(|| config.worker_name.as_str()).to_string();
     if config.worker_name.is_empty() {
         eprintln!("worker_name can't be empty.");
         return Err(CLIError::Configuration("Worker name was empty.".to_string()))
     }
 
     //work_dir
-    config.work_dir = matches.value_of(ARG_WORK_DIR).unwrap_or(config.work_dir.as_str()).to_string();
+    config.work_dir = matches.value_of(ARG_WORK_DIR).unwrap_or_else(|| config.work_dir.as_str()).to_string();
     let dir_info = fs::metadata(std::path::Path::new(config.work_dir.as_str()))?;
     if !dir_info.is_dir() || dir_info.permissions().readonly() {
         eprintln!("work_dir is not a valid directory or it's not writable.");
@@ -220,7 +219,7 @@ fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
     let mut configuration = load_conf_file(config_file_path)?;
     
     //Validate the current configuration
-    let _res = validate_config(&mut configuration, &matches)?;
+    validate_config(&mut configuration, &matches)?;
 
     Ok(configuration)
 }
@@ -244,7 +243,7 @@ fn main() {
                                                 std::path::MAIN_SEPARATOR,
                                                 &config.worker_name );
     let logger = logging::create_logger(&log_file_name,
-                                        config.term_log.clone().unwrap_or(false)).unwrap_or_else(|e| {
+                                        config.term_log.unwrap_or(false)).unwrap_or_else(|e| {
                             println!("worker_cli failed with the following error: {}", e);
                             ::std::process::exit(ERROR_INITIALIZATION);
     });

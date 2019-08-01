@@ -19,16 +19,16 @@ use linux_embedded_hal as hal;
 #[cfg(target_os="linux")]
 use sx1276;
 
-const SIMULATED_SCAN_DIR : &'static str = "addr";
-const SHORT_RANGE_DIR : &'static str = "short";
-const LONG_RANGE_DIR : &'static str = "long";
+//const SIMULATED_SCAN_DIR : &'static str = "addr";
+const SHORT_RANGE_DIR : &str = "short";
+const LONG_RANGE_DIR : &str = "long";
 
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE : usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
 
 lazy_static! {
     ///Address used for multicast group
-    pub static ref SERVICE_ADDRESS: Ipv6Addr = Ipv6Addr::new(0xFF02, 0, 0, 0, 0, 0, 0, 0x0123).into();
+    pub static ref SERVICE_ADDRESS: Ipv6Addr = Ipv6Addr::new(0xFF02, 0, 0, 0, 0, 0, 0, 0x0123);
 }
 
 ///Types of radio supported by the system. Used by Protocols that need to 
@@ -105,7 +105,7 @@ impl Radio  for SimulatedRadio {
         let conn = get_db_connection(&self.work_dir, &self.logger)?;
         let peers = get_workers_in_range(&conn, &self.id, self.range, &self.logger)?;  
 
-        if peers.len() == 0 {
+        if peers.is_empty() {
             info!(self.logger, "No nodes in range. Message not sent");
             return Ok(())
         }
@@ -133,7 +133,7 @@ impl Radio  for SimulatedRadio {
                     },
                 };
 
-                let _sent_bytes = match socket.send_to(&data, &socket2::SockAddr::from(remote_addr)) { 
+                match socket.send_to(&data, &socket2::SockAddr::from(remote_addr)) {
                     Ok(_) => { 
                         /* All good */ 
                         // debug!(&self.logger, "Message sent to {:?}", &remote_addr);
@@ -167,14 +167,14 @@ impl SimulatedRadio {
         // let address = SimulatedRadio::format_address(&work_dir, &id, r_type);
         let listener = SimulatedRadio::init(reliability, &rng, r_type, &logger)?;
         let listen_addres = listener.get_address();
-        let sr = SimulatedRadio{reliability : reliability,
-                                work_dir : work_dir,
-                                id : id,
+        let sr = SimulatedRadio{reliability,
+                                work_dir,
+                                id,
                                 address : listen_addres,
-                                range : range,
-                                r_type : r_type,
-                                rng : rng,
-                                logger : logger};
+                                range,
+                                r_type,
+                                rng,
+                                logger};
         Ok((sr, listener))
     }
 
@@ -200,11 +200,11 @@ impl SimulatedRadio {
         // Listen on port 0 to be auto-assigned an address
         let base_addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,1)), 0);
 
-        let _ = sock.bind(&SockAddr::from(base_addr))?;
+        sock.bind(&SockAddr::from(base_addr))?;
         let listener = SimulatedListener::new(sock, 
                                               reliability, 
                                               Arc::clone(rng), 
-                                              r_type.clone(),
+                                              r_type,
                                               logger.clone() );
         let radio_type : String = r_type.into();
         print!("{}-{};", radio_type, &listener.get_address());
@@ -226,11 +226,11 @@ impl SimulatedRadio {
             }
         }
 
-        for v in input.as_str().split(";") {
-            if v.len() == 0 {
+        for v in input.as_str().split(';') {
+            if v.is_empty() {
                 continue;
             }
-            let parts : Vec<&str> = v.split("-").collect();
+            let parts : Vec<&str> = v.split('-').collect();
             // println!("Parts: {:?}", &parts);
             let r_type : RadioTypes = parts[0].parse()?;
 
@@ -289,11 +289,11 @@ impl Radio  for WifiRadio {
 impl WifiRadio {
     /// Get the public address of the OS-NIC that maps to this Radio object.
     /// It will return the first IPv4 address from a NIC that exactly matches the name.
-    fn get_radio_address<'a>(name : &'a str) -> Result<String, WorkerError> {
+    fn get_radio_address(name : &str) -> Result<String, WorkerError> {
         use self::pnet::datalink;
 
         for iface in datalink::interfaces() {
-            if &iface.name == name {
+            if iface.name == name {
                 for address in iface.ips {
                     match address {
                         ipnetwork::IpNetwork::V4(_addr) => {
@@ -311,11 +311,11 @@ impl WifiRadio {
     }
 
     ///Get the index of the passed interface name
-    fn get_interface_index<'a>(name : &'a str) -> Option<u32> {
+    fn get_interface_index(name : &str) -> Option<u32> {
         use self::pnet::datalink;
 
         for iface in datalink::interfaces() {
-            if &iface.name == name {
+            if iface.name == name {
                 return Some(iface.index)
             }
         }
@@ -336,14 +336,14 @@ impl WifiRadio {
         debug!(logger, "Obtained address {}", &address);
         let address = format!("[{}]:{}", address, DNS_SERVICE_PORT);
         let listener = WifiRadio::init(interface_index, r_type, &rng, &logger)?;
-        let radio = WifiRadio {interface_name : interface_name,
-                                interface_index : interface_index,
-                                id : id, 
-                                name : worker_name, 
-                                address : address,
-                                rng : rng,
-                                r_type : r_type,
-                                logger : logger };
+        let radio = WifiRadio { interface_name,
+                                interface_index,
+                                id,
+                                name : worker_name,
+                                address,
+                                rng,
+                                r_type,
+                                logger };
         Ok((radio, listener))
     }
 
@@ -370,7 +370,7 @@ impl WifiRadio {
         sock.set_only_v6(true)?;
 
         let debug_address = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,0)), DNS_SERVICE_PORT);
-        let _ = sock.bind(&SockAddr::from(debug_address))?;
+        sock.bind(&SockAddr::from(debug_address))?;
         let listener = WifiListener::new(sock,
                                          None,
                                          Arc::clone(rng),
@@ -422,7 +422,7 @@ pub fn new_lora_radio(
     frequency: u64,
     spreading_factor: u32,
     transmission_power: u8,
-) -> Result<(Arc<Radio>, Box<Listener>), WorkerError> {
+) -> Result<(Arc<dyn Radio>, Box<dyn Listener>), WorkerError> {
     use crate::worker::radio::hal::spidev::{self, SpidevOptions};
     use crate::worker::radio::hal::sysfs_gpio::Direction;
     use crate::worker::radio::hal::{Pin, Spidev};
@@ -466,6 +466,6 @@ pub fn new_lora_radio(
     _frequency: u64,
     _spreading_factor: u32,
     _transmission_power: u8,
-) -> Result<(Arc<Radio>, Box<Listener>), WorkerError> {
+) -> Result<(Arc<dyn Radio>, Box<dyn Listener>), WorkerError> {
     panic!("Lora radio creation is only supported on Linux");
 }

@@ -28,10 +28,10 @@ use std::time::Duration;
 
 
 //const ARG_CONFIG : &'static str = "config";
-const ARG_WORK_DIR : &'static str = "work_dir";
-const ARG_TEST_FILE : &'static str = "test_file";
-const ARG_WORKER_PATH : &'static str = "worker_path";
-const ARG_TERMINAL_LOG : &'static str = "term_log";
+const ARG_WORK_DIR : &str = "work_dir";
+const ARG_TEST_FILE : &str = "test_file";
+const ARG_WORKER_PATH : &str = "worker_path";
+const ARG_TERMINAL_LOG : &str = "term_log";
 
 const ERROR_LOG_INITIALIZATION : i32 = 1;
 const ERROR_EXECUTION_FAILURE : i32 = 2;
@@ -163,7 +163,7 @@ fn init(matches : &ArgMatches) -> Result<(Master), CLIError> {
     //if the workdir does not exists, create it
     let mut work_dir_path = PathBuf::from(&work_dir);
     if !work_dir_path.exists() {
-        let _ = std::fs::create_dir(&work_dir_path)?;
+        std::fs::create_dir(&work_dir_path)?;
     }
     work_dir_path.push(logging::LOG_DIR_NAME);
     work_dir_path.push(logging::DEFAULT_MASTER_LOG);

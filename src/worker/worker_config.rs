@@ -24,7 +24,7 @@ pub const DEFAULT_SHORT_RADIO_RANGE : f64 = 100.0;
 ///Default range in meters for long-range radios
 pub const DEFAULT_LONG_RADIO_RANGE : f64 = 500.0;
 ///Default range in meters for long-range radios
-pub const DEFAULT_INTERFACE_NAME : &'static str = "wlan";
+pub const DEFAULT_INTERFACE_NAME : &str = "wlan";
 
 const DEFAULT_SPREADING_FACTOR : u32 = 0;
 const DEFAULT_LORA_FREQ : LoraFrequencies = LoraFrequencies::Europe;
@@ -32,7 +32,7 @@ const DEFAULT_LORA_TRANS_POWER : u8 = 15;
 
 //TODO: Cleanup this struct
 ///Configuration pertaining to a given radio of the worker.
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default)]
 pub struct RadioConfig {
     ///Simulated mode only. How likely ([0-1]) are packets to reach their destination.
     pub reliability : Option<f64>,
@@ -121,7 +121,7 @@ impl RadioConfig {
 /// that an external client such as worker_cli can create WorkerConfig objects from CLI parameters
 /// or configuration files and pass the configuration around, leaving the actual construction of
 /// the worker object to the worker module.
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default)]
 pub struct WorkerConfig {
     ///Name of the worker.
     pub worker_name : String,
@@ -218,7 +218,7 @@ impl WorkerConfig {
         };
 
         //Need to add an endline char to stdout after both radios have been initialized.
-        println!("");
+        println!();
         
         // if self.operation_mode == OperationMode::Simulated &&
         //    register_worker == true {
@@ -245,10 +245,10 @@ impl WorkerConfig {
                         rng : Arc::clone(&rng),
                         seed : self.random_seed,
                         operation_mode : self.operation_mode,
-                        id : id,
+                        id,
                         protocol : self.protocol,
                         // db_id : db_id,
-                        logger : logger };
+                        logger };
         Ok(w)
     }
 
@@ -261,7 +261,7 @@ impl WorkerConfig {
             Ok(d) => d,
             Err(e) => return Err(WorkerError::Configuration(format!("Error writing configuration to file: {}", e)))
         };
-        let _res = write!(file, "{}", data)?;
+        write!(file, "{}", data)?;
 
         Ok(())
     }
