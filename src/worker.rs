@@ -28,7 +28,7 @@ extern crate rustc_serialize;
 extern crate serde_cbor;
 extern crate serde;
 extern crate byteorder;
-extern crate pnet;
+extern crate pnet_datalink;
 extern crate ipnetwork;
 extern crate md5;
 extern crate rusqlite;

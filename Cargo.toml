@@ -26,7 +26,7 @@ slog-async = "2.3.0"
 log = "0.4.6"
 toml = "0.4.2"
 byteorder = "1.0.0"
-pnet = "0.22.0"
+pnet_datalink = "0.22.0"
 ipnetwork = "0.14.0"
 chrono = "0.4"
 socket2 = { version = "0.3.8", features = ["unix"] }

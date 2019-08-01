@@ -1,6 +1,6 @@
 //! This module defines the abstraction and functionality for what a Radio is in MeshSim
 
-extern crate pnet;
+extern crate pnet_datalink;
 extern crate ipnetwork;
 extern crate socket2;
 extern crate md5;
