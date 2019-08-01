@@ -13,7 +13,7 @@ use std::thread;
 use ::slog::Logger;
 
 /// Name used for the worker positions DB
-pub const DB_NAME : &'static str = "worker_positions.db";
+pub const DB_NAME : &str = "worker_positions.db";
 /// The mean of human walking speeds
 pub const HUMAN_SPEED_MEAN : f64 = 1.462; //meters per second.
 /// Standard deviation of human walking speeds
@@ -21,47 +21,47 @@ pub const HUMAN_SPEED_STD_DEV : f64 = 0.164;
 const MAX_DBOPEN_RETRY : i32 = 11;
 
 //region Queries
-const CREATE_WORKERS_TBL_QRY : &'static str = "CREATE TABLE IF NOT EXISTS workers (
+const CREATE_WORKERS_TBL_QRY : &str = "CREATE TABLE IF NOT EXISTS workers (
                                                     ID	                    INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
                                                     Worker_Name	            TEXT NOT NULL,
                                                     Worker_ID	            TEXT NOT NULL UNIQUE,
                                                     Short_Range_Address	    TEXT,
                                                     Long_Range_Address	    TEXT
                                             )";
-const CREATE_WORKER_POS_TBL_QRY : &'static str = "CREATE TABLE IF NOT EXISTS  `worker_positions` (
+const CREATE_WORKER_POS_TBL_QRY : &str = "CREATE TABLE IF NOT EXISTS  `worker_positions` (
                                                     `worker_id`	INTEGER UNIQUE,
                                                     X	REAL NOT NULL,
                                                     Y  REAL NOT NULL,
                                                     FOREIGN KEY(worker_id) REFERENCES workers(ID)
                                                 );";
 
-const CREATE_WORKER_VEL_TBL_QRY : &'static str = "CREATE TABLE IF NOT EXISTS  `worker_velocities` (
+const CREATE_WORKER_VEL_TBL_QRY : &str = "CREATE TABLE IF NOT EXISTS  `worker_velocities` (
                                                     `worker_id`	INTEGER UNIQUE NOT NULL,
                                                     vel_x	REAL NOT NULL,
                                                     vel_y  REAL NOT NULL,
                                                     FOREIGN KEY(worker_id) REFERENCES workers(ID)
                                                 );";
-const CREATE_WORKER_DEST_TBL_QRY : &'static str = "CREATE TABLE IF NOT EXISTS  `worker_destinations` (
+const CREATE_WORKER_DEST_TBL_QRY : &str = "CREATE TABLE IF NOT EXISTS  `worker_destinations` (
                                                     `worker_id`	INTEGER UNIQUE NOT NULL,
                                                     `dest_x`	INTEGER NOT NULL,
                                                     `dest_y`	INTEGER NOT NULL,
                                                     FOREIGN KEY(`worker_id`) REFERENCES `workers`(`ID`)
                                                 );";
 
-const INSERT_WORKER_QRY : &'static str = "INSERT INTO workers (Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address)
+const INSERT_WORKER_QRY : &str = "INSERT INTO workers (Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address)
                                           VALUES (?1, ?2, ?3, ?4)";
-const UPDATE_WORKER_POS_QRY : &'static str = "INSERT OR REPLACE INTO worker_positions (worker_id, x, y) VALUES (?1, ?2, ?3)";
-const UPDATE_WORKER_VEL_QRY : &'static str = "INSERT OR REPLACE INTO worker_velocities (worker_id, vel_x, vel_y) VALUES (?1, ?2, ?3)";
-const UPDATE_WORKER_DEST_QRY : &'static str = "INSERT OR REPLACE INTO worker_destinations (worker_id, dest_x, dest_y) VALUES (?1, ?2, ?3)";
-const GET_WORKER_QRY : &'static str = "SELECT ID, Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address FROM Workers WHERE Worker_ID = (?)";
-const SELECT_OTHER_WORKERS_QRY : &'static str = "SELECT Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address FROM Workers WHERE Worker_ID != (?)";
-const GET_WORKER_POS_QRY : &'static str =  "SELECT  Workers.ID,
+const UPDATE_WORKER_POS_QRY : &str = "INSERT OR REPLACE INTO worker_positions (worker_id, x, y) VALUES (?1, ?2, ?3)";
+const UPDATE_WORKER_VEL_QRY : &str = "INSERT OR REPLACE INTO worker_velocities (worker_id, vel_x, vel_y) VALUES (?1, ?2, ?3)";
+const UPDATE_WORKER_DEST_QRY : &str = "INSERT OR REPLACE INTO worker_destinations (worker_id, dest_x, dest_y) VALUES (?1, ?2, ?3)";
+const GET_WORKER_QRY : &str = "SELECT ID, Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address FROM Workers WHERE Worker_ID = (?)";
+//const SELECT_OTHER_WORKERS_QRY : &str = "SELECT Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address FROM Workers WHERE Worker_ID != (?)";
+const GET_WORKER_POS_QRY : &str =  "SELECT  Workers.ID,
                                                     Worker_positions.X,
                                                     Worker_positions.Y
                                             FROM Workers
                                             JOIN Worker_positions on Workers.ID = Worker_positions.worker_id
                                             WHERE Workers.Worker_ID = (?)";
-const SELECT_OTHER_WORKERS_POS_QRY : &'static str = "SELECT Workers.worker_name,
+const SELECT_OTHER_WORKERS_POS_QRY : &str = "SELECT Workers.worker_name,
 		                                                    Workers.Worker_ID,
                                                             Workers.short_range_address, 
                                                             Workers.long_range_address, 
@@ -70,14 +70,14 @@ const SELECT_OTHER_WORKERS_POS_QRY : &'static str = "SELECT Workers.worker_name,
                                                     FROM Workers
                                                     JOIN Worker_positions on Workers.ID = Worker_positions.worker_id
                                                     WHERE Workers.Worker_ID != (?)";
-const SELECT_ALL_WORKERS_POS_QRY : &'static str = "SELECT   Workers.ID,
+const SELECT_ALL_WORKERS_POS_QRY : &str = "SELECT   Workers.ID,
                                                             Workers.worker_name,
                                                             Worker_positions.X,
                                                             Worker_positions.Y
                                                     FROM Workers
                                                     JOIN Worker_positions on Workers.ID = Worker_positions.worker_id";
-const SELECT_WORKERS_VEL_QRY : &'static str = "SELECT ID, vel_x, vel_y FROM worker_velocities";
-const UPDATE_WORKER_POSITIONS_QRY : &'static str = "
+//const SELECT_WORKERS_VEL_QRY : &str = "SELECT ID, vel_x, vel_y FROM worker_velocities";
+const UPDATE_WORKER_POSITIONS_QRY : &str = "
                                             INSERT OR REPLACE INTO worker_positions
                                             (worker_id, x, y)
                                             select worker_positions.worker_id,
@@ -85,12 +85,12 @@ const UPDATE_WORKER_POSITIONS_QRY : &'static str = "
                                                     worker_positions.Y + worker_velocities.vel_y
                                             from worker_velocities
                                             join worker_positions on worker_positions.worker_id = worker_velocities.worker_id;";
-const STOP_WORKERS_QRY : &'static str = "
+const STOP_WORKERS_QRY : &str = "
                                 UPDATE worker_velocities
                                 SET  vel_x = 0,
                                         vel_y = 0
                                 WHERE worker_velocities.worker_id in ";
-const SELECT_REMAINING_DIST_QRY : &'static str = "
+const SELECT_REMAINING_DIST_QRY : &str = "
                                 select workers.ID,
                                         worker_destinations.dest_x,
                                         worker_positions.X,
@@ -100,13 +100,13 @@ const SELECT_REMAINING_DIST_QRY : &'static str = "
                                 join worker_positions on worker_positions.worker_id = workers.ID
                                 join worker_destinations on worker_destinations.worker_id = workers.ID
                                 order by workers.Worker_Name;";
-const SET_WAL_MODE : &'static str = "PRAGMA journal_mode=WAL;";
-const WAL_MODE_QRY : &'static str = "PRAGMA journal_mode;";
-const SET_TMP_MODE : &'static str = "PRAGMA temp_store=2"; //Instruct the database to keep temp tables in memory
+const SET_WAL_MODE : &str = "PRAGMA journal_mode=WAL;";
+const WAL_MODE_QRY : &str = "PRAGMA journal_mode;";
+//const SET_TMP_MODE : &'static str = "PRAGMA temp_store=2"; //Instruct the database to keep temp tables in memory
 //endregion Queries
 
 ///Struct to encapsule the 2D position of the worker
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default)]
 pub struct Position {
     /// X component
     pub x : f64,
@@ -115,7 +115,7 @@ pub struct Position {
 }
 
 ///Struct to encapsule the velocity vector of a worker
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default)]
 pub struct Velocity {
     /// X component
     pub x : f64,
@@ -148,9 +148,9 @@ pub fn get_db_connection<'a>(path : &'a str, logger : &Logger ) -> Result<Connec
 
         if let Some(c) = conn {
             //Add busy handler
-            let _res = c.busy_handler(Some(busy_callback));
+            c.busy_handler(Some(busy_callback))?;
             //Add User-defined functions
-            let _res = c.create_scalar_function("distance", 4, true, move |ctx| {
+            c.create_scalar_function("distance", 4, true, move |ctx| {
                 assert_eq!(ctx.len(), 4);
 
                 let x1 = ctx.get::<f64>(0)?;
@@ -170,7 +170,7 @@ pub fn get_db_connection<'a>(path : &'a str, logger : &Logger ) -> Result<Connec
 /// Crate the database tables
 pub fn create_db_objects(conn : &Connection, logger : &Logger) -> Result<usize, WorkerError> {
     //Set the DB journaling mode to WAL first.
-    let _ = set_wal_mode(conn, logger)?;
+    set_wal_mode(conn, logger)?;
 
     //Set the temp store mode
 //    let _ = set_tmp_mode(conn, logger)?;
@@ -192,8 +192,8 @@ pub fn create_db_objects(conn : &Connection, logger : &Logger) -> Result<usize, 
 
 /// Registers a newly created worker into the mobility system
 pub fn register_worker( conn : &Connection, 
-                        worker_name : String, 
-                        worker_id : &String, 
+                        worker_name : String,
+                        worker_id : &str,
                         pos : &Position, 
                         vel : &Velocity,
                         dest : &Option<Position>,
@@ -225,7 +225,7 @@ pub fn register_worker( conn : &Connection,
 
     //Insert destination if any
     if let Some(d) = dest {
-        let _res = update_worker_target(&conn, db_id, d.clone(), logger)?;
+        update_worker_target(&conn, db_id, d.clone(), logger)?;
         // info!(&logger, "[DEBUG] destination updated");
     }
 
@@ -234,13 +234,13 @@ pub fn register_worker( conn : &Connection,
 
 fn insert_worker(conn : &Connection,
                  name : &ToSql,
-                 worker_id : &String,
+                 worker_id : &str,
                  sr : &ToSql,
                  lr : &ToSql,
                  logger : &Logger ) -> Result<usize, WorkerError> {
     let mut rows = 0;
     let mut rng = rand::thread_rng();
-    let wid : &ToSql = worker_id;
+    let wid : &ToSql = &worker_id;
 
     for i in 0..MAX_DBOPEN_RETRY {
         rows = match conn.execute( INSERT_WORKER_QRY, &[name, wid, sr, lr] ) {
@@ -354,12 +354,12 @@ fn set_wal_mode(conn : &Connection, logger : &Logger) -> Result<(), WorkerError>
             },
         };
 
-        if journal_mode != String::from("") {
+        if journal_mode != "" {
             break;
         }
     }
 
-    if journal_mode.to_uppercase() == String::from("WAL") {
+    if journal_mode.to_uppercase() == "WAL" {
         debug!(logger, "WAL mode already set");
         return Ok(())
     }
@@ -378,7 +378,7 @@ fn set_wal_mode(conn : &Connection, logger : &Logger) -> Result<(), WorkerError>
             },
         };
 
-        if journal_mode != String::from("") {
+        if journal_mode != "" {
             break;
         }
     }
@@ -387,32 +387,32 @@ fn set_wal_mode(conn : &Connection, logger : &Logger) -> Result<(), WorkerError>
     Ok(())
 }
 
-fn set_tmp_mode(conn : &Connection, logger : &Logger) -> Result<(), WorkerError> {
-    let mut rng = rand::thread_rng();
-    let mut temp_store_mode = String::from("");
-    let mut stmt = conn.prepare(SET_TMP_MODE)?;
-
-    for _i in 0..MAX_DBOPEN_RETRY {
-        temp_store_mode = match stmt.query_row(NO_PARAMS, |row| row.get(0)) {
-            Ok(mode) => mode,
-            Err(e) => {
-                let wait_time = rng.next_u64() % 100;
-                warn!(logger, "Could not set temp store mode: {}", e);
-                warn!(logger, "Will retry in {}ms", wait_time);
-                let wait_dur = Duration::from_millis(wait_time);
-                thread::sleep(wait_dur);
-                String::from("")
-            },
-        };
-
-        if temp_store_mode != String::from("") {
-            break;
-        }
-    }
-
-    debug!(logger, "Journal mode: {}", temp_store_mode);
-    Ok(())
-}
+//fn set_tmp_mode(conn : &Connection, logger : &Logger) -> Result<(), WorkerError> {
+//    let mut rng = rand::thread_rng();
+//    let mut temp_store_mode = String::from("");
+//    let mut stmt = conn.prepare(SET_TMP_MODE)?;
+//
+//    for _i in 0..MAX_DBOPEN_RETRY {
+//        temp_store_mode = match stmt.query_row(NO_PARAMS, |row| row.get(0)) {
+//            Ok(mode) => mode,
+//            Err(e) => {
+//                let wait_time = rng.next_u64() % 100;
+//                warn!(logger, "Could not set temp store mode: {}", e);
+//                warn!(logger, "Will retry in {}ms", wait_time);
+//                let wait_dur = Duration::from_millis(wait_time);
+//                thread::sleep(wait_dur);
+//                String::from("")
+//            },
+//        };
+//
+//        if temp_store_mode != String::from("") {
+//            break;
+//        }
+//    }
+//
+//    debug!(logger, "Journal mode: {}", temp_store_mode);
+//    Ok(())
+//}
 
 fn busy_callback(i : i32) -> bool {
     let mut rng = rand::thread_rng();
@@ -479,13 +479,13 @@ pub fn stop_workers(conn : &Connection,
                     _logger : &Logger) -> Result<usize, WorkerError> {
     let mut query_builder = String::from(STOP_WORKERS_QRY);
     query_builder.push('(');
-    for (id, _x, _y) in w_ids.into_iter() {
+    for (id, _x, _y) in w_ids.iter() {
         query_builder.push_str(&format!("{}, ", id));
     }
     let _c = query_builder.pop();//remove the new line char
     let _c = query_builder.pop();//remove last comma
     //Close query
-    query_builder.push_str(&format!(");"));
+    query_builder.push_str(");");
 
     // eprintln!("Prepared stmt: {}", &query_builder);
     let rows = conn.execute(&query_builder, NO_PARAMS)?;
@@ -494,7 +494,7 @@ pub fn stop_workers(conn : &Connection,
 
 /// Gets the current position and database id of a given worker
 pub fn get_worker_position(conn : &Connection, 
-                           worker_id : &String,
+                           worker_id : &str,
                            logger : &Logger) -> Result<(Position, i64), WorkerError> {
     let mut rng = rand::thread_rng();
 
@@ -505,7 +505,7 @@ pub fn get_worker_position(conn : &Connection,
             let db_id : i64 = row.get(0);
             let x : f64 = row.get(1);
             let y : f64 = row.get(2);
-            let pos = Position{ x : x, y : y};
+            let pos = Position{ x, y };
             (pos, db_id)
         }) {
             Ok((pos, id)) => {
@@ -533,8 +533,8 @@ pub fn get_worker_position(conn : &Connection,
 }
 
 /// Returns all workers within RANGE meters of the current position of WORKER_ID
-pub fn get_workers_in_range<'a>(conn : &Connection, 
-                                worker_id : &String, 
+pub fn get_workers_in_range(conn : &Connection,
+                                worker_id : &str,
                                 range : f64,
                                 logger : &Logger) -> Result<Vec<Peer>, WorkerError> {
     let mut rng = rand::thread_rng();
@@ -591,8 +591,7 @@ pub fn get_workers_in_range<'a>(conn : &Connection,
 pub fn euclidean_distance(x1 : f64, y1 : f64, x2 : f64, y2 : f64) -> f64 {
     let xs = (x2 - x1).powf(2.0);
     let ys = (y2 - y1).powf(2.0);
-    let d = (xs + ys).sqrt();
-    d
+    (xs + ys).sqrt()
 }
 
 /// Create a new target position for a worker

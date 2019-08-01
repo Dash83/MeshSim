@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use super::workloads::*;
 
 /// Struct to keep the area of the simulation
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Default)]
 pub struct Area {
     /// Horizontal measure of the test area
     pub width : f64,
@@ -18,7 +18,7 @@ pub struct Area {
 }
 
 ///Structure that holds the data of a given test specification.
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Default)]
 pub struct TestSpec {
     ///Name of the test. For informational purposes only. 
     pub name : String,
@@ -41,7 +41,7 @@ pub struct TestSpec {
 impl TestSpec {
     /// This function takes a path to a file that defines a TOML-based
     /// test specification for the Master.
-    pub fn parse_test_spec<'a>(file_path : &'a str) -> Result<TestSpec, MasterError> {
+    pub fn parse_test_spec(file_path : &str) -> Result<TestSpec, MasterError> {
         // info!("Parsing test file {}.", file_path);
         //Check that the test file passed exists.
         //If it doesn't exist, error out
@@ -89,12 +89,13 @@ impl FromStr for TestActions {
         let parts : Vec<&str> = s.split_whitespace().collect();
 
         //Assuming here we can have actions with 0 parameters.
-        if parts.len() > 0 {
+        if !parts.is_empty() {
             match parts[0].to_uppercase().as_str() {
                 "END_TEST" => {
                     if parts.len() < 2 {
                         //Error out
-                        return Err(MasterError::TestParsing(format!("End_Test needs a u64 time parameter.")))
+                        let msg = String::from("End_Test needs a u64 time parameter.");
+                        return Err(MasterError::TestParsing(msg))
                     }
                     let time = parts[1].parse::<u64>().unwrap();
                     Ok(TestActions::EndTest(time))
@@ -102,7 +103,8 @@ impl FromStr for TestActions {
                 "ADD_NODE" => {
                     if parts.len() < 3 {
                         //Error out
-                        return Err(MasterError::TestParsing(format!("Add_Node needs a worker name and a u64 time parameter.")))
+                        let msg = String::from("Add_Node needs a worker name and a u64 time parameter.");
+                        return Err(MasterError::TestParsing(msg))
                     }
                     let node_name = parts[1].to_owned();
                     let time = parts[2].parse::<u64>().unwrap();
@@ -112,7 +114,8 @@ impl FromStr for TestActions {
                 "KILL_NODE" => {
                     if parts.len() < 3 {
                         //Error out
-                        return Err(MasterError::TestParsing(format!("Kill_Node needs a worker name and a u64 time parameter.")))
+                        let msg = String::from("Kill_Node needs a worker name and a u64 time parameter.");
+                        return Err(MasterError::TestParsing(msg))
                     }
                     let node_name = parts[1].to_owned();
                     let time = parts[2].parse::<u64>().unwrap();
@@ -122,7 +125,8 @@ impl FromStr for TestActions {
                 "PING" => {
                     if parts.len() < 4 {
                         //Error out
-                        return Err(MasterError::TestParsing(format!("Ping needs a source, destination and a time parameters.")))
+                        let msg = String::from("Ping needs a source, destination and a time parameters.");
+                        return Err(MasterError::TestParsing(msg))
                     }
                     let src = parts[1].to_owned();
                     let dst = parts[2].to_owned();
@@ -133,7 +137,14 @@ impl FromStr for TestActions {
                 "ADD_SOURCE" => {
                     if parts.len() < 7 {
                         //Error out
-                        return Err(MasterError::TestParsing(format!("Add_Source needs the following parameters: \n*Source \n*Destination \n*Packets per Second \n*Packet size \n*Duration \n*Start time")))
+                        let msg = String::from("Add_Source needs the following parameters:
+                                                *Source
+                                                *Destination
+                                                *Packets per Second
+                                                *Packet size
+                                                *Duration
+                                                *Start time");
+                        return Err(MasterError::TestParsing(msg))
                     }
                     let src = parts[1].to_owned();
                     let dst = parts[2].to_owned();

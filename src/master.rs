@@ -201,15 +201,15 @@ impl Master {
         let wb = String::from("./worker_cli");
         let an = HashMap::new();
 
-        Master{ workers : workers,
+        Master{ workers,
                 work_dir : String::from("."),
                 worker_binary : wb, 
                 available_nodes : Arc::new(an),
                 duration : 0,
                 test_area : Area{ width : 0.0, height : 0.0},
                 mobility_model : None,
-                logger : logger,
-                log_file : log_file,
+                logger,
+                log_file,
         }
     }
 
@@ -227,14 +227,14 @@ impl Master {
         file_dir.push(work_dir);
         file_dir.push(&file_name);
         debug!(logger, "Writing config file {}.", &file_dir.display());
-        let _res = config.write_to_file(file_dir.as_path())?;
+        config.write_to_file(file_dir.as_path())?;
 
         //Constructing the external process call
         let mut command = Command::new(worker_binary);
         command.arg("--config");
         command.arg(format!("{}", &file_dir.display()));
         command.arg("--work_dir");
-        command.arg(format!("{}", work_dir));
+        command.arg(work_dir.to_string());
         command.arg("--register_worker");
         command.arg(format!("{}", false));
         command.arg("--accept_commands");
@@ -382,7 +382,7 @@ impl Master {
         Ok(actions)
     }
 
-    fn get_active_nodes(actions : &Vec<TestActions>) -> HashSet<String> {
+    fn get_active_nodes(actions : &[TestActions]) -> HashSet<String> {
         let mut active_nodes = HashSet::new();
 
         for a in actions {
@@ -449,7 +449,7 @@ impl Master {
             };
             let workers_handle = workers_handle.deref_mut();
             let mut i = 0;
-            for (_name, (_id, handle)) in workers_handle {
+            for (_id, handle) in workers_handle.values_mut() {
                 let mut h = handle.lock().unwrap();
                 info!(logger, "Killing worker pid {}", h.id());
                 match h.kill() {
@@ -596,7 +596,7 @@ impl Master {
                 Ok(mut w) => { 
                     if let Some(child) = w.get_mut(&source) {
                         let mut c = child.1.lock().unwrap();
-                        let ping_data = base64::encode("PING".as_bytes());
+                        let ping_data = base64::encode(b"PING");
                         let payload = format!("SEND {} {}\n", &destination, &ping_data);
                         let _res = c.stdin.as_mut().unwrap().write_all(payload.as_bytes());
                     } else {
@@ -649,7 +649,7 @@ impl Master {
 
         let mut rng = thread_rng();
         let mut data : Vec<u8>= iter::repeat(0u8).take(packet_size).collect();
-        let iter_threshold = 1000_000_000u32 / packets_per_second as u32; //In nanoseconds
+        let iter_threshold = 1_000_000_000u32 / packets_per_second as u32; //In nanoseconds
         let mut packet_counter : u64 = 0;
         let source_handle : Arc<Mutex<Child>> = match workers.lock() {
             Ok(worker_list) => { 
@@ -707,7 +707,7 @@ impl Master {
             let pause_time = std::cmp::max(iter_threshold -
                                                (std::cmp::max(iter_duration as i32 - iter_threshold as i32, 0i32)) as u32, 0u32);
             iteration = Instant::now();
-            let pause = Duration::from_nanos(pause_time as u64);
+            let pause = Duration::from_nanos(u64::from(pause_time));
             debug!(logger, "[Source]:{} sleeping for {}.{} seconds", &source, &pause.as_secs(), &pause.subsec_nanos());
             thread::sleep(pause);
         }
@@ -745,7 +745,7 @@ impl Master {
                 while Instant::now().duration_since(sim_start_time) < sim_end_time {
                     //Wait times will be uniformly sampled from the remain simulation time.
                     let mut lower_bound: u64 = sim_start_time.elapsed().as_secs() * 1000;
-                    lower_bound += sim_start_time.elapsed().subsec_millis() as u64;
+                    lower_bound += u64::from(sim_start_time.elapsed().subsec_millis());
                     let wait_sample = Uniform::new(lower_bound, duration);
 
                     thread::sleep(update_time);
@@ -795,7 +795,7 @@ impl Master {
                               walking_sample : &Normal,
                               _wait_sample : &Uniform<u64>,
                               rng : &mut RngCore,
-                              db_path : &String,
+                              db_path : &str,
                               logger : &Logger,  ) {
         debug!(logger, "Entered function handle_random_waypoint");
 
@@ -810,7 +810,7 @@ impl Master {
             },
         };
 
-        if rows.len() > 0 {
+        if !rows.is_empty() {
             info!(logger, "{} workers have reached their destinations", rows.len());
             //Stop workers that have reached their destination
             match stop_workers(&conn, &rows, logger) {
@@ -844,7 +844,7 @@ impl Master {
                 //Schedule thread
                 let _h = Master::schedule_new_worker_velocity(pause_time, 
                                                               w_id,
-                                                              db_path.clone(),
+                                                              db_path.to_string(),
                                                               Velocity{x : x_vel,  y : y_vel},
                                                               &logger);
             }
@@ -857,7 +857,7 @@ impl Master {
                                     velocity : Velocity,
                                     logger : &Logger,  ) -> JoinHandle<()> {
         let the_logger =logger.clone();
-        let handle = thread::spawn(move || {
+        thread::spawn(move || {
             let dur = Duration::from_millis(pause_time);
             info!(the_logger, "Worker_id {} will wait for {}ms", worker_id, pause_time);
             thread::sleep(dur);
@@ -872,8 +872,7 @@ impl Master {
             } else {
                 error!(the_logger, "Failed updating target for worker_id {}: Could not connect to DB", worker_id);
             }
-        });
-        handle
+        })
     }
 
 //region command_loop

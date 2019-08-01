@@ -42,9 +42,8 @@ use std::fmt;
 use std::io;
 use std::str::FromStr;
 use std;
-use std::path::Path;
 use std::collections::{HashSet, HashMap};
-use std::process::{Command, Child};
+use std::process::Child;
 use std::sync::{PoisonError, MutexGuard};
 use crate::worker::protocols::*;
 use crate::worker::radio::*;
@@ -57,7 +56,6 @@ use self::md5::Digest;
 use crate::worker::mobility::*;
 use crate::worker::listener::Listener;
 use ::slog::Logger;
-use std::time::Duration;
 use self::libc::{nice, c_int};
 
 //Sub-modules declaration
@@ -71,8 +69,8 @@ pub mod mobility;
 // *****************************
 // ********** Globals **********
 // *****************************
-const DNS_SERVICE_NAME : &'static str = "meshsim";
-const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
+//const DNS_SERVICE_NAME : &'static str = "meshsim";
+//const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT : u16 = 23456;
 const WORKER_POOL_SIZE : usize = 2;
 const SYSTEM_THREAD_NICE : c_int = -20; //Threads that need to run with a higher priority will use this
@@ -206,7 +204,7 @@ impl From<rusqlite::Error> for WorkerError {
 
 /// Peer struct.
 /// Defines the public identity of a node in the mesh.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Default)]
 pub struct Peer {
     /// Public key of the peer. It's considered it's public address.
     pub id: String, 
@@ -234,7 +232,7 @@ impl Peer {
 /// The sender and destination fields are used in the same way across all message-types and protocols.
 /// The payload field encodes the specific data for the particular message type that only the protocol
 /// knows about
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct MessageHeader {
     ///Sender of the message
     pub sender : Peer,
@@ -281,74 +279,74 @@ impl MessageHeader {
     }
 }
 
-///Struct to represent DNS TXT records for advertising the meshsim service and obtain records from peers.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct ServiceRecord {
-    ///The service name.
-    service_name : String,
-    ///The service type.
-    service_type : String,
-    ///Name of the host advertising the service.
-    host_name : String,
-    ///Address of the host.
-    address : String,
-    ///What kind of address? (IPv4/IPv6) 
-    address_type : String,
-    ///Port in which the service is listening.
-    port : u16,
-    ///Associated TXT records with this record.
-    txt_records : Vec<String>,
-}
-
-impl ServiceRecord {
-    ///Creates a new empty record
-    pub fn new() -> ServiceRecord {
-        ServiceRecord{  service_name : String::from(""),
-                        service_type: String::from(""), 
-                        host_name : String::from(""), 
-                        address : String::from(""), 
-                        address_type : String::from(""), 
-                        port : 0,
-                        txt_records : Vec::new() }
-    }
-
-    ///Return the TXT record value that matches the provided key. The key and values are separated by the '=' symbol on 
-    ///service registration.
-    pub fn get_txt_record<'a>(&self, key : &'a str) -> Option<String> {
-        for t in &self.txt_records {
-            //Check record is in KEY=VALUE form.
-            let tokens = t.split('=').collect::<Vec<&str>>();
-            if tokens.len() == 2 && tokens[0] == key {
-                //Found the request record 
-                return Some(String::from(tokens[1]))
-            }
-        }
-
-        None
-    }
-
-    ///Publishes the service using the mDNS protocol so other devices can discover it.
-    pub fn publish_service(service : ServiceRecord) -> Result<Child, WorkerError> {
-        //Constructing the external process call
-        let mut command = Command::new("avahi-publish");
-        command.arg("-s");
-        command.arg(service.service_name);
-        command.arg(service.service_type);
-        command.arg(service.port.to_string());
-
-        for r in service.txt_records {
-            command.arg(format!(r"{}", r));
-        }
-
-        // debug!("Registering service with command: {:?}", command);
-
-        //Starting the worker process
-        let child = command.spawn()?;
-        // info!("Process {} started.", child.id());
-
-        Ok(child)
-    }
-}
+/////Struct to represent DNS TXT records for advertising the meshsim service and obtain records from peers.
+//#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+//pub struct ServiceRecord {
+//    ///The service name.
+//    service_name : String,
+//    ///The service type.
+//    service_type : String,
+//    ///Name of the host advertising the service.
+//    host_name : String,
+//    ///Address of the host.
+//    address : String,
+//    ///What kind of address? (IPv4/IPv6)
+//    address_type : String,
+//    ///Port in which the service is listening.
+//    port : u16,
+//    ///Associated TXT records with this record.
+//    txt_records : Vec<String>,
+//}
+//
+//impl ServiceRecord {
+//    ///Creates a new empty record
+//    pub fn new() -> ServiceRecord {
+//        ServiceRecord{  service_name : String::from(""),
+//                        service_type: String::from(""),
+//                        host_name : String::from(""),
+//                        address : String::from(""),
+//                        address_type : String::from(""),
+//                        port : 0,
+//                        txt_records : Vec::new() }
+//    }
+//
+//    ///Return the TXT record value that matches the provided key. The key and values are separated by the '=' symbol on
+//    ///service registration.
+//    pub fn get_txt_record<'a>(&self, key : &'a str) -> Option<String> {
+//        for t in &self.txt_records {
+//            //Check record is in KEY=VALUE form.
+//            let tokens = t.split('=').collect::<Vec<&str>>();
+//            if tokens.len() == 2 && tokens[0] == key {
+//                //Found the request record
+//                return Some(String::from(tokens[1]))
+//            }
+//        }
+//
+//        None
+//    }
+//
+//    ///Publishes the service using the mDNS protocol so other devices can discover it.
+//    pub fn publish_service(service : ServiceRecord) -> Result<Child, WorkerError> {
+//        //Constructing the external process call
+//        let mut command = Command::new("avahi-publish");
+//        command.arg("-s");
+//        command.arg(service.service_name);
+//        command.arg(service.service_type);
+//        command.arg(service.port.to_string());
+//
+//        for r in service.txt_records {
+//            command.arg(r.to_string());
+//        }
+//
+//        // debug!("Registering service with command: {:?}", command);
+//
+//        //Starting the worker process
+//        let child = command.spawn()?;
+//        // info!("Process {} started.", child.id());
+//
+//        Ok(child)
+//    }
+//}
 
 /// Operation modes for the worker.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
@@ -357,6 +355,10 @@ pub enum OperationMode {
     Simulated,
     /// Device: The worker is running on the actual hardware and has access to the radio transmitters.
     Device,
+}
+
+impl Default for OperationMode {
+    fn default() -> Self { OperationMode::Simulated }
 }
 
 impl fmt::Display for OperationMode {
@@ -417,7 +419,7 @@ impl Worker {
     ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
     pub fn start(&mut self, accept_commands : bool) -> Result<(), WorkerError> {
         //Init the worker
-        let _res = self.init()?;
+        self.init()?;
 
         //Init the radios and get their respective listeners.
         let short_radio = self.short_radio.take();
@@ -467,18 +469,12 @@ impl Worker {
                                     },
                                 };
 
-                                match response {
-                                    Some(r) => { 
-                                        match tx_channel.broadcast(r) {
-                                            Ok(()) => { /* All good */ },
-                                            Err(e) => {
-                                                error!(log, "Error sending response: {}", e);
-                                            }
+                                if let Some(r) = response {
+                                    match tx_channel.broadcast(r) {
+                                        Ok(()) => { /* All good */ },
+                                        Err(e) => {
+                                            error!(log, "Error sending response: {}", e);
                                         }
-                                        // warn!(log, "There was a resposne");
-                                    },
-                                    None => { 
-                                        /* Nothing else to do in this thread */
                                     }
                                 }
                             });
@@ -560,21 +556,22 @@ impl Worker {
         })
     }
 
-    fn start_second_counter_thread(&self) -> io::Result<JoinHandle<Result<(), WorkerError>>> {
-        let tb = thread::Builder::new();
-        let logger = self.logger.clone();
-        let mut i = 0;
-
-        tb.name(String::from("AliveThread"))
-        .spawn(move || { 
-            loop{
-                thread::sleep(Duration::from_millis(1000));
-                info!(logger, "{}", i);
-                i += 1;
-            }
-            Ok(())
-        })
-    }
+// Debug function, only used to make sure the worker is alive and getting scheduled.
+//    fn start_second_counter_thread(&self) -> io::Result<JoinHandle<Result<(), WorkerError>>> {
+//        let tb = thread::Builder::new();
+//        let logger = self.logger.clone();
+//        let mut i = 0;
+//
+//        tb.name(String::from("AliveThread"))
+//        .spawn(move || {
+//            loop{
+//                thread::sleep(Duration::from_millis(1000));
+//                info!(logger, "{}", i);
+//                i += 1;
+//            }
+//            Ok(())
+//        })
+//    }
 
     fn command_loop(logger : &Logger,
                     protocol_handler : Arc<Protocol>) -> Result<(), WorkerError> {
@@ -605,14 +602,15 @@ impl Worker {
             }
             input.clear();
         }
-        Ok(())
+        #[allow(unreachable_code)]
+        Ok(()) //Loop should never end
     }
 
     fn process_command(com : commands::Commands, ph : Arc<Protocol>, logger : &Logger) -> Result<(), WorkerError> {
         match com {
             commands::Commands::Send(destination, data) => {
                 info!(logger, "Send command received");
-                let _res = ph.send(destination, data)?;
+                ph.send(destination, data)?;
             }
         }
         Ok(())
@@ -624,13 +622,6 @@ impl Worker {
 // ******* End structs *********
 // *****************************
 
-fn extract_address_key<'a>(address : &'a str) -> String {
-    let own_key = Path::new(address).file_stem();
-    if own_key.is_none() {
-        return String::from("");
-    }
-    own_key.unwrap().to_str().unwrap_or("").to_string()
-}
 
 // *****************************
 // ********** Tests ************

@@ -69,7 +69,7 @@ impl Protocol for NaiveRouting {
                                                     dest,
                                                     1,
                                                     data)?;
-        let _res = self.short_radio.broadcast(hdr)?;
+        self.short_radio.broadcast(hdr)?;
         Ok(())
     }
 
@@ -82,11 +82,11 @@ impl NaiveRouting {
                sr : Arc<Radio>,
                logger : Logger ) -> NaiveRouting {
         let v = Vec::new();
-        NaiveRouting{ worker_name : worker_name,
-                      worker_id : worker_id,
+        NaiveRouting{ worker_name,
+                      worker_id,
                       msg_cache : Arc::new(Mutex::new(v)),
                       short_radio : sr,
-                      logger : logger }
+                      logger }
     }
 
     fn create_data_message(sender : Peer,
@@ -98,9 +98,9 @@ impl NaiveRouting {
         //info!("Built DATA message for peer: {}, id {:?}", &destination.name, destination.id);
         
         //Build the message header that's ready for sending.
-        let msg = MessageHeader{ sender : sender, 
-                                 destination : destination,
-                                 hops : hops,
+        let msg = MessageHeader{ sender,
+                                 destination,
+                                 hops,
                                  payload : Some(payload) };
         Ok(msg)
     }
@@ -159,12 +159,11 @@ impl NaiveRouting {
                                msg_hash : Digest,
                                msg_cache : Arc<Mutex<Vec<CacheEntry>>>,
                                logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
-        let response = match msg {
+        match msg {
                     Messages::Data(data) => {
                         NaiveRouting::process_data_message(hdr, data, msg_hash, me, msg_cache, logger)
                     },
-                };
-        response
+        }
     }
 
     fn build_protocol_message(data : Vec<u8>) -> Result<Messages, serde_cbor::Error> {
