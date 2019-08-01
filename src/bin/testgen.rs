@@ -19,8 +19,8 @@ use std::io::Write;
 use rand::{thread_rng, Rng, RngCore};
 use rand::distributions::{Uniform, Normal};
 
-const DEFAULT_FILE_NAME : &'static str = "untitled";
-const DEFAULT_NODE_NAME : &'static str = "node";
+const DEFAULT_FILE_NAME : &str = "untitled";
+const DEFAULT_NODE_NAME : &str = "node";
 
 #[derive(Debug)]
 struct TestBasics {
@@ -71,7 +71,7 @@ impl FromStr for Commands {
         let parts : Vec<&str> = s.split_whitespace().collect();
 
         //Assuming here we can't have actions with 0 parameters.
-        if parts.len() > 0 {
+        if !parts.is_empty() {
             match parts[0].to_uppercase().as_str() {
                 "FINISH" => {
 
@@ -80,7 +80,7 @@ impl FromStr for Commands {
                 "ADD_NODES" => {
                    if parts.len() < 3 {
                         //Error out
-                        return Err(Errors::TestParsing(format!("Add_nodes requires 2 params: node_type [Initial/Available] and number")))
+                        return Err(Errors::TestParsing(String::from("Add_nodes requires 2 params: node_type [Initial/Available] and number")))
                     }
                     let node_type = parts[1].into();
                     let number : usize = match parts[2].parse() {
@@ -93,7 +93,7 @@ impl FromStr for Commands {
                 "ADD_ACTION" => {
                    if parts.len() < 2 {
                         //Error out
-                        return Err(Errors::TestParsing(format!("No action was specified")))
+                        return Err(Errors::TestParsing(String::from("No action was specified")))
                     }
                     let mut action : String = String::new();
                     for s in parts[1..].iter() {
@@ -105,7 +105,7 @@ impl FromStr for Commands {
                 "ADD_SOURCES" => {
                    if parts.len() < 3 {
                         //Error out
-                        return Err(Errors::TestParsing(format!("Add_Sources requires NUM_SOURCES TYPE params")))
+                        return Err(Errors::TestParsing(String::from("Add_Sources requires NUM_SOURCES TYPE params")))
                     }
                     let num : usize = match parts[1].parse() {
                         Ok(n) => n,
@@ -119,7 +119,7 @@ impl FromStr for Commands {
                 "ADD_GRID" => {
                     if parts.len() < 4 {
                         //Error out
-                        return Err(Errors::TestParsing(format!("Add_Grid requires X, Y RANGE params")))
+                        return Err(Errors::TestParsing(String::from("Add_Grid requires X, Y RANGE params")))
                     }
                     let x : usize = match parts[1].parse() {
                         Ok(n) => n,
@@ -225,7 +225,7 @@ fn start_command_loop(data : TestBasics) -> Result<(), Errors> {
     println!("Input ? for a list of commands or \"finish\" for writing the current configuration to file.");
     loop {
         print!("> ");
-        let _res = stdout.flush()?;
+        stdout.flush()?;
         match io::stdin().read_line(&mut input) {
             Ok(_bytes) => {
                 match input.parse::<Commands>() {
@@ -281,9 +281,9 @@ fn command_finish(spec : &mut TestSpec, data : &TestBasics) -> Result<bool, Erro
     let mut p = PathBuf::from(".");
     //Determine file name to write
     spec.name = data.test_name.clone();
-    let file_name = match spec.name.eq("") {
-        true => format!("{}.toml", DEFAULT_FILE_NAME),
-        false => format!("{}.toml", &spec.name),
+    let file_name = {
+        if spec.name.eq("") { format!("{}.toml", DEFAULT_FILE_NAME) }
+        else { format!("{}.toml", &spec.name) }
     };
     p.push(file_name);
     //let canon = p.canonicalize().expect("Invalid file path");
@@ -301,7 +301,7 @@ fn command_finish(spec : &mut TestSpec, data : &TestBasics) -> Result<bool, Erro
     //Write file to disk
     let mut file = File::create(&p)?;
     let data = toml::to_string(spec)?;
-    let _res = write!(file, "{}", data)?;
+    write!(file, "{}", data)?;
 
     Ok(true)
 }
@@ -312,26 +312,26 @@ fn command_add_nodes(node_type : String, num : usize, spec : &mut TestSpec, data
     let height_sample = Uniform::new(0.0, data.height);
     let walking_sample = Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV);
 
-    let ref mut nodes = match node_type.to_uppercase().as_str() {
+    let nodes = match node_type.to_uppercase().as_str() {
         "AVAILABLE" => &mut spec.available_nodes,
         "INITIAL" => &mut spec.initial_nodes,
         &_ => return Err(Errors::TestParsing(format!("{} is not a supported type of node", &node_type)))
     };
 
     //Add the nodes
-    for i in 1..num+1 {
+    for i in 1..=num {
         let mut w = WorkerConfig::new();
         w.worker_name = format!("{}{}", DEFAULT_NODE_NAME, i);
         w.operation_mode = worker::OperationMode::Simulated; //All test files are for simulated mode.
         w.random_seed = rng.next_u32();
         w.work_dir = data.work_dir.clone();
-        w.protocol = data.protocol.clone();
+        w.protocol = data.protocol;
         w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
 
         //Calculate the position
         let x = rng.sample(width_sample);
         let y = rng.sample(height_sample);
-        w.position = Position{ x : x, y : y};
+        w.position = Position{ x, y };
 
         if let Some(model) = &data.m_model {
             match model {
@@ -398,7 +398,7 @@ fn command_add_sources(num_sources : usize,
             add_cbr_sources(num_sources, params, spec)
         }
         _ => {
-            return Err(Errors::TestParsing(format!("Unsupported source type: {}", &source_type)))
+            Err(Errors::TestParsing(format!("Unsupported source type: {}", &source_type)))
         },
     }
 }
@@ -546,7 +546,7 @@ fn command_add_grid(num_columns : usize,
     let start_y : usize = 0;
     let effective_range = sr_range * 0.90;
     let mut rng = rand::thread_rng();
-    let ref mut nodes = &mut spec.initial_nodes;
+    let nodes = &mut spec.initial_nodes;
     let mut count = 0;
 
     for j in start_x..num_rows {
@@ -560,9 +560,9 @@ fn command_add_grid(num_columns : usize,
             w.operation_mode = worker::OperationMode::Simulated; //All test files are for simulated mode.
             w.random_seed = rng.next_u32();
             w.work_dir = data.work_dir.clone();
-            w.protocol = data.protocol.clone();
+            w.protocol = data.protocol;
             w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
-            w.position = Position{ x : x, y : y};
+            w.position = Position{ x, y};
             w.velocity = Velocity{ x : 0.0, y : 0.0};
 
             //Create the radio configurations

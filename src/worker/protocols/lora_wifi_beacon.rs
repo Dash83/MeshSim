@@ -86,7 +86,7 @@ impl Protocol for LoraWifiBeacon {
         let logger = self.logger.clone();
         let link = String::from("wifi");
         let _wifi_beacon_handle = thread::spawn(move || {
-            LoraWifiBeacon::beacon_loop(wifi_radio,
+            let _ = LoraWifiBeacon::beacon_loop(wifi_radio,
                                         WIFI_BEACON_TIMEOUT,
                                         self_peer,
                                         link,
@@ -100,7 +100,7 @@ impl Protocol for LoraWifiBeacon {
         let _lora_beacon_handle = thread::spawn(move || {
             let initial_offset : u64 = thread_rng().next_u64() % 3_000u64;
             thread::sleep(Duration::from_millis(initial_offset));
-            LoraWifiBeacon::beacon_loop(lora_radio,
+            let _ = LoraWifiBeacon::beacon_loop(lora_radio,
                                         LORA_BEACON_TIMEOUT,
                                         self_peer,
                                         link,
@@ -123,12 +123,12 @@ impl LoraWifiBeacon {
                lora_radio : Arc<Radio>,
 //               rng : StdRng,
                logger : Logger) -> LoraWifiBeacon {
-        LoraWifiBeacon{ worker_name: worker_name,
-                        worker_id : worker_id,
-                        wifi_radio : wifi_radio,
-                        lora_radio : lora_radio,
+        LoraWifiBeacon{ worker_name,
+                        worker_id,
+                        wifi_radio,
+                        lora_radio,
 //                        rng : rng,
-                        logger: logger }
+                        logger }
     }
 
     fn beacon_loop(radio : Arc<Radio>,
@@ -147,7 +147,7 @@ impl LoraWifiBeacon {
             hdr.sender = self_peer.clone();
             hdr.payload = Some(to_vec(&msg)?);
 
-            let _res = radio.broadcast(hdr)?;
+            radio.broadcast(hdr)?;
             info!(logger, "Beacon sent over {}:{}", &link, counter);
         }
     }

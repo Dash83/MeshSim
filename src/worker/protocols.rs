@@ -22,6 +22,7 @@ use std::str::FromStr;
 pub mod naive_routing;
 pub mod reactive_gossip_routing;
 pub mod lora_wifi_beacon;
+#[allow(non_snake_case)]
 pub mod reactive_gossip_routing_II;
 
 /// Trait that all protocols need to implement.
@@ -52,6 +53,10 @@ pub enum Protocols {
     ReactiveGossipII,
 }
 
+impl Default for Protocols {
+    fn default() -> Self { Protocols::NaiveRouting }
+}
+
 impl FromStr for Protocols {
     type Err = WorkerError;
 
@@ -59,7 +64,7 @@ impl FromStr for Protocols {
         let input = s.to_uppercase();
         let parts : Vec<&str> = input.split_whitespace().collect();
 
-        assert!(parts.len() > 0);
+        assert!(!parts.is_empty());
         let prot = parts[0];
         match prot {
             "NAIVEROUTING" => Ok(Protocols::NaiveRouting),
@@ -94,8 +99,8 @@ pub fn build_protocol_resources( p : Protocols,
             let handler : Arc<Protocol> = Arc::new(NaiveRouting::new(name, id, Arc::clone(&sr), logger));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
-            let resources = ProtocolResources{  handler : handler, 
-                                                radio_channels : radio_channels };
+            let resources = ProtocolResources{  handler,
+                                                radio_channels };
             Ok(resources)            
         },
 
@@ -106,8 +111,8 @@ pub fn build_protocol_resources( p : Protocols,
             let handler : Arc<Protocol> = Arc::new(ReactiveGossipRouting::new(name, id, Arc::clone(&sr), rng, logger));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
-            let resources = ProtocolResources{  handler : handler, 
-                                                radio_channels : radio_channels };
+            let resources = ProtocolResources{  handler,
+                                                radio_channels };
             Ok(resources)            
         },
 
@@ -118,8 +123,8 @@ pub fn build_protocol_resources( p : Protocols,
             let handler : Arc<Protocol> = Arc::new(ReactiveGossipRoutingII::new(name, id, Arc::clone(&sr), rng, logger));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
-            let resources = ProtocolResources{  handler : handler,
-                radio_channels : radio_channels };
+            let resources = ProtocolResources{ handler,
+                                               radio_channels };
             Ok(resources)
         },
 
@@ -140,8 +145,8 @@ pub fn build_protocol_resources( p : Protocols,
             let handler : Arc<Protocol> = Arc::new(LoraWifiBeacon::new(name, id, sr, lr,  logger));
 
             //Build the resources context
-            let resources = ProtocolResources{ handler : handler,
-                                               radio_channels : radio_channels };
+            let resources = ProtocolResources{ handler,
+                                               radio_channels };
             Ok(resources)
         },
 
