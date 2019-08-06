@@ -7,16 +7,6 @@
 
 //extern crate mesh_simulator;
 
-
-
-
-
-
-
-
-
-
-
 /// This test makes sure that the basic components of device mode are activated when running the worker on device mode.
 /// At the moment, this test is tied up to my lab computer due to network-interface names. Not sure this will be addressed later.
 /// This test could be a part of the tests that only run every now and then.
@@ -79,5 +69,9 @@ fn integration_device_mode_basic() -> TestResult {
     assert!(output.contains("Worker finished initializing."));
     assert!(output.contains("Radio initialized."));
     //assert!(output.contains("Starting the heartbeat thread."));
+
+    //Test passed. Results are not needed.
+    std::fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+
     Ok(())
 }

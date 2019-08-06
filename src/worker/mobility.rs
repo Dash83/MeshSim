@@ -945,13 +945,16 @@ mod tests {
         let mut rng = rand::thread_rng();
         let wait : u64 = rng.gen::<u64>() % 100;
         std::thread::sleep(Duration::from_millis(wait));
-        let path = create_test_dir("mobility");
+        let work_dir = create_test_dir("mobility");
         let logger = logging::create_discard_logger();
 
-        let _conn = get_db_connection(&path, &logger).expect("Could not create DB file");
-        let expected_file = PathBuf::from(&format!("{}{}{}", path, std::path::MAIN_SEPARATOR, DB_NAME));
+        let _conn = get_db_connection(&work_dir, &logger).expect("Could not create DB file");
+        let expected_file = PathBuf::from(&format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, DB_NAME));
 
         assert!(expected_file.exists());
+
+        //Test passed. Results are not needed.
+        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
     }
 
     //Unit test for creating the tables in the db
@@ -963,10 +966,10 @@ mod tests {
         std::thread::sleep(Duration::from_millis(wait));
         
         let QRY_TABLE_EXISTS = "SELECT rowid FROM sqlite_master WHERE type='table' AND name = (?);";
-        let path = create_test_dir("mobility");
+        let work_dir = create_test_dir("mobility");
         let logger = logging::create_discard_logger();
 
-        let conn = get_db_connection(&path, &logger).expect("Could not create DB file");
+        let conn = get_db_connection(&work_dir, &logger).expect("Could not create DB file");
         let _res = create_db_objects(&conn, &logger).expect("Could not create DB tables");
 
         let mut stmt = conn.prepare(QRY_TABLE_EXISTS).expect("Could not prepare statement");
@@ -982,6 +985,9 @@ mod tests {
 
         row_id = stmt.query_row(&["worker_destinations"], |row| row.get(0)).expect("Could not execute query");
         assert_ne!(row_id, 0);
+
+        //Test passed. Results are not needed.
+        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
     }
 
     //Unit test for confirming a worker is registered in the db
@@ -992,12 +998,12 @@ mod tests {
         let wait : u64 = rng.gen::<u64>() % 100;
         std::thread::sleep(Duration::from_millis(wait));
         
-        let path = create_test_dir("mobility");
+        let work_dir = create_test_dir("mobility");
         let logger = logging::create_discard_logger();
 
-        info!(logger, "Test results placed in {}", &path);
+        info!(logger, "Test results placed in {}", &work_dir);
 
-        let conn = get_db_connection(&path, &logger).expect("Could not create DB file");
+        let conn = get_db_connection(&work_dir, &logger).expect("Could not create DB file");
 
         let _res = create_db_objects(&conn, &logger).expect("Could not create positions table");
         let name = String::from("worker1");
@@ -1018,6 +1024,9 @@ mod tests {
                                            &logger).expect("Could not register worker");
         
         assert!(worker_db_id > 0);
+
+        //Test passed. Results are not needed.
+        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
     }
 
     //Unit test for checking peers are within range.
@@ -1028,12 +1037,12 @@ mod tests {
         let wait : u64 = rng.gen::<u64>() % 100;
         std::thread::sleep(Duration::from_millis(wait));
         
-        let path = create_test_dir("mob");
+        let work_dir = create_test_dir("mob");
         let logger = logging::create_discard_logger();
 
-        info!(logger, "Test results placed in {}", &path);
+        info!(logger, "Test results placed in {}", &work_dir);
 
-        let conn = get_db_connection(&path, &logger).expect("Could not create DB file");
+        let conn = get_db_connection(&work_dir, &logger).expect("Could not create DB file");
         let _res = create_db_objects(&conn, &logger).expect("Could not create positions table");
 
         //Create test worker1
@@ -1124,6 +1133,9 @@ mod tests {
         let workers_in_range : Vec<Peer> = get_workers_in_range(&conn, &source_id, 100.0, &logger).unwrap();
         println!("{:?}", &workers_in_range);
         assert_eq!(workers_in_range.len(), 2);
+
+        //Test passed. Results are not needed.
+        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
     }
 
     //Unit test for checking peers are within range.
@@ -1131,11 +1143,11 @@ mod tests {
     fn test_workers_mobility() {
         use std::collections::HashMap;
 
-        let path = create_test_dir("basic_mobility");
+        let work_dir = create_test_dir("basic_mobility");
         let logger = logging::create_discard_logger();
-        info!(logger, "Test results placed in {}", &path);
+        info!(logger, "Test results placed in {}", &work_dir);
 
-        let conn = get_db_connection(&path, &logger).expect("Could not create DB file");
+        let conn = get_db_connection(&work_dir, &logger).expect("Could not create DB file");
         let _res = create_db_objects(&conn, &logger).expect("Could not create positions table");
 
         //Create test worker1
@@ -1228,6 +1240,9 @@ mod tests {
         let w3 = positions.get("416d77337e24399dc7a5aa058039f72c").unwrap();
         assert_eq!(w3.0, 27.0);
         assert_eq!(w3.1, 46.5);
+
+        //Test passed. Results are not needed.
+        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
     }
 
     #[test]
@@ -1235,12 +1250,12 @@ mod tests {
         let mut rng = rand::thread_rng();
         let num : u64 = rng.gen::<u64>() % 10000;
 
-        let path = create_test_dir(&format!("stop_workers{}", num));
+        let work_dir = create_test_dir(&format!("stop_workers{}", num));
         let logger = logging::create_discard_logger();
 
-        info!(logger, "Test results placed in {}", &path);
+        info!(logger, "Test results placed in {}", &work_dir);
 
-        let conn = get_db_connection(&path, &logger).expect("Could not create DB file");
+        let conn = get_db_connection(&work_dir, &logger).expect("Could not create DB file");
         let _res = create_db_objects(&conn, &logger).expect("Could not create positions table");
 
         //Create test worker1
@@ -1286,6 +1301,8 @@ mod tests {
 
         assert_eq!(rows, 2);
 
+        //Test passed. Results are not needed.
+        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
     }
 
     #[test]
@@ -1294,14 +1311,17 @@ mod tests {
         let mut rng = rand::thread_rng();
         let wait : u64 = rng.gen::<u64>() % 100;
         std::thread::sleep(Duration::from_millis(wait));
-        let path = create_test_dir("distance_func");
+        let work_dir = create_test_dir("distance_func");
         let logger = logging::create_discard_logger();
 
-        let conn = get_db_connection(&path, &logger).expect("Could not create DB file");
+        let conn = get_db_connection(&work_dir, &logger).expect("Could not create DB file");
         let expected_distance : f64 = 141.4213562373095;
         let obtained_distance : f64 = conn.query_row("SELECT distance(0, 0, 100, 100)", NO_PARAMS, |r| r.get(0)).expect("Could not exec query");
 
         assert_eq!(expected_distance, obtained_distance);
+
+        //Test passed. Results are not needed.
+        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
 
 //        //Add random wait to avoid collitions on the same DB file
 //        let mut rng = rand::thread_rng();

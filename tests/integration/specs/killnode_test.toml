@@ -1,0 +1,69 @@
+#This test checks that the kill_node feature is functional
+
+name = "kill_node_test"
+duration = 1500
+width = 200
+height = 200
+actions = ["Kill_Node node2 500"]
+
+[initial_nodes.node1]
+    worker_name = "node1"
+    work_dir = "/tmp"
+    random_seed = 0
+    operation_mode = "Simulated"
+    protocol = "NaiveRouting"
+    x = 0.0
+    y = 0.0
+    [initial_nodes.node1.velocity]
+        x = 0.0
+        y = 0.0
+    [initial_nodes.node1.radio_short]
+        reliability = 1.0
+        interface_name = "wlan0"
+        range = 100.0
+    [initial_nodes.node1.radio_long]
+        reliability = 1.0
+        interface_name = "wlan1"
+        range = 100.0
+
+[initial_nodes.node2]
+    worker_name = "node2"
+    work_dir = "/tmp"
+    random_seed = 456
+    operation_mode = "Simulated"
+    protocol = "NaiveRouting"
+    x = 0.0
+    y = 0.0
+    [initial_nodes.node2.velocity]
+        x = 0.0
+        y = 0.0
+    [initial_nodes.node2.radio_short] #Short-range radio
+        reliability = 1 #Not used in device_mode
+        interface_name = "wlan0" #Not used in simulated_mode
+        range = 100.0
+    [initial_nodes.node2.radio_long] #Long-range radio
+        reliability = 1 #Not used in device_mode
+        interface_name = "wlan1" #Not used in simulated_mode
+        range = 100.0
+
+[initial_nodes.node3]
+    worker_name = "node3"
+    work_dir = "/tmp"
+    random_seed = 789
+    operation_mode = "Simulated"
+    protocol = "NaiveRouting"
+    x = 0.0
+    y = 0.0
+    [initial_nodes.node3.velocity]
+        x = 0.0
+        y = 0.0
+    [initial_nodes.node3.radio_short] #Short-range radio
+        reliability = 1 #Not used in device_mode
+        interface_name = "wlan0" #Not used in simulated_mode
+        range = 100.0
+    [initial_nodes.node3.radio_long] #Long-range radio
+        reliability = 1 #Not used in device_mode
+        interface_name = "wlan1" #Not used in simulated_mode
+        range = 100.0
+
+[available_nodes]

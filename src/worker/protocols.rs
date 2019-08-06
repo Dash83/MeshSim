@@ -17,7 +17,7 @@ use self::lora_wifi_beacon::LoraWifiBeacon;
 use ::slog::Logger;
 
 use std;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::str::FromStr;
 
 pub mod naive_routing;
@@ -116,7 +116,11 @@ pub fn build_protocol_resources( p : Protocols,
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio.expect("The ReactiveGossip protocol requires a short_radio to be provided.");
             let rng = Worker::rng_from_seed(seed);
-            let handler : Arc<Protocol> = Arc::new(ReactiveGossipRouting::new(name, id, Arc::clone(&sr), rng, logger));
+            let handler : Arc<Protocol> = Arc::new(ReactiveGossipRouting::new(name,
+                                                                              id,
+                                                                              Arc::clone(&sr),
+                                                                              Arc::new(Mutex::new(rng)),
+                                                                              logger));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
             let resources = ProtocolResources{  handler,
