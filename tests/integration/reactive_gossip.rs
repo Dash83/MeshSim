@@ -40,6 +40,9 @@ fn test_basic() {
     let node_24_data_recv = logging::find_log_record("msg", "Message 01b903789ae7d54079e92398434cef61 has reached its destination", &node24_log_records);
 
     assert!(node_24_data_recv.is_some());
+
+    //Test passed. Results are not needed.
+    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
 }
 
 #[test]
@@ -89,5 +92,8 @@ fn test_route_teardown() {
     assert_eq!(received_packets, 3);
     //Confirm the route disruption was detected and the source node received it.
     assert!(node7_teardown_recv.is_some());
+
+    //Test passed. Results are not needed.
+    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
 }
 

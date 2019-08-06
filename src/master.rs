@@ -700,9 +700,8 @@ impl Master {
         let mut data: Vec<u8> = iter::repeat(0u8).take(packet_size).collect();
         let iter_threshold = 1_000_000_000u32 / packets_per_second as u32; //In nanoseconds
         let mut packet_counter: u64 = 0;
-        let worker_list = workers.lock().expect("Could not lock workers list");
-
         let source_handle = {
+            let worker_list = workers.lock().expect("Could not lock workers list");
             if let Some(w) = worker_list.get(&source) {
                 Arc::clone(&w.1)
             } else {

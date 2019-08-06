@@ -237,16 +237,17 @@ fn test_broadcast_simulated() {
 #[test]
 fn test_broadcast_device() -> TestResult {
     //Setup
-    //Get general test settings
-    let test_path = create_test_dir("dev_bcast");
-    let log_file = format!("{}{}test.log", &test_path, std::path::MAIN_SEPARATOR);
-    let logger = logging::create_logger(&log_file, false).expect("Could not create logger");
     let host = env::var("MESHSIM_HOST").unwrap_or(String::from(""));
     //This test should ONLY run on my lab development machine due to required configuration of device_mode.
     if !host.eq("kaer-morhen") {
         println!("This test should only run in the kaer-morhen host");
         return Ok(())
     }
+
+    //Get general test settings
+    let test_path = create_test_dir("dev_bcast");
+    let log_file = format!("{}{}test.log", &test_path, std::path::MAIN_SEPARATOR);
+    let logger = logging::create_logger(&log_file, false).expect("Could not create logger");
     
     //Acquire the lock for the NIC since other tests also require it and they conflict with each other. 
     let _nic = WIRELESS_NIC.lock()?;

@@ -60,4 +60,37 @@ fn naive_basic() {
     assert!(node_1_msg_recv.is_some());
     assert!(node_2_msg_drop.is_some());
 
+    //Test passed. Results are not needed.
+    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+}
+
+#[test]
+fn killnode_test() {
+    let test = get_test_path("killnode_test.toml");
+    let program = get_master_path();
+    let worker = get_worker_path();
+    let work_dir = create_test_dir("killnode_test");
+
+    println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
+
+    //Assert the test finished succesfully.
+    //The only pass condition for this test is that the specified process is killed during the test execution,
+    //therefore leaving only 2 process to be terminated at the end of the test.
+    assert_cli::Assert::command(&[&program])
+        .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
+        .succeeds()
+        .unwrap();
+
+    //Check the test ended with the correct number of processes.
+    let master_log_file = format!("{}{}{}{}{}", &work_dir,
+                                  std::path::MAIN_SEPARATOR,
+                                  LOG_DIR_NAME,
+                                  std::path::MAIN_SEPARATOR,
+                                  DEFAULT_MASTER_LOG);
+    let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
+    let master_node_num = logging::find_log_record("msg",
+                                                   "End_Test action: Finished. 2 processes terminated.",
+                                                   &master_log_records);
+    assert!(master_node_num.is_some());
+
 }

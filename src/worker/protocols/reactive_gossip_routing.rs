@@ -54,7 +54,7 @@ pub struct ReactiveGossipRouting {
     /// established.
     queued_transmissions : Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
     /// RNG used for routing calculations
-    rng : StdRng, //TODO: MUST USE THIS RNG!
+    rng : Arc<Mutex<StdRng>>,
     /// The logger to use in this protocol
     logger : Logger,
 }
@@ -143,12 +143,14 @@ impl Protocol for ReactiveGossipRouting {
         let short_radio = Arc::clone(&self.short_radio);
         let route_msg_cache = Arc::clone(&self.route_msg_cache);
         let data_msg_cache = Arc::clone(&self.data_msg_cache);
+        let rng = Arc::clone(&self.rng);
         ReactiveGossipRouting::handle_message_internal(hdr, msg, self_peer, msg_hash, self.k, self.p,
                                                        queued_transmissions, dest_routes,
                                                        pending_destinations,
                                                        known_routes, route_msg_cache,
                                                        data_msg_cache, short_radio,
-                                                       &self.logger)
+                                                       &self.logger,
+                                                       rng)
     }
 
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
@@ -211,7 +213,7 @@ impl ReactiveGossipRouting {
     pub fn new( worker_name : String,
                 worker_id : String,
                 short_radio : Arc<Radio>,
-                rng : StdRng,
+                rng : Arc<Mutex<StdRng>>,
                 logger : Logger ) -> ReactiveGossipRouting {
         let qt = HashMap::new();
         let d_routes = HashMap::new();
@@ -299,7 +301,8 @@ impl ReactiveGossipRouting {
                                known_routes : Arc<Mutex<HashMap<String, bool>>>,
                                route_msg_cache : Arc<Mutex<HashSet<String>>>,
                                data_msg_cache : Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-                               short_radio : Arc<Radio>, logger : &Logger ) -> Result<Option<MessageHeader>, MeshSimError> {
+                               short_radio : Arc<Radio>, logger : &Logger,
+                               rng : Arc<Mutex<StdRng>>) -> Result<Option<MessageHeader>, MeshSimError> {
         match msg {
                     Messages::Data(data_msg) => {
 //                        debug!(logger, "Received DATA message");
@@ -311,6 +314,7 @@ impl ReactiveGossipRouting {
                         ReactiveGossipRouting::process_route_discovery_msg(hdr, route_msg,
                                                                            k, p, known_routes,
                                                                            route_msg_cache, self_peer, msg_hash,
+                                                                           rng,
                                                                            logger, )
                     },
                     Messages::RouteEstablish(route_msg) => {
@@ -430,6 +434,7 @@ impl ReactiveGossipRouting {
                                     route_msg_cache : Arc<Mutex<HashSet<String>>>,
                                     self_peer : Peer,
                                     _msg_hash : Digest,
+                                    rng : Arc<Mutex<StdRng>>,
                                     logger : &Logger ) -> Result<Option<MessageHeader>, MeshSimError> {
         info!(logger, "Received ROUTE_DISCOVERY message"; "route_id" => &msg.route_id, "source" => &hdr.sender.name);
 
@@ -477,8 +482,10 @@ impl ReactiveGossipRouting {
         }
 
         //Gossip?
-        let mut rng = thread_rng();
-        let s : f64 = rng.gen_range(0f64, 1f64);
+        let s : f64 = {
+            let mut rng = rng.lock().expect("Could not obtain lock for RNG");
+            rng.gen_range(0f64, 1f64)
+        };
         debug!(logger, "Gossip prob {}", s);
         if msg.route.len() > k && s > p {
             info!(logger, "Not forwarding the message");
