@@ -1,16 +1,14 @@
 //! This module defines the abstraction and functionality for what a Radio is in MeshSim
 
-extern crate pnet_datalink;
-extern crate ipnetwork;
-extern crate socket2;
-extern crate md5;
-
 use crate::worker::*;
 use crate::worker::listener::*;
+use crate::worker::mobility::{get_db_connection, get_workers_in_range};
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
-use self::socket2::{Socket, SockAddr, Domain, Type, Protocol};
-use ::slog::Logger;
+use socket2::{Socket, SockAddr, Domain, Type, Protocol};
+use slog::Logger;
 use std::sync::Arc;
+use pnet_datalink as datalink;
+use crate::{MeshSimError, MeshSimErrorKind};
 
 #[cfg(target_os="linux")]
 use self::sx1276::socket::{Link, LoRa};
@@ -51,26 +49,29 @@ impl Into<String> for RadioTypes {
 }
 
 impl FromStr for RadioTypes {
-    type Err = WorkerError;
+    type Err = MeshSimError;
 
-    fn from_str(s : &str) -> Result<RadioTypes, WorkerError> {
-        // println!("[RadioTypes] Received {}", s.to_lowercase().as_str());
-        let r = match s.to_lowercase().as_str() {
-            LONG_RANGE_DIR => RadioTypes::LongRange,
-            SHORT_RANGE_DIR => RadioTypes::ShortRange,
-            &_ => return Err(WorkerError::Configuration(String::from("Unknown radio type")))
-        };
-        Ok(r)
+    fn from_str(s : &str) -> Result<RadioTypes, MeshSimError> {
+        match s.to_lowercase().as_str() {
+            LONG_RANGE_DIR => Ok(RadioTypes::LongRange),
+            SHORT_RANGE_DIR => Ok(RadioTypes::ShortRange),
+            &_ => {
+                let err_msg = format!("Unknown radio type {}", s);
+                let error = MeshSimError{
+                    kind : MeshSimErrorKind::Configuration(err_msg),
+                    cause : None
+                };
+                Err(error)
+            }
+        }
     }
 }
 /// Trait for all types of radios.
 pub trait Radio : std::fmt::Debug + Send + Sync {
-    // ///Method that implements the radio-specific logic to scan it's medium for other nodes.
-    // fn scan_for_peers(&self) -> Result<HashMap<String, (String, String)>, WorkerError>;
     ///Gets the current address at which the radio is listening.
     fn get_address(&self) -> &str;
     ///Used to broadcast a message using the radio
-    fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError>;
+    fn broadcast(&self, hdr : MessageHeader) -> Result<(), MeshSimError>;
 }
 
 /// Represents a radio used by the worker to send a message to the network.
@@ -101,7 +102,7 @@ impl Radio  for SimulatedRadio {
         &self.address
     }
 
-    fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
+    fn broadcast(&self, hdr : MessageHeader) -> Result<(), MeshSimError> {
         let conn = get_db_connection(&self.work_dir, &self.logger)?;
         let peers = get_workers_in_range(&conn, &self.id, self.range, &self.logger)?;  
 
@@ -113,9 +114,15 @@ impl Radio  for SimulatedRadio {
         info!(self.logger, "{} peer in range", peers.len());
 
         // let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
-        let socket = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
+        let socket = new_socket()?;
         let msg = hdr.clone();
-        let data = to_vec(&msg)?;
+        let data = to_vec(&msg).map_err(|e| {
+            let err_msg = String::from("Failed to serialize message");
+            MeshSimError {
+                kind: MeshSimErrorKind::Serialization(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
         for p in peers.into_iter() {
             let selected_address = match self.r_type {
                 RadioTypes::ShortRange => { p.short_address.clone() },
@@ -123,8 +130,7 @@ impl Radio  for SimulatedRadio {
             };
             
             if let Some(addr) = selected_address {
-                // debug!("Sending data to {}", &addr);
-                // let _res : JoinHandle<Result<(), WorkerError> > = thread::spawn(move || {
+
                 let remote_addr : SocketAddr = match addr.parse::<SocketAddr>() {
                     Ok(sock_addr) => sock_addr,
                     Err(e) => {
@@ -148,7 +154,7 @@ impl Radio  for SimulatedRadio {
             }
         }      
         
-        info!(self.logger, "Message {:x} sent", &hdr.get_hdr_hash()?);
+        info!(self.logger, "Message {:x} sent", &hdr.get_hdr_hash());
         Ok(())
     }
 
@@ -163,7 +169,7 @@ impl SimulatedRadio {
                 r_type : RadioTypes,
                 range : f64,
                 rng : Arc<Mutex<StdRng>>,
-                logger : Logger ) -> Result<(SimulatedRadio, Box<Listener>), WorkerError> {
+                logger : Logger ) -> Result<(SimulatedRadio, Box<Listener>), MeshSimError> {
         // let address = SimulatedRadio::format_address(&work_dir, &id, r_type);
         let listener = SimulatedRadio::init(reliability, &rng, r_type, &logger)?;
         let listen_addres = listener.get_address();
@@ -192,15 +198,28 @@ impl SimulatedRadio {
     fn init(reliability : f64,
             rng : &Arc<Mutex<StdRng>>,
             r_type : RadioTypes,
-            logger : &Logger ) -> Result<Box<Listener>, WorkerError> {
+            logger : &Logger ) -> Result<Box<dyn Listener>, MeshSimError> {
 
-        let sock = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
-        sock.set_only_v6(true)?;
+        let sock = new_socket()?;
+        sock.set_only_v6(true).map_err(|e| {
+            let err_msg = String::from("Failed to configure socket");
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
 
         // Listen on port 0 to be auto-assigned an address
         let base_addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,1)), 0);
 
-        sock.bind(&SockAddr::from(base_addr))?;
+        sock.bind(&SockAddr::from(base_addr))
+            .map_err(|e| {
+                let err_msg = format!("Could not bind socket to address {}", &base_addr);
+                MeshSimError {
+                    kind: MeshSimErrorKind::Networking(err_msg),
+                    cause: Some(Box::new(e))
+                }
+            })?;
         let listener = SimulatedListener::new(sock, 
                                               reliability, 
                                               Arc::clone(rng), 
@@ -214,7 +233,8 @@ impl SimulatedRadio {
 
     ///Receives the output from a worker that initialized 1 or more radios, and returns
     ///the respective listen addresses.
-    pub fn extract_radio_addresses(mut input : String) -> Result<(Option<String>, Option<String>), WorkerError> {
+    pub fn extract_radio_addresses(mut input : String)
+        -> Result<(Option<String>, Option<String>), MeshSimError> {
         let mut sr_address = None;
         let mut lr_address = None;
 
@@ -232,7 +252,13 @@ impl SimulatedRadio {
             }
             let parts : Vec<&str> = v.split('-').collect();
             // println!("Parts: {:?}", &parts);
-            let r_type : RadioTypes = parts[0].parse()?;
+            let r_type : RadioTypes = parts[0].parse().map_err(|e| {
+                let err_msg = format!("Could parse radio-address {}", &input);
+                MeshSimError {
+                    kind: MeshSimErrorKind::Networking(err_msg),
+                    cause: Some(Box::new(e))
+                }
+            })?;
 
             match r_type {
                 RadioTypes::ShortRange => { 
@@ -274,13 +300,34 @@ impl Radio  for WifiRadio {
         &self.address
     }
 
-    fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
+    fn broadcast(&self, hdr : MessageHeader) -> Result<(), MeshSimError> {
         let sock_addr = SocketAddr::new(IpAddr::V6(*SERVICE_ADDRESS), DNS_SERVICE_PORT);
-        let socket = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
-        socket.set_multicast_if_v6(self.interface_index)?;
+        let socket = new_socket()?;
+        socket.set_multicast_if_v6(self.interface_index)
+            .map_err(|e| {
+                let err_msg = format!("Failed to configure interface with index {}", self.interface_index);
+                MeshSimError {
+                    kind: MeshSimErrorKind::Networking(err_msg),
+                    cause: Some(Box::new(e))
+                }
+            })?;
         
-        let data = to_vec(&hdr)?;
-        socket.send_to(&data, &socket2::SockAddr::from(sock_addr))?;
+        let data = to_vec(&hdr)
+            .map_err(|e| {
+                let err_msg = String::from("Failed to serialize message");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    cause: Some(Box::new(e))
+                }
+            })?;
+        let _bytes_sent = socket.send_to(&data, &socket2::SockAddr::from(sock_addr))
+            .map_err(|e| {
+                let err_msg = format!("Failed to broadcast message {:x}", hdr.get_hdr_hash());
+                MeshSimError {
+                    kind: MeshSimErrorKind::Networking(err_msg),
+                    cause: Some(Box::new(e))
+                }
+            })?;
 
         Ok(())
     }
@@ -289,9 +336,7 @@ impl Radio  for WifiRadio {
 impl WifiRadio {
     /// Get the public address of the OS-NIC that maps to this Radio object.
     /// It will return the first IPv4 address from a NIC that exactly matches the name.
-    fn get_radio_address(name : &str) -> Result<String, WorkerError> {
-        use self::pnet::datalink;
-
+    fn get_radio_address(name : &str) -> Result<String, MeshSimError> {
         for iface in datalink::interfaces() {
             if iface.name == name {
                 for address in iface.ips {
@@ -307,13 +352,16 @@ impl WifiRadio {
                 }
             }
         }
-        Err(WorkerError::Configuration(format!("Network interface {} not found.", name)))
+        let err_msg = format!("Network interface {} not found.", name);
+        let error = MeshSimError{
+            kind : MeshSimErrorKind::Configuration(err_msg),
+            cause : None
+        };
+        Err(error)
     }
 
     ///Get the index of the passed interface name
     fn get_interface_index(name : &str) -> Option<u32> {
-        use self::pnet::datalink;
-
         for iface in datalink::interfaces() {
             if iface.name == name {
                 return Some(iface.index)
@@ -330,8 +378,8 @@ impl WifiRadio {
                 id : String, 
                 rng : Arc<Mutex<StdRng>>, 
                 r_type : RadioTypes,
-                logger : Logger ) -> Result<(WifiRadio, Box<Listener>), WorkerError> {
-        let address = WifiRadio::get_radio_address(&interface_name).expect("Could not get address for specified interface.");
+                logger : Logger ) -> Result<(WifiRadio, Box<Listener>), MeshSimError> {
+        let address = WifiRadio::get_radio_address(&interface_name)?;
         let interface_index = WifiRadio::get_interface_index(&interface_name).expect("Could not get index for specified interface.");
         debug!(logger, "Obtained address {}", &address);
         let address = format!("[{}]:{}", address, DNS_SERVICE_PORT);
@@ -350,27 +398,35 @@ impl WifiRadio {
     fn init(interface_index : u32,
             r_type : RadioTypes,
             rng : &Arc<Mutex<StdRng>>,
-            logger : &Logger ) -> Result<Box<Listener>, WorkerError> {
-        //Advertise the service to be discoverable by peers before we start listening for messages.
-        // let mut service = ServiceRecord::new();
-        // service.service_name = format!("{}_{}", DNS_SERVICE_NAME, self.id);
-        // service.service_type = String::from(DNS_SERVICE_TYPE);
-        // service.port = DNS_SERVICE_PORT;
-        // service.txt_records.push(format!("PUBLIC_KEY={}", self.id));
-        // service.txt_records.push(format!("NAME={}", self.name));
-        // let mdns_handler = try!(ServiceRecord::publish_service(service));
-
-        //Now bind the socket
-        //debug!("Attempting to bind address: {:?}", &self.address);
-        //let listen_addr = &self.address.parse::<SocketAddr>().unwrap().into();
-        let sock = Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))?;
+            logger : &Logger ) -> Result<Box<Listener>, MeshSimError> {
+        let sock = new_socket()?;
         
         //Join multicast group
-        sock.join_multicast_v6(&SERVICE_ADDRESS, interface_index)?;
-        sock.set_only_v6(true)?;
+        sock.join_multicast_v6(&SERVICE_ADDRESS, interface_index)
+            .map_err(|e| {
+                let err_msg = String::from("Failed to configure socket");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Networking(err_msg),
+                    cause: Some(Box::new(e))
+                }
+            })?;
+        sock.set_only_v6(true).map_err(|e| {
+            let err_msg = String::from("Failed to configure socket");
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
 
-        let debug_address = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,0)), DNS_SERVICE_PORT);
-        sock.bind(&SockAddr::from(debug_address))?;
+        let address = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,0)), DNS_SERVICE_PORT);
+        sock.bind(&SockAddr::from(address))
+            .map_err(|e| {
+                let err_msg = format!("Could not bind socket to address {}", &address);
+                MeshSimError {
+                    kind: MeshSimErrorKind::Networking(err_msg),
+                    cause: Some(Box::new(e))
+                }
+            })?;
         let listener = WifiListener::new(sock,
                                          None,
                                          Arc::clone(rng),
@@ -382,7 +438,19 @@ impl WifiRadio {
     }
 }
 
-
+//************************************************//
+//*************** Utility functions **************//
+//************************************************//
+fn new_socket() -> Result<socket2::Socket, MeshSimError> {
+    Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))
+        .map_err(|e| {
+            let err_msg = String::from("Failed to create new socket");
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })
+}
 const NSS_PIN: u64 = 25;
 const IRQ_PIN: u64 = 4;
 const RESET_PIN: u64 = 17;
@@ -410,8 +478,17 @@ impl<T> Radio for LoRa<T>
         "LoraRadio"
     }
 
-    fn broadcast(&self, hdr : MessageHeader) -> Result<(), WorkerError> {
-        self.transmit(to_vec(&hdr)?.as_slice());
+    fn broadcast(&self, hdr : MessageHeader) -> Result<(), MeshSimError> {
+        let data = to_vec(&hdr)
+            .map_err(|e| {
+                let err_msg = String::from("Failed to serialize message");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    cause: Some(Box::new(e))
+                }
+            })?
+            .as_slice();
+        self.transmit();
         Ok(())
     }
 }
@@ -422,7 +499,7 @@ pub fn new_lora_radio(
     frequency: u64,
     spreading_factor: u32,
     transmission_power: u8,
-) -> Result<(Arc<dyn Radio>, Box<dyn Listener>), WorkerError> {
+) -> Result<(Arc<dyn Radio>, Box<dyn Listener>), MeshSimError> {
     use crate::worker::radio::hal::spidev::{self, SpidevOptions};
     use crate::worker::radio::hal::sysfs_gpio::Direction;
     use crate::worker::radio::hal::{Pin, Spidev};
@@ -466,6 +543,6 @@ pub fn new_lora_radio(
     _frequency: u64,
     _spreading_factor: u32,
     _transmission_power: u8,
-) -> Result<(Arc<dyn Radio>, Box<dyn Listener>), WorkerError> {
+) -> Result<(Arc<dyn Radio>, Box<dyn Listener>), MeshSimError> {
     panic!("Lora radio creation is only supported on Linux");
 }

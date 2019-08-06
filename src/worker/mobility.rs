@@ -9,8 +9,10 @@ use std::path::PathBuf;
 use crate::worker::{WorkerError, Peer};
 use self::rand::RngCore;
 use std::time::Duration;
-use std::thread;
+use std::{thread, fmt};
 use ::slog::Logger;
+use crate::{MeshSimError, MeshSimErrorKind};
+use std::env::join_paths;
 
 /// Name used for the worker positions DB
 pub const DB_NAME : &str = "worker_positions.db";
@@ -124,7 +126,7 @@ pub struct Velocity {
 }
 
 /// Get a connection to the current DB
-pub fn get_db_connection<'a>(path : &'a str, logger : &Logger ) -> Result<Connection, WorkerError> {
+pub fn get_db_connection(path : &str, logger : &Logger ) -> Result<Connection, MeshSimError> {
     let mut rng = rand::thread_rng();
     let mut conn : Option<Connection> = None;
 
@@ -148,7 +150,11 @@ pub fn get_db_connection<'a>(path : &'a str, logger : &Logger ) -> Result<Connec
 
         if let Some(c) = conn {
             //Add busy handler
-            c.busy_handler(Some(busy_callback))?;
+            c.busy_handler(Some(busy_callback)).map_err(|e| {
+                let error_msg = String::from("Failed to set busy handler");
+                MeshSimError { kind : MeshSimErrorKind::ConnectionFailure(error_msg),
+                               cause : Some(Box::new(e)) }
+            })?;
             //Add User-defined functions
             c.create_scalar_function("distance", 4, true, move |ctx| {
                 assert_eq!(ctx.len(), 4);
@@ -159,16 +165,21 @@ pub fn get_db_connection<'a>(path : &'a str, logger : &Logger ) -> Result<Connec
                 let y2 = ctx.get::<f64>(3)?;
                 let d = euclidean_distance(x1, y1, x2, y2);
                 Ok(d)
+            }).map_err(|e| {
+                let error_msg = String::from("Failed to create SQL function");
+                MeshSimError { kind : MeshSimErrorKind::ConnectionFailure(error_msg),
+                               cause : Some(Box::new(e)) }
             })?;
             return Ok(c)
         }
     }
     error!(logger, "Could not establish a DB connection");
-    Err(WorkerError::Sync(String::from("Could not establish a DB connection")))
+    let error_msg = String::from("Exhausted retries to connect to the DB");
+    Err(MeshSimError { kind : MeshSimErrorKind::ConnectionFailure(error_msg), cause : None})
 }
 
 /// Crate the database tables
-pub fn create_db_objects(conn : &Connection, logger : &Logger) -> Result<usize, WorkerError> {
+pub fn create_db_objects(conn : &Connection, logger : &Logger) -> Result<usize, MeshSimError> {
     //Set the DB journaling mode to WAL first.
     set_wal_mode(conn, logger)?;
 
@@ -176,16 +187,36 @@ pub fn create_db_objects(conn : &Connection, logger : &Logger) -> Result<usize, 
 //    let _ = set_tmp_mode(conn, logger)?;
 
     //Create workers table
-    let _rows = conn.execute(CREATE_WORKERS_TBL_QRY, NO_PARAMS,)?;
+    let _rows = conn.execute(CREATE_WORKERS_TBL_QRY, NO_PARAMS,)
+                    .map_err(|e| {
+                        let error_msg = String::from("Failed to create Workers table");
+                        MeshSimError{ kind : MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                                      cause : Some(Box::new(e)) }
+                    })?;
 
     //Create positions table
-    let _rows = conn.execute(CREATE_WORKER_POS_TBL_QRY, NO_PARAMS,)?;
+    let _rows = conn.execute(CREATE_WORKER_POS_TBL_QRY, NO_PARAMS,)
+                    .map_err(|e| {
+                        let error_msg = String::from("Failed to create Worker_Pos table");
+                        MeshSimError{ kind : MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                            cause : Some(Box::new(e)) }
+                    })?;
 
     //Create velocities table
-    let _rows = conn.execute(CREATE_WORKER_VEL_TBL_QRY, NO_PARAMS,)?;
+    let _rows = conn.execute(CREATE_WORKER_VEL_TBL_QRY, NO_PARAMS,)
+                    .map_err(|e| {
+                        let error_msg = String::from("Failed to create Worker_Vel table");
+                        MeshSimError{ kind : MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                            cause : Some(Box::new(e)) }
+                    })?;
     
     //Create destinations table
-    let rows = conn.execute(CREATE_WORKER_DEST_TBL_QRY, NO_PARAMS,)?;
+    let rows = conn.execute(CREATE_WORKER_DEST_TBL_QRY, NO_PARAMS,)
+                         .map_err(|e| {
+                             let error_msg = String::from("Failed to create Worker_Dest table");
+                             MeshSimError{ kind : MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                                 cause : Some(Box::new(e)) }
+                         })?;
 
     Ok(rows)
 }
@@ -199,7 +230,7 @@ pub fn register_worker( conn : &Connection,
                         dest : &Option<Position>,
                         sr_address : Option<String>, 
                         lr_address : Option<String>,
-                        logger : &Logger ) -> Result<i64, WorkerError> {
+                        logger : &Logger ) -> Result<i64, MeshSimError> {
     let name : &ToSql = &worker_name;
     let x : &ToSql = &pos.x;
     let y : &ToSql = &pos.y;
@@ -212,179 +243,262 @@ pub fn register_worker( conn : &Connection,
     // info!(&logger, "[DEBUG] worker inserted");
 
     //Get the ID that was generated for the worker
-    let mut stmt = conn.prepare(GET_WORKER_QRY)?;
-    let db_id : i64 = stmt.query_row(&[&worker_id], |row| row.get(0))?;
+    let db_id : i64 = conn
+        .prepare(GET_WORKER_QRY)
+        .and_then(|mut stmt| {
+            stmt.query_row(&[&worker_id], |row| row.get(0))
+        })
+        .map_err(|e| {
+            let error_msg = String::from("Could not get worker_id");
+            MeshSimError{
+                kind : MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause : Some(Box::new(e))
+            }
+        })?;
+
     
     //Insert position
-    let _res = update_worker_position(&conn, x, y, db_id, logger)?;
-    // info!(&logger, "[DEBUG] position updated");
+    let _res = update_worker_position(&conn, x, y, db_id, logger)
+        .map_err(|e| {
+            let error_msg = String::from("Failed to update worker position");
+            MeshSimError{
+                kind : MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause : Some(Box::new(e))
+            }
+        })?;
 
     //Insert velocity
-    let _res = update_worker_vel(&conn, vel, db_id, logger)?;
-    // info!(&logger, "[DEBUG] velocity updated");
+    let _res = update_worker_vel(&conn, vel, db_id, logger)
+        .map_err(|e| {
+            let error_msg = String::from("Failed to update worker velocity");
+            MeshSimError{
+                kind : MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause : Some(Box::new(e))
+            }
+        })?;
 
     //Insert destination if any
     if let Some(d) = dest {
-        update_worker_target(&conn, db_id, d.clone(), logger)?;
-        // info!(&logger, "[DEBUG] destination updated");
+        update_worker_target(&conn, db_id, d.clone(), logger)
+            .map_err(|e| {
+                let error_msg = String::from("Failed to update worker destination");
+                MeshSimError{
+                    kind : MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                    cause : Some(Box::new(e))
+                }
+            })?;
     }
 
     Ok(db_id)
 }
+
+//fn insert_worker(conn : &Connection,
+//                 name : &ToSql,
+//                 worker_id : &str,
+//                 sr : &ToSql,
+//                 lr : &ToSql,
+//                 logger : &Logger ) -> Result<usize, MeshSimError> {
+//    let mut rows = 0;
+//    let mut rng = rand::thread_rng();
+//    let wid : &ToSql = &worker_id;
+//
+//    for i in 0..MAX_DBOPEN_RETRY {
+//        rows = match conn.execute( INSERT_WORKER_QRY, &[name, wid, sr, lr] ) {
+//            Ok(r) => r,
+//            Err(e) => {
+//                error!(logger, "Failed to register worker: {}", e);
+//                let wait_time = rng.next_u64() % 100;
+//                info!(logger, "Will retry in {} ms", wait_time);
+//                let wait_dur = Duration::from_millis(wait_time);
+//                thread::sleep(wait_dur);
+//                0
+//            }
+//        };
+//
+//        if rows > 0 {
+//            //Worker registered
+//            info!(logger, "Worker registered in DB successfully");
+//            break;
+//        } else if i+1 == MAX_DBOPEN_RETRY {
+//            let err_msg = format!("Could not register worker {} in the DB", worker_id);
+//            let error = MeshSimError{
+//                kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+//                cause : None
+//            };
+//            Err(error)
+//        }
+//    }
+//    Ok(rows)
+//}
 
 fn insert_worker(conn : &Connection,
                  name : &ToSql,
                  worker_id : &str,
                  sr : &ToSql,
                  lr : &ToSql,
-                 logger : &Logger ) -> Result<usize, WorkerError> {
-    let mut rows = 0;
-    let mut rng = rand::thread_rng();
+                 logger : &Logger ) -> Result<usize, MeshSimError> {
+
     let wid : &ToSql = &worker_id;
 
-    for i in 0..MAX_DBOPEN_RETRY {
-        rows = match conn.execute( INSERT_WORKER_QRY, &[name, wid, sr, lr] ) {
-            Ok(r) => r,
-            Err(e) => {
-                error!(logger, "Failed to register worker: {}", e);
-                let wait_time = rng.next_u64() % 100;
-                info!(logger, "Will retry in {} ms", wait_time);
-                let wait_dur = Duration::from_millis(wait_time);
-                thread::sleep(wait_dur);
-                0
+    let rows = conn.execute(INSERT_WORKER_QRY, &[name, wid, sr, lr])
+        .map_err(|e| {
+            let err_msg = format!("Failed to register worker {}", worker_id);
+            MeshSimError{
+                kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause : None
             }
-        };
-
-        if rows > 0 {
-            //Worker registered
-            info!(logger, "Worker registered in DB successfully");
-            break;
-        } else if i+1 == MAX_DBOPEN_RETRY {
-            return Err(WorkerError::Sync(format!("Could not register worker {} in the DB", worker_id)));
-        }
-    }
+        })?;
 
     Ok(rows)
 }
+
+//fn update_worker_position(conn : &Connection,
+//                     x : &ToSql,
+//                     y : &ToSql,
+//                     worker_id : i64,
+//                     logger : &Logger ) -> Result<usize, MeshSimError> {
+//    let mut rows = 0;
+//    let wid : &ToSql = &worker_id;
+//    let mut rng = rand::thread_rng();
+//
+//    for i in 0..MAX_DBOPEN_RETRY {
+//        rows = match conn.execute( UPDATE_WORKER_POS_QRY, &[wid, x, y] ) {
+//            Ok(r) => r,
+//            Err(e) => {
+//                error!(logger, "Failed to update the position of worker: {}", e);
+//                let wait_time = rng.next_u64() % 100;
+//                info!(logger, "Will retry in {} ms", wait_time);
+//                let wait_dur = Duration::from_millis(wait_time);
+//                thread::sleep(wait_dur);
+//                0
+//            }
+//        };
+//
+//        if rows > 0 {
+//            //Worker registered
+//            //debug!("Position updated!");
+//            break;
+//        } else if i+1 == MAX_DBOPEN_RETRY {
+//            let err_msg = format!("Could not update the position of worker {}", worker_id);
+//            let error = MeshSimError{
+//                kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+//                cause : None
+//            };
+//            Err(error)
+//        }
+//    }
+//
+//    Ok(rows)
+//}
 
 fn update_worker_position(conn : &Connection,
-                     x : &ToSql,
-                     y : &ToSql,
-                     worker_id : i64,
-                     logger : &Logger ) -> Result<usize, WorkerError> {
+                          x : &ToSql,
+                          y : &ToSql,
+                          worker_id : i64,
+                          logger : &Logger ) -> Result<usize, MeshSimError> {
     let mut rows = 0;
     let wid : &ToSql = &worker_id;
     let mut rng = rand::thread_rng();
 
-    for i in 0..MAX_DBOPEN_RETRY {
-        rows = match conn.execute( UPDATE_WORKER_POS_QRY, &[wid, x, y] ) {
-            Ok(r) => r,
-            Err(e) => {
-                error!(logger, "Failed to update the position of worker: {}", e);
-                let wait_time = rng.next_u64() % 100;
-                info!(logger, "Will retry in {} ms", wait_time);
-                let wait_dur = Duration::from_millis(wait_time);
-                thread::sleep(wait_dur);
-                0
+    let rows = conn.execute( UPDATE_WORKER_POS_QRY, &[wid, x, y])
+        .map_err(|e| {
+            let err_msg = format!("Failed to update the position of worker {}", worker_id);
+            MeshSimError{
+                kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause : None
             }
-        };
-
-        if rows > 0 {
-            //Worker registered
-            //debug!("Position updated!");
-            break;
-        } else if i+1 == MAX_DBOPEN_RETRY {
-            return Err(WorkerError::Sync(format!("Could not update the position of worker {}", worker_id)));
-        }
-    }
+        })?;
 
     Ok(rows)
 }
+
+///// Updates the worker's velocity
+//pub fn update_worker_vel(conn : &Connection,
+//                     vel : &Velocity,
+//                     worker_id : i64,
+//                     logger : &Logger ) -> Result<usize, MeshSimError> {
+//    let vel_x : &ToSql = &vel.x;
+//    let vel_y : &ToSql = &vel.y;
+//    let mut rows = 0;
+//    let wid : &ToSql = &worker_id;
+//    let mut rng = rand::thread_rng();
+//
+//    for i in 0..MAX_DBOPEN_RETRY {
+//        rows = match conn.execute( UPDATE_WORKER_VEL_QRY, &[wid, vel_x, vel_y] ) {
+//            Ok(r) => r,
+//            Err(e) => {
+//                error!(logger, "Failed to update the velocity of worker: {}", e);
+//                let wait_time = rng.next_u64() % 100;
+//                info!(logger, "Will retry in {} ms", wait_time);
+//                let wait_dur = Duration::from_millis(wait_time);
+//                thread::sleep(wait_dur);
+//                0
+//    }
+//        };
+//
+//        if rows > 0 {
+//            //Worker registered
+//            //debug!("Position updated!");
+//            break;
+//        } else if i+1 == MAX_DBOPEN_RETRY {
+//            return Err(WorkerError::Sync(format!("Could not update the velocity of worker {}", worker_id)));
+//        }
+//    }
+//
+//    Ok(rows)
+//}
 
 /// Updates the worker's velocity
 pub fn update_worker_vel(conn : &Connection,
-                     vel : &Velocity,
-                     worker_id : i64,
-                     logger : &Logger ) -> Result<usize, WorkerError> {
+                         vel : &Velocity,
+                         worker_id : i64,
+                         logger : &Logger ) -> Result<usize, MeshSimError> {
     let vel_x : &ToSql = &vel.x;
     let vel_y : &ToSql = &vel.y;
-    let mut rows = 0;
     let wid : &ToSql = &worker_id;
     let mut rng = rand::thread_rng();
 
-    for i in 0..MAX_DBOPEN_RETRY {
-        rows = match conn.execute( UPDATE_WORKER_VEL_QRY, &[wid, vel_x, vel_y] ) {
-            Ok(r) => r,
-            Err(e) => {
-                error!(logger, "Failed to update the velocity of worker: {}", e);
-                let wait_time = rng.next_u64() % 100;
-                info!(logger, "Will retry in {} ms", wait_time);
-                let wait_dur = Duration::from_millis(wait_time);
-                thread::sleep(wait_dur);
-                0
-    }
-        };
-
-        if rows > 0 {
-            //Worker registered
-            //debug!("Position updated!");
-            break;
-        } else if i+1 == MAX_DBOPEN_RETRY {
-            return Err(WorkerError::Sync(format!("Could not update the velocity of worker {}", worker_id)));
-        }
-    }
+    let rows = conn.execute(UPDATE_WORKER_VEL_QRY, &[wid, vel_x, vel_y])
+        .map_err(|e| {
+            let err_msg = format!("Failed to update the velocity of worker {}", worker_id);
+            MeshSimError{
+                kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause : None
+            }
+        })?;
 
     Ok(rows)
 }
 
-fn set_wal_mode(conn : &Connection, logger : &Logger) -> Result<(), WorkerError> {
-    let mut rng = rand::thread_rng();
-    let mut stmt = conn.prepare(WAL_MODE_QRY)?;
-    let mut journal_mode = String::from("");
-    
-    for _i in 0..MAX_DBOPEN_RETRY {
-        journal_mode = match stmt.query_row(NO_PARAMS, |row| row.get(0)) {
-            Ok(mode) => mode,
-            Err(_e) => {
-                let wait_time = rng.next_u64() % 100;
-                warn!(logger, "Could not read journal mode. Will retry in {}ms", wait_time);
-                let wait_dur = Duration::from_millis(wait_time);
-                thread::sleep(wait_dur);
-                String::from("")
-            },
-        };
-
-        if journal_mode != "" {
-            break;
-        }
-    }
+fn set_wal_mode(conn : &Connection, logger : &Logger) -> Result<(), MeshSimError> {
+    let journal_mode : String = conn.prepare(WAL_MODE_QRY)
+        .and_then(|mut stmt| {
+            stmt.query_row(NO_PARAMS, |row| row.get(0))
+        })
+        .map_err(|e| {
+            let err_msg = String::from("Failed to read the DB's journal_mode");
+            MeshSimError{
+                kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause : None
+            }
+        })?;
 
     if journal_mode.to_uppercase() == "WAL" {
-        debug!(logger, "WAL mode already set");
-        return Ok(())
+        info!(logger, "WAL mode already set");
+        Ok(())
+    } else {
+        conn.prepare(SET_WAL_MODE)
+            .and_then(|mut stmt| {
+                stmt.query_row(NO_PARAMS, |row| Ok(()) )
+            })
+            .map_err(|e| {
+                let err_msg = String::from("Failed to set the DB's journal_mode to WAL");
+                MeshSimError{
+                    kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                    cause : None
+                }
+            })?
     }
-
-    stmt = conn.prepare(SET_WAL_MODE)?;
-    for _i in 0..MAX_DBOPEN_RETRY {
-        journal_mode = match stmt.query_row(NO_PARAMS, |row| row.get(0)) {
-            Ok(mode) => mode,
-            Err(e) => {
-                let wait_time = rng.next_u64() % 100;
-                warn!(logger, "Could not read journal mode: {}", e); 
-                warn!(logger, "Will retry in {}ms", wait_time);
-                let wait_dur = Duration::from_millis(wait_time);
-                thread::sleep(wait_dur);
-                String::from("")
-            },
-        };
-
-        if journal_mode != "" {
-            break;
-        }
-    }
-
-    debug!(logger, "Journal mode: {}", journal_mode);
-    Ok(())
 }
 
 //fn set_tmp_mode(conn : &Connection, logger : &Logger) -> Result<(), WorkerError> {
@@ -430,41 +544,64 @@ fn busy_callback(i : i32) -> bool {
     true
 }
 
-//**********************************************/
-//************** Public functions **************/
-//**********************************************/
 /// Function exported exclusively for the use of the Master module.
 /// Updates the positions of all registered nodes according to their
 /// respective velocity vector. Update happens every 1 second. 
-pub fn update_worker_positions(conn : &Connection) -> Result<usize, WorkerError> {
-    let rows = conn.execute(UPDATE_WORKER_POSITIONS_QRY, NO_PARAMS,)?;
-    Ok(rows)
+pub fn update_worker_positions(conn : &Connection) -> Result<usize, MeshSimError> {
+    conn.execute(UPDATE_WORKER_POSITIONS_QRY, NO_PARAMS,)
+        .map_err(|e| {
+            let err_msg = String::from("Failed to update Worker positions");
+            MeshSimError{
+                kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause : None
+            }
+        })
 }
 
 /// Function exported exclusively for the use of the Master module.
 /// Returns ids of all workers that have reached their destination.
-pub fn select_final_positions(conn : &Connection) -> Result<Vec<(i64, f64, f64)>, WorkerError> {
-    let mut stmt = conn.prepare(SELECT_REMAINING_DIST_QRY)?;
-    let results_iter = stmt.query_map(NO_PARAMS, |row| {
-        let w_id : i64 = row.get(0);
-        let target_x : f64 = row.get(1);
-        let current_x : f64 = row.get(2);
-        let target_y : f64 = row.get(3);
-        let current_y : f64 = row.get(4);
+pub fn select_final_positions(conn : &Connection) -> Result<Vec<(i64, f64, f64)>, MeshSimError> {
+    let mut stmt = conn.prepare(SELECT_REMAINING_DIST_QRY)
+        .map_err(|e| {
+            let err_msg = String::from("Failed to prepare query SELECT_REMAINING_DIST_QRY");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
 
-        if (target_x - current_x) <= 0.0 && 
-           (target_y - current_y) <= 0.0 {
-            Some((w_id, current_x, current_y))
-        } else {
-            None
-        }
-    })?;
+    let rows = stmt.query_map(NO_PARAMS, |row| {
+            let w_id : i64 = row.get(0);
+            let target_x : f64 = row.get(1);
+            let current_x : f64 = row.get(2);
+            let target_y : f64 = row.get(3);
+            let current_y : f64 = row.get(4);
+
+            if (target_x - current_x) <= 0.0 &&
+                (target_y - current_y) <= 0.0 {
+                Some((w_id, current_x, current_y))
+            } else {
+                None
+            }
+        })
+        .map_err(|e| {
+            let err_msg = String::from("Failed to get workers that have reached their destination");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
 
     let mut arrived : Vec<(i64, f64, f64)> = Vec::new();
-    for r in results_iter {
-        let r = r?;
-        if r.is_some() {
-            let (w_id, x, y) = r.unwrap();
+    for r in rows {
+        let r = r.map_err(|e| {
+            let err_msg = String::from("Failed to read row");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
+        if let Some((w_id, x, y)) = r {
             arrived.push((w_id, x, y));
         }
     }
@@ -476,7 +613,7 @@ pub fn select_final_positions(conn : &Connection) -> Result<Vec<(i64, f64, f64)>
 /// Sets the velocity of the worker ids to zero.
 pub fn stop_workers(conn : &Connection, 
                     w_ids : &[(i64, f64, f64)],
-                    _logger : &Logger) -> Result<usize, WorkerError> {
+                    _logger : &Logger) -> Result<usize, MeshSimError> {
     let mut query_builder = String::from(STOP_WORKERS_QRY);
     query_builder.push('(');
     for (id, _x, _y) in w_ids.iter() {
@@ -488,62 +625,157 @@ pub fn stop_workers(conn : &Connection,
     query_builder.push_str(");");
 
     // eprintln!("Prepared stmt: {}", &query_builder);
-    let rows = conn.execute(&query_builder, NO_PARAMS)?;
-    Ok(rows)
+    conn.execute(&query_builder, NO_PARAMS)
+        .map_err(|e| {
+            let err_msg = String::from("Failed to stop workers");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })
 }
 
+///// Gets the current position and database id of a given worker
+//pub fn get_worker_position(conn : &Connection,
+//                           worker_id : &str,
+//                           logger : &Logger) -> Result<(Position, i64), MeshSimError> {
+//    let mut rng = rand::thread_rng();
+//
+//    //Get the current position for the worker_id received
+//    let mut stmt = conn.prepare(GET_WORKER_POS_QRY)?;
+//    for _i in 0..MAX_DBOPEN_RETRY {
+//        let (wp, id) = match stmt.query_row(&[&worker_id], |row| {
+//            let db_id : i64 = row.get(0);
+//            let x : f64 = row.get(1);
+//            let y : f64 = row.get(2);
+//            let pos = Position{ x, y };
+//            (pos, db_id)
+//        }) {
+//            Ok((pos, id)) => {
+//                (Some(pos), Some(id))
+//            },
+//            Err(e) => {
+//                warn!(logger, "Failed to get worker position: {}", e);
+//                let wait_time = rng.next_u64() % 100;
+//                let wait_dur = Duration::from_millis(wait_time);
+//                thread::sleep(wait_dur);
+//                (None, None)
+//            },
+//        };
+//
+//        if wp.is_some() && id.is_some() {
+//            let worker_pos = wp.unwrap();
+//            let db_id = id.unwrap();
+//            return Ok((worker_pos, db_id))
+//        }
+//    }
+//
+//    error!(logger, "Could not get position for current worker");
+//    Err(WorkerError::Sync(String::from("Could not get position for current worker")))
+//
+//}
+
 /// Gets the current position and database id of a given worker
-pub fn get_worker_position(conn : &Connection, 
+pub fn get_worker_position(conn : &Connection,
                            worker_id : &str,
-                           logger : &Logger) -> Result<(Position, i64), WorkerError> {
+                           logger : &Logger) -> Result<(Position, i64), MeshSimError> {
     let mut rng = rand::thread_rng();
 
     //Get the current position for the worker_id received
-    let mut stmt = conn.prepare(GET_WORKER_POS_QRY)?;
-    for _i in 0..MAX_DBOPEN_RETRY {
-        let (wp, id) = match stmt.query_row(&[&worker_id], |row| {
-            let db_id : i64 = row.get(0);
-            let x : f64 = row.get(1);
-            let y : f64 = row.get(2);
-            let pos = Position{ x, y };
-            (pos, db_id)
-        }) {
-            Ok((pos, id)) => {
-                (Some(pos), Some(id))
-            },
-            Err(e) => { 
-                warn!(logger, "Failed to get worker position: {}", e);
-                let wait_time = rng.next_u64() % 100;
-                let wait_dur = Duration::from_millis(wait_time);
-                thread::sleep(wait_dur);
-                (None, None)
-            },
-        };
-
-        if wp.is_some() && id.is_some() {
-            let worker_pos = wp.unwrap();
-            let db_id = id.unwrap();
-            return Ok((worker_pos, db_id))
-        }
-    }
-
-    error!(logger, "Could not get position for current worker");
-    Err(WorkerError::Sync(String::from("Could not get position for current worker")))
-
+    conn.prepare(GET_WORKER_POS_QRY)
+        .and_then(|mut stmt| {
+            stmt.query_row(&[&worker_id], |row| {
+                let db_id : i64 = row.get(0);
+                let x : f64 = row.get(1);
+                let y : f64 = row.get(2);
+                let pos = Position{ x, y };
+                (pos, db_id)
+            })
+        })
+        .map_err(|e| {
+            let err_msg = String::from("Failed to get position for worker ") + worker_id ;
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })
 }
+
+///// Returns all workers within RANGE meters of the current position of WORKER_ID
+//pub fn get_workers_in_range(conn : &Connection,
+//                                worker_id : &str,
+//                                range : f64,
+//                                logger : &Logger) -> Result<Vec<Peer>, MeshSimError> {
+//    let mut rng = rand::thread_rng();
+//    let (worker_pos, _db_id) = get_worker_position(&conn, worker_id, &logger)?;
+//
+//    //Get all other workers and check if they are in range
+//    let mut stmt = conn.prepare(SELECT_OTHER_WORKERS_POS_QRY)?;
+//    for _i in 0..MAX_DBOPEN_RETRY {
+//        match stmt.query_map(&[&worker_id], |row| {
+//            let name : String = row.get(0);
+//            let id : String = row.get(1);
+//            let sr : Option<String> = row.get(2);
+//            let lr : Option<String> = row.get(3);
+//            let x : f64 = row.get(4);
+//            let y : f64 = row.get(5);
+//            let d = euclidean_distance(worker_pos.x, worker_pos.y, x, y);
+//            //debug!("Worker {} in range {}", &id, d);
+//            if d <= range {
+//                let mut p = Peer::new();
+//                p.id = id;
+//                p.name = name;
+//                p.short_address = sr;
+//                p.long_address = lr;
+//                Some(p)
+//            } else {
+//                None
+//            }
+//        }) {
+//            Ok(workers_iter) => {
+//                let mut data = Vec::new();
+//                for p in workers_iter {
+//                    let p = p?;
+//                    if p.is_some() {
+//                        data.push(p.unwrap());
+//                    }
+//                }
+//                return Ok(data);
+//            },
+//            Err(e) => {
+//                warn!(logger, "Failed to get workers in range: {}", e);
+//                let wait_time = rng.next_u64() % 100;
+//                let wait_dur = Duration::from_millis(wait_time);
+//                thread::sleep(wait_dur);
+//            },
+//        }
+//    }
+//
+//    // let data = workers_iter.filter(|x| x.unwrap().is_some()).map(|x| x.unwrap()).collect();
+//    error!(logger, "Could not get nodes in range of this worker");
+//    Err(WorkerError::Sync(String::from("Could not get nodes in range of this worker")))
+//}
 
 /// Returns all workers within RANGE meters of the current position of WORKER_ID
 pub fn get_workers_in_range(conn : &Connection,
-                                worker_id : &str,
-                                range : f64,
-                                logger : &Logger) -> Result<Vec<Peer>, WorkerError> {
+                            worker_id : &str,
+                            range : f64,
+                            logger : &Logger) -> Result<Vec<Peer>, MeshSimError> {
     let mut rng = rand::thread_rng();
+    let mut peers = Vec::new();
     let (worker_pos, _db_id) = get_worker_position(&conn, worker_id, &logger)?;
 
     //Get all other workers and check if they are in range
-    let mut stmt = conn.prepare(SELECT_OTHER_WORKERS_POS_QRY)?;
-    for _i in 0..MAX_DBOPEN_RETRY {
-        match stmt.query_map(&[&worker_id], |row| {
+    let mut stmt = conn.prepare(SELECT_OTHER_WORKERS_POS_QRY)
+        .map_err(|e| {
+            let err_msg = format!("Failed to prepare query SELECT_OTHER_WORKERS_POS_QRY for worker {}", worker_id);
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
+
+    let rows = stmt.query_map(&[&worker_id], |row| {
             let name : String = row.get(0);
             let id : String = row.get(1);
             let sr : Option<String> = row.get(2);
@@ -562,29 +794,31 @@ pub fn get_workers_in_range(conn : &Connection,
             } else {
                 None
             }
-        }) { 
-            Ok(workers_iter) => {
-                let mut data = Vec::new();
-                for p in workers_iter {
-                    let p = p?;
-                    if p.is_some() {
-                        data.push(p.unwrap());
-                    }
+        })
+        .map_err(|e| {
+            let err_msg = String::from("SELECT_OTHER_WORKERS_POS_QRY failed");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
+
+    for row in rows {
+        let row = row
+            .map_err(|e| {
+                let err_msg = String::from("Failed to read row");
+                MeshSimError {
+                    kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                    cause: Some(Box::new(e))
                 }
-                return Ok(data);
-            },
-            Err(e) => {
-                warn!(logger, "Failed to get workers in range: {}", e);
-                let wait_time = rng.next_u64() % 100;
-                let wait_dur = Duration::from_millis(wait_time);
-                thread::sleep(wait_dur);
-            },
+            })?;
+
+        if let Some(peer) = row {
+            peers.push(peer);
         }
     }
 
-    // let data = workers_iter.filter(|x| x.unwrap().is_some()).map(|x| x.unwrap()).collect();
-    error!(logger, "Could not get nodes in range of this worker");
-    Err(WorkerError::Sync(String::from("Could not get nodes in range of this worker")))
+    Ok(peers)
 }
 
 /// Calculate the euclidean distance between 2 points.
@@ -598,32 +832,61 @@ pub fn euclidean_distance(x1 : f64, y1 : f64, x2 : f64, y2 : f64) -> f64 {
 pub fn update_worker_target(conn : &Connection, 
                          worker_id : i64, 
                          target_pos : Position,
-                         logger : &Logger) -> Result<(), WorkerError> {
+                         logger : &Logger) -> Result<(), MeshSimError> {
     let w_id : &ToSql = &worker_id;
     let dest_x : &ToSql = &target_pos.x;
     let dest_y : &ToSql = &target_pos.y;
 
-    let _rows = conn.execute(UPDATE_WORKER_DEST_QRY, &[w_id, dest_x, dest_y],)?;
-    info!(logger, "Worker_id {} destination updated", worker_id);
-    
-    Ok(())
+    conn.execute(UPDATE_WORKER_DEST_QRY, &[w_id, dest_x, dest_y],)
+        .map(|_| info!(logger, "Worker_id {} destination updated", worker_id) )
+        .map_err(|e| {
+            let err_msg = format!("Failed to update destination for worker {}", worker_id);
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })
 }
 
+// TODO: Replace return type for a new WorkerSnapshot type
 /// Get the positions of all workers
-pub fn get_all_worker_positions(conn : &Connection) -> Result<Vec<(i64, String, f64, f64)>, WorkerError> {
-    let mut stmt = conn.prepare(SELECT_ALL_WORKERS_POS_QRY)?;
-    let results_iter = stmt.query_map(NO_PARAMS, |row| {
-        let w_id : i64 = row.get(0);
-        let name : String = row.get(1);
-        let x : f64 = row.get(2);
-        let y : f64 = row.get(3);
-        (w_id, name, x, y)
-    })?;
+pub fn get_all_worker_positions(conn : &Connection)
+    -> Result<Vec<(i64, String, f64, f64)>, MeshSimError> {
+    let mut stmt = conn.prepare(SELECT_ALL_WORKERS_POS_QRY)
+        .map_err(|e| {
+            let err_msg = String::from("Failed to prepare query SELECT_ALL_WORKERS_POS_QRY");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
+
+    let rows = stmt.query_map(NO_PARAMS, |row| {
+            let w_id : i64 = row.get(0);
+            let name : String = row.get(1);
+            let x : f64 = row.get(2);
+            let y : f64 = row.get(3);
+            (w_id, name, x, y)
+        })
+        .map_err(|e| {
+            let err_msg = String::from("Failed to get position for all workers");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
+
 
     let mut results : Vec<(i64, String, f64, f64)> = Vec::new();
-    for r in results_iter {
-        let r = r?;
-        results.push((r.0, r.1, r.2, r.3));
+    for row in rows {
+        let row = row.map_err(|e| {
+            let err_msg = String::from("Failed to read row");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
+        results.push((row.0, row.1, row.2, row.3));
     }
 
     Ok(results)

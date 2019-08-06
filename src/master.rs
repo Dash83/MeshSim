@@ -28,6 +28,7 @@ extern crate libc;
 
 use crate::worker::worker_config::WorkerConfig;
 use crate::worker::radio::SimulatedRadio;
+use crate::{MeshSimError, MeshSimErrorKind};
 use std::process::{Command, Child, Stdio};
 use std::io;
 use std::io::{BufRead, Write, BufReader};
@@ -64,19 +65,26 @@ const SYSTEM_THREAD_NICE : c_int = -20; //Threads that need to run with a higher
 pub enum MobilityModels {
     /// Random waypoint model
     RandomWaypoint,
+    /// No movement
+    Stationary,
 }
 
 impl FromStr for MobilityModels {
-    type Err = MasterError;
+    type Err = MeshSimError;
 
-    fn from_str(s : &str) -> Result<MobilityModels, MasterError> {
-        let res = match s.to_uppercase().as_str() {
-                "RANDOMWAYPOINT" => MobilityModels::RandomWaypoint,
+    fn from_str(s : &str) -> Result<MobilityModels, MeshSimError> {
+        match s.to_uppercase().as_str() {
+                "RANDOMWAYPOINT" => Ok(MobilityModels::RandomWaypoint),
+                "STATIONARY" => Ok(MobilityModels::Stationary),
                 _ => {
-                    return Err(MasterError::TestParsing(String::from("Invalid mobility model")))
+                    let err_msg = String::from("Invalid mobility model");
+                    let err = MeshSimError{
+                        kind : MeshSimErrorKind::TestParsing(err_msg),
+                        cause : None
+                    };
+                    Err(err)
                 }
-        };
-        Ok(res)
+        }
     }
 }
 
@@ -218,7 +226,7 @@ impl Master {
                            work_dir : &'a str,
                            listen_for_commands : bool,
                            config : &WorkerConfig,
-                           logger : &Logger, ) -> Result<Child, MasterError> {
+                           logger : &Logger, ) -> Result<Child, MeshSimError> {
         let worker_name = config.worker_name.clone();
         debug!(logger, "Starting worker process {}", &worker_name);
         
@@ -244,7 +252,14 @@ impl Master {
 
         //Starting the worker process
         //debug!("with command {:?}", command);
-        let child = command.spawn()?;
+        let child = command.spawn()
+            .map_err(|e| {
+                let err_msg = String::from("Failed to spawn worker process");
+                MeshSimError{
+                    kind : MeshSimErrorKind::Master(err_msg),
+                    cause : Some(Box::new(e))
+                }
+            })?;
         debug!(logger, "Worker process {} started", &worker_name);
 
         Ok(child)
@@ -253,7 +268,7 @@ impl Master {
     ///Runs the test defined in the specification passed to the master.
     pub fn run_test(&mut self, 
                     mut spec : test_specification::TestSpec,
-                    logger : &Logger) -> Result<(), MasterError> {
+                    logger : &Logger) -> Result<(), MeshSimError> {
         info!(self.logger, "Running test {}", &spec.name);
         info!(self.logger, "Test results will be placed under {}", &self.work_dir);
 
@@ -278,7 +293,9 @@ impl Master {
         
         //Start all workers and add save their child process handle.
         {
-            let mut workers = self.workers.lock()?; // LOCK : GET : WORKERS
+            let workers = Arc::clone(&self.workers);
+            let mut workers = workers.lock().expect("Failed to lock workers list");
+
             for (_, val) in spec.initial_nodes.iter_mut() {
                 //Start the child process
                 let listen_for_commands = active_nodes.contains(&val.worker_name);
@@ -294,10 +311,20 @@ impl Master {
                         //Get it's listen address from stdout
                         let mut output = String::new();
                         {
-                            let mut child_out = BufReader::new(child_handle.stdout.as_mut().unwrap());
-                            // eprintln!("stdout acquired");
-                            let _num_bytes = child_out.read_line(&mut output)?;
-                            // eprintln!("stdout read: {}", &output);
+                            let mut child_out = BufReader::new(
+                                child_handle
+                                    .stdout
+                                    .as_mut()
+                                    .unwrap()
+                            );
+                            let _num_bytes = child_out.read_line(&mut output)
+                                .map_err(|e| {
+                                    let err_msg = String::from("Failed to read from child's stdout");
+                                    MeshSimError{
+                                        kind : MeshSimErrorKind::Master(err_msg),
+                                        cause : Some(Box::new(e))
+                                    }
+                                })?;
                         }
 
                         //Register the worker in the DB
@@ -373,7 +400,7 @@ impl Master {
         Ok(())
     }
 
-    fn parse_test_actions(action_strings: Vec<String>) -> Result<Vec<TestActions>, MasterError> {
+    fn parse_test_actions(action_strings: Vec<String>) -> Result<Vec<TestActions>, MeshSimError> {
         let mut actions = Vec::new();
         for a in action_strings {
             let action = TestActions::from_str(&a)?;
@@ -404,7 +431,7 @@ impl Master {
 
     fn schedule_test_actions(&self,
                              actions : Vec<TestActions>,
-                             active_nodes : HashSet<String> ) -> Result<Vec<JoinHandle<()>>, MasterError> {
+                             active_nodes : HashSet<String> ) -> Result<Vec<JoinHandle<()>>, MeshSimError> {
         let mut thread_handles = Vec::new();
         
         for action in actions {
@@ -430,7 +457,7 @@ impl Master {
         Ok(thread_handles)
     }
 
-    fn testaction_end_test(&self, time : u64) -> Result<JoinHandle<()>, MasterError> {
+    fn testaction_end_test(&self, time : u64) -> Result<JoinHandle<()>, MeshSimError> {
         let workers_handle = Arc::clone(&self.workers);
         let logger = self.logger.clone();
 
@@ -467,7 +494,7 @@ impl Master {
 
     fn testaction_add_node(&self, name : String,
                                   accept_commands : bool,
-                                  time : u64) -> Result<JoinHandle<()>, MasterError> {
+                                  time : u64) -> Result<JoinHandle<()>, MeshSimError> {
         let available_nodes = Arc::clone(&self.available_nodes);
         let workers = Arc::clone(&self.workers);
         let worker_binary = self.worker_binary.clone();
@@ -547,7 +574,7 @@ impl Master {
         Ok(handle)
     }
 
-    fn testaction_kill_node(&self, name : String, time : u64) -> Result<JoinHandle<()>, MasterError> {
+    fn testaction_kill_node(&self, name : String, time : u64) -> Result<JoinHandle<()>, MeshSimError> {
         let workers = Arc::clone(&self.workers);
         let logger = self.logger.clone();
 
@@ -581,7 +608,7 @@ impl Master {
         Ok(handle)
     }
 
-    fn testaction_ping_node(&self, source : String, destination : String, time : u64) -> Result<JoinHandle<()>, MasterError> {
+    fn testaction_ping_node(&self, source : String, destination : String, time : u64) -> Result<JoinHandle<()>, MeshSimError> {
         let workers = Arc::clone(&self.workers);
         let logger = self.logger.clone();
 
@@ -611,27 +638,49 @@ impl Master {
         Ok(handle)
     }
 
-    fn testaction_add_source(&self, source: String, profile : SourceProfiles, time : u64) ->  Result<JoinHandle<()>, MasterError> {
+    fn testaction_add_source(&self, source: String, profile : SourceProfiles, time : u64) ->  Result<JoinHandle<()>, MeshSimError> {
         let tb = thread::Builder::new();
         let start_time = Duration::from_millis(time);
         let workers = Arc::clone(&self.workers);
         let logger = self.logger.clone();
 
         let handle = tb.name(format!("[Source]:{}", &source))
-        .spawn(move || {
-            unsafe {
-                let new_nice = nice(SYSTEM_THREAD_NICE);
-                debug!(logger, "[Source]:{}: New priority: {}", &source, new_nice);
-            }
-            info!(logger, "[Source]:{}: Scheduled to start in {:?}", &source, &start_time);
-            thread::sleep(start_time);
-
-            match profile {
-                SourceProfiles::CBR(dest, pps, size, dur) => {
-                    let _res = Master::start_cbr_source(source, dest, pps, size, dur, workers, &logger);
+            .spawn(move || {
+                unsafe {
+                    let new_nice = nice(SYSTEM_THREAD_NICE);
+                    debug!(logger, "[Source]:{}: New priority: {}", &source, new_nice);
                 }
-            }
-        })?;
+                info!(logger, "[Source]:{}: Scheduled to start in {:?}", &source, &start_time);
+                thread::sleep(start_time);
+
+                match profile {
+                    SourceProfiles::CBR(dest, pps, size, dur) => {
+                        match Master::start_cbr_source(source,
+                                                            dest,
+                                                            pps,
+                                                            size,
+                                                            dur,
+                                                            workers,
+                                                            &logger) {
+                            Ok(_) => { /* Source finished without issues*/ },
+                            Err(e) => {
+                                error!(logger, "Source error:");
+                                error!(logger, "{}", &e);
+                                if let Some(cause) = e.cause {
+                                    error!(logger, "Cause: {}", cause);
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .map_err(|e| {
+                let err_msg = String::from("Failed to spawn source thread");
+                MeshSimError{
+                    kind : MeshSimErrorKind::Master(err_msg),
+                    cause : Some(Box::new(e))
+                }
+            })?;
 
         Ok(handle)
     }
@@ -642,27 +691,30 @@ impl Master {
                         packet_size : usize,
                         duration : u64,
                         workers : Arc<Mutex<HashMap<String, (i64, Arc<Mutex<Child>>)>>>,
-                        logger : &Logger) -> Result<(), MasterError> {
+                        logger : &Logger) -> Result<(), MeshSimError> {
         let dur = Duration::from_millis(duration);
         info!(logger, "[Source]:{}: Starting. Will run for {}.{} seconds", &source, &dur.as_secs(), &dur.subsec_nanos());
         info!(logger, "[Source]:{}: Sending {} packets per second of size {} bytes", &source, packets_per_second, packet_size);
 
         let mut rng = thread_rng();
-        let mut data : Vec<u8>= iter::repeat(0u8).take(packet_size).collect();
+        let mut data: Vec<u8> = iter::repeat(0u8).take(packet_size).collect();
         let iter_threshold = 1_000_000_000u32 / packets_per_second as u32; //In nanoseconds
-        let mut packet_counter : u64 = 0;
-        let source_handle : Arc<Mutex<Child>> = match workers.lock() {
-            Ok(worker_list) => { 
-                if let Some(w) = worker_list.get(&source) {
-                    Arc::clone(&w.1)
-                } else {
-                    return Err(MasterError::Sync(format!("Could not find process for {}", &source)))
-                }
-            },
-            Err(_e) => { 
-                return Err(MasterError::Sync(String::from("Could not lock workers list")))
-            },
+        let mut packet_counter: u64 = 0;
+        let worker_list = workers.lock().expect("Could not lock workers list");
+
+        let source_handle = {
+            if let Some(w) = worker_list.get(&source) {
+                Arc::clone(&w.1)
+            } else {
+                let err_msg = format!("Could not find process for {}", &source);
+                let error = MeshSimError {
+                    kind: MeshSimErrorKind::Contention(err_msg),
+                    cause: None
+                };
+                return Err(error)
+            }
         };
+
         let trans_time = Instant::now();
         let mut iteration = Instant::now();
 
@@ -697,9 +749,12 @@ impl Master {
                     }
                 }
                 Err(_e) => {
-                    let err = format!("Process {} is not in the Master list. Can't send data. Aborting CBR.", &source);
-                    error!(logger, "{}", &err);
-                    return Err(MasterError::Sync(err))
+                    let err_msg = format!("Process {} is not in the Master list. Can't send data. Aborting CBR.", &source);
+                    let error = MeshSimError{
+                        kind : MeshSimErrorKind::Master(err_msg),
+                        cause : None
+                    };
+                    return Err(error)
                 }
             }
             //Calculating pause time
@@ -715,7 +770,7 @@ impl Master {
         Ok(())
     }
 
-    fn start_mobility_thread(&self) -> io::Result<JoinHandle<Result<(), MasterError>>> {
+    fn start_mobility_thread(&self) -> io::Result<JoinHandle<()>> {
         let tb = thread::Builder::new();
         let update_time = Duration::from_millis(1000); //All velocities are expresed in meters per second.
         let sim_start_time = Instant::now();
@@ -777,15 +832,17 @@ impl Master {
                                                            &db_path,
                                                            &logger);
                         },
+                        MobilityModels::Stationary => {
+                            info!(logger, "Stationary mobility model detected. Exiting mobility thread.");
+                            return;
+                        },
                     }
                 }
             } else {
                 //No mobility model defined
                 info!(logger, "No mobility model defined. Exiting mobility thread.");
-                return Ok(())
+                return;
             }
-
-            Ok(())
         })
     }
 

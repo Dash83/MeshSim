@@ -14,6 +14,7 @@ extern crate color_backtrace;
 
 use mesh_simulator::master::*;
 use mesh_simulator::master;
+use mesh_simulator::{MeshSimError, MeshSimErrorKind};
 use clap::{Arg, App, ArgMatches};
 
 // use slog::DrainExt;
@@ -115,7 +116,7 @@ impl From<master::MasterError> for CLIError {
 //     Ok(())
 // } 
 
-fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {    
+fn run(mut master : Master, matches : &ArgMatches) -> Result<(), MeshSimError> {
     //Has a test file been provided?
     let test_file = matches.value_of(ARG_TEST_FILE);
     let logger = master.logger.clone();
@@ -130,7 +131,14 @@ fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {
 
     //Temporary fix. Since the logging now runs in a separate thread, the tests may end before
     //all the data is captured. Check if the log file is still changing.
-    let md = std::fs::metadata(&master.log_file)?;
+    let md = std::fs::metadata(&master.log_file)
+        .map_err(|e| {
+            let err_msg = String::from("Failed read log file");
+            MeshSimError{
+                kind : MeshSimErrorKind::Master(err_msg),
+                cause : Some(Box::new(e)),
+            }
+        })?;
     let mut size1 = md.len();
     let max_wait = 20;
     for _i in 0..max_wait {
@@ -147,7 +155,7 @@ fn run(mut master : Master, matches : &ArgMatches) -> Result<(), CLIError> {
     Ok(())
 }
 
-fn init(matches : &ArgMatches) -> Result<(Master), CLIError> {
+fn init(matches : &ArgMatches) -> Result<(Master), MeshSimError> {
     //Determine the work_dir    
     let work_dir = match matches.value_of(ARG_WORK_DIR) {
         Some(arg) => String::from(arg),
@@ -163,13 +171,27 @@ fn init(matches : &ArgMatches) -> Result<(Master), CLIError> {
     //if the workdir does not exists, create it
     let mut work_dir_path = PathBuf::from(&work_dir);
     if !work_dir_path.exists() {
-        std::fs::create_dir(&work_dir_path)?;
+        std::fs::create_dir(&work_dir_path)
+            .map_err(|e| {
+                let err_msg = String::from("Failed create work directory");
+                MeshSimError{
+                    kind : MeshSimErrorKind::Master(err_msg),
+                    cause : Some(Box::new(e)),
+                }
+            })?;
     }
     work_dir_path.push(logging::LOG_DIR_NAME);
     work_dir_path.push(logging::DEFAULT_MASTER_LOG);
 
     let log_file = work_dir_path.to_str().unwrap().into();
-    let logger = logging::create_logger(&log_file, log_term).expect("Failed to set the logger for the Master.");
+    let logger = logging::create_logger(&log_file, log_term)
+        .map_err(|e| {
+            let err_msg = String::from("Failed to set the logger for the Master.");
+            MeshSimError{
+                kind : MeshSimErrorKind::Master(err_msg),
+                cause : Some(Box::new(e))
+            }
+        })?;
     let mut master = Master::new(logger, log_file);
     master.work_dir = work_dir.clone();
     //What else was passed to the master?
