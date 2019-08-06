@@ -14,6 +14,7 @@ extern crate color_backtrace;
 use mesh_simulator::worker::worker_config::WorkerConfig;
 use mesh_simulator::worker;
 use mesh_simulator::logging;
+use mesh_simulator::{MeshSimError, MeshSimErrorKind};
 use clap::{Arg, App, ArgMatches};
 use std::fs::{File, self};
 use std::io::{self, Read};
@@ -119,7 +120,7 @@ impl From<toml::de::Error> for CLIError {
 }
 // ***************End Errors****************
 
-fn run(config : WorkerConfig, logger : Logger) -> Result<(), CLIError> {
+fn run(config : WorkerConfig, logger : Logger) -> Result<(), MeshSimError> {
     let ac = config.accept_commands.unwrap_or(false);
    let mut obj =  config.create_worker(logger)?;
    //debug!("Worker Obj: {:?}", obj);
@@ -127,15 +128,33 @@ fn run(config : WorkerConfig, logger : Logger) -> Result<(), CLIError> {
    Ok(())
 }
 
-fn load_conf_file(file_path : &str) -> Result<WorkerConfig, CLIError> {
-    //Check that configuration file passed exists.
-    //If it doesn't exist, error out
-    let mut file = File::open(file_path)?;
+fn load_conf_file(file_path : &str) -> Result<WorkerConfig, MeshSimError> {
     let mut file_content = String::new();
-    //Not checking bytes read since all we can check without scanning the file is that is not empty.
-    //The serialization framework however, will do the appropriate validations.
-    let _res = file.read_to_string(&mut file_content)?;
-    let configuration : WorkerConfig = toml::from_str(&file_content)?;
+    let mut file = File::open(file_path)
+        .map_err(|e| {
+            let err_msg = String::from("Failed to open configuration file");
+            MeshSimError{
+                kind : MeshSimErrorKind::Configuration(err_msg),
+                cause : Some(Box::new(e)),
+            }
+        })?;
+
+    let _res = file.read_to_string(&mut file_content)
+        .map_err(|e| {
+            let err_msg = String::from("Failed to read configuration file");
+            MeshSimError{
+                kind : MeshSimErrorKind::Configuration(err_msg),
+                cause : Some(Box::new(e)),
+            }
+        })?;
+    let configuration : WorkerConfig = toml::from_str(&file_content)
+        .map_err(|e| {
+            let err_msg = String::from("Failed to deserialize configuration file");
+            MeshSimError{
+                kind : MeshSimErrorKind::Serialization(err_msg),
+                cause : Some(Box::new(e)),
+            }
+        })?;
     Ok(configuration)
 }
 
@@ -176,22 +195,34 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                           .get_matches()
 }
 
-fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<(), CLIError> {
+fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<(), MeshSimError> {
     // Mandatory values should have been validated when loading the TOML file, just check the values are appropriate.
     // Worker_name
     config.worker_name = matches.value_of(ARG_WORKER_NAME).unwrap_or_else(|| config.worker_name.as_str()).to_string();
     if config.worker_name.is_empty() {
         eprintln!("worker_name can't be empty.");
-        return Err(CLIError::Configuration("Worker name was empty.".to_string()))
+        let err_msg = String::from("Worker name was empty");
+        let error = MeshSimError{
+            kind : MeshSimErrorKind::Configuration(err_msg),
+            cause : None,
+        };
+        return Err(error)
     }
 
     //work_dir
     config.work_dir = matches.value_of(ARG_WORK_DIR).unwrap_or_else(|| config.work_dir.as_str()).to_string();
-    let dir_info = fs::metadata(std::path::Path::new(config.work_dir.as_str()))?;
-    if !dir_info.is_dir() || dir_info.permissions().readonly() {
-        eprintln!("work_dir is not a valid directory or it's not writable.");
-        return Err(CLIError::Configuration("work_dir is not a valid directory or it's not writable.".to_string()))
-    }
+    let _ = fs::metadata(std::path::Path::new(config.work_dir.as_str()))
+        .map(|dir_info| {
+            assert!(dir_info.is_dir());
+            assert!(!dir_info.permissions().readonly());
+        })
+        .map_err(|e| {
+            let err_msg = String::from("work_dir is not a valid directory or it's not writable");
+            MeshSimError{
+                kind : MeshSimErrorKind::Configuration(err_msg),
+                cause : Some(Box::new(e)),
+            }
+        })?;
 
     // Accept commands
     config.accept_commands = matches.value_of(ARG_ACCEPT_COMMANDS)
@@ -208,9 +239,16 @@ fn validate_config(config : &mut WorkerConfig, matches : &ArgMatches) -> Result<
 
 /// The init process performs all initialization required for the worker_cli.
 /// It performs 2 main tasks: read the configuration file and process the command line parameters.
-fn init(matches : &ArgMatches) -> Result<WorkerConfig, CLIError> {
+fn init(matches : &ArgMatches) -> Result<WorkerConfig, MeshSimError> {
     //Read the configuration file.
-    let mut current_dir = env::current_dir()?;
+    let mut current_dir = env::current_dir()
+        .map_err(|e| {
+            let err_msg = String::from("Failed to read current directory");
+            MeshSimError{
+                kind : MeshSimErrorKind::Configuration(err_msg),
+                cause : Some(Box::new(e)),
+            }
+        })?;
     let config_file_path = matches.value_of(ARG_CONFIG).unwrap_or_else(|| {
         //No configuration file was passed. Look for default option: current_dir + default name.
          current_dir.push(CONFIG_FILE_NAME);

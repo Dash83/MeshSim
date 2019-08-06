@@ -6,8 +6,9 @@ extern crate rand;
 extern crate md5;
 
 use crate::worker::protocols::Protocol;
-use crate::worker::{WorkerError, Peer, MessageHeader};
+use crate::worker::{Peer, MessageHeader};
 use crate::worker::radio::*;
+use crate::{MeshSimError, MeshSimErrorKind};
 use std::sync::{Arc, Mutex};
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
@@ -40,13 +41,13 @@ pub enum Messages {
 }
 
 impl Protocol for NaiveRouting {
-    fn init_protocol(&self) -> Result<Option<MessageHeader>, WorkerError> {
+    fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
         //No initialization needed
         Ok(None)
     }
 
-    fn handle_message(&self, mut header : MessageHeader, _r_type : RadioTypes) -> Result<Option<MessageHeader>, WorkerError> {
-        let msg_hash = header.get_hdr_hash()?;
+    fn handle_message(&self, mut header : MessageHeader, _r_type : RadioTypes) -> Result<Option<MessageHeader>, MeshSimError> {
+        let msg_hash = header.get_hdr_hash();
 
         let data = match header.payload.take() {
             Some(d) => { d },
@@ -56,12 +57,19 @@ impl Protocol for NaiveRouting {
             }
         };
 
-        let msg = NaiveRouting::build_protocol_message(data)?;
+        let msg = NaiveRouting::build_protocol_message(data)
+            .map_err(|e| {
+                let err_msg = String::from("Failed to deserialize payload into a message");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    cause: Some(Box::new(e))
+                }
+            })?;
         let msg_cache = Arc::clone(&self.msg_cache);
         NaiveRouting::handle_message_internal(header, msg, self.get_self_peer(), msg_hash, msg_cache, &self.logger)
     }
 
-    fn send(&self, destination: String, data: Vec<u8>) -> Result<(), WorkerError> {
+    fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
         let mut dest = Peer::new();
         dest.name = destination;
 
@@ -92,9 +100,16 @@ impl NaiveRouting {
     fn create_data_message(sender : Peer,
                            destination : Peer,
                            hops : u16,
-                           data : Vec<u8>) -> Result<MessageHeader, WorkerError> {
+                           data : Vec<u8>) -> Result<MessageHeader, MeshSimError> {
         let data_msg = Messages::Data(data);
-        let payload = to_vec(&data_msg)?;
+        let payload = to_vec(&data_msg)
+            .map_err(|e| {
+                let err_msg = String::from("Failed to serialize message");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    cause: Some(Box::new(e))
+                }
+            })?;
         //info!("Built DATA message for peer: {}, id {:?}", &destination.name, destination.id);
         
         //Build the message header that's ready for sending.
@@ -110,7 +125,7 @@ impl NaiveRouting {
                             msg_hash : Digest, 
                             me : Peer,
                             msg_cache : Arc<Mutex<Vec<CacheEntry>>>,
-                            logger : &Logger ) -> Result<Option<MessageHeader>, WorkerError> {
+                            logger : &Logger ) -> Result<Option<MessageHeader>, MeshSimError> {
         info!(logger, "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name);
 
         { // LOCK:ACQUIRE:MSG_CACHE
@@ -158,7 +173,7 @@ impl NaiveRouting {
                                me : Peer, 
                                msg_hash : Digest,
                                msg_cache : Arc<Mutex<Vec<CacheEntry>>>,
-                               logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
+                               logger : &Logger) -> Result<Option<MessageHeader>, MeshSimError> {
         match msg {
                     Messages::Data(data) => {
                         NaiveRouting::process_data_message(hdr, data, msg_hash, me, msg_cache, logger)
