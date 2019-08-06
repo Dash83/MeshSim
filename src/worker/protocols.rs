@@ -6,9 +6,10 @@ extern crate rand;
 extern crate toml;
 extern crate rustc_serialize;
 
-use crate::worker::{MessageHeader, WorkerError, Worker };
+use crate::worker::{MessageHeader, Worker };
 use crate::worker::radio::*;
 use crate::worker::listener::*;
+use crate::{MeshSimError, MeshSimErrorKind};
 use self::naive_routing::NaiveRouting;
 use self::reactive_gossip_routing::ReactiveGossipRouting;
 use self::reactive_gossip_routing_II::ReactiveGossipRoutingII;
@@ -30,13 +31,13 @@ pub mod reactive_gossip_routing_II;
 pub trait Protocol : std::fmt::Debug + Send + Sync {
     /// This function implements the state machine of the protocol. It will match against
     /// the message type passed and call the appropriate method to handle it.
-    fn handle_message(&self,  msg : MessageHeader, r_type : RadioTypes) -> Result<Option<MessageHeader>, WorkerError>;
+    fn handle_message(&self,  msg : MessageHeader, r_type : RadioTypes) -> Result<Option<MessageHeader>, MeshSimError>;
 
     /// Function to initialize the protocol.
-    fn init_protocol(&self) -> Result<Option<MessageHeader>, WorkerError>;
+    fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError>;
 
     /// Function to send command to another node in the network
-    fn send(&self, destination : String, data : Vec<u8>) -> Result<(), WorkerError>;
+    fn send(&self, destination : String, data : Vec<u8>) -> Result<(), MeshSimError>;
 
 }
 
@@ -58,9 +59,9 @@ impl Default for Protocols {
 }
 
 impl FromStr for Protocols {
-    type Err = WorkerError;
+    type Err = MeshSimError;
 
-    fn from_str(s : &str) -> Result<Protocols, WorkerError> {
+    fn from_str(s : &str) -> Result<Protocols, MeshSimError> {
         let input = s.to_uppercase();
         let parts : Vec<&str> = input.split_whitespace().collect();
 
@@ -70,7 +71,14 @@ impl FromStr for Protocols {
             "NAIVEROUTING" => Ok(Protocols::NaiveRouting),
             "REACTIVEGOSSIP" => Ok(Protocols::ReactiveGossip),
             "LORAWIFIBEACON" => Ok(Protocols::LoraWifiBeacon),
-            _ => Err(WorkerError::Configuration(String::from("The specified protocol is not supported."))),
+            _ => {
+                let err_msg = String::from("The specified protocol is not supported.");
+                let error = MeshSimError{
+                    kind : MeshSimErrorKind::Configuration(err_msg),
+                    cause : None
+                };
+                Err(error)
+            },
         }
     }
 }
@@ -91,7 +99,7 @@ pub fn build_protocol_resources( p : Protocols,
                                  seed : u32, 
                                  id : String, 
                                  name : String,
-                                 logger : Logger ) -> Result<ProtocolResources, WorkerError> {
+                                 logger : Logger ) -> Result<ProtocolResources, MeshSimError> {
     match p {
         Protocols::NaiveRouting => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.

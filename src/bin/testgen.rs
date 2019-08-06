@@ -348,6 +348,9 @@ fn command_add_nodes(node_type : String, num : usize, spec : &mut TestSpec, data
                     let y_vel = (target_y - w.position.y) / time;
                      w.velocity = Velocity{ x : x_vel, y : y_vel};
                 },
+                MobilityModels::Stationary => {
+                    /* Nothing else to do */
+                }
             }
         } else {
             //Calculate velocity

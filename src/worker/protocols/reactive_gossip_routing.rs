@@ -4,8 +4,9 @@ extern crate rand;
 extern crate md5;
 
 use crate::worker::protocols::Protocol;
-use crate::worker::{WorkerError, Peer, MessageHeader};
+use crate::worker::{Peer, MessageHeader};
 use crate::worker::radio::*;
+use crate::{MeshSimError, MeshSimErrorKind};
 use std::sync::{Arc, Mutex};
 use self::serde_cbor::de::*;
 use self::serde_cbor::ser::*;
@@ -122,8 +123,8 @@ enum Messages {
 }
 
 impl Protocol for ReactiveGossipRouting {
-    fn handle_message(&self,  mut hdr : MessageHeader, _r_type : RadioTypes) -> Result<Option<MessageHeader>, WorkerError> {        
-        let msg_hash = hdr.get_hdr_hash()?;
+    fn handle_message(&self,  mut hdr : MessageHeader, _r_type : RadioTypes) -> Result<Option<MessageHeader>, MeshSimError> {
+        let msg_hash = hdr.get_hdr_hash();
 
         let data = match hdr.payload.take() {
             Some(d) => { d },
@@ -133,7 +134,7 @@ impl Protocol for ReactiveGossipRouting {
             }
         };
 
-        let msg = ReactiveGossipRouting::build_protocol_message(data)?;
+        let msg = deserialize_message(data)?;
         let queued_transmissions = Arc::clone(&self.queued_transmissions);
         let dest_routes = Arc::clone(&self.destination_routes);
         let pending_destinations = Arc::clone(&self.pending_destinations);
@@ -150,7 +151,7 @@ impl Protocol for ReactiveGossipRouting {
                                                        &self.logger)
     }
 
-    fn init_protocol(&self) -> Result<Option<MessageHeader>, WorkerError> {
+    fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
         let logger = self.logger.clone();
         let radio = Arc::clone(&self.short_radio);
         let data_msg_cache = Arc::clone(&self.data_msg_cache);
@@ -170,8 +171,10 @@ impl Protocol for ReactiveGossipRouting {
         Ok(None)
     }
 
-    fn send(&self, destination : String, data : Vec<u8>) -> Result<(), WorkerError> {
-        let routes = self.destination_routes.lock()?;
+    fn send(&self, destination : String, data : Vec<u8>) -> Result<(), MeshSimError> {
+        let routes = Arc::clone(&self.destination_routes);
+        let pending_routes = Arc::clone(&self.pending_destinations);
+        let routes = routes.lock().expect("Failed to lock destination_routes table");
 
         //Check if an available route exists for the destination.
         if let Some(route_id) = routes.get(&destination) {
@@ -184,7 +187,7 @@ impl Protocol for ReactiveGossipRouting {
                                                          Arc::clone(&self.data_msg_cache))?;
             info!(self.logger, "Data has been transmitted");
         } else {
-            let mut pending_routes = self.pending_destinations.lock()?;
+            let mut pending_routes = pending_routes.lock().expect("Failed to lock pending_destinations table");
             let qt = Arc::clone(&self.queued_transmissions);
             let route_id = {
                 if !pending_routes.insert(destination.clone()) {
@@ -231,7 +234,7 @@ impl ReactiveGossipRouting {
                                logger }
     }
 
-    fn start_route_discovery(&self, destination : String) -> Result<String, WorkerError> {
+    fn start_route_discovery(&self, destination : String) -> Result<String, MeshSimError> {
         let mut msg = RouteMessage::new(self.worker_id.clone(), destination.clone());
         msg.route.push(self.worker_name.clone());
         let route_id = msg.route_id.clone();
@@ -239,7 +242,7 @@ impl ReactiveGossipRouting {
         hdr.sender.id = self.worker_id.clone();
         hdr.sender.name = self.worker_name.clone();
         hdr.destination.name = destination;
-        let payload = to_vec(&Messages::RouteDiscovery(msg))?;
+        let payload = serialize_message(Messages::RouteDiscovery(msg))?;
         hdr.payload = Some(payload);
         
         self.short_radio.broadcast(hdr)?;
@@ -250,7 +253,7 @@ impl ReactiveGossipRouting {
 
     fn start_flow(route_id : String, dest : String, self_peer : Peer, data : Vec<u8>,
                   short_radio : Arc<Radio>,
-                  data_msg_cache : Arc<Mutex<HashMap<String, DataCacheEntry>>>) -> Result<(), WorkerError> {
+                  data_msg_cache : Arc<Mutex<HashMap<String, DataCacheEntry>>>) -> Result<(), MeshSimError> {
         let dest_peer = Peer { name : dest,
                                id : String::from(""),
                                short_address : None,
@@ -259,13 +262,14 @@ impl ReactiveGossipRouting {
         hdr.sender = self_peer;
         hdr.destination = dest_peer;
         hdr.hops = 1;
-        hdr.payload = Some(to_vec(&Messages::Data(DataMessage{ route_id : route_id.clone(),
+        hdr.payload = Some(serialize_message(Messages::Data(DataMessage{ route_id : route_id.clone(),
                                                                payload  : data }))?);
 
         //Log this message in the data_msg_cache so that we can monitor if the neighbors relay it
         //properly, retransmit if necessary, and don't relay it again when we hear it from others.
-        let mut dc = data_msg_cache.lock()?;
-        let msg_hsh = format!("{:x}", &hdr.get_hdr_hash()?);
+        let mut dc = data_msg_cache.lock()
+            .expect("Failed to lock data_message cache");
+        let msg_hsh = format!("{:x}", &hdr.get_hdr_hash());
         dc.insert(msg_hsh, DataCacheEntry{ state : DataMessageStates::Pending(route_id.clone()),
                                                             data : Some(hdr.clone())});
         //Right now this assumes the data can be sent in a single broadcast message
@@ -275,11 +279,9 @@ impl ReactiveGossipRouting {
 
     fn queue_transmission(trans_q : Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
                           route_id : String, 
-                          data : Vec<u8>) -> Result<(), WorkerError> {
-        let mut tq = match trans_q.lock() {
-            Ok(q) => q,
-            Err(e) => return Err(WorkerError::Sync(format!("Error trying to acquire lock to transmissions queue: {}", e)))
-        };
+                          data : Vec<u8>) -> Result<(), MeshSimError> {
+        let mut tq = trans_q.lock()
+            .expect("Error trying to acquire lock to transmissions queue");
         let e = tq.entry(route_id).or_insert_with(|| vec![]);
         e.push(data);
         Ok(())
@@ -297,7 +299,7 @@ impl ReactiveGossipRouting {
                                known_routes : Arc<Mutex<HashMap<String, bool>>>,
                                route_msg_cache : Arc<Mutex<HashSet<String>>>,
                                data_msg_cache : Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-                               short_radio : Arc<Radio>, logger : &Logger ) -> Result<Option<MessageHeader>, WorkerError> {
+                               short_radio : Arc<Radio>, logger : &Logger ) -> Result<Option<MessageHeader>, MeshSimError> {
         match msg {
                     Messages::Data(data_msg) => {
 //                        debug!(logger, "Received DATA message");
@@ -344,13 +346,14 @@ impl ReactiveGossipRouting {
                             data_msg_cache : Arc<Mutex<HashMap<String, DataCacheEntry>>>,
                             self_peer : Peer,
                             msg_hash : Digest,
-                            logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
+                            logger : &Logger) -> Result<Option<MessageHeader>, MeshSimError> {
         info!(logger, "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name);
         let route_id = data_msg.route_id.clone();
 
         {
             let part_of_route = {
-                let known_routes = known_routes.lock()?;
+                let known_routes = known_routes.lock()
+                    .expect("Failed to lock known_routes table");
                 known_routes.get(&data_msg.route_id).copied()
             };
 
@@ -367,9 +370,11 @@ impl ReactiveGossipRouting {
             //Increase hop count...
             hdr.hops += 1;
             //...and re-package the message.
-            hdr.payload = Some(to_vec(&Messages::Data(data_msg))?);
+            hdr.payload = Some(serialize_message(Messages::Data(data_msg))?);
 
-            let mut d_cache = data_msg_cache.lock()?;
+            let mut d_cache = data_msg_cache.lock()
+                .expect("Failed to lock data_message cache");
+
             //Is this a new message?
             if let Some((msg, mut entry)) = d_cache.remove_entry(&format!("{:x}", &msg_hash)) {
                 match entry.state {
@@ -425,7 +430,7 @@ impl ReactiveGossipRouting {
                                     route_msg_cache : Arc<Mutex<HashSet<String>>>,
                                     self_peer : Peer,
                                     _msg_hash : Digest,
-                                    logger : &Logger ) -> Result<Option<MessageHeader>, WorkerError> {
+                                    logger : &Logger ) -> Result<Option<MessageHeader>, MeshSimError> {
         info!(logger, "Received ROUTE_DISCOVERY message"; "route_id" => &msg.route_id, "source" => &hdr.sender.name);
 
         //Is this node the intended destination of the route?
@@ -438,7 +443,8 @@ impl ReactiveGossipRouting {
             //"last-hop" even though technically it isn't, since we dont need to confirm the data
             //messages that come through it, since it won't be relaying them (this is the destination).
             {
-                let mut kr = known_routes.lock()?;
+                let mut kr = known_routes.lock()
+                    .expect("Failed to lock known_routes table");
                 kr.insert(msg.route_id.clone(), true);
             }
 
@@ -447,7 +453,7 @@ impl ReactiveGossipRouting {
             //Update the header
             hdr.destination = hdr.sender.clone();
             hdr.sender = self_peer;
-            hdr.payload = Some(to_vec(&Messages::RouteEstablish(msg))?);
+            hdr.payload = Some(serialize_message(Messages::RouteEstablish(msg))?);
             return Ok(Some(hdr))
         }
 
@@ -461,7 +467,8 @@ impl ReactiveGossipRouting {
 
         //Is this a new route?
         {
-            let mut p_routes = route_msg_cache.lock()?;
+            let mut p_routes = route_msg_cache.lock()
+                .expect("Failed to lock route_message cache");
             if !p_routes.insert(msg.route_id.clone()) {
                 //We have processed this route before. Discard message
                 info!(logger, "Route {} has already been processed. Dropping message", &msg.route_id);
@@ -484,7 +491,7 @@ impl ReactiveGossipRouting {
         info!(logger, "{} added to route_id {}", &self_peer.name, msg.route_id);
 
         //Build message and forward it
-        hdr.payload = Some(to_vec(&Messages::RouteDiscovery(msg))?);
+        hdr.payload = Some(serialize_message(Messages::RouteDiscovery(msg))?);
         Ok(Some(hdr))
     }
 
@@ -497,7 +504,7 @@ impl ReactiveGossipRouting {
                                      data_msg_cache : Arc<Mutex<HashMap<String, DataCacheEntry>>>,
                                      self_peer : Peer,
                                      short_radio : Arc<Radio>,
-                                     logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
+                                     logger : &Logger) -> Result<Option<MessageHeader>, MeshSimError> {
         info!(logger, "Received ROUTE_ESTABLISH message"; "route_id" => &msg.route_id, "source" => &hdr.sender.name);
 
         //Who's the next hop in the route?
@@ -517,7 +524,9 @@ impl ReactiveGossipRouting {
 
         //Add the this route to the known_routes list...
         {
-            let mut kr = known_routes.lock()?;
+            let mut kr = known_routes.lock()
+                .expect("Failed to lock known_routes table");
+
             //Indicate whether this node is the last hop in the route to the destination.
             //This will be used by the node to know whether it has to verify packets it forwards,
             //since th destination will not relay them.
@@ -526,7 +535,8 @@ impl ReactiveGossipRouting {
         }
         //...and the destination-route list
         {
-            let mut dr = dest_routes.lock()?;
+            let mut dr = dest_routes.lock()
+                .expect("Failed to lock destination_routes table");
             let _res = dr.insert(hdr.sender.name.clone(), msg.route_id.clone());
         }
 
@@ -544,12 +554,13 @@ impl ReactiveGossipRouting {
 
             //...and remove this node from the pending destinations
             {
-                let mut pd = pending_destinations.lock()?;
+                let mut pd = pending_destinations.lock()
+                    .expect("Error trying to acquire lock to pending_destinations table");
                 let _res = pd.remove(&hdr.sender.name);
             }
 
             //Start any flows that were waiting on the route
-            let _res = ReactiveGossipRouting::start_queued_flows(queued_transmissions,
+            let _ = ReactiveGossipRouting::start_queued_flows(queued_transmissions,
                                                                  msg.route_id.clone(),
                                                                  hdr.sender.name.clone(),
                                                                  self_peer,
@@ -560,7 +571,7 @@ impl ReactiveGossipRouting {
         }
 
         //Finally, forward the message
-        hdr.payload = Some(to_vec(&Messages::RouteEstablish(msg))?);
+        hdr.payload = Some(serialize_message(Messages::RouteEstablish(msg))?);
         Ok(Some(hdr))
     }
 
@@ -573,11 +584,12 @@ impl ReactiveGossipRouting {
                                      _data_msg_cache : Arc<Mutex<HashMap<String, DataCacheEntry>>>,
                                      self_peer : Peer,
                                      _short_radio : Arc<Radio>,
-                                     logger : &Logger) -> Result<Option<MessageHeader>, WorkerError> {
+                                     logger : &Logger) -> Result<Option<MessageHeader>, MeshSimError> {
         info!(logger, "Route TEARDOWN msg received for route {}", &msg.route_id);
 
         let subscribed = {
-            let kr = known_routes.lock()?;
+            let kr = known_routes.lock()
+                .expect("Error trying to acquire lock to known_routes table");
             kr.contains_key(&msg.route_id)
         };
 
@@ -603,11 +615,12 @@ impl ReactiveGossipRouting {
                           self_peer : Peer,
                           short_radio : Arc<Radio>,
                           data_msg_cache : Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-                          logger : &Logger ) ->Result<(), WorkerError> {
+                          logger : &Logger ) ->Result<(), MeshSimError> {
         info!(logger, "Looking for queued flows for route_id {}", &route_id );
 
         let entry : Option<(String, Vec<Vec<u8>>)> = {
-            let mut qt = queued_transmissions.lock()?;
+            let mut qt = queued_transmissions.lock()
+                .expect("Error trying to acquire lock to transmissions queue");
             qt.remove_entry(&route_id)
         };
 
@@ -661,18 +674,19 @@ impl ReactiveGossipRouting {
                             known_routes : Arc<Mutex<HashMap<String, bool>>>,
                             short_radio : Arc<Radio>,
                             self_peer : Peer,
-                            logger : Logger) -> Result<(), WorkerError> {
+                            logger : Logger) -> Result<(), MeshSimError> {
         let sleep_time = Duration::from_millis(MSG_TRANSMISSION_THRESHOLD);
 
         loop {
             thread::sleep(sleep_time);
-            let mut cache = data_msg_cache.lock()?;
+            let mut cache = data_msg_cache.lock()
+                .expect("Error trying to acquire lock to data_messages cache");
             for (msg_hash, entry) in cache.iter_mut()
                 .filter(|(_msg_hash, entry)| entry.state.is_pending()) {
                     debug!(logger, "Message {} is pending confirmation", &msg_hash);
 
                     if let Some(hdr) = entry.data.take() {
-                        info!(logger, "Retransmitting message {:x}", &hdr.get_hdr_hash()?);
+                        info!(logger, "Retransmitting message {:x}", &hdr.get_hdr_hash());
 
                         //The message is still cached, so re-transmit it.
                         short_radio.broadcast(hdr).map_err( |e| {
@@ -714,10 +728,11 @@ impl ReactiveGossipRouting {
                       self_peer : &Peer,
                       destination_routes : Arc<Mutex<HashMap<String, String>>>,
                       known_routes : Arc<Mutex<HashMap<String, bool>>>,
-                      logger : &Logger) -> Result<MessageHeader, WorkerError> {
+                      logger : &Logger) -> Result<MessageHeader, MeshSimError> {
         //Clean the destination routes cache
         {
-            let mut dr = destination_routes.lock()?;
+            let mut dr = destination_routes.lock()
+                .expect("Failed to lock destination_routes table");
             let mut entry : Option<String> = None;
             for (dest, route) in dr.iter() {
                 if route == route_id {
@@ -735,10 +750,10 @@ impl ReactiveGossipRouting {
                 },
             }
         }
-
         //Clean the known-routes cache
         {
-            let mut kr = known_routes.lock()?;
+            let mut kr = known_routes.lock()
+                .expect("Failed to lock known_routes table");
             match kr.remove(route_id) {
                 Some(_) => info!(logger, "Route {} removed from cache", route_id),
                 None => warn!(logger, "Not subscribed to route {}", route_id),
@@ -748,10 +763,32 @@ impl ReactiveGossipRouting {
         let mut hdr = MessageHeader::new();
         hdr.sender = self_peer.clone();
         let msg = RouteMessage{ route_id : route_id.to_owned(), route : vec![] };
-        hdr.payload = Some(to_vec(&Messages::RouteTeardown(msg))?);
+        hdr.payload = Some(serialize_message(Messages::RouteTeardown(msg))?);
 
         Ok(hdr)
     }
+}
+
+fn deserialize_message(data : Vec<u8>) -> Result<Messages, MeshSimError> {
+    from_slice(data.as_slice())
+        .map_err(|e| {
+            let err_msg = String::from("Error deserializing data into message");
+            MeshSimError{
+                kind : MeshSimErrorKind::Serialization(err_msg),
+                cause : Some(Box::new(e)),
+            }
+        })
+}
+
+fn serialize_message(msg : Messages) -> Result<Vec<u8>, MeshSimError> {
+    to_vec(&msg)
+        .map_err(|e| {
+            let err_msg = String::from("Error serializing message");
+            MeshSimError{
+                kind : MeshSimErrorKind::Serialization(err_msg),
+                cause : Some(Box::new(e)),
+            }
+        })
 }
 
 #[cfg(test)]

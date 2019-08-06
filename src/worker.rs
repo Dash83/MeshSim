@@ -57,6 +57,7 @@ use crate::worker::mobility::*;
 use crate::worker::listener::Listener;
 use ::slog::Logger;
 use self::libc::{nice, c_int};
+use crate::{MeshSimError, MeshSimErrorKind};
 
 //Sub-modules declaration
 pub mod worker_config;
@@ -266,16 +267,15 @@ impl MessageHeader {
     /// Destination name
     /// Payload
     /// This is done instead of getting the md5sum of the entire structure for testability purposes
-    pub fn get_hdr_hash(&self) -> Result<Digest, WorkerError> {
+    pub fn get_hdr_hash(&self) -> Digest {
         let mut data = Vec::new();
-        // data.append(&mut self.sender.name.clone().into_bytes());
         data.append(&mut self.destination.name.clone().into_bytes());
         if let Some(mut p) = self.payload.clone() {
             data.append(&mut p);
         }
 
         let dig = md5::compute(&data);
-        Ok(dig)
+        dig
     }
 }
 
@@ -370,14 +370,21 @@ impl fmt::Display for OperationMode {
 }
 
 impl FromStr for OperationMode {
-    type Err = WorkerError;
+    type Err = MeshSimError;
 
-    fn from_str(s: &str) -> Result<OperationMode, WorkerError> {
+    fn from_str(s: &str) -> Result<OperationMode, MeshSimError> {
         let u = s.to_uppercase();
         match u.as_str() {
             "SIMULATED" => Ok(OperationMode::Simulated),
             "DEVICE" => Ok(OperationMode::Device),
-            _ => Err(WorkerError::Configuration("Unsupported operation mode.".to_string()))
+            _ => {
+                let err_msg = String::from("Unsupported operation mode.");
+                let err = MeshSimError{
+                    kind : MeshSimErrorKind::Configuration(err_msg),
+                    cause : None,
+                };
+                Err(err)
+            }
         }
     }
 }
@@ -417,7 +424,7 @@ impl Worker {
     /// 2. Joins the network.
     /// 3. It starts to listen for messages of the network on all addresss
     ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
-    pub fn start(&mut self, accept_commands : bool) -> Result<(), WorkerError> {
+    pub fn start(&mut self, accept_commands : bool) -> Result<(), MeshSimError> {
         //Init the worker
         self.init()?;
 
@@ -439,7 +446,7 @@ impl Worker {
 
         //Start listening for messages
         let prot_handler = Arc::clone(&resources.handler);
-        let mut threads : Vec<JoinHandle<Result<(), WorkerError>>> = resources.radio_channels.drain(..).map(|(rx, tx)| { 
+        let mut threads : Vec<JoinHandle<()>> = resources.radio_channels.drain(..).map(|(rx, tx)| {
             let prot_handler = Arc::clone(&prot_handler);
             let logger = self.logger.clone();
             let thread_pool = threadpool::Builder::new().num_threads(WORKER_POOL_SIZE).build();
@@ -464,7 +471,11 @@ impl Worker {
                                         resp
                                     },
                                     Err(e) => {
-                                        error!(log, "Error handling message: {}", e);
+                                        error!(log, "Error handling message:");
+                                        error!(log, "{}", &e);
+                                        if let Some(cause) = e.cause {
+                                            error!(log, "Cause: {}", cause);
+                                        }
                                         None
                                     },
                                 };
@@ -490,7 +501,14 @@ impl Worker {
         }).collect();
 
         if accept_commands {
-            let com_loop_thread = self.start_command_loop_thread(Arc::clone(&prot_handler))?;
+            let com_loop_thread = self.start_command_loop_thread(Arc::clone(&prot_handler))
+                .map_err(|e| {
+                    let err_msg = String::from("Failed to start command_loop_thread");
+                    MeshSimError{
+                        kind : MeshSimErrorKind::Worker(err_msg),
+                        cause : Some(Box::new(e))
+                    }
+                })?;
             threads.push(com_loop_thread);
         }
 
@@ -509,18 +527,17 @@ impl Worker {
         Ok(())
     }
 
-    //TODO: Remove the creation of the log dir. Already done in the create_logger function.
-    fn init(&mut self) -> Result<(), WorkerError> {
-        //Make sure the required directories are there and writable or create them.
-        //check log dir is there
-        let mut dir = std::fs::canonicalize(&self.work_dir)?;
-        dir.push("log"); //Dir is work_dir/log
-        if !dir.exists() {
-            //Create log dir
-            std::fs::create_dir_all(dir.as_path()).unwrap_or(());
-            info!(self.logger, "Created dir {} ", dir.as_path().display());
-        }
-        dir.pop(); //Dir is work_dir
+    fn init(&mut self) -> Result<(), MeshSimError> {
+//        //Make sure the required directories are there and writable or create them.
+//        //check log dir is there
+//        let mut dir = std::fs::canonicalize(&self.work_dir)?;
+//        dir.push("log"); //Dir is work_dir/log
+//        if !dir.exists() {
+//            //Create log dir
+//            std::fs::create_dir_all(dir.as_path()).unwrap_or(());
+//            info!(self.logger, "Created dir {} ", dir.as_path().display());
+//        }
+//        dir.pop(); //Dir is work_dir
 
         Ok(())
     }
@@ -542,7 +559,7 @@ impl Worker {
         StdRng::from_seed(randomness)
     }
 
-    fn start_command_loop_thread(&self, protocol_handler : Arc<Protocol>) -> io::Result<JoinHandle<Result<(), WorkerError>>> {
+    fn start_command_loop_thread(&self, protocol_handler : Arc<Protocol>) -> io::Result<JoinHandle<()>> {
         let tb = thread::Builder::new();
         let logger = self.logger.clone();
 
@@ -552,12 +569,12 @@ impl Worker {
                 let new_nice = nice(SYSTEM_THREAD_NICE);
                 debug!(logger, "[CommandLoop]: New priority: {}", new_nice);
             }
-            Worker::command_loop(&logger, protocol_handler)
+            Worker::command_loop(&logger, protocol_handler);
         })
     }
 
 // Debug function, only used to make sure the worker is alive and getting scheduled.
-//    fn start_second_counter_thread(&self) -> io::Result<JoinHandle<Result<(), WorkerError>>> {
+//    fn start_second_counter_thread(&self) -> io::Result<JoinHandle<Result<(), MeshSimError>>> {
 //        let tb = thread::Builder::new();
 //        let logger = self.logger.clone();
 //        let mut i = 0;
@@ -574,7 +591,7 @@ impl Worker {
 //    }
 
     fn command_loop(logger : &Logger,
-                    protocol_handler : Arc<Protocol>) -> Result<(), WorkerError> {
+                    protocol_handler : Arc<dyn Protocol>) {
         let mut input = String::new();
         let stdin = io::stdin();
 
@@ -602,11 +619,11 @@ impl Worker {
             }
             input.clear();
         }
-        #[allow(unreachable_code)]
-        Ok(()) //Loop should never end
+//        #[allow(unreachable_code)]
+//        Ok(()) //Loop should never end
     }
 
-    fn process_command(com : commands::Commands, ph : Arc<Protocol>, logger : &Logger) -> Result<(), WorkerError> {
+    fn process_command(com : commands::Commands, ph : Arc<Protocol>, logger : &Logger) -> Result<(), MeshSimError> {
         match com {
             commands::Commands::Send(destination, data) => {
                 info!(logger, "Send command received");
@@ -681,17 +698,17 @@ mod tests {
 
         rng.fill_bytes(&mut data[..]);
         msg.payload = Some(data.clone());
-        let hash = msg.get_hdr_hash().expect("Could not hash message");
+        let hash = msg.get_hdr_hash();
         assert_eq!(&format!("{:x}", &hash), "16c37d4dbeed437d377fc131b016cf38");
 
         rng.fill_bytes(&mut data[..]);
         msg.payload = Some(data.clone());
-        let hash = msg.get_hdr_hash().expect("Could not hash message");
+        let hash = msg.get_hdr_hash();
         assert_eq!(&format!("{:x}", &hash), "48b9f1d803d6829bcab59056981e6771");
 
         rng.fill_bytes(&mut data[..]);
         msg.payload = Some(data.clone());
-        let hash = msg.get_hdr_hash().expect("Could not hash message");
+        let hash = msg.get_hdr_hash();
         assert_eq!(&format!("{:x}", &hash), "a6048051b8727b181a6c69edf820914f");
     }
 

@@ -2,6 +2,7 @@ extern crate toml;
 
 use crate::master::{MasterError, MobilityModels};
 use crate::worker::worker_config::WorkerConfig;
+use crate::{MeshSimError, MeshSimErrorKind};
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
@@ -31,7 +32,7 @@ pub struct TestSpec {
     pub area_size : Area,
     /// The pattern of mobility the workers will follow
     pub mobility_model : Option<MobilityModels>,
-    /// Collection of worker configurations for the master to start at the begginning of the test.
+    /// Collection of worker configurations for the master to start at the beginning of the test.
     pub initial_nodes : HashMap<String, WorkerConfig>,
     /// Collection of available worker configurations that the master may start at any time during
     /// the test.
@@ -41,16 +42,39 @@ pub struct TestSpec {
 impl TestSpec {
     /// This function takes a path to a file that defines a TOML-based
     /// test specification for the Master.
-    pub fn parse_test_spec(file_path : &str) -> Result<TestSpec, MasterError> {
-        // info!("Parsing test file {}.", file_path);
+    pub fn parse_test_spec(file_path : &str) -> Result<TestSpec, MeshSimError> {
+        let mut file_content = String::new();
+
         //Check that the test file passed exists.
         //If it doesn't exist, error out
-        let mut file = File::open(file_path)?;
-        let mut file_content = String::new();
+        let mut file = File::open(file_path)
+            .map_err(|e| {
+                let err_msg = String::from("Failed to open test file");
+                MeshSimError{
+                    kind : MeshSimErrorKind::TestParsing(err_msg),
+                    cause : Some(Box::new(e))
+                }
+            })?;
+
         //Not checking bytes read since all we can check without scanning the file is that is not empty.
         //The serialization framework however, will do the appropriate validations.
-        let _bytes_read = file.read_to_string(&mut file_content)?;
-        let configuration : TestSpec = toml::from_str(&file_content)?;
+        let _bytes_read = file.read_to_string(&mut file_content)
+            .map_err(|e| {
+                let err_msg = String::from("Failed to read test file content");
+                MeshSimError{
+                    kind : MeshSimErrorKind::TestParsing(err_msg),
+                    cause : Some(Box::new(e))
+                }
+            })?;
+
+        let configuration : TestSpec = toml::from_str(&file_content)
+            .map_err(|e| {
+                let err_msg = String::from("Error parsing test spec");
+                MeshSimError{
+                    kind : MeshSimErrorKind::TestParsing(err_msg),
+                    cause : Some(Box::new(e))
+                }
+            })?;
         Ok(configuration)
     }
 
@@ -83,9 +107,9 @@ pub enum TestActions {
 
 
 impl FromStr for TestActions {
-    type Err = MasterError;
+    type Err = MeshSimError;
 
-    fn from_str(s : &str) -> Result<TestActions, MasterError> {
+    fn from_str(s : &str) -> Result<TestActions, MeshSimError> {
         let parts : Vec<&str> = s.split_whitespace().collect();
 
         //Assuming here we can have actions with 0 parameters.
@@ -95,7 +119,11 @@ impl FromStr for TestActions {
                     if parts.len() < 2 {
                         //Error out
                         let msg = String::from("End_Test needs a u64 time parameter.");
-                        return Err(MasterError::TestParsing(msg))
+                        let err = MeshSimError{
+                            kind : MeshSimErrorKind::TestParsing(msg),
+                            cause : None
+                        };
+                        return Err(err);
                     }
                     let time = parts[1].parse::<u64>().unwrap();
                     Ok(TestActions::EndTest(time))
@@ -104,7 +132,11 @@ impl FromStr for TestActions {
                     if parts.len() < 3 {
                         //Error out
                         let msg = String::from("Add_Node needs a worker name and a u64 time parameter.");
-                        return Err(MasterError::TestParsing(msg))
+                        let err = MeshSimError{
+                            kind : MeshSimErrorKind::TestParsing(msg),
+                            cause : None
+                        };
+                        return Err(err);
                     }
                     let node_name = parts[1].to_owned();
                     let time = parts[2].parse::<u64>().unwrap();
@@ -115,7 +147,11 @@ impl FromStr for TestActions {
                     if parts.len() < 3 {
                         //Error out
                         let msg = String::from("Kill_Node needs a worker name and a u64 time parameter.");
-                        return Err(MasterError::TestParsing(msg))
+                        let err = MeshSimError{
+                            kind : MeshSimErrorKind::TestParsing(msg),
+                            cause : None
+                        };
+                        return Err(err);
                     }
                     let node_name = parts[1].to_owned();
                     let time = parts[2].parse::<u64>().unwrap();
@@ -126,7 +162,11 @@ impl FromStr for TestActions {
                     if parts.len() < 4 {
                         //Error out
                         let msg = String::from("Ping needs a source, destination and a time parameters.");
-                        return Err(MasterError::TestParsing(msg))
+                        let err = MeshSimError{
+                            kind : MeshSimErrorKind::TestParsing(msg),
+                            cause : None
+                        };
+                        return Err(err);
                     }
                     let src = parts[1].to_owned();
                     let dst = parts[2].to_owned();
@@ -144,7 +184,11 @@ impl FromStr for TestActions {
                                                 *Packet size
                                                 *Duration
                                                 *Start time");
-                        return Err(MasterError::TestParsing(msg))
+                        let err = MeshSimError{
+                            kind : MeshSimErrorKind::TestParsing(msg),
+                            cause : None
+                        };
+                        return Err(err);
                     }
                     let src = parts[1].to_owned();
                     let dst = parts[2].to_owned();
@@ -156,11 +200,23 @@ impl FromStr for TestActions {
                     
                     Ok(TestActions::AddSource(src, profile, time))
                 },
-                _ => Err(MasterError::TestParsing(format!("Unsupported Test action: {:?}", parts))),
+                _ => {
+                    let msg = format!("Unsupported Test action: {:?}", parts);
+                    let err = MeshSimError{
+                        kind : MeshSimErrorKind::TestParsing(msg),
+                        cause : None
+                    };
+                    return Err(err);
+                }
             }
         } else {
             //Error out
-            Err(MasterError::TestParsing(format!("Unsupported Test action: {:?}", parts)))
+            let msg = String::from("Empty test action");
+            let err = MeshSimError{
+                kind : MeshSimErrorKind::TestParsing(msg),
+                cause : None
+            };
+            Err(err)
         }
     }
 }

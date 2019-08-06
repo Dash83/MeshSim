@@ -9,6 +9,7 @@ use crate::worker::{Worker, OperationMode, Write, WorkerError};
 use crate::worker::radio::*;
 use crate::worker::protocols::*;
 use crate::worker::listener::Listener;
+use crate::{MeshSimError, MeshSimErrorKind};
 use std::path::Path;
 use std::fs::File;
 use std::iter;
@@ -69,7 +70,7 @@ impl RadioConfig {
                               worker_id : String,
                               seed : u32, 
                               r : Option<Arc<Mutex<StdRng>>>,
-                              logger : Logger) -> Result<(Arc<Radio>, Box<Listener>), WorkerError> {
+                              logger : Logger) -> Result<(Arc<Radio>, Box<Listener>), MeshSimError> {
         let rng = match r {
             Some(gen) => gen,
             None => { Arc::new(Mutex::new(Worker::rng_from_seed(seed))) }
@@ -175,7 +176,7 @@ impl WorkerConfig {
     }
 
     ///Creates a new Worker object configured with the values of this configuration object.
-    pub fn create_worker(self, logger: Logger) -> Result<Worker, WorkerError> {
+    pub fn create_worker(self, logger: Logger) -> Result<Worker, MeshSimError> {
         //Create the RNG
         let gen = Worker::rng_from_seed(self.random_seed);
         //Check if a worker_id is present
@@ -254,14 +255,26 @@ impl WorkerConfig {
 
     ///Writes the current configuration object to a formatted configuration file, that can be passed to
     ///the worker_cli binary.
-    pub fn write_to_file<P: AsRef<Path>>(&self, file_path: P) -> Result<(), WorkerError> {
-        //Create configuration file
-        let mut file = File::create(&file_path)?;
-        let data = match toml::to_string(self) {
-            Ok(d) => d,
-            Err(e) => return Err(WorkerError::Configuration(format!("Error writing configuration to file: {}", e)))
-        };
-        write!(file, "{}", data)?;
+    pub fn write_to_file<P: AsRef<Path>>(&self, file_path: P) -> Result<(), MeshSimError> {
+        let data = toml::to_string(self)
+            .map_err(|e| {
+                let err_msg = String::from("Failed to serialize configuration data");
+                MeshSimError{
+                    kind : MeshSimErrorKind::Serialization(err_msg),
+                    cause : Some(Box::new(e))
+                }
+            })?;
+        File::create(&file_path)
+            .and_then(|mut file| {
+                write!(file, "{}", data)
+            })
+            .map_err(|e| {
+                let err_msg = String::from("Error writing configuration to file");
+                MeshSimError{
+                    kind : MeshSimErrorKind::Configuration(err_msg),
+                    cause : Some(Box::new(e))
+                }
+            })?;
 
         Ok(())
     }
