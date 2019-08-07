@@ -13,9 +13,9 @@ extern crate pretty_assertions;
 //*****************
 //Modules declaration
 //*****************
+pub mod logging;
 pub mod master;
 pub mod worker;
-pub mod logging;
 
 //*****************
 //Errors
@@ -26,8 +26,8 @@ use std::fmt;
 /// Error struct for this module
 #[derive(Debug)]
 pub struct MeshSimError {
-    pub cause : Option<Box<dyn Error>>,
-    pub kind : MeshSimErrorKind,
+    pub cause: Option<Box<dyn Error>>,
+    pub kind: MeshSimErrorKind,
 }
 
 /// Types of errors produced in this module
@@ -51,7 +51,6 @@ pub enum MeshSimErrorKind {
     Master(String),
     /// Errors from parsing test specifications
     TestParsing(String),
-
 }
 
 impl Error for MeshSimError {
@@ -72,35 +71,16 @@ impl fmt::Display for MeshSimError {
 impl fmt::Display for MeshSimErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            MeshSimErrorKind::ConnectionFailure(msg) => {
-                write!(f, "{}", msg)
-            },
-            MeshSimErrorKind::SQLExecutionFailure(msg) => {
-                write!(f, "{}", msg)
-            },
-            MeshSimErrorKind::Networking(msg) => {
-                write!(f, "{}", msg)
-            },
-            MeshSimErrorKind::Serialization(msg) => {
-                write!(f, "{}", msg)
-            },
-            MeshSimErrorKind::Configuration(msg) => {
-                write!(f, "{}", msg)
-            },
-            MeshSimErrorKind::Contention(msg) => {
-                write!(f, "{}", msg)
-            },
-            MeshSimErrorKind::Worker(msg) => {
-                write!(f, "{}", msg)
-            },
-            MeshSimErrorKind::Master(msg) => {
-                write!(f, "{}", msg)
-            },
-            MeshSimErrorKind::TestParsing(msg) => {
-                write!(f, "{}", msg)
-            },
+            MeshSimErrorKind::ConnectionFailure(msg) => write!(f, "{}", msg),
+            MeshSimErrorKind::SQLExecutionFailure(msg) => write!(f, "{}", msg),
+            MeshSimErrorKind::Networking(msg) => write!(f, "{}", msg),
+            MeshSimErrorKind::Serialization(msg) => write!(f, "{}", msg),
+            MeshSimErrorKind::Configuration(msg) => write!(f, "{}", msg),
+            MeshSimErrorKind::Contention(msg) => write!(f, "{}", msg),
+            MeshSimErrorKind::Worker(msg) => write!(f, "{}", msg),
+            MeshSimErrorKind::Master(msg) => write!(f, "{}", msg),
+            MeshSimErrorKind::TestParsing(msg) => write!(f, "{}", msg),
         }
-
     }
 }
 

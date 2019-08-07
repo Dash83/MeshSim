@@ -1,12 +1,10 @@
 //! This module implements the features to give the worker commands after it has started.
-extern crate base64;
-
 
 use crate::worker::WorkerError;
 use std::str::FromStr;
 
 /// Enummeration of all the commands the worker supports
-#[derive(Debug,)]
+#[derive(Debug)]
 pub enum Commands {
     ///Send a chunk of data to the destination specified
     Send(String, Vec<u8>),
@@ -15,8 +13,8 @@ pub enum Commands {
 impl FromStr for Commands {
     type Err = WorkerError;
 
-    fn from_str(s : &str) -> Result<Commands, WorkerError> {
-        let parts : Vec<&str> = s.split_whitespace().collect();
+    fn from_str(s: &str) -> Result<Commands, WorkerError> {
+        let parts: Vec<&str> = s.split_whitespace().collect();
 
         //Assuming here we can have actions with 0 parameters.
         if !parts.is_empty() {
@@ -40,27 +38,32 @@ impl FromStr for Commands {
                 //     let bg_name = parts[2].into();
                 //     Ok(Commands::Rem_bcg(radio, bg_name))
                 // },
-
                 "SEND" => {
                     if parts.len() < 2 {
                         //Error out
-                        return Err(WorkerError::Command(String::from("Send needs two parameters: Radio type (short/long) and data.")))
+                        return Err(WorkerError::Command(String::from(
+                            "Send needs two parameters: Radio type (short/long) and data.",
+                        )));
                     }
                     let destination = parts[1].into();
                     let data = match base64::decode(parts[2].as_bytes()) {
                         Ok(d) => d,
-                        Err(e) => {
-                            return Err(WorkerError::Command(format!("{}", e)))
-                        }
+                        Err(e) => return Err(WorkerError::Command(format!("{}", e))),
                     };
                     Ok(Commands::Send(destination, data))
-                },
+                }
 
-                _ => Err(WorkerError::Command(format!("Unsupported worker command: {:?}", parts))),
+                _ => Err(WorkerError::Command(format!(
+                    "Unsupported worker command: {:?}",
+                    parts
+                ))),
             }
         } else {
             //Error out
-            Err(WorkerError::Command(format!("Unsupported worker command: {:?}", parts)))
+            Err(WorkerError::Command(format!(
+                "Unsupported worker command: {:?}",
+                parts
+            )))
         }
     }
 }
