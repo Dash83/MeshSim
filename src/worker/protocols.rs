@@ -71,6 +71,7 @@ impl FromStr for Protocols {
         match prot {
             "NAIVEROUTING" => Ok(Protocols::NaiveRouting),
             "REACTIVEGOSSIP" => Ok(Protocols::ReactiveGossip),
+            "REACTIVEGOSSIPII" => Ok(Protocols::ReactiveGossipII),
             "LORAWIFIBEACON" => Ok(Protocols::LoraWifiBeacon),
             _ => {
                 let err_msg = String::from("The specified protocol is not supported.");
@@ -149,7 +150,7 @@ pub fn build_protocol_resources(
                 name,
                 id,
                 Arc::clone(&sr),
-                rng,
+                Arc::new(Mutex::new(rng)),
                 logger,
             ));
             let mut radio_channels = Vec::new();

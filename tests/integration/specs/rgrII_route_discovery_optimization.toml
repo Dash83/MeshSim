@@ -1,0 +1,1954 @@
+name = "rgrII_route_discovery_optimization"
+duration = 14000
+#actions = ["Add_Source node21 node43 1 64 8000 1000",
+#           "Add_Source node57 node43 1 64 8000 4000"]
+actions = ["Add_Source node21 node43 1 64 8000 4000",
+           "Add_Source node57 node43 1 64 8000 1000"]
+width = 400.0
+height = 400.0
+
+[initial_nodes.node35]
+worker_name = "node35"
+worker_id = "bd99735307184da83b3083c352f773c2"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2004706435
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 189.0
+y = 81.0
+
+[initial_nodes.node35.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node35.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node35.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node68]
+worker_name = "node68"
+worker_id = "1a5492a2fce53a70bd919fbac5145219"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1313986117
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 108.0
+y = 189.0
+
+[initial_nodes.node68.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node68.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node68.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node33]
+worker_name = "node33"
+worker_id = "3de06d78179be40898a530a6f9704b4c"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 622459961
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 135.0
+y = 81.0
+
+[initial_nodes.node33.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node33.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node33.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node51]
+worker_name = "node51"
+worker_id = "c62876bd2b6929bee8290f00b740796a"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 472182656
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 135.0
+y = 135.0
+
+[initial_nodes.node51.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node51.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node51.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node5]
+worker_name = "node5"
+worker_id = "5a09d7780fc88a84ff3efadb659b3d94"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 4078058455
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 108.0
+y = 0.0
+
+[initial_nodes.node5.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node5.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node5.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node69]
+worker_name = "node69"
+worker_id = "05bd13bd531a817912396fd73d079fb5"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1952342207
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 135.0
+y = 189.0
+
+[initial_nodes.node69.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node69.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node69.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node71]
+worker_name = "node71"
+worker_id = "ff545b834de5352f8e0a396bfe1a731a"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1284475265
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 189.0
+y = 189.0
+
+[initial_nodes.node71.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node71.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node71.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node18]
+worker_name = "node18"
+worker_id = "d0236dafaf2e1b4f3bd74dd9fa2fa2f6"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1822503639
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 216.0
+y = 27.0
+
+[initial_nodes.node18.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node18.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node18.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node26]
+worker_name = "node26"
+worker_id = "cecce19adb6abfebe08f2719ed97175a"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3229402950
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 189.0
+y = 54.0
+
+[initial_nodes.node26.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node26.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node26.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node81]
+worker_name = "node81"
+worker_id = "4d3f3e1f9e443340a3431a4f7b71ce3f"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2166706450
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 216.0
+y = 216.0
+
+[initial_nodes.node81.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node81.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node81.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node30]
+worker_name = "node30"
+worker_id = "55e44a92a9442b1de85c892e4d9af104"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1526328287
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 54.0
+y = 81.0
+
+[initial_nodes.node30.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node30.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node30.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node16]
+worker_name = "node16"
+worker_id = "9b3b8b0572661495a63352ebfd4dbbcd"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2089956700
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 162.0
+y = 27.0
+
+[initial_nodes.node16.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node16.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node16.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node49]
+worker_name = "node49"
+worker_id = "9bdbb371c8e1bf8bc3cf793ed4a2059b"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1320778011
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 81.0
+y = 135.0
+
+[initial_nodes.node49.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node49.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node49.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node27]
+worker_name = "node27"
+worker_id = "e8e7cd03a5abbd6ecbe0a1dc3d2083f2"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3687401776
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 216.0
+y = 54.0
+
+[initial_nodes.node27.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node27.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node27.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node43]
+worker_name = "node43"
+worker_id = "226d0a8928abeff7be28b9d6d62cc387"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3040163617
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 162.0
+y = 108.0
+
+[initial_nodes.node43.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node43.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node43.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node44]
+worker_name = "node44"
+worker_id = "b875df3a6b017a62b9a385e525c6380f"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2217550044
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 189.0
+y = 108.0
+
+[initial_nodes.node44.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node44.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node44.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node46]
+worker_name = "node46"
+worker_id = "8680ad8dd726504353f6fb45e84df36d"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1381548330
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 0.0
+y = 135.0
+
+[initial_nodes.node46.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node46.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node46.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node61]
+worker_name = "node61"
+worker_id = "841b072e78ca2020fe9aa6d522a389e7"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3910480923
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 162.0
+y = 162.0
+
+[initial_nodes.node61.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node61.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node61.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node59]
+worker_name = "node59"
+worker_id = "9dd2bd8f8f9cfc5e04b4a29e29ceb2e2"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1317350653
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 108.0
+y = 162.0
+
+[initial_nodes.node59.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node59.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node59.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node20]
+worker_name = "node20"
+worker_id = "8144a37632c604af5ac9cfe299282fd7"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3599635751
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 27.0
+y = 54.0
+
+[initial_nodes.node20.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node20.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node20.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node38]
+worker_name = "node38"
+worker_id = "9d2d34802a8889ea3b554d1cb5779c22"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1018463766
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 27.0
+y = 108.0
+
+[initial_nodes.node38.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node38.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node38.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node77]
+worker_name = "node77"
+worker_id = "193267468dd0b123b5b7ef63cd0f23e6"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3750554586
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 108.0
+y = 216.0
+
+[initial_nodes.node77.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node77.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node77.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node47]
+worker_name = "node47"
+worker_id = "12bcc90e4cc8cb4572176142e0001a79"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 335269404
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 27.0
+y = 135.0
+
+[initial_nodes.node47.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node47.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node47.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node4]
+worker_name = "node4"
+worker_id = "6bb2f43757ae7a13846f67783a7a4c3b"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 4107214061
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 81.0
+y = 0.0
+
+[initial_nodes.node4.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node4.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node4.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node9]
+worker_name = "node9"
+worker_id = "0e5701b8c1a2b3a2053362c411549f9d"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2894900521
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 216.0
+y = 0.0
+
+[initial_nodes.node9.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node9.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node9.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node21]
+worker_name = "node21"
+worker_id = "aa98d930d7c664950a6a9db09d69ac84"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2451039576
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 54.0
+y = 54.0
+
+[initial_nodes.node21.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node21.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node21.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node78]
+worker_name = "node78"
+worker_id = "74f3f2d546a1b71a01823c61762cfb55"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3050616152
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 135.0
+y = 216.0
+
+[initial_nodes.node78.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node78.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node78.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node80]
+worker_name = "node80"
+worker_id = "5b896eba119e0bb4c6d1ef5cde72ec31"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1325185147
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 189.0
+y = 216.0
+
+[initial_nodes.node80.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node80.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node80.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node42]
+worker_name = "node42"
+worker_id = "219275db0b85edf68ccbb381b91d3968"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3963554417
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 135.0
+y = 108.0
+
+[initial_nodes.node42.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node42.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node42.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node41]
+worker_name = "node41"
+worker_id = "a1a6167f290d61c1f3065fb35bbdeaa6"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2281770704
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 108.0
+y = 108.0
+
+[initial_nodes.node41.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node41.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node41.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node12]
+worker_name = "node12"
+worker_id = "5e2389ae5a1d44de5c1fced8149854bc"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 940010754
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 54.0
+y = 27.0
+
+[initial_nodes.node12.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node12.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node12.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node63]
+worker_name = "node63"
+worker_id = "90bd1f5fd51574cf8af59db59f80a357"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1436974521
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 216.0
+y = 162.0
+
+[initial_nodes.node63.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node63.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node63.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node53]
+worker_name = "node53"
+worker_id = "d925d572a98f4707ebf3833fc09de5f3"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 7769987
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 189.0
+y = 135.0
+
+[initial_nodes.node53.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node53.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node53.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node67]
+worker_name = "node67"
+worker_id = "2bcb49333ade491d4d52a38cf0cb0ee2"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 4097175981
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 81.0
+y = 189.0
+
+[initial_nodes.node67.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node67.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node67.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node48]
+worker_name = "node48"
+worker_id = "fe452b3d52a6b93beb951ca11569c8ea"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1982030055
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 54.0
+y = 135.0
+
+[initial_nodes.node48.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node48.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node48.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node66]
+worker_name = "node66"
+worker_id = "f37bc0224450176f3e975ff105b089f2"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3495531029
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 54.0
+y = 189.0
+
+[initial_nodes.node66.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node66.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node66.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node24]
+worker_name = "node24"
+worker_id = "d3ca8e1ab9893aa9c23a6714adf6e97b"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 49632051
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 135.0
+y = 54.0
+
+[initial_nodes.node24.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node24.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node24.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node50]
+worker_name = "node50"
+worker_id = "0a0b3a9491abaaa197cb90680ad9a6ca"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 852216460
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 108.0
+y = 135.0
+
+[initial_nodes.node50.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node50.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node50.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node10]
+worker_name = "node10"
+worker_id = "7b205affb814c0b8724fcd5525354737"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2529495462
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 0.0
+y = 27.0
+
+[initial_nodes.node10.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node10.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node10.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node54]
+worker_name = "node54"
+worker_id = "0a565c7cee013e8d57e5029800c7f283"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3740005813
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 216.0
+y = 135.0
+
+[initial_nodes.node54.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node54.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node54.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node29]
+worker_name = "node29"
+worker_id = "2dd2066b84081b1cf9db05764ff8418b"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 281403435
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 27.0
+y = 81.0
+
+[initial_nodes.node29.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node29.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node29.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node65]
+worker_name = "node65"
+worker_id = "5eb4d3e41fa39b3d67af9d9e6f47a1fb"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2378154286
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 27.0
+y = 189.0
+
+[initial_nodes.node65.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node65.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node65.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node31]
+worker_name = "node31"
+worker_id = "9ff8a618302f73839e9bb4e72b51b2e4"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 814182669
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 81.0
+y = 81.0
+
+[initial_nodes.node31.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node31.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node31.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node64]
+worker_name = "node64"
+worker_id = "a8dc2d007d47522a62bf6becbdd6fcaf"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1800455928
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 0.0
+y = 189.0
+
+[initial_nodes.node64.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node64.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node64.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node76]
+worker_name = "node76"
+worker_id = "832dc21769f6d89a6eadd8972e5b469e"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3478550269
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 81.0
+y = 216.0
+
+[initial_nodes.node76.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node76.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node76.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node23]
+worker_name = "node23"
+worker_id = "3e85d4d147100d96a48997f2ab5865f0"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1563588647
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 108.0
+y = 54.0
+
+[initial_nodes.node23.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node23.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node23.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node39]
+worker_name = "node39"
+worker_id = "d8725ee4844b16e493c506e316fb8f65"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 771287266
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 54.0
+y = 108.0
+
+[initial_nodes.node39.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node39.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node39.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node74]
+worker_name = "node74"
+worker_id = "f21a91d007f538201cd4e9bb10705678"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 997804376
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 27.0
+y = 216.0
+
+[initial_nodes.node74.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node74.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node74.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node2]
+worker_name = "node2"
+worker_id = "3375d121178e5d9521cbe85aa048a5fc"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 513727220
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 27.0
+y = 0.0
+
+[initial_nodes.node2.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node2.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node2.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node72]
+worker_name = "node72"
+worker_id = "8791b2fd672421d0cc1b76f61bf279ec"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2961243967
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 216.0
+y = 189.0
+
+[initial_nodes.node72.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node72.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node72.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node22]
+worker_name = "node22"
+worker_id = "351fa029c5898ff94791660c205260e7"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 27163683
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 81.0
+y = 54.0
+
+[initial_nodes.node22.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node22.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node22.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node73]
+worker_name = "node73"
+worker_id = "49b6ff42aa1e3325072508911a3ff439"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3602080266
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 0.0
+y = 216.0
+
+[initial_nodes.node73.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node73.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node73.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node32]
+worker_name = "node32"
+worker_id = "ee12376db8a841d49668f9365ece8716"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3576162184
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 108.0
+y = 81.0
+
+[initial_nodes.node32.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node32.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node32.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node62]
+worker_name = "node62"
+worker_id = "65186621138a2f5213e2aed3974270ac"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3830288936
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 189.0
+y = 162.0
+
+[initial_nodes.node62.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node62.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node62.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node19]
+worker_name = "node19"
+worker_id = "448b6ca2643a257868070e661d5e490c"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1958960924
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 0.0
+y = 54.0
+
+[initial_nodes.node19.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node19.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node19.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node25]
+worker_name = "node25"
+worker_id = "da087dec9ea46aa72114befbbcea98cc"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 396033429
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 162.0
+y = 54.0
+
+[initial_nodes.node25.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node25.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node25.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node57]
+worker_name = "node57"
+worker_id = "66d4fa8d24c9f9a76add85e3e5178692"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3060845187
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 54.0
+y = 162.0
+
+[initial_nodes.node57.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node57.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node57.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node7]
+worker_name = "node7"
+worker_id = "a88bf87e460b63f9b81d2d0e17d1ddb9"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1593888074
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 162.0
+y = 0.0
+
+[initial_nodes.node7.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node7.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node7.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node28]
+worker_name = "node28"
+worker_id = "cc72128baf6f5d4e2d8b755d0eebf2b0"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 4223050138
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 0.0
+y = 81.0
+
+[initial_nodes.node28.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node28.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node28.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node34]
+worker_name = "node34"
+worker_id = "b2872e02d4708e952bccde78ccc27137"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 992838016
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 162.0
+y = 81.0
+
+[initial_nodes.node34.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node34.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node34.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node13]
+worker_name = "node13"
+worker_id = "6e987f208037ba469cc727d659588a40"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1375856720
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 81.0
+y = 27.0
+
+[initial_nodes.node13.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node13.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node13.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node52]
+worker_name = "node52"
+worker_id = "39531afe85d8dc26a2d864b54ae6b96e"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2605394764
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 162.0
+y = 135.0
+
+[initial_nodes.node52.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node52.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node52.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node8]
+worker_name = "node8"
+worker_id = "1ae96c3c3151dce96a54b85fae303a02"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2402229245
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 189.0
+y = 0.0
+
+[initial_nodes.node8.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node8.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node8.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node55]
+worker_name = "node55"
+worker_id = "076016bb731ffdced09af6bfefea1392"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3183303265
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 0.0
+y = 162.0
+
+[initial_nodes.node55.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node55.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node55.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node56]
+worker_name = "node56"
+worker_id = "04112ccca6f575703c9e66ee8d19e903"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 4085940502
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 27.0
+y = 162.0
+
+[initial_nodes.node56.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node56.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node56.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node3]
+worker_name = "node3"
+worker_id = "1d605fe5f5607a350992dfedb8b10c59"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 916964454
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 54.0
+y = 0.0
+
+[initial_nodes.node3.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node3.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node3.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node6]
+worker_name = "node6"
+worker_id = "53930fe3bf7af60c2fefada913621373"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1522878720
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 135.0
+y = 0.0
+
+[initial_nodes.node6.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node6.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node6.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node40]
+worker_name = "node40"
+worker_id = "86abf12b88777f1b7b76d2e40f7f98c3"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3041106207
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 81.0
+y = 108.0
+
+[initial_nodes.node40.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node40.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node40.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node15]
+worker_name = "node15"
+worker_id = "f267737692cf01b69a86f02c58fac7e3"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2089799485
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 135.0
+y = 27.0
+
+[initial_nodes.node15.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node15.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node15.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node37]
+worker_name = "node37"
+worker_id = "59f9e260c2204b70b624c0f737d765e8"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 905536170
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 0.0
+y = 108.0
+
+[initial_nodes.node37.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node37.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node37.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node45]
+worker_name = "node45"
+worker_id = "cb9b8c2690a3a0c254b5c0b78d9cb83b"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2458986538
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 216.0
+y = 108.0
+
+[initial_nodes.node45.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node45.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node45.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node60]
+worker_name = "node60"
+worker_id = "57de3459f39d0ba9d0967dfe6932fbc2"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 636522691
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 135.0
+y = 162.0
+
+[initial_nodes.node60.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node60.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node60.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node11]
+worker_name = "node11"
+worker_id = "808fd38ce7f12275b4abe1e7c7696138"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2773912885
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 27.0
+y = 27.0
+
+[initial_nodes.node11.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node11.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node11.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node70]
+worker_name = "node70"
+worker_id = "ec1d4fb21420b0d3a7f3df22d99e5f1b"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 3477865494
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 162.0
+y = 189.0
+
+[initial_nodes.node70.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node70.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node70.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node17]
+worker_name = "node17"
+worker_id = "b167b72ac595925b19f9f93617817b83"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1379667539
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 189.0
+y = 27.0
+
+[initial_nodes.node17.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node17.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node17.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node36]
+worker_name = "node36"
+worker_id = "d3f545501fa4b62f3860dc21ebc15b5e"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2405607185
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 216.0
+y = 81.0
+
+[initial_nodes.node36.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node36.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node36.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node14]
+worker_name = "node14"
+worker_id = "9b153d854e3a5fa33a45b69d326960a5"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 2468443214
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 108.0
+y = 27.0
+
+[initial_nodes.node14.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node14.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node14.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node79]
+worker_name = "node79"
+worker_id = "53449b7c99e31b5b9b8c2cac320cb54b"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 194164481
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 162.0
+y = 216.0
+
+[initial_nodes.node79.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node79.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node79.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node75]
+worker_name = "node75"
+worker_id = "4dc0d1b8a5c1e54c5c35c7f79487f90a"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 653037439
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 54.0
+y = 216.0
+
+[initial_nodes.node75.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node75.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node75.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node58]
+worker_name = "node58"
+worker_id = "6e76211f251788b302f55f0b71eb6860"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 443114799
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 81.0
+y = 162.0
+
+[initial_nodes.node58.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node58.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node58.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node1]
+worker_name = "node1"
+worker_id = "46bdfb4a0c121fbe6c0a1e8c629f9c6a"
+work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
+random_seed = 1834157374
+operation_mode = "Simulated"
+protocol = "ReactiveGossipII"
+x = 0.0
+y = 0.0
+
+[initial_nodes.node1.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node1.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node1.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[available_nodes]
