@@ -58,7 +58,7 @@ pub mod worker_config;
 //const DNS_SERVICE_NAME : &'static str = "meshsim";
 //const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT: u16 = 23456;
-const WORKER_POOL_SIZE: usize = 2;
+const WORKER_POOL_SIZE: usize = 1;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 
 // *****************************
@@ -677,6 +677,7 @@ impl Worker {
 mod tests {
     use super::*;
     use std::iter;
+    use rand::RngCore;
 
     //use worker::worker_config::*;
 

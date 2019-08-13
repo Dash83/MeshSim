@@ -9,6 +9,9 @@ use crate::worker::*;
 use socket2::Socket;
 #[cfg(target_os = "linux")]
 use sx1276::socket::{Link, LoRa};
+use std::time::Duration;
+
+const BROADCAST_THRESHOLD: u64 = 10; //10ms
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it
 /// and listen for incoming connections.
@@ -82,7 +85,18 @@ impl Listener for SimulatedListener {
                 if bytes_read > 0 {
                     let data = buffer[..bytes_read].to_vec();
                     match MessageHeader::from_vec(data) {
-                        Ok(m) => Some(m),
+                        Ok(m) => {
+                            //The counterpart of this method, SimulatedRadio::broadcast, does a fake
+                            //broadcast by getting a list of nodes in range and unicasting to them
+                            //one by one. This has an effect on the message propagation, as some
+                            //nodes might received a message from 3 hops a way before they get it
+                            //from its immediate neighbor, even if the immediate neighbor was the
+                            //source. Thus, we try to amortize this by having all read_message sleep
+                            //for 10ms. This should be enough time to ensure that *most* messages
+                            //in the simulated broadcast have been delivered.
+                            std::thread::sleep(Duration::from_millis(BROADCAST_THRESHOLD));
+                            Some(m)
+                        },
                         Err(e) => {
                             //Read bytes but could not form a MessageHeader
                             error!(self.logger, "Failed reading message: {}", e);
