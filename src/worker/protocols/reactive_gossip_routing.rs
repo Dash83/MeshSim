@@ -16,7 +16,7 @@ use std::thread;
 use std::time::Duration;
 
 //TODO: Parameterize these
-const DEFAULT_MIN_HOPS: usize = 1;
+const DEFAULT_MIN_HOPS: usize = 2;
 const DEFAULT_GOSSIP_PROB: f64 = 0.70;
 const MSG_CACHE_SIZE: usize = 200;
 const CONCCURENT_THREADS_PER_FLOW: usize = 2;

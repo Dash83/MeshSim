@@ -32,20 +32,39 @@ fn test_route_discovery_optimization() {
                                                    &master_log_records);
     assert!(master_node_num.is_some());
 
-    //Check the handshake between the nodes
+    //Node 43 should received 16 packets
     let node43_log_file = format!("{}/log/node43.log", &work_dir);
     let node43_log_records = logging::get_log_records_from_file(&node43_log_file).unwrap();
-
     let mut received_packets = 0;
     for record in node43_log_records.iter() {
         if record["msg"].as_str().unwrap().contains("reached its destination") {
             received_packets += 1;
         }
     }
-
     assert_eq!(received_packets, 16);
 
-    panic!("I need to see the logs");
+    //Node 38 should received 16 packets
+    let node38_log_file = format!("{}/log/node38.log", &work_dir);
+    let node38_log_records = logging::get_log_records_from_file(&node38_log_file).unwrap();
+    let mut received_packets = 0;
+    for record in node38_log_records.iter() {
+        if record["msg"].as_str().unwrap().contains("reached its destination") {
+            received_packets += 1;
+        }
+    }
+    assert_eq!(received_packets, 16);
+
+    //Node 45 should received 16 packets
+    let node45_log_file = format!("{}/log/node45.log", &work_dir);
+    let node45_log_records = logging::get_log_records_from_file(&node45_log_file).unwrap();
+    let mut received_packets = 0;
+    for record in node45_log_records.iter() {
+        if record["msg"].as_str().unwrap().contains("reached its destination") {
+            received_packets += 1;
+        }
+    }
+    assert_eq!(received_packets, 16);
+
     //Test passed. Results are not needed.
 //    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
 }

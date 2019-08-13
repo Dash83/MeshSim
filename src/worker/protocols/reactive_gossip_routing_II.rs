@@ -18,13 +18,15 @@ use chrono::{Utc, DateTime};
 use crate::worker::protocols::Protocols::ReactiveGossipII;
 
 //TODO: Parameterize these
-const DEFAULT_MIN_HOPS: usize = 1;
-const DEFAULT_GOSSIP_PROB: f64 = 0.70;
+const DEFAULT_MIN_HOPS: usize = 2;
+const BASE_GOSSIP_PROB: f64 = 0.50;
+const VICINITY_GOSSIP_PROB: f64 = 0.20;
 const MSG_CACHE_SIZE: usize = 200;
 const CONCCURENT_THREADS_PER_FLOW: usize = 2;
 const MSG_TRANSMISSION_THRESHOLD: u64 = 1_000;
-const VICINITY_FRESHNESS_LOOP: u64 = 1_000;
-const VICINITY_FRESHNESS_THRESHOLD: i64 = 5_000;
+const VC_FRESHNESS_LOOP: u64 = 1_000;
+const VC_FRESHNESS_THRESHOLD: i64 = 5_000;
+const VC_WARM_THRESHOLD: usize = 3;
 
 /// Main structure used in this protocol
 #[derive(Debug)]
@@ -250,7 +252,8 @@ impl Protocol for ReactiveGossipRoutingII {
                         "No known route to {}. Starting discovery process.", &destination
                     );
                     //If no route exists, start a new route discovery process...
-                    self.start_route_discovery(destination.clone())?
+                    self.start_route_discovery(destination.clone(),
+                    Arc::clone(&self.route_msg_cache))?
                 }
             };
             //...and then queue the data transmission for when the route is established
@@ -278,7 +281,7 @@ impl ReactiveGossipRoutingII {
         let vicinity_cache = HashMap::new();
         ReactiveGossipRoutingII {
             k: DEFAULT_MIN_HOPS,
-            p: DEFAULT_GOSSIP_PROB,
+            p: BASE_GOSSIP_PROB,
             worker_name,
             worker_id,
             short_radio,
@@ -294,7 +297,11 @@ impl ReactiveGossipRoutingII {
         }
     }
 
-    fn start_route_discovery(&self, destination: String) -> Result<String, MeshSimError> {
+    fn start_route_discovery(
+        &self,
+        destination: String,
+        route_msg_cache: Arc<Mutex<HashSet<String>>>,
+    ) -> Result<String, MeshSimError> {
         let mut msg = RouteMessage::new(self.worker_name.clone(), destination.clone());
         msg.route.push(self.worker_name.clone());
         let route_id = msg.route_id.clone();
@@ -304,6 +311,14 @@ impl ReactiveGossipRoutingII {
         hdr.destination.name = destination;
         let payload = serialize_message(Messages::RouteDiscovery(msg))?;
         hdr.payload = Some(payload);
+
+        //Add the route to the route cache so that this node does not relay it again
+        {
+            let mut rmc = route_msg_cache
+                .lock()
+                .expect("Could not lock route_message cache");
+            rmc.insert(route_id.clone());
+        }
 
         self.short_radio.broadcast(hdr)?;
         info!(
@@ -570,6 +585,17 @@ impl ReactiveGossipRoutingII {
     ) -> Result<Option<MessageHeader>, MeshSimError> {
         info!(logger, "Received ROUTE_DISCOVERY message"; "route_id" => &msg.route_id, "source" => &hdr.sender.name);
 
+//        //Update vicinity cache with the current route, since all those nodes should be reachable
+//        //by this node.
+//        {
+//            let mut vc = vicinity_cache
+//                .lock()
+//                .expect("Failed to lock vicinity cache");
+//            for node in msg.route.iter() {
+//                vc.insert(node.into(), Utc::now());
+//            }
+//        }
+
         //Is this node the intended destination of the route?
         if hdr.destination.name == self_peer.name {
             info!(
@@ -627,6 +653,21 @@ impl ReactiveGossipRoutingII {
             rng.gen_range(0f64, 1f64)
         };
         debug!(logger, "Gossip prob {}", s);
+
+        //Is the route destination in the vicinity?
+        let in_vicinity = {
+            let vc = vicinity_cache
+                .lock()
+                .expect("Could not lock vicinity cache");
+            if vc.len() < VC_WARM_THRESHOLD {
+                1usize
+            } else {
+                vc.contains_key(&msg.route_destination) as usize
+            }
+
+        };
+
+        let p = p + (in_vicinity as f64 * VICINITY_GOSSIP_PROB);
         if msg.route.len() > k && s > p {
             info!(logger, "Not forwarding the message");
             //Not gossiping this message.
@@ -686,10 +727,10 @@ impl ReactiveGossipRoutingII {
                 .lock()
                 .expect("Failed to lock vicinity cache");
             for node in msg.route.iter() {
+                vc.insert(node.into(), Utc::now());
                 if node == &msg.route_destination {
                     break;
                 }
-                vc.insert(node.into(), Utc::now());
             }
         }
 
@@ -1012,13 +1053,13 @@ impl ReactiveGossipRoutingII {
         vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         logger : Logger,
     ) -> Result<(), MeshSimError> {
-        let sleep_time = Duration::from_millis(VICINITY_FRESHNESS_LOOP);
+        let sleep_time = Duration::from_millis(VC_FRESHNESS_LOOP);
         loop {
             {
                 let mut vc = vicinity_cache
                     .lock()
                     .expect("Failed to lock vicinity cache");
-                let mut threshold = Utc::now() - chrono::Duration::milliseconds(VICINITY_FRESHNESS_THRESHOLD);
+                let mut threshold = Utc::now() - chrono::Duration::milliseconds(VC_FRESHNESS_THRESHOLD);
                 vc.retain(|node, ts| ts >= &mut threshold);
                 debug!(logger, "Vicinity cache:{:?}", &vc);
             }

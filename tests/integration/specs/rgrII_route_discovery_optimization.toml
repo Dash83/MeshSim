@@ -1,9 +1,19 @@
 name = "rgrII_route_discovery_optimization"
-duration = 14000
+#Base case
+#duration = 14000
 #actions = ["Add_Source node21 node43 1 64 8000 1000",
 #           "Add_Source node57 node43 1 64 8000 4000"]
-actions = ["Add_Source node21 node43 1 64 8000 4000",
-           "Add_Source node57 node43 1 64 8000 1000"]
+
+#Extended case
+duration = 20000
+actions = ["Add_Source node21 node43 1 64 8000 1000",
+           "Add_Source node57 node43 1 64 8000 3000",
+           "Add_Source node15 node38 1 64 8000 5000",
+           "Add_Source node69 node38 1 64 8000 7000",
+           "Add_Source node15 node45 1 64 8000 9000",
+           "Add_Source node69 node45 1 64 8000 11000",
+           ]
+
 width = 400.0
 height = 400.0
 
@@ -1019,7 +1029,7 @@ range = 60.0
 worker_name = "node31"
 worker_id = "9ff8a618302f73839e9bb4e72b51b2e4"
 work_dir = "/tmp/rgrII_route_discovery_optimization638095981"
-random_seed = 814182669
+random_seed = 81418269
 operation_mode = "Simulated"
 protocol = "ReactiveGossipII"
 x = 81.0
