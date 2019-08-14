@@ -250,6 +250,8 @@ pub struct MessageHeader {
     pub destination: Peer,
     ///Number of hops this message has taken
     pub hops: u16,
+    ///Indication for the simulated radio of how long to delay the reception of a message for
+    pub delay: u64,
     ///Optional, serialized payload of the message.
     /// It's the responsibility of the underlying protocol to know how to deserialize this payload
     /// into a protocol-specific message.
@@ -269,6 +271,7 @@ impl MessageHeader {
             sender: Peer::new(),
             destination: Peer::new(),
             hops: 0u16,
+            delay: 0u64,
             payload: None,
         }
     }

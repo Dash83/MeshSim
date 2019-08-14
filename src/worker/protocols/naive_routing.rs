@@ -82,6 +82,18 @@ impl Protocol for NaiveRouting {
         dest.name = destination;
 
         let hdr = NaiveRouting::create_data_message(self.get_self_peer(), dest, 1, data)?;
+        let msg_hash = hdr.get_hdr_hash();
+        {
+            let mut cache = self.msg_cache.lock().expect("Could not lock message cache");
+            //Have not seen this message yet.
+            //Is there space in the cache?
+            if cache.len() >= MSG_CACHE_SIZE {
+                let _res = cache.remove(0);
+            }
+            //Log message
+            cache.push(CacheEntry { msg_id: msg_hash });
+        }
+
         self.short_radio.broadcast(hdr)?;
         Ok(())
     }
@@ -126,6 +138,7 @@ impl NaiveRouting {
             sender,
             destination,
             hops,
+            delay: 0u64,
             payload: Some(payload),
         };
         Ok(msg)

@@ -12,7 +12,7 @@ use self::mesh_simulator::worker::worker_config::*;
 use self::mesh_simulator::worker::*;
 use self::mesh_simulator::worker::radio::*;
 use super::super::*;
-
+use mesh_simulator::logging::*;
 
 
 //**** Radio unit tests ****
@@ -165,13 +165,13 @@ fn test_broadcast_simulated() {
     // let listener1 = r1.init().unwrap();
     let pos = Position{ x : -60.0, y : 0.0};
     let vel = Velocity{ x : 0.0, y : 0.0};
-    let _worker_db_id = register_worker(&conn, worker_name, 
-                                               &worker_id, 
+    let _worker_db_id = register_worker(&conn, worker_name,
+                                               &worker_id,
                                                &pos,
                                                &vel,
                                                &None,
-                                               Some(r1.get_address().into()), 
-                                               None, 
+                                               Some(r1.get_address().into()),
+                                               None,
                                                &logger).expect("Could not register worker");
 
     //Worker2
@@ -181,18 +181,18 @@ fn test_broadcast_simulated() {
     let worker_name = String::from("worker2");
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72b"); //arbitrary
     let random_seed = 1;
-    let (r2, _l2) = sr_config2.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
+    let (r2, _l2) = sr_config2.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(),
                                      worker_id.clone(), random_seed, None, logger.clone()).expect("Could not create radio for worker2");
     // let _listener2 = r2.init().unwrap();
 
     let pos = Position{ x : 0.0, y : 0.0};
-    let _worker_db_id = register_worker(&conn, worker_name, 
-                                               &worker_id, 
+    let _worker_db_id = register_worker(&conn, worker_name,
+                                               &worker_id,
                                                &pos,
                                                &vel,
                                                &None,
-                                               Some(r2.get_address().into()), 
-                                               None, 
+                                               Some(r2.get_address().into()),
+                                               None,
                                                &logger).expect("Could not register worker");
 
     //Worker3
@@ -203,18 +203,18 @@ fn test_broadcast_simulated() {
     let worker_name = String::from("worker3");
     let worker_id = String::from("416d77337e24399dc7a5aa058039f72c"); //arbitrary
     let random_seed = 1;
-    let (r3, l3) = sr_config3.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(), 
+    let (r3, l3) = sr_config3.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(),
                                      worker_id.clone(), random_seed, None, logger.clone()).expect("Could not create radio for worker3");
 
     // let listener3 = r3.init().unwrap();
     let pos = Position{ x : 60.0, y : 0.0};
-    let _worker_db_id = register_worker(&conn, worker_name, 
-                                               &worker_id, 
+    let _worker_db_id = register_worker(&conn, worker_name,
+                                               &worker_id,
                                                &pos,
-                                               &vel, 
+                                               &vel,
                                                &None,
-                                               Some(r3.get_address().into()), 
-                                               None, 
+                                               Some(r3.get_address().into()),
+                                               None,
                                                &logger).expect("Could not register worker");
 
     //Test checks
@@ -232,6 +232,46 @@ fn test_broadcast_simulated() {
     //Teardown
     //If test checks fail, this section won't be reached and not cleaned up for investigation.
     let _res = std::fs::remove_dir_all(&test_path).unwrap();
+}
+
+//I currently have no idea how to reliably test the timing of the broadcast across nodes
+//Leaving this test here for debugging purposes.
+#[ignore]
+#[test]
+fn test_broadcast_timing() {
+    //Setup
+    //Get general test settings
+    let test = get_test_path("radio_broadcast_timing.toml");
+    let work_dir = create_test_dir("radio_broadcast_timing");
+
+    println!("Test results placed in {}", &work_dir);
+
+    let program = get_master_path();
+    let worker = get_worker_path();
+
+    println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
+
+    //Assert the test finished successfully
+    assert_cli::Assert::command(&[&program])
+        .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
+        .succeeds()
+        .unwrap();
+
+    //Check the test ended with the correct number of processes.
+    let master_log_file = format!("{}{}{}{}{}", &work_dir,
+                                  std::path::MAIN_SEPARATOR,
+                                  LOG_DIR_NAME,
+                                  std::path::MAIN_SEPARATOR,
+                                  DEFAULT_MASTER_LOG);
+    let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
+    let master_node_num = logging::find_log_record("msg",
+                                                   "End_Test action: Finished. 5 processes terminated.",
+                                                   &master_log_records);
+    assert!(master_node_num.is_some());
+
+    //Teardown
+    //If test checks fail, this section won't be reached and not cleaned up for investigation.
+    let _res = std::fs::remove_dir_all(&work_dir).unwrap();
 }
 
 #[test]

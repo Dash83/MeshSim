@@ -20,6 +20,7 @@ use sx1276;
 //const SIMULATED_SCAN_DIR : &'static str = "addr";
 const SHORT_RANGE_DIR: &str = "short";
 const LONG_RANGE_DIR: &str = "long";
+const DELAY_PER_NODE: u64 = 50; //microseconds
 
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE: usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
@@ -105,6 +106,8 @@ impl Radio for SimulatedRadio {
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
         let conn = get_db_connection(&self.work_dir, &self.logger)?;
         let peers = get_workers_in_range(&conn, &self.id, self.range, &self.logger)?;
+        let max_wait = peers.len() as u64 * DELAY_PER_NODE;
+        let mut i: u64 = 0;
 
         if peers.is_empty() {
             info!(self.logger, "No nodes in range. Message not sent");
@@ -115,15 +118,18 @@ impl Radio for SimulatedRadio {
 
         // let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
         let socket = new_socket()?;
-        let msg = hdr.clone();
-        let data = to_vec(&msg).map_err(|e| {
-            let err_msg = String::from("Failed to serialize message");
-            MeshSimError {
-                kind: MeshSimErrorKind::Serialization(err_msg),
-                cause: Some(Box::new(e)),
-            }
-        })?;
         for p in peers.into_iter() {
+            let mut msg = hdr.clone();
+            msg.delay = max_wait - i;
+            i += DELAY_PER_NODE;
+            let data = to_vec(&msg).map_err(|e| {
+                let err_msg = String::from("Failed to serialize message");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
+
             let selected_address = match self.r_type {
                 RadioTypes::ShortRange => p.short_address.clone(),
                 RadioTypes::LongRange => p.long_address.clone(),

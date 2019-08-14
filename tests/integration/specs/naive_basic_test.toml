@@ -22,7 +22,7 @@ actions = ["Ping node1 node3 1500"]
     [initial_nodes.node1.radio_short]
         reliability = 1.0
         delay = 0
-        range = 100.0
+        range = 50.0
 
 [initial_nodes.node2]
     worker_name = "node2"
@@ -38,7 +38,7 @@ actions = ["Ping node1 node3 1500"]
     [initial_nodes.node2.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        range = 100.0
+        range = 50.0
 
 [initial_nodes.node3]
     worker_name = "node3"
@@ -46,7 +46,7 @@ actions = ["Ping node1 node3 1500"]
     random_seed = 789
     operation_mode = "Simulated"
     protocol = "NaiveRouting"
-    x = 120.0
+    x = 140.0
     y = 100.0
     [initial_nodes.node3.velocity]
         x = 0.0
@@ -54,6 +54,6 @@ actions = ["Ping node1 node3 1500"]
     [initial_nodes.node3.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
-        range = 100.0
+        range = 50.0
 
 [available_nodes]

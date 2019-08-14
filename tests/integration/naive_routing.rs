@@ -50,15 +50,12 @@ fn naive_basic() {
     let node_3_msg_recv = logging::find_log_record("msg", "Message 763ecd437c5bd4aa764380b63d5951ba reached its destination", &node3_log_records);   
     //node1 also receives the message from node2. Since it has never received the message from that node, it relays it for reliability.
     let node_1_msg_recv = logging::find_log_record("msg", "Received DATA message 763ecd437c5bd4aa764380b63d5951ba from node2", &node1_log_records);
-    //node2 receives the message from node1 again. This time it drops it.
-    let node_2_msg_drop = logging::find_log_record("msg", "Dropping repeated message 763ecd437c5bd4aa764380b63d5951ba", &node2_log_records);   
 
     assert!(node_1_cmd_recv.is_some());
     assert!(node_1_msg_sent.is_some());
     assert!(node_2_msg_recv.is_some());
     assert!(node_3_msg_recv.is_some());
     assert!(node_1_msg_recv.is_some());
-    assert!(node_2_msg_drop.is_some());
 
     //Test passed. Results are not needed.
     fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");

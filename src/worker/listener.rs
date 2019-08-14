@@ -9,7 +9,7 @@ use crate::worker::*;
 use socket2::Socket;
 #[cfg(target_os = "linux")]
 use sx1276::socket::{Link, LoRa};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const BROADCAST_THRESHOLD: u64 = 10; //10ms
 
@@ -94,7 +94,11 @@ impl Listener for SimulatedListener {
                             //source. Thus, we try to amortize this by having all read_message sleep
                             //for 10ms. This should be enough time to ensure that *most* messages
                             //in the simulated broadcast have been delivered.
-                            std::thread::sleep(Duration::from_millis(BROADCAST_THRESHOLD));
+                            let delay = Duration::from_micros(m.delay);
+                            std::thread::sleep(delay);
+//                            let now = Instant::now();
+//                            while now.elapsed() < delay { }
+
                             Some(m)
                         },
                         Err(e) => {

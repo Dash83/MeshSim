@@ -969,10 +969,7 @@ mod tests {
     #[test]
     fn test_get_db_connection() {
         //Add random wait to avoid collitions on the same DB file
-        let mut rng = rand::thread_rng();
-        let wait: u64 = rng.gen::<u64>() % 100;
-        std::thread::sleep(Duration::from_millis(wait));
-        let work_dir = create_test_dir("mobility");
+        let work_dir = create_test_dir("get_db_connection");
         let logger = logging::create_discard_logger();
 
         let _conn = get_db_connection(&work_dir, &logger).expect("Could not create DB file");
@@ -992,13 +989,8 @@ mod tests {
     //Unit test for creating the tables in the db
     #[test]
     fn test_create_positions_db() {
-        //Add random wait to avoid collitions on the same DB file
-        let mut rng = rand::thread_rng();
-        let wait: u64 = rng.gen::<u64>() % 100;
-        std::thread::sleep(Duration::from_millis(wait));
-
         let QRY_TABLE_EXISTS = "SELECT rowid FROM sqlite_master WHERE type='table' AND name = (?);";
-        let work_dir = create_test_dir("mobility");
+        let work_dir = create_test_dir("create_positions_db");
         let logger = logging::create_discard_logger();
 
         let conn = get_db_connection(&work_dir, &logger).expect("Could not create DB file");
@@ -1035,12 +1027,7 @@ mod tests {
     //Unit test for confirming a worker is registered in the db
     #[test]
     fn test_register_worker() {
-        //Add random wait to avoid collitions on the same DB file
-        let mut rng = rand::thread_rng();
-        let wait: u64 = rng.gen::<u64>() % 100;
-        std::thread::sleep(Duration::from_millis(wait));
-
-        let work_dir = create_test_dir("mobility");
+        let work_dir = create_test_dir("register_worker");
         let logger = logging::create_discard_logger();
 
         info!(logger, "Test results placed in {}", &work_dir);
@@ -1077,12 +1064,7 @@ mod tests {
     //Unit test for checking peers are within range.
     #[test]
     fn test_workers_in_range() {
-        //Add random wait to avoid collitions on the same DB file
-        let mut rng = rand::thread_rng();
-        let wait: u64 = rng.gen::<u64>() % 100;
-        std::thread::sleep(Duration::from_millis(wait));
-
-        let work_dir = create_test_dir("mob");
+        let work_dir = create_test_dir("workers_in_range");
         let logger = logging::create_discard_logger();
 
         info!(logger, "Test results placed in {}", &work_dir);
@@ -1321,10 +1303,7 @@ mod tests {
 
     #[test]
     fn test_stop_workers() {
-        let mut rng = rand::thread_rng();
-        let num: u64 = rng.gen::<u64>() % 10000;
-
-        let work_dir = create_test_dir(&format!("stop_workers{}", num));
+        let work_dir = create_test_dir("stop_workers");
         let logger = logging::create_discard_logger();
 
         info!(logger, "Test results placed in {}", &work_dir);
@@ -1388,10 +1367,6 @@ mod tests {
 
     #[test]
     fn test_dist_func() {
-        //Add random wait to avoid collitions on the same DB file
-        let mut rng = rand::thread_rng();
-        let wait: u64 = rng.gen::<u64>() % 100;
-        std::thread::sleep(Duration::from_millis(wait));
         let work_dir = create_test_dir("distance_func");
         let logger = logging::create_discard_logger();
 
