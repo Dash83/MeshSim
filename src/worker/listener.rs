@@ -40,43 +40,6 @@ pub struct SimulatedListener {
 }
 
 impl Listener for SimulatedListener {
-    //    fn start(&self, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError> {
-    //        //let listener = UnixDatagram::bind(&self.address)?;
-    //        let mut buffer = [0; MAX_UDP_PAYLOAD_SIZE+1];
-    //
-    //        info!(self.logger, "Listening for messages");
-    //        loop {
-    //            match self.socket.recv_from(&mut buffer) {
-    //                Ok((bytes_read, peer_addr)) => {
-    //                    info!(self.logger, "Incoming connection from {:?}", &peer_addr);
-    //
-    //                    if bytes_read > 0 {
-    //                        let data = buffer[..bytes_read].to_vec();
-    //                        let msg = MessageHeader::from_vec(data)?;
-    //
-    //                        //let client = SimulatedClient::new(peer_addr, self.delay, self.reliability, Arc::clone(&self.rng) );
-    //                        let prot = Arc::clone(&protocol);
-    //                        let r_type = self.r_type;
-    //
-    //                        // let _handle = thread::spawn(move || {
-    //                        //     match SimulatedListener::handle_client(data, client, prot, r_type) {
-    //                        //         Ok(_res) => {
-    //                        //             /* Client connection finished properly. */
-    //                        //         },
-    //                        //         Err(e) => {
-    //                        //             error!("handle_client error: {}", e);
-    //                        //         },
-    //                        //     }
-    //                        // });
-    //                    }
-    //                },
-    //                Err(e) => {
-    //                    warn!(self.logger, "Failed to read incoming message. Error: {}", e);
-    //                }
-    //            }
-    //        }
-    //    }
-
     fn read_message(&self) -> Option<MessageHeader> {
         let mut buffer = [0; MAX_UDP_PAYLOAD_SIZE + 1];
 
@@ -232,10 +195,6 @@ impl<T> Listener for LoRa<T>
 where
     T: 'static + Send + Sync + Link,
 {
-    //    fn start(&self, protocol : Arc<Box<Protocol>>) -> Result<(), WorkerError> {
-    //        unimplemented!()
-    //    }
-
     /// Reads a message (if possible) from the underlying socket
     fn read_message(&self) -> Option<MessageHeader> {
         let mut buffer = [0; sx1276::LORA_MTU];

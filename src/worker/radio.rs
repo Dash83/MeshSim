@@ -1,7 +1,7 @@
 //! This module defines the abstraction and functionality for what a Radio is in MeshSim
 
 use crate::worker::listener::*;
-use crate::worker::mobility::{get_db_connection, get_workers_in_range};
+use crate::worker::mobility::*;
 use crate::worker::*;
 use crate::{MeshSimError, MeshSimErrorKind};
 use pnet_datalink as datalink;
@@ -9,6 +9,11 @@ use slog::Logger;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
+use std::collections::HashSet;
+use std::iter::FromIterator;
+use std::time::Duration;
+use rand::RngCore;
+use std::str::FromStr;
 
 #[cfg(target_os = "linux")]
 use self::sx1276::socket::{Link, LoRa};
@@ -18,9 +23,10 @@ use linux_embedded_hal as hal;
 use sx1276;
 
 //const SIMULATED_SCAN_DIR : &'static str = "addr";
-const SHORT_RANGE_DIR: &str = "short";
-const LONG_RANGE_DIR: &str = "long";
+const SHORT_RANGE_DIR: &str = "SHORT";
+const LONG_RANGE_DIR: &str = "LONG";
 const DELAY_PER_NODE: u64 = 50; //microseconds
+const TRANSMISSION_MAX_RETRY: usize = 10;
 
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE: usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
@@ -86,6 +92,8 @@ pub struct SimulatedRadio {
     pub work_dir: String,
     ///Address that this radio listens on
     address: String,
+    ///Name of the node that owns this radio
+    worker_name : String,
     ///The unique id of the worker that uses this radio. The id is shared across radios belonging to the same worker.
     id: String,
     ///Short or long range. What's the range-role of this radio.
@@ -104,24 +112,85 @@ impl Radio for SimulatedRadio {
     }
 
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
-        let conn = get_db_connection(&self.work_dir, &self.logger)?;
-        let peers = get_workers_in_range(&conn, &self.id, self.range, &self.logger)?;
-        let max_wait = peers.len() as u64 * DELAY_PER_NODE;
-        let mut i: u64 = 0;
+        let mut conn = get_db_connection(&self.work_dir, &self.logger)?;
+        let mut peers = Vec::new();
+        let mut i = 0;
+        let wait_base = {
+            let mut rng = self.rng.lock().expect("Could not lock RNG");
+            (rng.next_u64() % 4) + 1
+        };
 
-        if peers.is_empty() {
-            info!(self.logger, "No nodes in range. Message not sent");
-            return Ok(());
+        while i < TRANSMISSION_MAX_RETRY {
+            let tx = start_tx(&mut conn)?;
+
+            //Get peers in range
+            peers = get_workers_in_range(&tx, &self.id, self.range, &self.logger)?;
+
+            //If no peer is in range, we are done here
+            if peers.is_empty() {
+                info!(self.logger, "No nodes in range. Message not sent");
+                return Ok(());
+            }
+
+            //Get the list of all active transmitters
+            let active_transmitters = get_active_transmitters(
+                &tx,
+                self.r_type,
+                &self.logger
+            )?;
+
+            //How many active transmitters are in range? If more than 0, the medium is busy and we
+            //have to go into exponential back-off.
+            let peer_names = HashSet::from_iter(peers.iter().map(|x| x.name.clone()));
+            let active_transmitters_in_range: HashSet<&String> = active_transmitters
+                .intersection(&peer_names)
+                .collect();
+
+            debug!(self.logger, "{} active transmitters in range", active_transmitters_in_range.len());
+
+            if active_transmitters_in_range.len() == 0 {
+                break;
+            }
+
+            //Error out?
+            if i == TRANSMISSION_MAX_RETRY {
+                let err_msg = String::from("TRANSMISSION_MAX_RETRY reached. Aborting transmission");
+                let err = MeshSimError{
+                    kind : MeshSimErrorKind::Networking(err_msg),
+                    cause : None,
+                };
+                return Err(err)
+            }
+
+            //Exponential back-off
+            info!(&self.logger, "Medium is busy");
+            i += 1;
+            let sleep_time = Duration::from_micros(wait_base.pow(i as u32));
+            info!(&self.logger, "Retrying in {:?}", &sleep_time);
+            std::thread::sleep(sleep_time);
         }
 
-        info!(self.logger, "{} peer in range", peers.len());
+        info!(self.logger, "Starting transmission");
+        let tx = start_tx(&mut conn)?;
+
+        let _ = insert_active_transmitter(&tx,
+                                          &self.worker_name,
+                                          self.r_type,
+                                          &self.logger)?;
+
+        let _ = commit_tx(tx)?;
+
+        debug!(&self.logger, "{} registered as an active transmitter", &self.worker_name);
+        info!(self.logger, "{} peers in range", peers.len());
 
         // let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
         let socket = new_socket()?;
+        let mut delay: u64 = 0;
+        let max_delay = peers.len() as u64 * DELAY_PER_NODE;
         for p in peers.into_iter() {
             let mut msg = hdr.clone();
-            msg.delay = max_wait - i;
-            i += DELAY_PER_NODE;
+            msg.delay = max_delay - delay;
+            delay += DELAY_PER_NODE;
             let data = to_vec(&msg).map_err(|e| {
                 let err_msg = String::from("Failed to serialize message");
                 MeshSimError {
@@ -168,6 +237,16 @@ impl Radio for SimulatedRadio {
             }
         }
 
+        let tx = start_tx(&mut conn)?;
+
+        //Remove from active-transmitters list
+        let _ = remove_active_transmitter(&tx,
+                                          &self.worker_name,
+                                          self.r_type,
+                                          &self.logger)?;
+
+        let _ = commit_tx(tx)?;
+
         info!(self.logger, "Message {:x} sent", &hdr.get_hdr_hash());
         Ok(())
     }
@@ -179,7 +258,7 @@ impl SimulatedRadio {
         reliability: f64,
         work_dir: String,
         id: String,
-        _worker_name: String,
+        worker_name: String,
         r_type: RadioTypes,
         range: f64,
         rng: Arc<Mutex<StdRng>>,
@@ -192,6 +271,7 @@ impl SimulatedRadio {
             reliability,
             work_dir,
             id,
+            worker_name,
             address: listen_addres,
             range,
             r_type,
@@ -249,6 +329,7 @@ impl SimulatedRadio {
     ///the respective listen addresses.
     pub fn extract_radio_addresses(
         mut input: String,
+        logger : &Logger
     ) -> Result<(Option<String>, Option<String>), MeshSimError> {
         let mut sr_address = None;
         let mut lr_address = None;
@@ -266,15 +347,29 @@ impl SimulatedRadio {
                 continue;
             }
             let parts: Vec<&str> = v.split('-').collect();
-            // println!("Parts: {:?}", &parts);
-            let r_type: RadioTypes = parts[0].parse().map_err(|e| {
-                let err_msg = format!("Could parse radio-address {}", &input);
-                MeshSimError {
-                    kind: MeshSimErrorKind::Networking(err_msg),
-                    cause: Some(Box::new(e)),
+            debug!(logger, "Parts: {:?}", &parts);
+            let r_type = {
+                if parts[0] == "SHORT" {
+                    RadioTypes::ShortRange
+                } else if parts[0] == "LONG" {
+                    RadioTypes::LongRange
+                } else {
+                    let err_msg = format!("Could not parse radio-address {}", &input);
+                    let err = MeshSimError {
+                        kind: MeshSimErrorKind::Configuration(err_msg),
+                        cause: None,
+                    };
+                    return Err(err)
                 }
-            })?;
-
+            };
+//            let r_type: RadioTypes = parts[0].parse().map_err(|e| {
+//                let err_msg = format!("Could not parse radio-address {}", &input);
+//                MeshSimError {
+//                    kind: MeshSimErrorKind::Configuration(err_msg),
+//                    cause: Some(Box::new(e)),
+//                }
+//            })?;
+            debug!(logger, "RadioType {:?}", &r_type);
             match r_type {
                 RadioTypes::ShortRange => {
                     sr_address = Some(parts[1].into());
@@ -284,6 +379,7 @@ impl SimulatedRadio {
                 }
             }
         }
+        debug!(logger, "This function did finish!");
 
         Ok((sr_address, lr_address))
     }

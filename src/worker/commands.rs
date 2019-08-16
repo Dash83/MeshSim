@@ -1,6 +1,6 @@
 //! This module implements the features to give the worker commands after it has started.
 
-use crate::worker::WorkerError;
+use crate::{MeshSimError, MeshSimErrorKind};
 use std::str::FromStr;
 
 /// Enummeration of all the commands the worker supports
@@ -11,9 +11,9 @@ pub enum Commands {
 }
 
 impl FromStr for Commands {
-    type Err = WorkerError;
+    type Err = MeshSimError;
 
-    fn from_str(s: &str) -> Result<Commands, WorkerError> {
+    fn from_str(s: &str) -> Result<Commands, MeshSimError> {
         let parts: Vec<&str> = s.split_whitespace().collect();
 
         //Assuming here we can have actions with 0 parameters.
@@ -41,29 +41,48 @@ impl FromStr for Commands {
                 "SEND" => {
                     if parts.len() < 2 {
                         //Error out
-                        return Err(WorkerError::Command(String::from(
-                            "Send needs two parameters: Radio type (short/long) and data.",
-                        )));
+                        let err_msg = String::from(
+                            "Send needs two parameters: Radio type (short/long) and data.");
+                        let err = MeshSimError{
+                            kind : MeshSimErrorKind::Worker(err_msg),
+                            cause : None
+                        };
+                        return Err(err)
                     }
                     let destination = parts[1].into();
                     let data = match base64::decode(parts[2].as_bytes()) {
                         Ok(d) => d,
-                        Err(e) => return Err(WorkerError::Command(format!("{}", e))),
+                        Err(e) => {
+                            let err_msg = String::from("Failed to decode data from base64 string");
+                            let err = MeshSimError{
+                                kind : MeshSimErrorKind::Worker(err_msg),
+                                cause : Some(Box::new(e))
+                            };
+                            return Err(err)
+                        },
                     };
                     Ok(Commands::Send(destination, data))
                 }
 
-                _ => Err(WorkerError::Command(format!(
-                    "Unsupported worker command: {:?}",
-                    parts
-                ))),
+                _ => {
+                    let err_msg = format!(
+                        "Unsupported worker command: {:?}",
+                        parts
+                    );
+                    let err = MeshSimError{
+                        kind : MeshSimErrorKind::Worker(err_msg),
+                        cause : None
+                    };
+                    Err(err)
+                },
             }
         } else {
-            //Error out
-            Err(WorkerError::Command(format!(
-                "Unsupported worker command: {:?}",
-                parts
-            )))
+            let err_msg = String::from("Empty command");
+            let err = MeshSimError{
+                kind : MeshSimErrorKind::Worker(err_msg),
+                cause : None
+            };
+            Err(err)
         }
     }
 }
