@@ -275,6 +275,92 @@ fn test_broadcast_timing() {
 }
 
 #[test]
+fn test_mac_layer_basic() {
+    //Setup
+    //Get general test settings
+    let test = get_test_path("mac_layer_basic.toml");
+    let work_dir = create_test_dir("mac_layer_basic");
+
+    println!("Test results placed in {}", &work_dir);
+
+    let program = get_master_path();
+    let worker = get_worker_path();
+
+    println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
+
+    //Assert the test finished successfully
+    assert_cli::Assert::command(&[&program])
+        .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
+        .succeeds()
+        .unwrap();
+
+    //Check the test ended with the correct number of processes.
+    let master_log_file = format!("{}{}{}{}{}", &work_dir,
+                                  std::path::MAIN_SEPARATOR,
+                                  LOG_DIR_NAME,
+                                  std::path::MAIN_SEPARATOR,
+                                  DEFAULT_MASTER_LOG);
+    let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
+    let master_node_num = logging::find_log_record("msg",
+                                                   "End_Test action: Finished. 25 processes terminated.",
+                                                   &master_log_records);
+    assert!(master_node_num.is_some());
+
+    let node4_log_file = &format!("{}/log/node4.log", &work_dir);
+    let node4_log_records = logging::get_log_records_from_file(&node4_log_file).unwrap();
+    let node_4_received = logging::find_log_record(
+        "msg",
+        "Message db805e19ab4bfaa5cef9b146993859a9 reached its destination", &node4_log_records);
+    assert!(node_4_received.is_some());
+
+    let node5_log_file = &format!("{}/log/node5.log", &work_dir);
+    let node5_log_records = logging::get_log_records_from_file(&node5_log_file).unwrap();
+    let node_5_received = logging::find_log_record(
+        "msg",
+        "Message 920d4c99eb3e393e47fa84268a559abb reached its destination", &node5_log_records);
+    assert!(node_5_received.is_some());
+
+    let node19_log_file = &format!("{}/log/node19.log", &work_dir);
+    let node19_log_records = logging::get_log_records_from_file(&node19_log_file).unwrap();
+    let node_19_received = logging::find_log_record(
+        "msg",
+        "Message f57790d905cdfd41887f18c6162b99bf reached its destination", &node19_log_records);
+    assert!(node_19_received.is_some());
+
+    let node20_log_file = &format!("{}/log/node20.log", &work_dir);
+    let node20_log_records = logging::get_log_records_from_file(&node20_log_file).unwrap();
+    let node_20_received = logging::find_log_record(
+        "msg",
+        "Message d763e55c7fd41dd1d635ca7e6602e855 reached its destination", &node20_log_records);
+    assert!(node_20_received.is_some());
+    
+    let node22_log_file = &format!("{}/log/node22.log", &work_dir);
+    let node22_log_records = logging::get_log_records_from_file(&node22_log_file).unwrap();
+    let node_22_received = logging::find_log_record(
+        "msg",
+        "Message d9802591b0658377c3ce50e56822bfe2 reached its destination", &node22_log_records);
+    assert!(node_22_received.is_some());
+
+    let node24_log_file = &format!("{}/log/node24.log", &work_dir);
+    let node24_log_records = logging::get_log_records_from_file(&node24_log_file).unwrap();
+    let node_24_received = logging::find_log_record(
+        "msg",
+        "Message eadd0fef2df22db64ac06de822ae5c15 reached its destination", &node24_log_records);
+    assert!(node_24_received.is_some());
+    
+    let node25_log_file = &format!("{}/log/node25.log", &work_dir);
+    let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
+    let node_25_received = logging::find_log_record(
+        "msg",
+        "Message fbedcdf252b06a96e4b6b7323be7d788 reached its destination", &node25_log_records);
+    assert!(node_25_received.is_some());
+    
+    //Teardown
+    //If test checks fail, this section won't be reached and not cleaned up for investigation.
+    let _res = std::fs::remove_dir_all(&work_dir).unwrap();
+}
+
+#[test]
 fn test_broadcast_device() -> TestResult {
     //Setup
     let host = env::var("MESHSIM_HOST").unwrap_or(String::from(""));

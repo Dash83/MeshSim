@@ -291,7 +291,9 @@ impl Master {
         //Start all workers and add save their child process handle.
         {
             let workers = Arc::clone(&self.workers);
-            let mut workers = workers.lock().expect("Failed to lock workers list");
+            let mut workers = workers
+                .lock()
+                .expect("Failed to lock workers list");
 
             for (_, val) in spec.initial_nodes.iter_mut() {
                 //Start the child process
@@ -321,14 +323,23 @@ impl Master {
                             })?;
                         }
 
+                        debug!(&self.logger, "Read from worker's stdout successful: {}", &output);
+
                         //Register the worker in the DB
                         let worker_id = match val.worker_id {
                             Some(ref id) => id.clone(),
                             None => WorkerConfig::gen_id(val.random_seed),
                         };
+
+                        debug!(&self.logger, "WorkerID: {}", &worker_id);
+
                         // let sr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::ShortRange);
                         // let lr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::LongRange);
-                        let (sr_addr, lr_addr) = SimulatedRadio::extract_radio_addresses(output)?;
+                        let (sr_addr, lr_addr) = SimulatedRadio::extract_radio_addresses(output, &self.logger)?;
+//                        let (sr_addr, lr_addr) = (None, None);
+
+                        debug!(&self.logger, "Extracted radio addresses");
+
                         let res = register_worker(
                             &conn,
                             val.worker_name.clone(),
@@ -548,7 +559,7 @@ impl Master {
                             // let sr_addr = SimulatedRadio::format_address(&work_dir, &worker_id, RadioTypes::ShortRange);
                             // let lr_addr = SimulatedRadio::format_address(&work_dir, &worker_id, RadioTypes::LongRange);
                             let (sr_addr, lr_addr) =
-                                match SimulatedRadio::extract_radio_addresses(output) {
+                                match SimulatedRadio::extract_radio_addresses(output, &logger) {
                                     Ok(addresses) => addresses,
                                     Err(e) => {
                                         let msg = format!(

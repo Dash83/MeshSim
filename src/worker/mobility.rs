@@ -5,11 +5,13 @@ use crate::worker::Peer;
 use crate::{MeshSimError, MeshSimErrorKind};
 use rand::RngCore;
 use rusqlite::types::ToSql;
-use rusqlite::{Connection, OpenFlags, NO_PARAMS};
+use rusqlite::{Connection, OpenFlags, NO_PARAMS, Transaction};
 use slog::Logger;
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
+use crate::worker::radio::RadioTypes;
+use std::collections::HashSet;
 
 /// Name used for the worker positions DB
 pub const DB_NAME: &str = "worker_positions.db";
@@ -46,7 +48,20 @@ const CREATE_WORKER_DEST_TBL_QRY : &str = "CREATE TABLE IF NOT EXISTS  `worker_d
                                                     `dest_y`	INTEGER NOT NULL,
                                                     FOREIGN KEY(`worker_id`) REFERENCES `workers`(`ID`)
                                                 );";
+const CREATE_TRANSMITTERS_TBL_QRY: &str = "
+    CREATE TABLE 'active_transmitters' (
+        'worker_id'	INTEGER NOT NULL,
+        'radio_type'	INTEGER NOT NULL,
+        FOREIGN KEY('radio_type') REFERENCES 'radio_types'('ID'),
+        PRIMARY KEY('worker_id','radio_type'),
+        FOREIGN KEY('worker_id') REFERENCES 'workers'('ID')
+    );";
 
+const CREATE_RADIO_TYPES_TBL_QRY: &str = "
+    CREATE TABLE 'radio_types' (
+        'id'	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
+        'range'	TEXT NOT NULL UNIQUE
+    );";
 const INSERT_WORKER_QRY: &str =
     "INSERT INTO workers (Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address)
                                           VALUES (?1, ?2, ?3, ?4)";
@@ -56,7 +71,18 @@ const UPDATE_WORKER_VEL_QRY: &str =
     "INSERT OR REPLACE INTO worker_velocities (worker_id, vel_x, vel_y) VALUES (?1, ?2, ?3)";
 const UPDATE_WORKER_DEST_QRY: &str =
     "INSERT OR REPLACE INTO worker_destinations (worker_id, dest_x, dest_y) VALUES (?1, ?2, ?3)";
-const GET_WORKER_QRY : &str = "SELECT ID, Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address FROM Workers WHERE Worker_ID = (?)";
+const INSERT_ACTIVE_TRANSMITTER_QRY: &str = "
+    INSERT INTO active_transmitters (worker_id, radio_type)
+    VALUES ((SELECT ID from workers WHERE Worker_Name = ?1),
+            (SELECT ID from radio_types WHERE range = ?2));";
+const GET_WORKER_QRY : &str = "\
+    SELECT  ID, \
+            Worker_Name, \
+            Worker_ID, \
+            Short_Range_Address, \
+            Long_Range_Address \
+    FROM Workers \
+    WHERE Worker_ID = (?);";
 //const SELECT_OTHER_WORKERS_QRY : &str = "SELECT Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address FROM Workers WHERE Worker_ID != (?)";
 const GET_WORKER_POS_QRY : &str =  "SELECT  Workers.ID,
                                                     Worker_positions.X,
@@ -103,6 +129,19 @@ const SELECT_REMAINING_DIST_QRY : &str = "
                                 join worker_positions on worker_positions.worker_id = workers.ID
                                 join worker_destinations on worker_destinations.worker_id = workers.ID
                                 order by workers.Worker_Name;";
+const SELECT_ACTIVE_TRANSMITTER_QRY: &str = "
+                                select workers.Worker_Name
+                                from workers
+                                join active_transmitters on active_transmitters.worker_id=workers.id
+                                join radio_types on radio_types.id = active_transmitters.radio_type
+                                WHERE radio_types.range = (?);";
+const FILL_RADIO_TYPES_QRY: &str = "
+    INSERT INTO 'radio_types' ('range') VALUES ('SHORT');";
+const REMOVE_ACTIVE_TRANSMITTER_QRY: &str = "
+    DELETE FROM active_transmitters
+    WHERE worker_id=(SELECT ID from workers WHERE worker_name = ?1)
+    AND radio_type=(SELECT ID from radio_types WHERE range = ?2)
+";
 const SET_WAL_MODE: &str = "PRAGMA journal_mode=WAL;";
 const WAL_MODE_QRY: &str = "PRAGMA journal_mode;";
 //const SET_TMP_MODE : &'static str = "PRAGMA temp_store=2"; //Instruct the database to keep temp tables in memory
@@ -199,7 +238,7 @@ pub fn create_db_objects(conn: &Connection, logger: &Logger) -> Result<usize, Me
     //    let _ = set_tmp_mode(conn, logger)?;
 
     //Create workers table
-    let _rows = conn
+    let _ = conn
         .execute(CREATE_WORKERS_TBL_QRY, NO_PARAMS)
         .map_err(|e| {
             let error_msg = String::from("Failed to create Workers table");
@@ -210,7 +249,7 @@ pub fn create_db_objects(conn: &Connection, logger: &Logger) -> Result<usize, Me
         })?;
 
     //Create positions table
-    let _rows = conn
+    let _ = conn
         .execute(CREATE_WORKER_POS_TBL_QRY, NO_PARAMS)
         .map_err(|e| {
             let error_msg = String::from("Failed to create Worker_Pos table");
@@ -221,7 +260,7 @@ pub fn create_db_objects(conn: &Connection, logger: &Logger) -> Result<usize, Me
         })?;
 
     //Create velocities table
-    let _rows = conn
+    let _ = conn
         .execute(CREATE_WORKER_VEL_TBL_QRY, NO_PARAMS)
         .map_err(|e| {
             let error_msg = String::from("Failed to create Worker_Vel table");
@@ -232,10 +271,43 @@ pub fn create_db_objects(conn: &Connection, logger: &Logger) -> Result<usize, Me
         })?;
 
     //Create destinations table
-    let rows = conn
+    let _ = conn
         .execute(CREATE_WORKER_DEST_TBL_QRY, NO_PARAMS)
         .map_err(|e| {
             let error_msg = String::from("Failed to create Worker_Dest table");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
+    //Create radio_types table
+    let _ = conn
+        .execute(CREATE_RADIO_TYPES_TBL_QRY, NO_PARAMS)
+        .map_err(|e| {
+            let error_msg = String::from("Failed to create radio_types table");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
+    //Fill the radio_types table
+    let _ = conn
+        .execute(FILL_RADIO_TYPES_QRY, NO_PARAMS)
+        .map_err(|e| {
+            let error_msg = String::from("Failed to insert radio types");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
+    //Create active_transmitters table
+    let rows = conn
+        .execute(CREATE_TRANSMITTERS_TBL_QRY, NO_PARAMS)
+        .map_err(|e| {
+            let error_msg = String::from("Failed to create active_transmitters table");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
                 cause: Some(Box::new(e)),
@@ -265,7 +337,7 @@ pub fn register_worker(
 
     //Insert worker
     let _res = insert_worker(&conn, name, &worker_id, sr, lr, logger)?;
-    // info!(&logger, "[DEBUG] worker inserted");
+    debug!(&logger, "[DEBUG] worker inserted");
 
     //Get the ID that was generated for the worker
     let db_id: i64 = conn
@@ -311,45 +383,6 @@ pub fn register_worker(
     Ok(db_id)
 }
 
-//fn insert_worker(conn : &Connection,
-//                 name : &dyn ToSql,
-//                 worker_id : &str,
-//                 sr : &dyn ToSql,
-//                 lr : &dyn ToSql,
-//                 logger : &Logger ) -> Result<usize, MeshSimError> {
-//    let mut rows = 0;
-//    let rng = rand::thread_rng();
-//    let wid : &dyn ToSql = &worker_id;
-//
-//    for i in 0..MAX_DBOPEN_RETRY {
-//        rows = match conn.execute( INSERT_WORKER_QRY, &[name, wid, sr, lr] ) {
-//            Ok(r) => r,
-//            Err(e) => {
-//                error!(logger, "Failed to register worker: {}", e);
-//                let wait_time = rng.next_u64() % 100;
-//                info!(logger, "Will retry in {} ms", wait_time);
-//                let wait_dur = Duration::from_millis(wait_time);
-//                thread::sleep(wait_dur);
-//                0
-//            }
-//        };
-//
-//        if rows > 0 {
-//            //Worker registered
-//            info!(logger, "Worker registered in DB successfully");
-//            break;
-//        } else if i+1 == MAX_DBOPEN_RETRY {
-//            let err_msg = format!("Could not register worker {} in the DB", worker_id);
-//            let error = MeshSimError{
-//                kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
-//                cause : None
-//            };
-//            Err(error)
-//        }
-//    }
-//    Ok(rows)
-//}
-
 fn insert_worker(
     conn: &Connection,
     name: &dyn ToSql,
@@ -373,45 +406,6 @@ fn insert_worker(
     Ok(rows)
 }
 
-//fn update_worker_position(conn : &Connection,
-//                     x : &dyn ToSql,
-//                     y : &dyn ToSql,
-//                     worker_id : i64,
-//                     logger : &Logger ) -> Result<usize, MeshSimError> {
-//    let mut rows = 0;
-//    let wid : &dyn ToSql = &worker_id;
-//    let rng = rand::thread_rng();
-//
-//    for i in 0..MAX_DBOPEN_RETRY {
-//        rows = match conn.execute( UPDATE_WORKER_POS_QRY, &[wid, x, y] ) {
-//            Ok(r) => r,
-//            Err(e) => {
-//                error!(logger, "Failed to update the position of worker: {}", e);
-//                let wait_time = rng.next_u64() % 100;
-//                info!(logger, "Will retry in {} ms", wait_time);
-//                let wait_dur = Duration::from_millis(wait_time);
-//                thread::sleep(wait_dur);
-//                0
-//            }
-//        };
-//
-//        if rows > 0 {
-//            //Worker registered
-//            //debug!("Position updated!");
-//            break;
-//        } else if i+1 == MAX_DBOPEN_RETRY {
-//            let err_msg = format!("Could not update the position of worker {}", worker_id);
-//            let error = MeshSimError{
-//                kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
-//                cause : None
-//            };
-//            Err(error)
-//        }
-//    }
-//
-//    Ok(rows)
-//}
-
 fn update_worker_position(
     conn: &Connection,
     x: &dyn ToSql,
@@ -433,42 +427,6 @@ fn update_worker_position(
 
     Ok(rows)
 }
-
-///// Updates the worker's velocity
-//pub fn update_worker_vel(conn : &Connection,
-//                     vel : &Velocity,
-//                     worker_id : i64,
-//                     logger : &Logger ) -> Result<usize, MeshSimError> {
-//    let vel_x : &dyn ToSql = &vel.x;
-//    let vel_y : &dyn ToSql = &vel.y;
-//    let rows = 0;
-//    let wid : &dyn ToSql = &worker_id;
-//    let rng = rand::thread_rng();
-//
-//    for i in 0..MAX_DBOPEN_RETRY {
-//        rows = match conn.execute( UPDATE_WORKER_VEL_QRY, &[wid, vel_x, vel_y] ) {
-//            Ok(r) => r,
-//            Err(e) => {
-//                error!(logger, "Failed to update the velocity of worker: {}", e);
-//                let wait_time = rng.next_u64() % 100;
-//                info!(logger, "Will retry in {} ms", wait_time);
-//                let wait_dur = Duration::from_millis(wait_time);
-//                thread::sleep(wait_dur);
-//                0
-//    }
-//        };
-//
-//        if rows > 0 {
-//            //Worker registered
-//            //debug!("Position updated!");
-//            break;
-//        } else if i+1 == MAX_DBOPEN_RETRY {
-//            return Err(WorkerError::Sync(format!("Could not update the velocity of worker {}", worker_id)));
-//        }
-//    }
-//
-//    Ok(rows)
-//}
 
 /// Updates the worker's velocity
 pub fn update_worker_vel(
@@ -521,33 +479,6 @@ fn set_wal_mode(conn: &Connection, logger: &Logger) -> Result<(), MeshSimError> 
             })?
     }
 }
-
-//fn set_tmp_mode(conn : &Connection, logger : &Logger) -> Result<(), WorkerError> {
-//    let mut rng = rand::thread_rng();
-//    let mut temp_store_mode = String::from("");
-//    let mut stmt = conn.prepare(SET_TMP_MODE)?;
-//
-//    for _i in 0..MAX_DBOPEN_RETRY {
-//        temp_store_mode = match stmt.query_row(NO_PARAMS, |row| row.get(0)) {
-//            Ok(mode) => mode,
-//            Err(e) => {
-//                let wait_time = rng.next_u64() % 100;
-//                warn!(logger, "Could not set temp store mode: {}", e);
-//                warn!(logger, "Will retry in {}ms", wait_time);
-//                let wait_dur = Duration::from_millis(wait_time);
-//                thread::sleep(wait_dur);
-//                String::from("")
-//            },
-//        };
-//
-//        if temp_store_mode != String::from("") {
-//            break;
-//        }
-//    }
-//
-//    debug!(logger, "Journal mode: {}", temp_store_mode);
-//    Ok(())
-//}
 
 fn busy_callback(i: i32) -> bool {
     let mut rng = rand::thread_rng();
@@ -659,46 +590,6 @@ pub fn stop_workers(
     })
 }
 
-///// Gets the current position and database id of a given worker
-//pub fn get_worker_position(conn : &Connection,
-//                           worker_id : &str,
-//                           logger : &Logger) -> Result<(Position, i64), MeshSimError> {
-//    let mut rng = rand::thread_rng();
-//
-//    //Get the current position for the worker_id received
-//    let mut stmt = conn.prepare(GET_WORKER_POS_QRY)?;
-//    for _i in 0..MAX_DBOPEN_RETRY {
-//        let (wp, id) = match stmt.query_row(&[&worker_id], |row| {
-//            let db_id : i64 = row.get(0);
-//            let x : f64 = row.get(1);
-//            let y : f64 = row.get(2);
-//            let pos = Position{ x, y };
-//            (pos, db_id)
-//        }) {
-//            Ok((pos, id)) => {
-//                (Some(pos), Some(id))
-//            },
-//            Err(e) => {
-//                warn!(logger, "Failed to get worker position: {}", e);
-//                let wait_time = rng.next_u64() % 100;
-//                let wait_dur = Duration::from_millis(wait_time);
-//                thread::sleep(wait_dur);
-//                (None, None)
-//            },
-//        };
-//
-//        if wp.is_some() && id.is_some() {
-//            let worker_pos = wp.unwrap();
-//            let db_id = id.unwrap();
-//            return Ok((worker_pos, db_id))
-//        }
-//    }
-//
-//    error!(logger, "Could not get position for current worker");
-//    Err(WorkerError::Sync(String::from("Could not get position for current worker")))
-//
-//}
-
 /// Gets the current position and database id of a given worker
 pub fn get_worker_position(
     conn: &Connection,
@@ -724,61 +615,6 @@ pub fn get_worker_position(
             }
         })
 }
-
-///// Returns all workers within RANGE meters of the current position of WORKER_ID
-//pub fn get_workers_in_range(conn : &Connection,
-//                                worker_id : &str,
-//                                range : f64,
-//                                logger : &Logger) -> Result<Vec<Peer>, MeshSimError> {
-//    let mut rng = rand::thread_rng();
-//    let (worker_pos, _db_id) = get_worker_position(&conn, worker_id, &logger)?;
-//
-//    //Get all other workers and check if they are in range
-//    let mut stmt = conn.prepare(SELECT_OTHER_WORKERS_POS_QRY)?;
-//    for _i in 0..MAX_DBOPEN_RETRY {
-//        match stmt.query_map(&[&worker_id], |row| {
-//            let name : String = row.get(0);
-//            let id : String = row.get(1);
-//            let sr : Option<String> = row.get(2);
-//            let lr : Option<String> = row.get(3);
-//            let x : f64 = row.get(4);
-//            let y : f64 = row.get(5);
-//            let d = euclidean_distance(worker_pos.x, worker_pos.y, x, y);
-//            //debug!("Worker {} in range {}", &id, d);
-//            if d <= range {
-//                let mut p = Peer::new();
-//                p.id = id;
-//                p.name = name;
-//                p.short_address = sr;
-//                p.long_address = lr;
-//                Some(p)
-//            } else {
-//                None
-//            }
-//        }) {
-//            Ok(workers_iter) => {
-//                let mut data = Vec::new();
-//                for p in workers_iter {
-//                    let p = p?;
-//                    if p.is_some() {
-//                        data.push(p.unwrap());
-//                    }
-//                }
-//                return Ok(data);
-//            },
-//            Err(e) => {
-//                warn!(logger, "Failed to get workers in range: {}", e);
-//                let wait_time = rng.next_u64() % 100;
-//                let wait_dur = Duration::from_millis(wait_time);
-//                thread::sleep(wait_dur);
-//            },
-//        }
-//    }
-//
-//    // let data = workers_iter.filter(|x| x.unwrap().is_some()).map(|x| x.unwrap()).collect();
-//    error!(logger, "Could not get nodes in range of this worker");
-//    Err(WorkerError::Sync(String::from("Could not get nodes in range of this worker")))
-//}
 
 /// Returns all workers within RANGE meters of the current position of WORKER_ID
 pub fn get_workers_in_range(
@@ -921,6 +757,123 @@ pub fn get_all_worker_positions(
     Ok(results)
 }
 
+///Inserts a new active transmitter into the system
+pub fn insert_active_transmitter(
+    conn : &Connection,
+    worker_name : &str,
+    range: RadioTypes,
+    logger: &Logger,
+) -> Result<(), MeshSimError> {
+    let range: String = range.into();
+    let _ = conn
+        .execute(INSERT_ACTIVE_TRANSMITTER_QRY, &[worker_name, &range])
+        .map_err(|e| {
+            let error_msg = format!(
+                "Failed to register {} as an active transmitter for {} radio",
+                worker_name,
+                &range
+            );
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+    Ok(())
+}
+
+///Remove a node from the active-transmitter list
+pub fn remove_active_transmitter(
+    conn : &Connection,
+    worker_name : &str,
+    range: RadioTypes,
+    logger: &Logger,
+) -> Result<(), MeshSimError> {
+    let range: String = range.into();
+    let _ = conn
+        .execute(REMOVE_ACTIVE_TRANSMITTER_QRY, &[worker_name, &range])
+        .map_err(|e| {
+            let error_msg = format!(
+                "Failed to remove {} from the active transmitter list for {} radio",
+                worker_name,
+                &range
+            );
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+    Ok(())
+}
+
+/// Function to get the active transmitters that correspond to the radio-type provided
+pub fn get_active_transmitters(
+    conn : &Connection,
+    range: RadioTypes,
+    logger: &Logger,
+) -> Result<HashSet<String>, MeshSimError> {
+    let range: String = range.into();
+
+    //Get all other workers and check if they are in range
+    let mut stmt = conn.prepare(SELECT_ACTIVE_TRANSMITTER_QRY).map_err(|e| {
+        let err_msg = String::from("Failed to prepare query SELECT_ACTIVE_TRANSMITTER_QRY");
+        MeshSimError {
+            kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+            cause: Some(Box::new(e)),
+        }
+    })?;
+
+    let rows = stmt
+        .query_map(&[&range], |row| {
+            let worker_name : String = row.get(0);
+            worker_name.to_owned()
+        })
+        .map_err(|e| {
+            let err_msg = String::from("SELECT_OTHER_WORKERS_POS_QRY failed");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
+    let mut results = HashSet::new();
+    for row in rows {
+        let worker = row.map_err(|e| {
+            let err_msg = String::from("Failed to read row");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        results.insert(worker);
+    }
+
+    Ok(results)
+}
+
+/// Commit a transaction
+pub fn commit_tx(tx : Transaction) -> Result<(), MeshSimError> {
+    let _ = tx.commit().map_err(|e| {
+        let err_msg = String::from("Failed to commit transaction");
+        MeshSimError{
+            kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+            cause : Some(Box::new(e))
+        }
+    })?;
+    Ok(())
+}
+
+/// Start a transaction for the passed Connection
+pub fn start_tx(conn : &mut Connection) -> Result<Transaction, MeshSimError> {
+    let tx = conn.transaction().map_err(|e| {
+        let err_msg = String::from("Failed to start transaction");
+        MeshSimError{
+            kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+            cause : Some(Box::new(e))
+        }
+    })?;
+    Ok(tx)
+}
+
 #[cfg(test)]
 mod tests {
     extern crate chrono;
@@ -989,7 +942,7 @@ mod tests {
     //Unit test for creating the tables in the db
     #[test]
     fn test_create_positions_db() {
-        let QRY_TABLE_EXISTS = "SELECT rowid FROM sqlite_master WHERE type='table' AND name = (?);";
+        let qry_table_exists = "SELECT rowid FROM sqlite_master WHERE type='table' AND name = (?);";
         let work_dir = create_test_dir("create_positions_db");
         let logger = logging::create_discard_logger();
 
@@ -997,7 +950,7 @@ mod tests {
         let _res = create_db_objects(&conn, &logger).expect("Could not create DB tables");
 
         let mut stmt = conn
-            .prepare(QRY_TABLE_EXISTS)
+            .prepare(qry_table_exists)
             .expect("Could not prepare statement");
         let mut row_id: i64 = -1;
         row_id = stmt

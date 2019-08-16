@@ -634,17 +634,26 @@ impl Worker {
                             ) {
                                 Ok(_) => { /* All good! */ }
                                 Err(e) => {
-                                    error!(logger, "Error executing command: {}", e);
+                                    error!(logger, "Error executing command: {}", &e);
+                                    if let Some(cause) = e.cause {
+                                        error!(logger, "Cause: {}", &cause);
+                                    }
                                 }
                             }
                         }
                         Err(e) => {
                             error!(logger, "Error parsing command: {}", e);
+                            if let Some(cause) = e.cause {
+                                error!(logger, "Cause: {}", &cause);
+                            }
                         }
                     }
                 }
-                Err(error) => {
-                    error!(logger, "{}", error);
+                Err(e) => {
+                    error!(logger, "{}", &e);
+//                    if let Some(cause) = e.cause {
+//                        error!(logger, "Cause: {}", &cause);
+//                    }
                 }
             }
             input.clear();

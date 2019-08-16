@@ -36,5 +36,5 @@ fn test_random_waypoint_basic() {
     assert!(node_3_arrived.is_some());
 
     //Test passed. Results are not needed.
-    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+//    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
 }
