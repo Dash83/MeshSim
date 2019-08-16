@@ -16,6 +16,7 @@ use std::thread;
 use std::time::Duration;
 use chrono::{Utc, DateTime};
 use crate::worker::protocols::Protocols::ReactiveGossipII;
+use rusqlite::DatabaseName::Main;
 
 //TODO: Parameterize these
 const DEFAULT_MIN_HOPS: usize = 2;
@@ -23,8 +24,7 @@ const BASE_GOSSIP_PROB: f64 = 0.50;
 const VICINITY_GOSSIP_PROB: f64 = 0.20;
 const MSG_CACHE_SIZE: usize = 200;
 const CONCCURENT_THREADS_PER_FLOW: usize = 2;
-const MSG_TRANSMISSION_THRESHOLD: u64 = 1_000;
-const VC_FRESHNESS_LOOP: u64 = 1_000;
+const MAINTENANCE_LOOP: u64 = 1_000;
 const VC_FRESHNESS_THRESHOLD: i64 = 5_000;
 const VC_WARM_THRESHOLD: usize = 3;
 
@@ -191,26 +191,29 @@ impl Protocol for ReactiveGossipRoutingII {
         let dest_routes = Arc::clone(&self.destination_routes);
         let known_routes = Arc::clone(&self.known_routes);
         let self_peer = self.get_self_peer();
+        let vicinity_cache = Arc::clone(&self.vicinity_cache);
+
         let _handle = thread::spawn(move || {
-            info!(logger, "Retransmission thread started");
+            info!(logger, "Maintenance thread started");
             //TODO: Handle errors from loop
-            let _ = ReactiveGossipRoutingII::retransmission_loop(
+            let _ = ReactiveGossipRoutingII::maintenance_loop(
                 data_msg_cache,
                 dest_routes,
                 known_routes,
+                vicinity_cache,
                 radio,
                 self_peer,
                 logger,
             );
         });
 
-        let vicinity_cache = Arc::clone(&self.vicinity_cache);
-        let logger = self.logger.clone();
-        let _ = thread::spawn(move || {
-            info!(logger, "Vicinity thread started");
-            //TODO: Handle errors from loop
-            let _ = ReactiveGossipRoutingII::vicinity_cache_freshness_loop(vicinity_cache, logger);
-        });
+
+//        let logger = self.logger.clone();
+//        let _ = thread::spawn(move || {
+//            info!(logger, "Vicinity thread started");
+//            //TODO: Handle errors from loop
+//            let _ = ReactiveGossipRoutingII::vicinity_cache_freshness_loop(vicinity_cache, logger);
+//        });
 
         Ok(None)
     }
@@ -912,18 +915,21 @@ impl ReactiveGossipRoutingII {
         }
     }
 
-    fn retransmission_loop(
+    fn maintenance_loop(
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         destination_routes: Arc<Mutex<HashMap<String, String>>>,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
+        vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         short_radio: Arc<dyn Radio>,
         self_peer: Peer,
         logger: Logger,
     ) -> Result<(), MeshSimError> {
-        let sleep_time = Duration::from_millis(MSG_TRANSMISSION_THRESHOLD);
+        let sleep_time = Duration::from_millis(MAINTENANCE_LOOP);
 
         loop {
             thread::sleep(sleep_time);
+
+            //Retransmission loop
             let mut cache = data_msg_cache
                 .lock()
                 .expect("Error trying to acquire lock to data_messages cache");
@@ -975,6 +981,14 @@ impl ReactiveGossipRoutingII {
                     }
                 }
             }
+
+            //Vicinity cache maintenance
+            let mut vc = vicinity_cache
+                .lock()
+                .expect("Failed to lock vicinity cache");
+            let mut threshold = Utc::now() - chrono::Duration::milliseconds(VC_FRESHNESS_THRESHOLD);
+            vc.retain(|node, ts| ts >= &mut threshold);
+            debug!(logger, "Vicinity cache:{:?}", &vc);
         }
         #[allow(unreachable_code)]
         Ok(()) //Loop should never end
@@ -1047,24 +1061,6 @@ impl ReactiveGossipRoutingII {
             .expect("Could not lock vicinity cache");
         let _ = vc.insert(hdr.sender.name.clone(), Utc::now());
         Ok(())
-    }
-
-    fn vicinity_cache_freshness_loop(
-        vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
-        logger : Logger,
-    ) -> Result<(), MeshSimError> {
-        let sleep_time = Duration::from_millis(VC_FRESHNESS_LOOP);
-        loop {
-            {
-                let mut vc = vicinity_cache
-                    .lock()
-                    .expect("Failed to lock vicinity cache");
-                let mut threshold = Utc::now() - chrono::Duration::milliseconds(VC_FRESHNESS_THRESHOLD);
-                vc.retain(|node, ts| ts >= &mut threshold);
-                debug!(logger, "Vicinity cache:{:?}", &vc);
-            }
-            thread::sleep(sleep_time);
-        }
     }
 }
 
