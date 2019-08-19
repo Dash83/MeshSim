@@ -11,3 +11,4 @@ mod reactive_gossip;
 #[allow(non_snake_case)]
 mod reactive_gossipII;
 mod lora_wifi_beacon;
+mod gossip_routing;

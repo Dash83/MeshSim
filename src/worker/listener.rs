@@ -9,9 +9,7 @@ use crate::worker::*;
 use socket2::Socket;
 #[cfg(target_os = "linux")]
 use sx1276::socket::{Link, LoRa};
-use std::time::{Duration, Instant};
-
-const BROADCAST_THRESHOLD: u64 = 10; //10ms
+use std::time::Duration;
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it
 /// and listen for incoming connections.
