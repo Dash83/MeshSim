@@ -762,7 +762,7 @@ pub fn insert_active_transmitter(
     conn : &Connection,
     worker_name : &str,
     range: RadioTypes,
-    logger: &Logger,
+    _logger: &Logger,
 ) -> Result<(), MeshSimError> {
     let range: String = range.into();
     let _ = conn
@@ -786,7 +786,7 @@ pub fn remove_active_transmitter(
     conn : &Connection,
     worker_name : &str,
     range: RadioTypes,
-    logger: &Logger,
+    _logger: &Logger,
 ) -> Result<(), MeshSimError> {
     let range: String = range.into();
     let _ = conn
@@ -809,7 +809,7 @@ pub fn remove_active_transmitter(
 pub fn get_active_transmitters(
     conn : &Connection,
     range: RadioTypes,
-    logger: &Logger,
+    _logger: &Logger,
 ) -> Result<HashSet<String>, MeshSimError> {
     let range: String = range.into();
 

@@ -568,8 +568,11 @@ fn new_socket() -> Result<socket2::Socket, MeshSimError> {
         }
     })
 }
+#[allow(dead_code)]
 const NSS_PIN: u64 = 25;
+#[allow(dead_code)]
 const IRQ_PIN: u64 = 4;
+#[allow(dead_code)]
 const RESET_PIN: u64 = 17;
 
 ///Operation frequencies (Mhz) for Lora radios

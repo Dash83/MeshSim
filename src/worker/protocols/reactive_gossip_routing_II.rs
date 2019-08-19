@@ -15,8 +15,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use chrono::{Utc, DateTime};
-use crate::worker::protocols::Protocols::ReactiveGossipII;
-use rusqlite::DatabaseName::Main;
 
 //TODO: Parameterize these
 const DEFAULT_MIN_HOPS: usize = 2;
@@ -477,7 +475,7 @@ impl ReactiveGossipRoutingII {
         data_msg: DataMessage,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-        vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
+        _vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         self_peer: Peer,
         msg_hash: Digest,
         logger: &Logger,
@@ -813,7 +811,7 @@ impl ReactiveGossipRoutingII {
         _pending_destinations: Arc<Mutex<HashSet<String>>>,
         _queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         _data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-        vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
+        _vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         self_peer: Peer,
         _short_radio: Arc<dyn Radio>,
         logger: &Logger,
@@ -987,7 +985,7 @@ impl ReactiveGossipRoutingII {
                 .lock()
                 .expect("Failed to lock vicinity cache");
             let mut threshold = Utc::now() - chrono::Duration::milliseconds(VC_FRESHNESS_THRESHOLD);
-            vc.retain(|node, ts| ts >= &mut threshold);
+            vc.retain(|_node, ts| ts >= &mut threshold);
             debug!(logger, "Vicinity cache:{:?}", &vc);
         }
         #[allow(unreachable_code)]
@@ -1053,7 +1051,7 @@ impl ReactiveGossipRoutingII {
     fn update_vicinity_cache(
         hdr: &MessageHeader,
         vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
-        logger : &Logger,
+        _logger : &Logger,
     ) -> Result<(), MeshSimError> {
 
         let mut vc = vicinity_cache

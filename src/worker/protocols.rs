@@ -10,6 +10,7 @@ use lora_wifi_beacon::LoraWifiBeacon;
 use naive_routing::NaiveRouting;
 use reactive_gossip_routing::ReactiveGossipRouting;
 use reactive_gossip_routing_II::ReactiveGossipRoutingII;
+use gossip_routing::GossipRouting;
 use slog::Logger;
 
 use std;
@@ -21,6 +22,7 @@ pub mod naive_routing;
 pub mod reactive_gossip_routing;
 #[allow(non_snake_case)]
 pub mod reactive_gossip_routing_II;
+pub mod gossip_routing;
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should
@@ -51,6 +53,8 @@ pub enum Protocols {
     LoraWifiBeacon,
     /// Improved version of RGR
     ReactiveGossipII,
+    /// Gossip-based flooding protocol
+    GossipRouting,
 }
 
 impl Default for Protocols {
@@ -73,6 +77,7 @@ impl FromStr for Protocols {
             "REACTIVEGOSSIP" => Ok(Protocols::ReactiveGossip),
             "REACTIVEGOSSIPII" => Ok(Protocols::ReactiveGossipII),
             "LORAWIFIBEACON" => Ok(Protocols::LoraWifiBeacon),
+            "GOSSIPROUTING" => Ok(Protocols::GossipRouting),
             _ => {
                 let err_msg = String::from("The specified protocol is not supported.");
                 let error = MeshSimError {
@@ -182,6 +187,27 @@ pub fn build_protocol_resources(
                 Arc::new(LoraWifiBeacon::new(name, id, sr, lr, logger));
 
             //Build the resources context
+            let resources = ProtocolResources {
+                handler,
+                radio_channels,
+            };
+            Ok(resources)
+        }
+
+        Protocols::GossipRouting => {
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let (sr, listener) = short_radio
+                .expect("The GossipRouting protocol requires a short_radio to be provided.");
+            let handler: Arc<dyn Protocol> =
+                Arc::new(GossipRouting::new(
+                    name,
+                    id,
+                    gossip_routing::DEFAULT_MIN_HOPS,
+                    gossip_routing::DEFAULT_GOSSIP_PROB,
+                    Arc::clone(&sr),
+                    logger));
+            let mut radio_channels = Vec::new();
+            radio_channels.push((listener, sr));
             let resources = ProtocolResources {
                 handler,
                 radio_channels,
