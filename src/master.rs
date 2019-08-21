@@ -366,7 +366,10 @@ impl Master {
                         }
                     }
                     Err(e) => {
-                        error!(&self.logger, "Error starting new worker: {}", e);
+                        error!(&self.logger, "Error starting new worker: {}", &e);
+                        if let Some(cause) = e.cause {
+                            error!(&self.logger, "Cause: {}", cause);
+                        }
                     }
                 }
             }

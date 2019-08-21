@@ -75,8 +75,7 @@ fn test_route_teardown() {
 
     let node7_log_file = format!("{}/log/node7.log", &work_dir);
     let node7_log_records = logging::get_log_records_from_file(&node7_log_file).unwrap();
-    let node7_teardown_recv = logging::find_log_record("msg", "Route TEARDOWN msg received for route 58dd5a265c14d7142b37a481ccd74608", &node7_log_records);
-
+    let node7_teardown_recv = logging::find_log_record("msg", "Route TEARDOWN msg received for route ec3a7a8fc1f4a1c13c933cadb5f880e8", &node7_log_records);
 
     let mut received_packets = 0;
     let node25_log_file = format!("{}/log/node25.log", &work_dir);

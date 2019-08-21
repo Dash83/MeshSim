@@ -16,9 +16,10 @@ use std::thread;
 use std::time::Duration;
 use chrono::{Utc, DateTime};
 
-//TODO: Parameterize these
-const DEFAULT_MIN_HOPS: usize = 2;
-const BASE_GOSSIP_PROB: f64 = 0.50;
+/// The default number of hops messages are guaranteed to be propagated
+pub const DEFAULT_MIN_HOPS: usize = 2;
+/// The default gossip-probability value
+pub const BASE_GOSSIP_PROB: f64 = 0.50;
 const VICINITY_GOSSIP_PROB: f64 = 0.20;
 const MSG_CACHE_SIZE: usize = 200;
 const CONCCURENT_THREADS_PER_FLOW: usize = 2;
@@ -269,6 +270,8 @@ impl ReactiveGossipRoutingII {
     pub fn new(
         worker_name: String,
         worker_id: String,
+        k : usize,
+        p : f64,
         short_radio: Arc<dyn Radio>,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
@@ -281,8 +284,8 @@ impl ReactiveGossipRoutingII {
         let pending_destinations = HashSet::new();
         let vicinity_cache = HashMap::new();
         ReactiveGossipRoutingII {
-            k: DEFAULT_MIN_HOPS,
-            p: BASE_GOSSIP_PROB,
+            k,
+            p,
             worker_name,
             worker_id,
             short_radio,
