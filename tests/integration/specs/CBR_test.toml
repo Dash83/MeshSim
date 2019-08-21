@@ -14,9 +14,11 @@ actions = [ "Add_Source node1 node3 3 32 5000 1000"]
     work_dir = "/tmp/CBR_Basic"
     random_seed = 123
     operation_mode = "Simulated"
-    protocol = "NaiveRouting"
-    x = -60.0
-    y = 0.0
+    [initial_nodes.node1.position]
+        x = -60.0
+        y = 0.0
+    [initial_nodes.node1.protocol]
+        Protocol="NaiveRouting"
     [initial_nodes.node1.velocity]
         x = 0.0
         y = 0.0
@@ -30,9 +32,11 @@ actions = [ "Add_Source node1 node3 3 32 5000 1000"]
     work_dir = "/tmp/CBR_Basic"
     random_seed = 456
     operation_mode = "Simulated"
-    protocol = "NaiveRouting"
-    x = 0.0
-    y = 0.0
+    [initial_nodes.node2.position]
+        x = 0.0
+        y = 0.0
+    [initial_nodes.node2.protocol]
+        Protocol="NaiveRouting"
     [initial_nodes.node2.velocity]
         x = 0.0
         y = 0.0
@@ -45,9 +49,11 @@ actions = [ "Add_Source node1 node3 3 32 5000 1000"]
     work_dir = "/tmp/CBR_Basic"
     random_seed = 789
     operation_mode = "Simulated"
-    protocol = "NaiveRouting"
-    x = 60.0
-    y = 0.0
+    [initial_nodes.node3.position]
+        x = 60.0
+        y = 0.0
+    [initial_nodes.node3.protocol]
+        Protocol="NaiveRouting"
     [initial_nodes.node3.velocity]
         x = 0.0
         y = 0.0

@@ -1,280 +1,17 @@
-name = "gossip_routing_basic"
+name = "gossip_basic"
 duration = 3000
 actions = [ "Ping node1 node25 1000"]
 width = 300.0
 height = 300.0
 
-[initial_nodes.node8]
-worker_name = "node8"
-worker_id = "56ec55d69e322f23fb82d6ce6c477c86"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 3092482205
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 54.0
-y = 27.0
-
-[initial_nodes.node8.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node8.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node8.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node10]
-worker_name = "node10"
-worker_id = "4e2a87fea0afcbf1663c3db3b991a055"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 904550098
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 108.0
-y = 27.0
-
-[initial_nodes.node10.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node10.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node10.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node20]
-worker_name = "node20"
-worker_id = "4f981f39304f9c5b2e1cfdf2fcd1af6c"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 3872586382
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 108.0
-y = 81.0
-
-[initial_nodes.node20.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node20.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node20.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node22]
-worker_name = "node22"
-worker_id = "f0dbcfca8b868e8db43e157996531af7"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 1398241710
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 27.0
-y = 108.0
-
-[initial_nodes.node22.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node22.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node22.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node24]
-worker_name = "node24"
-worker_id = "6ad82351c3579058c98d95ae08b194bf"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 2271118688
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 81.0
-y = 108.0
-
-[initial_nodes.node24.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node24.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node24.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node15]
-worker_name = "node15"
-worker_id = "8e49f0c1fbc7c301cec601c4e2353b10"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 1693628176
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 108.0
-y = 54.0
-
-[initial_nodes.node15.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node15.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node15.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node4]
-worker_name = "node4"
-worker_id = "485e074f52de674c6766c2795e05c5e6"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 3735931097
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 81.0
-y = 0.0
-
-[initial_nodes.node4.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node4.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node4.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node6]
-worker_name = "node6"
-worker_id = "e07769215eb31496bbc0fa1dee827942"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 1851712849
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 0.0
-y = 27.0
-
-[initial_nodes.node6.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node6.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node6.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node9]
-worker_name = "node9"
-worker_id = "ec1630e4766733fd9246c9993c3cb1bd"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 320419273
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 81.0
-y = 27.0
-
-[initial_nodes.node9.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node9.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node9.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node3]
-worker_name = "node3"
-worker_id = "fec8be57f8e0d6d733d2ea2c3a3123f8"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 1821628992
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 54.0
-y = 0.0
-
-[initial_nodes.node3.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node3.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node3.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node17]
-worker_name = "node17"
-worker_id = "ffc4a8776d02adc9048446288e696d42"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 3441786552
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 27.0
-y = 81.0
-
-[initial_nodes.node17.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node17.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node17.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
 [initial_nodes.node25]
 worker_name = "node25"
-worker_id = "718f018c8070c3308ec9329db2cf23ee"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 1425101839
+worker_id = "b5e7c32285e123992be086bdbbadfd90"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 805894602
 operation_mode = "Simulated"
-protocol = "GossipRouting"
+
+[initial_nodes.node25.position]
 x = 108.0
 y = 108.0
 
@@ -282,23 +19,59 @@ y = 108.0
 x = 0.0
 y = 0.0
 
+[initial_nodes.node25.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
 [initial_nodes.node25.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
 range = 30.0
 
-#[initial_nodes.node25.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
+[initial_nodes.node25.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node3]
+worker_name = "node3"
+worker_id = "e0b210c7b99da0bd275fd282a7f62c99"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 2481830913
+operation_mode = "Simulated"
+
+[initial_nodes.node3.position]
+x = 54.0
+y = 0.0
+
+[initial_nodes.node3.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node3.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node3.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node3.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
 
 [initial_nodes.node12]
 worker_name = "node12"
-worker_id = "e3cd7a420601d31edd57c9009e1fea14"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 1323147339
+worker_id = "683c8bae38542e25e9be9828d1d731fe"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 148017906
 operation_mode = "Simulated"
-protocol = "GossipRouting"
+
+[initial_nodes.node12.position]
 x = 27.0
 y = 54.0
 
@@ -306,215 +79,29 @@ y = 54.0
 x = 0.0
 y = 0.0
 
+[initial_nodes.node12.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
 [initial_nodes.node12.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
 range = 30.0
 
-#[initial_nodes.node12.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node1]
-worker_name = "node1"
-worker_id = "bb80830092dded73c010c1561a0d8ec0"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 1150018604
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 0.0
-y = 0.0
-
-[initial_nodes.node1.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node1.radio_short]
+[initial_nodes.node12.radio_long]
 reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node1.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node23]
-worker_name = "node23"
-worker_id = "6728cb5a9afec9c8e2b394a1ebb41a18"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 4185042109
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 54.0
-y = 108.0
-
-[initial_nodes.node23.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node23.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node23.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node5]
-worker_name = "node5"
-worker_id = "68dd2318b04bc4fdc1c181ddf1dff9b0"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 993212251
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 108.0
-y = 0.0
-
-[initial_nodes.node5.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node5.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node5.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node7]
-worker_name = "node7"
-worker_id = "c27cbd6096820c4297d43dcc33d77f97"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 131907853
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 27.0
-y = 27.0
-
-[initial_nodes.node7.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node7.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node7.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node16]
-worker_name = "node16"
-worker_id = "4174ce1819efaf7bd884aef78a8d1d9b"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 695391426
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 0.0
-y = 81.0
-
-[initial_nodes.node16.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node16.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node16.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node13]
-worker_name = "node13"
-worker_id = "02b853a3292956684fcf3b1dd8629d20"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 1802699107
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 54.0
-y = 54.0
-
-[initial_nodes.node13.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node13.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node13.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node21]
-worker_name = "node21"
-worker_id = "010aa923895db1b1ef1a94094f65abd4"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 2640228067
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 0.0
-y = 108.0
-
-[initial_nodes.node21.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node21.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node21.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node19]
-worker_name = "node19"
-worker_id = "5a67062f40c7cc7be814df0cf6849c36"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 3389995028
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 81.0
-y = 81.0
-
-[initial_nodes.node19.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node19.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node19.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
+interface_name = "wlan1"
+range = 60.0
 
 [initial_nodes.node2]
 worker_name = "node2"
-worker_id = "9ec61b7c10f84396726a40189d44b3f1"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 1081418061
+worker_id = "80c1e71abc350070f25149981cea4ad4"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 2466783325
 operation_mode = "Simulated"
-protocol = "GossipRouting"
+
+[initial_nodes.node2.position]
 x = 27.0
 y = 0.0
 
@@ -522,71 +109,29 @@ y = 0.0
 x = 0.0
 y = 0.0
 
+[initial_nodes.node2.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
 [initial_nodes.node2.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
 range = 30.0
 
-#[initial_nodes.node2.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node11]
-worker_name = "node11"
-worker_id = "a5c2060a9bcf709bc7ccd9a92f500537"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 755683585
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 0.0
-y = 54.0
-
-[initial_nodes.node11.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node11.radio_short]
+[initial_nodes.node2.radio_long]
 reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node11.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
-
-[initial_nodes.node14]
-worker_name = "node14"
-worker_id = "db89b9b4d07f00fa26e54fd8be43a146"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 1275941040
-operation_mode = "Simulated"
-protocol = "GossipRouting"
-x = 81.0
-y = 54.0
-
-[initial_nodes.node14.velocity]
-x = 0.0
-y = 0.0
-
-[initial_nodes.node14.radio_short]
-reliability = 1.0
-interface_name = "wlan0"
-range = 30.0
-
-#[initial_nodes.node14.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
+interface_name = "wlan1"
+range = 60.0
 
 [initial_nodes.node18]
 worker_name = "node18"
-worker_id = "d0486694accc94a42cdef3ba007b1536"
-work_dir = "/tmp/mac_layer_basic974902695"
-random_seed = 2124269
+worker_id = "8fd30649fb5f5d49db3e1dc3603ba84d"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 426625057
 operation_mode = "Simulated"
-protocol = "GossipRouting"
+
+[initial_nodes.node18.position]
 x = 54.0
 y = 81.0
 
@@ -594,14 +139,619 @@ y = 81.0
 x = 0.0
 y = 0.0
 
+[initial_nodes.node18.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
 [initial_nodes.node18.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
 range = 30.0
 
-#[initial_nodes.node18.radio_long]
-#reliability = 1.0
-#interface_name = "wlan1"
-#range = 60.0
+[initial_nodes.node18.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node19]
+worker_name = "node19"
+worker_id = "6e369af16961c4cf0f2984078ce807ab"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 3434154510
+operation_mode = "Simulated"
+
+[initial_nodes.node19.position]
+x = 81.0
+y = 81.0
+
+[initial_nodes.node19.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node19.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node19.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node19.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node21]
+worker_name = "node21"
+worker_id = "6ac9c6b39864a3c5db55e3380e36b722"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 2037208156
+operation_mode = "Simulated"
+
+[initial_nodes.node21.position]
+x = 0.0
+y = 108.0
+
+[initial_nodes.node21.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node21.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node21.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node21.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node14]
+worker_name = "node14"
+worker_id = "0f27cca40517b92a8f0612755f735969"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 3463623372
+operation_mode = "Simulated"
+
+[initial_nodes.node14.position]
+x = 81.0
+y = 54.0
+
+[initial_nodes.node14.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node14.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node14.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node14.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node9]
+worker_name = "node9"
+worker_id = "ec01a7c7c8f4e01c0bd48b2332d579d5"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 4045451024
+operation_mode = "Simulated"
+
+[initial_nodes.node9.position]
+x = 81.0
+y = 27.0
+
+[initial_nodes.node9.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node9.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node9.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node9.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node17]
+worker_name = "node17"
+worker_id = "45606ee358e399fb62b766116fd7851b"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 1051313658
+operation_mode = "Simulated"
+
+[initial_nodes.node17.position]
+x = 27.0
+y = 81.0
+
+[initial_nodes.node17.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node17.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node17.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node17.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node6]
+worker_name = "node6"
+worker_id = "cccfd5955d57c40cc17eab091963bc70"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 5689119
+operation_mode = "Simulated"
+
+[initial_nodes.node6.position]
+x = 0.0
+y = 27.0
+
+[initial_nodes.node6.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node6.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node6.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node6.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node7]
+worker_name = "node7"
+worker_id = "91a994a3dc8a5e7aaa697afbbe01435a"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 2908643063
+operation_mode = "Simulated"
+
+[initial_nodes.node7.position]
+x = 27.0
+y = 27.0
+
+[initial_nodes.node7.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node7.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node7.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node7.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node20]
+worker_name = "node20"
+worker_id = "c7491430fe47df080d03f91d0098d90d"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 1822769394
+operation_mode = "Simulated"
+
+[initial_nodes.node20.position]
+x = 108.0
+y = 81.0
+
+[initial_nodes.node20.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node20.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node20.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node20.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node4]
+worker_name = "node4"
+worker_id = "531593bfc1fe81805620eb8a818c2754"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 1470254629
+operation_mode = "Simulated"
+
+[initial_nodes.node4.position]
+x = 81.0
+y = 0.0
+
+[initial_nodes.node4.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node4.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node4.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node4.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node5]
+worker_name = "node5"
+worker_id = "c6b6f6d4608597095ec6353bd1469630"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 4249235951
+operation_mode = "Simulated"
+
+[initial_nodes.node5.position]
+x = 108.0
+y = 0.0
+
+[initial_nodes.node5.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node5.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node5.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node5.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node13]
+worker_name = "node13"
+worker_id = "a02055b394673c21dc7aacb13fb01326"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 776229009
+operation_mode = "Simulated"
+
+[initial_nodes.node13.position]
+x = 54.0
+y = 54.0
+
+[initial_nodes.node13.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node13.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node13.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node13.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node8]
+worker_name = "node8"
+worker_id = "7831708f4b12ba9e12eac2810031476c"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 1696237740
+operation_mode = "Simulated"
+
+[initial_nodes.node8.position]
+x = 54.0
+y = 27.0
+
+[initial_nodes.node8.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node8.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node8.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node8.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node15]
+worker_name = "node15"
+worker_id = "838eb9eef00d4059690cf533254e391a"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 3672716553
+operation_mode = "Simulated"
+
+[initial_nodes.node15.position]
+x = 108.0
+y = 54.0
+
+[initial_nodes.node15.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node15.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node15.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node15.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node22]
+worker_name = "node22"
+worker_id = "0bd5d7c025501a246587cd72b2744f80"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 3181879371
+operation_mode = "Simulated"
+
+[initial_nodes.node22.position]
+x = 27.0
+y = 108.0
+
+[initial_nodes.node22.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node22.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node22.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node22.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node11]
+worker_name = "node11"
+worker_id = "0aba58a4d59d17d557c2ca637bb55c59"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 3631439586
+operation_mode = "Simulated"
+
+[initial_nodes.node11.position]
+x = 0.0
+y = 54.0
+
+[initial_nodes.node11.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node11.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node11.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node11.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node24]
+worker_name = "node24"
+worker_id = "f52ad687615bb4bdc910495de15b4070"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 183261240
+operation_mode = "Simulated"
+
+[initial_nodes.node24.position]
+x = 81.0
+y = 108.0
+
+[initial_nodes.node24.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node24.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node24.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node24.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node10]
+worker_name = "node10"
+worker_id = "4d4d0bfece1f37810c715378869223bf"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 2761806392
+operation_mode = "Simulated"
+
+[initial_nodes.node10.position]
+x = 108.0
+y = 27.0
+
+[initial_nodes.node10.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node10.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node10.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node10.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node1]
+worker_name = "node1"
+worker_id = "c0fb281c584abb49afddb52e20d85c20"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 3337876847
+operation_mode = "Simulated"
+
+[initial_nodes.node1.position]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node1.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node1.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node1.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node1.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node23]
+worker_name = "node23"
+worker_id = "3c65e896cbb414a0eb50fb56d447a661"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 159049809
+operation_mode = "Simulated"
+
+[initial_nodes.node23.position]
+x = 54.0
+y = 108.0
+
+[initial_nodes.node23.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node23.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node23.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node23.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
+
+[initial_nodes.node16]
+worker_name = "node16"
+worker_id = "8286f09c24284249fdbe050f9505c9d2"
+work_dir = "/tmp/gossip_basic3456535979"
+random_seed = 2032742071
+operation_mode = "Simulated"
+
+[initial_nodes.node16.position]
+x = 0.0
+y = 81.0
+
+[initial_nodes.node16.velocity]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node16.protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
+
+[initial_nodes.node16.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 30.0
+
+[initial_nodes.node16.radio_long]
+reliability = 1.0
+interface_name = "wlan1"
+range = 60.0
 
 [available_nodes]

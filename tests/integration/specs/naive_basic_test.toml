@@ -13,12 +13,14 @@ actions = ["Ping node1 node3 1500"]
     work_dir = "/tmp"
     random_seed = 123
     operation_mode = "Simulated"
-    protocol = "NaiveRouting"
+    [initial_nodes.node1.position]
     x = 60.0
     y = 100.0
     [initial_nodes.node1.velocity]
         x = 0.0
         y = 0.0
+    [initial_nodes.node1.protocol]
+            Protocol = "NaiveRouting"
     [initial_nodes.node1.radio_short]
         reliability = 1.0
         delay = 0
@@ -29,12 +31,14 @@ actions = ["Ping node1 node3 1500"]
     work_dir = "/tmp"
     random_seed = 456
     operation_mode = "Simulated"
-    protocol = "NaiveRouting"
+    [initial_nodes.node2.position]
     x = 100.0
     y = 100.0
     [initial_nodes.node2.velocity]
         x = 0.0
         y = 0.0
+    [initial_nodes.node2.protocol]
+            Protocol = "NaiveRouting"
     [initial_nodes.node2.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -45,12 +49,14 @@ actions = ["Ping node1 node3 1500"]
     work_dir = "/tmp"
     random_seed = 789
     operation_mode = "Simulated"
-    protocol = "NaiveRouting"
+    [initial_nodes.node3.position]
     x = 140.0
     y = 100.0
     [initial_nodes.node3.velocity]
         x = 0.0
         y = 0.0
+    [initial_nodes.node3.protocol]
+            Protocol = "NaiveRouting"
     [initial_nodes.node3.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode

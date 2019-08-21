@@ -137,16 +137,16 @@ pub struct WorkerConfig {
     pub accept_commands: Option<bool>,
     /// Should this worker log output to the terminal
     pub term_log: Option<bool>,
-    /// The protocol that this Worker should run for this configuration.
-    pub protocol: Protocols,
     /// Initial position of the worker
-    #[serde(flatten)]
+//    #[serde(flatten)]
     pub position: Position,
     /// Optional field used for mobility models.
     pub destination: Option<Position>,
     /// Velocity vector of the worker
     pub velocity: Velocity,
-    ///NOTE: Due to the way serde_toml works, the RadioConfig fields must be kept last in the structure.
+    ///NOTE: Due to the way serde_toml works, the following fields must be kept last in the structure.
+    /// The protocol that this Worker should run for this configuration.
+    pub protocol: Protocols,
     /// This is because they are interpreted as TOML tables, and those are always placed at the end of structures.
     ///The configuration for the short-range radio of this worker.
     pub radio_short: Option<RadioConfig>,
@@ -305,7 +305,21 @@ mod tests {
     #[test]
     fn test_workerconfig_new() {
         let config = WorkerConfig::new();
-        let config_str = "WorkerConfig { worker_name: \"worker1\", worker_id: None, work_dir: \".\", random_seed: 0, operation_mode: Simulated, accept_commands: None, term_log: None, protocol: NaiveRouting, position: Position { x: 0.0, y: 0.0 }, destination: None, velocity: Velocity { x: 0.0, y: 0.0 }, radio_short: None, radio_long: None }";
+        let config_str = "\
+        WorkerConfig { \
+            worker_name: \"worker1\", \
+            worker_id: None, \
+            work_dir: \".\", \
+            random_seed: 0, \
+            operation_mode: Simulated, \
+            accept_commands: None, \
+            term_log: None, \
+            position: Position { x: 0.0, y: 0.0 }, \
+            destination: None, \
+            velocity: Velocity { x: 0.0, y: 0.0 }, \
+            protocol: NaiveRouting, \
+            radio_short: None, \
+            radio_long: None }";
 
         assert_eq!(format!("{:?}", config), config_str);
     }
@@ -350,7 +364,31 @@ mod tests {
         //Assert the file was written.
         assert!(path.exists());
 
-        let expected_file_content = "worker_name = \"worker1\"\nwork_dir = \".\"\nrandom_seed = 0\noperation_mode = \"Simulated\"\nprotocol = \"NaiveRouting\"\nx = 0.0\ny = 0.0\n\n[velocity]\nx = 0.0\ny = 0.0\n\n[radio_short]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n\n[radio_long]\nreliability = 1.0\ninterface_name = \"wlan0\"\nrange = 0.0\n";
+        let expected_file_content = "\
+        worker_name = \"worker1\"\n\
+        work_dir = \".\"\n\
+        random_seed = 0\n\
+        operation_mode = \"Simulated\"\n\
+        \n[position]\n\
+        x = 0.0\n\
+        y = 0.0\n\
+        \n\
+        [velocity]\n\
+        x = 0.0\n\
+        y = 0.0\n\
+        \n\
+        [protocol]\n\
+        Protocol = \"NaiveRouting\"\n\
+        \n\
+        [radio_short]\n\
+        reliability = 1.0\n\
+        interface_name = \"wlan0\"\n\
+        range = 0.0\n\
+        \n\
+        [radio_long]\n\
+        reliability = 1.0\n\
+        interface_name = \"wlan0\"\n\
+        range = 0.0\n";
 
         let mut file_content = String::new();
         let _res = File::open(path).unwrap().read_to_string(&mut file_content);
