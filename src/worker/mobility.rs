@@ -135,8 +135,10 @@ const SELECT_ACTIVE_TRANSMITTER_QRY: &str = "
                                 join active_transmitters on active_transmitters.worker_id=workers.id
                                 join radio_types on radio_types.id = active_transmitters.radio_type
                                 WHERE radio_types.range = (?);";
-const FILL_RADIO_TYPES_QRY: &str = "
+const INSERT_RADIO_SHORT_QRY: &str = "
     INSERT INTO 'radio_types' ('range') VALUES ('SHORT');";
+const INSERT_RADIO_LONG_QRY: &str = "
+    INSERT INTO 'radio_types' ('range') VALUES ('LONG');";
 const REMOVE_ACTIVE_TRANSMITTER_QRY: &str = "
     DELETE FROM active_transmitters
     WHERE worker_id=(SELECT ID from workers WHERE worker_name = ?1)
@@ -294,7 +296,16 @@ pub fn create_db_objects(conn: &Connection, logger: &Logger) -> Result<usize, Me
 
     //Fill the radio_types table
     let _ = conn
-        .execute(FILL_RADIO_TYPES_QRY, NO_PARAMS)
+        .execute(INSERT_RADIO_SHORT_QRY, NO_PARAMS)
+        .map_err(|e| {
+            let error_msg = String::from("Failed to insert radio types");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+    let _ = conn
+        .execute(INSERT_RADIO_LONG_QRY, NO_PARAMS)
         .map_err(|e| {
             let error_msg = String::from("Failed to insert radio types");
             MeshSimError {

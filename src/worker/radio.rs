@@ -113,6 +113,7 @@ impl Radio for SimulatedRadio {
 
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
         let mut conn = get_db_connection(&self.work_dir, &self.logger)?;
+        let radio_range: String = self.r_type.into();
         let mut peers = Vec::new();
         let mut i = 0;
         let wait_base = {
@@ -180,7 +181,12 @@ impl Radio for SimulatedRadio {
 
         let _ = commit_tx(tx)?;
 
-        debug!(&self.logger, "{} registered as an active transmitter", &self.worker_name);
+        debug!(
+            &self.logger,
+            "{} registered as an active transmitter for radio {}",
+            &self.worker_name,
+            &radio_range
+        );
         info!(self.logger, "{} peers in range", peers.len());
 
         // let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
@@ -247,7 +253,7 @@ impl Radio for SimulatedRadio {
 
         let _ = commit_tx(tx)?;
 
-        info!(self.logger, "Message {:x} sent", &hdr.get_hdr_hash());
+        info!(self.logger, "Message {:x} sent", &hdr.get_hdr_hash(); "radio" => &radio_range);
         Ok(())
     }
 }

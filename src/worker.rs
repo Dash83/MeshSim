@@ -508,12 +508,12 @@ impl Worker {
                                         }
                                     }
                                 });
-                                debug!(logger, "Jobs in queue: {}", thread_pool.queued_count());
-                                debug!(
-                                    logger,
-                                    "Jobs that have paniced: {}",
-                                    thread_pool.panic_count()
-                                );
+//                                debug!(logger, "Jobs in queue: {}", thread_pool.queued_count());
+//                                debug!(
+//                                    logger,
+//                                    "Jobs that have paniced: {}",
+//                                    thread_pool.panic_count()
+//                                );
                             }
                             None => {
                                 warn!(logger, "Failed to read incoming message.");

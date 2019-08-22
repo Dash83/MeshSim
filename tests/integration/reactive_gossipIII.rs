@@ -3,11 +3,11 @@ extern crate mesh_simulator;
 use super::super::*;
 use mesh_simulator::logging::*;
 
-#[test]
 #[ignore]
+#[test]
 fn test_route_discovery_optimization() {
-    let test = get_test_path("rgrII_route_discovery.toml");
-    let work_dir = create_test_dir("rgrII_route_discovery");
+    let test = get_test_path("rgrIII_route_discovery.toml");
+    let work_dir = create_test_dir("rgrIII_route_discovery");
 
     let program = get_master_path();
     let worker = get_worker_path();
@@ -33,18 +33,6 @@ fn test_route_discovery_optimization() {
                                                    &master_log_records);
     assert!(master_node_num.is_some());
 
-    //Node 43 should received 16 packets
-    let node43_log_file = format!("{}/log/node43.log", &work_dir);
-    let node43_log_records = logging::get_log_records_from_file(&node43_log_file).unwrap();
-    let mut received_packets = 0;
-    for record in node43_log_records.iter() {
-        if record["msg"].as_str().unwrap().contains("reached its destination") {
-            received_packets += 1;
-        }
-    }
-    assert_eq!(received_packets, 16);
-
-    //Node 38 should received 16 packets
     let node38_log_file = format!("{}/log/node38.log", &work_dir);
     let node38_log_records = logging::get_log_records_from_file(&node38_log_file).unwrap();
     let mut received_packets = 0;
@@ -53,18 +41,27 @@ fn test_route_discovery_optimization() {
             received_packets += 1;
         }
     }
-    assert_eq!(received_packets, 16);
+    assert_eq!(received_packets, 8);
 
-    //Node 45 should received 16 packets
-    let node45_log_file = format!("{}/log/node45.log", &work_dir);
-    let node45_log_records = logging::get_log_records_from_file(&node45_log_file).unwrap();
+    let node19_log_file = format!("{}/log/node19.log", &work_dir);
+    let node19_log_records = logging::get_log_records_from_file(&node19_log_file).unwrap();
     let mut received_packets = 0;
-    for record in node45_log_records.iter() {
+    for record in node19_log_records.iter() {
         if record["msg"].as_str().unwrap().contains("reached its destination") {
             received_packets += 1;
         }
     }
-    assert_eq!(received_packets, 16);
+    assert_eq!(received_packets, 8);
+
+    let node19_log_file = format!("{}/log/node19.log", &work_dir);
+    let node19_log_records = logging::get_log_records_from_file(&node19_log_file).unwrap();
+    let mut received_packets = 0;
+    for record in node19_log_records.iter() {
+        if record["msg"].as_str().unwrap().contains("reached its destination") {
+            received_packets += 1;
+        }
+    }
+    assert_eq!(received_packets, 8);
 
     //Test passed. Results are not needed.
 //    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
