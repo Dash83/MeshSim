@@ -411,6 +411,7 @@ impl SimulatedRadio {
             std::thread::sleep(sleep_time);
         }
         rollback_tx(tx)?;
+        self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
         let err_msg = String::from("Gave up registering worker in active_transmitter_list");
         let err = MeshSimError{
             kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
