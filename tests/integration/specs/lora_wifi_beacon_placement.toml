@@ -3,6 +3,8 @@ duration = 10500
 actions = []
 width = 200.0
 height = 200.0
+[protocol]
+Protocol = "LoraWifiBeacon"
 
 [initial_nodes.node9]
 worker_name = "node9"

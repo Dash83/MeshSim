@@ -5,9 +5,10 @@ name = "cbr_test"
 duration = 6000
 width = 200
 height = 200
-
 #AddSource source destination Packets_Per_Sec Packet_Size duration start_time
 actions = [ "Add_Source node1 node3 3 32 5000 1000"]
+[protocol]
+Protocol = "NaiveRouting"
 
 [initial_nodes.node1]
     worker_name = "node1"

@@ -3,6 +3,8 @@ duration = 2000
 width = 200 #Not used in this test
 height = 200 #Not used in this test
 actions = ["ping node1 node5 1000 "]
+[protocol]
+Protocol = "NaiveRouting"
 
 [initial_nodes.node1]
     worker_name = "node1"

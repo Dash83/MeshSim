@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
+use crate::worker::protocols::Protocols;
+use std::default::Default;
 
 /// Struct to keep the area of the simulation
 #[derive(Debug, Deserialize, Serialize, PartialEq, Default)]
@@ -30,6 +32,8 @@ pub struct TestSpec {
     /// Size of the simulation area.
     #[serde(flatten)]
     pub area_size: Area,
+    /// The protocol that this test will run.
+    pub protocol: Protocols,
     /// The pattern of mobility the workers will follow
     pub mobility_model: Option<MobilityModels>,
     /// Collection of worker configurations for the master to start at the beginning of the test.
@@ -86,6 +90,7 @@ impl TestSpec {
             },
             mobility_model: None,
             actions: vec![],
+            protocol : Default::default(),
             initial_nodes: HashMap::new(),
             available_nodes: HashMap::new(),
         }

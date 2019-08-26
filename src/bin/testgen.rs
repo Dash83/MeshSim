@@ -293,6 +293,8 @@ fn command_finish(spec: &mut TestSpec, data: &TestBasics) -> Result<bool, Errors
             format!("{}.toml", &spec.name)
         }
     };
+    spec.protocol = data.protocol;
+
     p.push(file_name);
     //let canon = p.canonicalize().expect("Invalid file path");
 
@@ -345,7 +347,7 @@ fn command_add_nodes(
         w.operation_mode = worker::OperationMode::Simulated; //All test files are for simulated mode.
         w.random_seed = rng.next_u32();
         w.work_dir = data.work_dir.clone();
-        w.protocol = data.protocol;
+//        w.protocol = data.protocol;
         w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
 
         //Calculate the position
@@ -591,7 +593,7 @@ fn command_add_grid(
             w.operation_mode = worker::OperationMode::Simulated; //All test files are for simulated mode.
             w.random_seed = rng.next_u32();
             w.work_dir = data.work_dir.clone();
-            w.protocol = data.protocol;
+//            w.protocol = data.protocol;
             w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
             w.position = Position { x, y };
             w.velocity = Velocity { x: 0.0, y: 0.0 };

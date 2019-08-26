@@ -5,6 +5,10 @@ actions = [ "Add_Source node7 node25 1 64 8000 1000",
             "Kill_Node node24 4000"]
 width = 300.0
 height = 300.0
+[protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.7
 
 [initial_nodes.node8]
 worker_name = "node8"

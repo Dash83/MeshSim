@@ -146,7 +146,7 @@ pub struct WorkerConfig {
     pub velocity: Velocity,
     ///NOTE: Due to the way serde_toml works, the following fields must be kept last in the structure.
     /// The protocol that this Worker should run for this configuration.
-    pub protocol: Protocols,
+    pub protocol: Option<Protocols>,
     /// This is because they are interpreted as TOML tables, and those are always placed at the end of structures.
     ///The configuration for the short-range radio of this worker.
     pub radio_short: Option<RadioConfig>,
@@ -165,7 +165,7 @@ impl WorkerConfig {
             operation_mode: OperationMode::Simulated,
             accept_commands: None,
             term_log: None,
-            protocol: Protocols::NaiveRouting,
+            protocol: Some(Protocols::NaiveRouting),
             radio_short: None,
             radio_long: None,
             position: Position { x: 0.0, y: 0.0 },
@@ -185,6 +185,7 @@ impl WorkerConfig {
         };
         //Wrap the rng in the shared-mutable-state smart pointers
         let rng = Arc::new(Mutex::new(gen));
+        let protocol = self.protocol.expect("A protocol must be specified");
 
         //Create the radios
         let sr_channels = match self.radio_short {
@@ -250,7 +251,7 @@ impl WorkerConfig {
             seed: self.random_seed,
             operation_mode: self.operation_mode,
             id,
-            protocol: self.protocol,
+            protocol,
             // db_id : db_id,
             logger,
         };
@@ -317,7 +318,7 @@ mod tests {
             position: Position { x: 0.0, y: 0.0 }, \
             destination: None, \
             velocity: Velocity { x: 0.0, y: 0.0 }, \
-            protocol: NaiveRouting, \
+            protocol: Some(NaiveRouting), \
             radio_short: None, \
             radio_long: None }";
 

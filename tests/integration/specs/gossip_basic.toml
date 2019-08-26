@@ -3,6 +3,10 @@ duration = 3000
 actions = [ "Ping node1 node25 1000"]
 width = 300.0
 height = 300.0
+[protocol]
+Protocol = "GossipRouting"
+k = 2
+p = 0.7
 
 [initial_nodes.node25]
 worker_name = "node25"

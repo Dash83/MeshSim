@@ -7,6 +7,8 @@ duration = 3000
 width = 400
 height = 400
 actions = ["Ping node1 node3 1500"]
+[protocol]
+Protocol = "NaiveRouting"
 
 [initial_nodes.node1]
     worker_name = "node1"

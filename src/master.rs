@@ -296,6 +296,9 @@ impl Master {
                 .expect("Failed to lock workers list");
 
             for (_, val) in spec.initial_nodes.iter_mut() {
+                //Assign a protocol for the worker
+                val.protocol = Some(spec.protocol.clone());
+
                 //Start the child process
                 let listen_for_commands = active_nodes.contains(&val.worker_name);
 
