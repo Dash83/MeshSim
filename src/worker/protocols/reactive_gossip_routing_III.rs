@@ -646,19 +646,11 @@ impl ReactiveGossipRoutingIII {
             debug!(logger, "Response size: {}", response_payload.len());
             hdr.payload = Some(response_payload);
 
-            //Send over the long-radio
-            long_radio.broadcast(hdr)?;
+//            //Send over the long-radio
+//            long_radio.broadcast(hdr)?;
 
-            return Ok(None);
+            return Ok(Some(hdr));
         }
-
-        // //Is this node already active in this route? e.g. overhearing the broadcast of a neighbour that received
-        // //the message from this node in the first place.
-        // if msg.route.contains(&self_peer.name) {
-        //     //We are already part of this route
-        //     debug!("Already part of this route. Dropping message");
-        //     return Ok(None)
-        // }
 
         //Is this a new route?
         {

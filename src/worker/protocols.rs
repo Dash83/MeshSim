@@ -363,6 +363,7 @@ pub fn build_protocol_resources(
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The GossipRouting protocol requires a short_radio to be provided.");
+            let rng = Worker::rng_from_seed(seed);
             let handler: Arc<dyn Protocol> =
                 Arc::new(GossipRouting::new(
                     name,
@@ -370,6 +371,7 @@ pub fn build_protocol_resources(
                     k,
                     p,
                     Arc::clone(&sr),
+                    Arc::new(Mutex::new(rng)),
                     logger));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));

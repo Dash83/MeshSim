@@ -9,6 +9,7 @@ use serde_cbor::de::*;
 use serde_cbor::ser::*;
 use slog::Logger;
 use std::sync::{Arc, Mutex};
+use rand::{rngs::StdRng, Rng};
 
 const MSG_CACHE_SIZE: usize = 200;
 /// The default number of hops messages are guaranteed to be propagated
@@ -30,6 +31,8 @@ pub struct GossipRouting {
     worker_id: String,
     msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
     short_radio: Arc<dyn Radio>,
+    /// RNG used for gossip calculations
+    rng: Arc<Mutex<StdRng>>,
     logger: Logger,
 }
 
@@ -73,12 +76,16 @@ impl Protocol for GossipRouting {
             }
         })?;
         let msg_cache = Arc::clone(&self.msg_cache);
+        let rng = Arc::clone(&self.rng);
         GossipRouting::handle_message_internal(
             header,
             msg,
             self.get_self_peer(),
             msg_hash,
+            self.k,
+            self.p,
             msg_cache,
+            rng,
             &self.logger,
         )
     }
@@ -113,6 +120,7 @@ impl GossipRouting {
         k : usize,
         p : f64,
         sr: Arc<dyn Radio>,
+        rng: Arc<Mutex<StdRng>>,
         logger: Logger,
     ) -> GossipRouting {
         let v = Vec::new();
@@ -123,6 +131,7 @@ impl GossipRouting {
             p,
             msg_cache: Arc::new(Mutex::new(v)),
             short_radio: sr,
+            rng,
             logger,
         }
     }
@@ -158,8 +167,11 @@ impl GossipRouting {
         hdr: MessageHeader,
         data: Vec<u8>,
         msg_hash: Digest,
+        k: usize,
+        p: f64,
         me: Peer,
         msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
+        rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
         info!(
@@ -199,6 +211,18 @@ impl GossipRouting {
             return Ok(None);
         }
 
+        //Gossip?
+        let s: f64 = {
+            let mut rng = rng.lock().expect("Could not obtain lock for RNG");
+            rng.gen_range(0f64, 1f64)
+        };
+        debug!(logger, "Gossip prob {}", s);
+        if hdr.hops as usize > k && s > p {
+            info!(logger, "Not forwarding the message");
+            //Not gossiping this message.
+            return Ok(None);
+        }
+
         let response = GossipRouting::create_data_message(me, hdr.destination, hdr.hops + 1, data)?;
 
         Ok(Some(response))
@@ -209,12 +233,25 @@ impl GossipRouting {
         msg: Messages,
         me: Peer,
         msg_hash: Digest,
+        k: usize,
+        p: f64,
         msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
+        rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
         match msg {
             Messages::Data(data) => {
-                GossipRouting::process_data_message(hdr, data, msg_hash, me, msg_cache, logger)
+                GossipRouting::process_data_message(
+                    hdr,
+                    data,
+                    msg_hash,
+                    k,
+                    p,
+                    me,
+                    msg_cache,
+                    rng,
+                    logger
+                )
             }
         }
     }
