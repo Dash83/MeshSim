@@ -504,6 +504,9 @@ impl Worker {
                                             Ok(()) => { /* All good */ }
                                             Err(e) => {
                                                 error!(log, "Error sending response: {}", e);
+                                                if let Some(cause) = e.cause {
+                                                    error!(log, "Cause: {}", cause);
+                                                }
                                             }
                                         }
                                     }

@@ -11,7 +11,6 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 use crate::worker::radio::RadioTypes;
-use std::collections::HashSet;
 
 /// Name used for the worker positions DB
 pub const DB_NAME: &str = "worker_positions.db";
@@ -48,20 +47,20 @@ const CREATE_WORKER_DEST_TBL_QRY : &str = "CREATE TABLE IF NOT EXISTS  `worker_d
                                                     `dest_y`	INTEGER NOT NULL,
                                                     FOREIGN KEY(`worker_id`) REFERENCES `workers`(`ID`)
                                                 );";
-const CREATE_TRANSMITTERS_TBL_QRY: &str = "
-    CREATE TABLE 'active_transmitters' (
+const CREATE_WIFI_TRANSMITTERS_TBL_QRY: &str = "
+    CREATE TABLE 'active_wifi_transmitters' (
         'worker_id'	INTEGER NOT NULL,
-        'radio_type'	INTEGER NOT NULL,
-        FOREIGN KEY('radio_type') REFERENCES 'radio_types'('ID'),
-        PRIMARY KEY('worker_id','radio_type'),
+        PRIMARY KEY('worker_id'),
         FOREIGN KEY('worker_id') REFERENCES 'workers'('ID')
     );";
 
-const CREATE_RADIO_TYPES_TBL_QRY: &str = "
-    CREATE TABLE 'radio_types' (
-        'id'	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
-        'range'	TEXT NOT NULL UNIQUE
+const CREATE_LORA_TRANSMITTERS_TBL_QRY: &str = "
+    CREATE TABLE 'active_lora_transmitters' (
+        'worker_id'	INTEGER NOT NULL,
+        PRIMARY KEY('worker_id'),
+        FOREIGN KEY('worker_id') REFERENCES 'workers'('ID')
     );";
+
 const INSERT_WORKER_QRY: &str =
     "INSERT INTO workers (Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address)
                                           VALUES (?1, ?2, ?3, ?4)";
@@ -71,10 +70,12 @@ const UPDATE_WORKER_VEL_QRY: &str =
     "INSERT OR REPLACE INTO worker_velocities (worker_id, vel_x, vel_y) VALUES (?1, ?2, ?3)";
 const UPDATE_WORKER_DEST_QRY: &str =
     "INSERT OR REPLACE INTO worker_destinations (worker_id, dest_x, dest_y) VALUES (?1, ?2, ?3)";
-const INSERT_ACTIVE_TRANSMITTER_QRY: &str = "
-    INSERT INTO active_transmitters (worker_id, radio_type)
-    VALUES ((SELECT ID from workers WHERE Worker_Name = ?1),
-            (SELECT ID from radio_types WHERE range = ?2));";
+const INSERT_ACTIVE_WIFI_TRANSMITTER_QRY: &str = "
+    INSERT INTO active_wifi_transmitters (worker_id)
+    VALUES ((SELECT ID from workers WHERE Worker_Name = ?1));";
+const INSERT_ACTIVE_LORA_TRANSMITTER_QRY: &str = "
+    INSERT INTO active_lora_transmitters (worker_id)
+    VALUES ((SELECT ID from workers WHERE Worker_Name = ?1));";
 const GET_WORKER_QRY : &str = "\
     SELECT  ID, \
             Worker_Name, \
@@ -82,7 +83,7 @@ const GET_WORKER_QRY : &str = "\
             Short_Range_Address, \
             Long_Range_Address \
     FROM Workers \
-    WHERE Worker_ID = (?);";
+    WHERE worker_name = (?);";
 //const SELECT_OTHER_WORKERS_QRY : &str = "SELECT Worker_Name, Worker_ID, Short_Range_Address, Long_Range_Address FROM Workers WHERE Worker_ID != (?)";
 const GET_WORKER_POS_QRY : &str =  "SELECT  Workers.ID,
                                                     Worker_positions.X,
@@ -129,21 +130,38 @@ const SELECT_REMAINING_DIST_QRY : &str = "
                                 join worker_positions on worker_positions.worker_id = workers.ID
                                 join worker_destinations on worker_destinations.worker_id = workers.ID
                                 order by workers.Worker_Name;";
-const SELECT_ACTIVE_TRANSMITTER_QRY: &str = "
-                                select workers.Worker_Name
-                                from workers
-                                join active_transmitters on active_transmitters.worker_id=workers.id
-                                join radio_types on radio_types.id = active_transmitters.radio_type
-                                WHERE radio_types.range = (?);";
-const INSERT_RADIO_SHORT_QRY: &str = "
-    INSERT INTO 'radio_types' ('range') VALUES ('SHORT');";
-const INSERT_RADIO_LONG_QRY: &str = "
-    INSERT INTO 'radio_types' ('range') VALUES ('LONG');";
-const REMOVE_ACTIVE_TRANSMITTER_QRY: &str = "
-    DELETE FROM active_transmitters
-    WHERE worker_id=(SELECT ID from workers WHERE worker_name = ?1)
-    AND radio_type=(SELECT ID from radio_types WHERE range = ?2)
+const SELECT_WIFI_TRANSMITTERS_IN_RANGE_QRY: &str = "
+    SELECT b.worker_id
+    FROM worker_positions b, (
+                      SELECT worker_id, x as x1, y as y1
+                      FROM worker_positions
+                      WHERE worker_id = ?1
+                     ) a
+    WHERE a.worker_id <> b.worker_id
+    AND b.worker_id in (SELECT worker_id from active_wifi_transmitters)
+    AND distance(a.x1, a.y1, b.x, b.y) < ?2;";
+
+const SELECT_LORA_TRANSMITTERS_IN_RANGE_QRY: &str = "
+    SELECT b.worker_id
+    FROM worker_positions b, (
+                      SELECT worker_id, x as x1, y as y1
+                      FROM worker_positions
+                      WHERE worker_id = ?1
+                     ) a
+    WHERE a.worker_id <> b.worker_id
+    AND b.worker_id in (SELECT worker_id from active_lora_transmitters)
+    AND distance(a.x1, a.y1, b.x, b.y) < ?2;";
+
+const REMOVE_WIFI_TRANSMITTER_QRY: &str = "
+    DELETE FROM active_wifi_transmitters
+    WHERE worker_id=(SELECT ID from workers WHERE worker_name = ?1);
 ";
+
+const REMOVE_LORA_TRANSMITTER_QRY: &str = "
+    DELETE FROM active_lora_transmitters
+    WHERE worker_id=(SELECT ID from workers WHERE worker_name = ?1);
+";
+
 const SET_WAL_MODE: &str = "PRAGMA journal_mode=WAL;";
 const WAL_MODE_QRY: &str = "PRAGMA journal_mode;";
 //const SET_TMP_MODE : &'static str = "PRAGMA temp_store=2"; //Instruct the database to keep temp tables in memory
@@ -283,42 +301,22 @@ pub fn create_db_objects(conn: &Connection, logger: &Logger) -> Result<usize, Me
             }
         })?;
 
-    //Create radio_types table
-    let _ = conn
-        .execute(CREATE_RADIO_TYPES_TBL_QRY, NO_PARAMS)
+    //Create active_wifi_transmitters table
+    let _rows = conn
+        .execute(CREATE_WIFI_TRANSMITTERS_TBL_QRY, NO_PARAMS)
         .map_err(|e| {
-            let error_msg = String::from("Failed to create radio_types table");
+            let error_msg = String::from("Failed to create active_wifi_transmitters table");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
                 cause: Some(Box::new(e)),
             }
         })?;
 
-    //Fill the radio_types table
-    let _ = conn
-        .execute(INSERT_RADIO_SHORT_QRY, NO_PARAMS)
-        .map_err(|e| {
-            let error_msg = String::from("Failed to insert radio types");
-            MeshSimError {
-                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
-                cause: Some(Box::new(e)),
-            }
-        })?;
-    let _ = conn
-        .execute(INSERT_RADIO_LONG_QRY, NO_PARAMS)
-        .map_err(|e| {
-            let error_msg = String::from("Failed to insert radio types");
-            MeshSimError {
-                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
-                cause: Some(Box::new(e)),
-            }
-        })?;
-
-    //Create active_transmitters table
+    //Create active_lora_transmitters table
     let rows = conn
-        .execute(CREATE_TRANSMITTERS_TBL_QRY, NO_PARAMS)
+        .execute(CREATE_LORA_TRANSMITTERS_TBL_QRY, NO_PARAMS)
         .map_err(|e| {
-            let error_msg = String::from("Failed to create active_transmitters table");
+            let error_msg = String::from("Failed to create active_lora_transmitters table");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
                 cause: Some(Box::new(e)),
@@ -353,7 +351,7 @@ pub fn register_worker(
     //Get the ID that was generated for the worker
     let db_id: i64 = conn
         .prepare(GET_WORKER_QRY)
-        .and_then(|mut stmt| stmt.query_row(&[&worker_id], |row| row.get(0)))
+        .and_then(|mut stmt| stmt.query_row(&[&worker_name], |row| row.get(0)))
         .map_err(|e| {
             let error_msg = String::from("Could not get worker_id");
             MeshSimError {
@@ -775,9 +773,13 @@ pub fn insert_active_transmitter(
     range: RadioTypes,
     _logger: &Logger,
 ) -> Result<(), MeshSimError> {
+    let qry = match range {
+        RadioTypes::ShortRange => INSERT_ACTIVE_WIFI_TRANSMITTER_QRY,
+        RadioTypes::LongRange => INSERT_ACTIVE_LORA_TRANSMITTER_QRY,
+    };
     let range: String = range.into();
     let _ = conn
-        .execute(INSERT_ACTIVE_TRANSMITTER_QRY, &[worker_name, &range])
+        .execute(qry, &[worker_name])
         .map_err(|e| {
             let error_msg = format!(
                 "Failed to register {} as an active transmitter for {} radio",
@@ -799,9 +801,13 @@ pub fn remove_active_transmitter(
     range: RadioTypes,
     _logger: &Logger,
 ) -> Result<(), MeshSimError> {
+    let qry = match range {
+        RadioTypes::ShortRange => REMOVE_WIFI_TRANSMITTER_QRY,
+        RadioTypes::LongRange => REMOVE_LORA_TRANSMITTER_QRY,
+    };
     let range: String = range.into();
     let _ = conn
-        .execute(REMOVE_ACTIVE_TRANSMITTER_QRY, &[worker_name, &range])
+        .execute(qry, &[worker_name])
         .map_err(|e| {
             let error_msg = format!(
                 "Failed to remove {} from the active transmitter list for {} radio",
@@ -817,15 +823,32 @@ pub fn remove_active_transmitter(
 }
 
 /// Function to get the active transmitters that correspond to the radio-type provided
-pub fn get_active_transmitters(
+pub fn get_active_transmitters_in_range(
     conn : &Connection,
-    range: RadioTypes,
+    worker_name: &String,
+    r_type: RadioTypes,
+    range : f64,
     _logger: &Logger,
-) -> Result<HashSet<String>, MeshSimError> {
-    let range: String = range.into();
+) -> Result<Vec<f64>, MeshSimError> {
+    let qry = match r_type {
+        RadioTypes::ShortRange => SELECT_WIFI_TRANSMITTERS_IN_RANGE_QRY,
+        RadioTypes::LongRange => SELECT_LORA_TRANSMITTERS_IN_RANGE_QRY,
+    };
+//    let range: String = range.into();
+
+    let db_id: i64 = conn
+        .prepare(GET_WORKER_QRY)
+        .and_then(|mut stmt| stmt.query_row(&[&worker_name], |row| row.get(0)))
+        .map_err(|e| {
+            let error_msg = String::from("Could not get worker_id");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
 
     //Get all other workers and check if they are in range
-    let mut stmt = conn.prepare(SELECT_ACTIVE_TRANSMITTER_QRY).map_err(|e| {
+    let mut stmt = conn.prepare(qry).map_err(|e| {
         let err_msg = String::from("Failed to prepare query SELECT_ACTIVE_TRANSMITTER_QRY");
         MeshSimError {
             kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
@@ -833,20 +856,22 @@ pub fn get_active_transmitters(
         }
     })?;
 
+    let db_id : &ToSql = &db_id;
+    let range : &ToSql = &range;
     let rows = stmt
-        .query_map(&[&range], |row| {
-            let worker_name : String = row.get(0);
-            worker_name.to_owned()
+        .query_map(&[db_id, range], |row| {
+            let w_id : f64 = row.get(0);
+            w_id
         })
         .map_err(|e| {
-            let err_msg = String::from("SELECT_OTHER_WORKERS_POS_QRY failed");
+            let err_msg = String::from("SELECT_ACTIVE_TRANSMITTER_QRY failed");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
                 cause: Some(Box::new(e)),
             }
         })?;
 
-    let mut results = HashSet::new();
+    let mut results = Vec::new();
     for row in rows {
         let worker = row.map_err(|e| {
             let err_msg = String::from("Failed to read row");
@@ -855,7 +880,7 @@ pub fn get_active_transmitters(
                 cause: Some(Box::new(e)),
             }
         })?;
-        results.insert(worker);
+        results.push(worker);
     }
 
     Ok(results)
@@ -865,6 +890,18 @@ pub fn get_active_transmitters(
 pub fn commit_tx(tx : Transaction) -> Result<(), MeshSimError> {
     let _ = tx.commit().map_err(|e| {
         let err_msg = String::from("Failed to commit transaction");
+        MeshSimError{
+            kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+            cause : Some(Box::new(e))
+        }
+    })?;
+    Ok(())
+}
+
+/// Rollback a transaction
+pub fn rollback_tx(tx : Transaction) -> Result<(), MeshSimError> {
+    let _ = tx.rollback().map_err(|e| {
+        let err_msg = String::from("Failed to rollback transaction");
         MeshSimError{
             kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
             cause : Some(Box::new(e))
@@ -895,11 +932,9 @@ mod tests {
     use super::*;
 
     use self::chrono::prelude::*;
-    use self::rand::Rng;
     use crate::logging;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::time::Duration;
 
     /*******************************************
      *********** Utility functions *************
