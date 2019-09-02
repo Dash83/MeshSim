@@ -1,32 +1,34 @@
-#This test is designed to run for 6 seconds, such that each worker can trigger it's heartbeat-timer once
-#and complete the heartbeat-handshake.
-#We used 1 initial node and add a second node shortly after to a potential deadlock in which the 2 process
-#start at the exact same time and end up waiting on the other to responde to the heartbeat message.
-name = "naive_basic_test"
-duration = 3000
-width = 400
-height = 400
-actions = ["Ping node1 node3 1500"]
+#This test checks that the kill_node feature is functional
+
+name = "kill_node_test"
+duration = 1500
+width = 200
+height = 200
+actions = ["Kill_Node node2 500"]
 [protocol]
 Protocol = "NaiveRouting"
 
 [initial_nodes.node1]
     worker_name = "node1"
     work_dir = "/tmp"
-    random_seed = 123
+    random_seed = 0
     operation_mode = "Simulated"
     [initial_nodes.node1.position]
-    x = 60.0
-    y = 100.0
+    x = 0.0
+    y = 0.0
     [initial_nodes.node1.velocity]
         x = 0.0
         y = 0.0
     [initial_nodes.node1.protocol]
-            Protocol = "NaiveRouting"
+        Protocol = "NaiveRouting"
     [initial_nodes.node1.radio_short]
         reliability = 1.0
-        delay = 0
-        range = 50.0
+        interface_name = "wlan0"
+        range = 100.0
+    [initial_nodes.node1.radio_long]
+        reliability = 1.0
+        interface_name = "wlan1"
+        range = 100.0
 
 [initial_nodes.node2]
     worker_name = "node2"
@@ -34,8 +36,8 @@ Protocol = "NaiveRouting"
     random_seed = 456
     operation_mode = "Simulated"
     [initial_nodes.node2.position]
-    x = 100.0
-    y = 100.0
+    x = 0.0
+    y = 0.0
     [initial_nodes.node2.velocity]
         x = 0.0
         y = 0.0
@@ -43,8 +45,12 @@ Protocol = "NaiveRouting"
             Protocol = "NaiveRouting"
     [initial_nodes.node2.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
-        delay = 0 #Not used in device_mode
-        range = 50.0
+        interface_name = "wlan0" #Not used in simulated_mode
+        range = 100.0
+    [initial_nodes.node2.radio_long] #Long-range radio
+        reliability = 1 #Not used in device_mode
+        interface_name = "wlan1" #Not used in simulated_mode
+        range = 100.0
 
 [initial_nodes.node3]
     worker_name = "node3"
@@ -52,16 +58,20 @@ Protocol = "NaiveRouting"
     random_seed = 789
     operation_mode = "Simulated"
     [initial_nodes.node3.position]
-    x = 140.0
-    y = 100.0
+    x = 0.0
+    y = 0.0
     [initial_nodes.node3.velocity]
         x = 0.0
         y = 0.0
     [initial_nodes.node3.protocol]
-            Protocol = "NaiveRouting"
+                Protocol = "NaiveRouting"
     [initial_nodes.node3.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
-        delay = 0 #Not used in device_mode
-        range = 50.0
+        interface_name = "wlan0" #Not used in simulated_mode
+        range = 100.0
+    [initial_nodes.node3.radio_long] #Long-range radio
+        reliability = 1 #Not used in device_mode
+        interface_name = "wlan1" #Not used in simulated_mode
+        range = 100.0
 
 [available_nodes]

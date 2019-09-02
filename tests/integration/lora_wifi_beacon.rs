@@ -67,4 +67,7 @@ fn test_placement() {
 
     assert_eq!(received_packets_wifi, 20);
 //    assert_eq!(received_packets_lora, 100);
+
+    //Test passed. Results are not needed.
+    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
 }

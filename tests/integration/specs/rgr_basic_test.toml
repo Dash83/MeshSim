@@ -5,485 +5,609 @@ height = 200 #Not used in this test
 actions = ["ping node2 node24 3000 "]
 
 [initial_nodes.node1]
-    worker_name = "node1"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 12
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = -110.0
-    y = 0.0
-    [initial_nodes.node1.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node1.radio_short]
-        reliability = 1.0
-        interface_name = "wlan0"
-        range = 100.0
+worker_name = "node1"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 12
+operation_mode = "Simulated"
+[initial_nodes.node1.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node1.position]
+x = -110.0
+y = 0.0
+[initial_nodes.node1.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node1.radio_short]
+reliability = 1.0
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node2]
-    worker_name = "node2"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 34
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = -55.0
-    y = 55.0
-    [initial_nodes.node2.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node2.radio_short] 
-        reliability = 1 
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node2"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 34
+operation_mode = "Simulated"
+[initial_nodes.node2.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node2.position]
+x = -55.0
+y = 55.0
+[initial_nodes.node2.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node2.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 
 [initial_nodes.node3]
-    worker_name = "node3"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 56
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = -55.0
-    y = -55.0
-    [initial_nodes.node3.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node3.radio_short] 
-        reliability = 1 
-        range = 100.0
-        interface_name = "wlan0" 
+worker_name = "node3"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 56
+operation_mode = "Simulated"
+[initial_nodes.node3.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node3.position]
+x = -55.0
+y = -55.0
+[initial_nodes.node3.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node3.radio_short]
+reliability = 1
+range = 100.0
+interface_name = "wlan0"
 
 [initial_nodes.node4]
-    worker_name = "node4"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 78
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 0.0
-    y = 0.0
-    [initial_nodes.node4.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node4.radio_short] 
-        reliability = 1 
-        range = 100.0
-        interface_name = "wlan0" 
+worker_name = "node4"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 78
+operation_mode = "Simulated"
+[initial_nodes.node4.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node4.position]
+x = 0.0
+y = 0.0
+[initial_nodes.node4.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node4.radio_short]
+reliability = 1
+range = 100.0
+interface_name = "wlan0"
 
 [initial_nodes.node5]
-    worker_name = "node5"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 90
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 0.0
-    y = 110.0
-    [initial_nodes.node5.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node5.radio_short] 
-        reliability = 1 
-        range = 100.0
-        interface_name = "wlan0" 
+worker_name = "node5"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 90
+operation_mode = "Simulated"
+[initial_nodes.node5.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node5.position]
+x = 0.0
+y = 110.0
+[initial_nodes.node5.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node5.radio_short]
+reliability = 1
+range = 100.0
+interface_name = "wlan0"
 
 [initial_nodes.node6]
-    worker_name = "node6"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 123
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 0.0
-    y = -110.0
-    [initial_nodes.node6.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node6.radio_short] 
-        reliability = 1 
-        range = 100.0
-        interface_name = "wlan0" 
+worker_name = "node6"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 123
+operation_mode = "Simulated"
+[initial_nodes.node6.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node6.position]
+x = 0.0
+y = -110.0
+[initial_nodes.node6.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node6.radio_short]
+reliability = 1
+range = 100.0
+interface_name = "wlan0"
 
 [initial_nodes.node7]
-    worker_name = "node7"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 234
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 27.0
-    y = 55.0
-    [initial_nodes.node7.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node7.radio_short] 
-        reliability = 1 
-        range = 100.0
-        interface_name = "wlan0" 
+worker_name = "node7"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 234
+operation_mode = "Simulated"
+[initial_nodes.node7.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node7.position]
+x = 27.0
+y = 55.0
+[initial_nodes.node7.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node7.radio_short]
+reliability = 1
+range = 100.0
+interface_name = "wlan0"
 
 [initial_nodes.node8]
-    worker_name = "node8"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 345
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 27.0
-    y = -55.0
-    [initial_nodes.node8.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node8.radio_short] 
-        reliability = 1 
-        delay = 0 
-        range = 100.0
-        interface_name = "wlan0" 
+worker_name = "node8"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 345
+operation_mode = "Simulated"
+[initial_nodes.node8.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node8.position]
+x = 27.0
+y = -55.0
+[initial_nodes.node8.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node8.radio_short]
+reliability = 1
+delay = 0
+range = 100.0
+interface_name = "wlan0"
 
 [initial_nodes.node9]
-    worker_name = "node9"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 456
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 55.0
-    y = 110.0
-    [initial_nodes.node9.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node9.radio_short] 
-        reliability = 1 
-        range = 100.0
-        interface_name = "wlan0" 
+worker_name = "node9"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 456
+operation_mode = "Simulated"
+[initial_nodes.node9.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node9.position]
+x = 55.0
+y = 110.0
+[initial_nodes.node9.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node9.radio_short]
+reliability = 1
+range = 100.0
+interface_name = "wlan0"
 
 [initial_nodes.node10]
-    worker_name = "node10"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 567
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 55.0
-    y = 0.0
-    [initial_nodes.node10.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node10.radio_short] 
-        reliability = 1 
-        range = 100.0
-        interface_name = "wlan0" 
+worker_name = "node10"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 567
+operation_mode = "Simulated"
+[initial_nodes.node10.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node10.position]
+x = 55.0
+y = 0.0
+[initial_nodes.node10.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node10.radio_short]
+reliability = 1
+range = 100.0
+interface_name = "wlan0"
 
 [initial_nodes.node11]
-    worker_name = "node11"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 678
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 55.0
-    y = -110.0
-    [initial_nodes.node11.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node11.radio_short] 
-        reliability = 1 
-        range = 100.0
-        interface_name = "wlan0" 
-    
+worker_name = "node11"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 678
+operation_mode = "Simulated"
+[initial_nodes.node11.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node11.position]
+x = 55.0
+y = -110.0
+[initial_nodes.node11.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node11.radio_short]
+reliability = 1
+range = 100.0
+interface_name = "wlan0"
+
 [initial_nodes.node12]
-    worker_name = "node12"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 789
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 82.0
-    y = 55.0
-    [initial_nodes.node12.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node12.radio_short] 
-        reliability = 1 
-        range = 100.0
-        interface_name = "wlan0" 
+worker_name = "node12"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 789
+operation_mode = "Simulated"
+[initial_nodes.node12.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node12.position]
+x = 82.0
+y = 55.0
+[initial_nodes.node12.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node12.radio_short]
+reliability = 1
+range = 100.0
+interface_name = "wlan0"
 
 [initial_nodes.node13]
-    worker_name = "node13"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 890
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 82.0
-    y = -55.0
-    [initial_nodes.node13.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node13.radio_short] 
-        reliability = 1 
-        range = 100.0
-        interface_name = "wlan0" 
+worker_name = "node13"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 890
+operation_mode = "Simulated"
+[initial_nodes.node13.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node13.position]
+x = 82.0
+y = -55.0
+[initial_nodes.node13.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node13.radio_short]
+reliability = 1
+range = 100.0
+interface_name = "wlan0"
 
 [initial_nodes.node14]
-    worker_name = "node14"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 1234
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 110.0
-    y = 0.0
-    [initial_nodes.node14.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node14.radio_short] 
-        reliability = 1 
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node14"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 1234
+operation_mode = "Simulated"
+[initial_nodes.node14.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node14.position]
+x = 110.0
+y = 0.0
+[initial_nodes.node14.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node14.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node15]
-    worker_name = "node15"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 2345
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = -165.0
-    y = 0.0
-    [initial_nodes.node15.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node15.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node15"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 2345
+operation_mode = "Simulated"
+[initial_nodes.node15.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node15.position]
+x = -165.0
+y = 0.0
+[initial_nodes.node15.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node15.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node16]
-    worker_name = "node16"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 3456
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = -120.0
-    y = 55.0
-    [initial_nodes.node16.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node16.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node16"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 3456
+operation_mode = "Simulated"
+[initial_nodes.node16.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node16.position]
+x = -120.0
+y = 55.0
+[initial_nodes.node16.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node16.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
+[protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
 
 [initial_nodes.node17]
-    worker_name = "node17"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 4567
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = -45.0
-    y = 110.0
-    [initial_nodes.node17.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node17.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node17"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 4567
+operation_mode = "Simulated"
+[initial_nodes.node17.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node17.position]
+x = -45.0
+y = 110.0
+[initial_nodes.node17.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node17.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node18]
-    worker_name = "node18"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 5678
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = -10.0
-    y = 165.0
-    [initial_nodes.node18.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node18.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node18"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 5678
+operation_mode = "Simulated"
+[initial_nodes.node18.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node18.position]
+x = -10.0
+y = 165.0
+[initial_nodes.node18.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node18.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node19]
-    worker_name = "node19"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 6789
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 27.0
-    y = 240.0
-    [initial_nodes.node19.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node19.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node19"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 6789
+operation_mode = "Simulated"
+[initial_nodes.node19.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node19.position]
+x = 27.0
+y = 240.0
+[initial_nodes.node19.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node19.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node20]
-    worker_name = "node20"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 7890
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 65.0
-    y = 165.0
-    [initial_nodes.node20.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node20.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node20"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 7890
+operation_mode = "Simulated"
+[initial_nodes.node20.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node20.position]
+x = 65.0
+y = 165.0
+[initial_nodes.node20.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node20.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node21]
-    worker_name = "node21"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 23456
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 92.0
-    y = 110.0
-    [initial_nodes.node21.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node21.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node21"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 23456
+operation_mode = "Simulated"
+[initial_nodes.node21.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node21.position]
+x = 92.0
+y = 110.0
+[initial_nodes.node21.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node21.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node22]
-    worker_name = "node22"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 34567
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 120.0
-    y = 55.0
-    [initial_nodes.node22.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node22.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node22"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 34567
+operation_mode = "Simulated"
+[initial_nodes.node22.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node22.position]
+x = 120.0
+y = 55.0
+[initial_nodes.node22.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node22.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node23]
-    worker_name = "node23"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 45678
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 165.0
-    y = 0.0
-    [initial_nodes.node23.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node23.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node23"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 45678
+operation_mode = "Simulated"
+[initial_nodes.node23.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node23.position]
+x = 165.0
+y = 0.0
+[initial_nodes.node23.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node23.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node24]
-    worker_name = "node24"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 56789
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 120.0
-    y = -55.0
-    [initial_nodes.node24.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node24.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node24"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 56789
+operation_mode = "Simulated"
+[initial_nodes.node24.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node24.position]
+x = 120.0
+y = -55.0
+[initial_nodes.node24.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node24.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node25]
-    worker_name = "node25"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 67890
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 92.0
-    y = -110.0
-    [initial_nodes.node25.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node25.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node25"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 67890
+operation_mode = "Simulated"
+[initial_nodes.node25.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node25.position]
+x = 92.0
+y = -110.0
+[initial_nodes.node25.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node25.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node26]
-    worker_name = "node26"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 78901
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 65.0
-    y = -165.0
-    [initial_nodes.node26.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node26.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node26"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 78901
+operation_mode = "Simulated"
+[initial_nodes.node26.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node26.position]
+x = 65.0
+y = -165.0
+[initial_nodes.node26.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node26.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node27]
-    worker_name = "node27"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 89012
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = 27.0
-    y = -240.0
-    [initial_nodes.node27.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node27.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node27"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 89012
+operation_mode = "Simulated"
+[initial_nodes.node27.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node27.position]
+x = 27.0
+y = -240.0
+[initial_nodes.node27.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node27.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node28]
-    worker_name = "node28"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 90123
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = -10.0
-    y = -165.0
-    [initial_nodes.node28.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node28.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node28"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 90123
+operation_mode = "Simulated"
+[initial_nodes.node28.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node28.position]
+x = -10.0
+y = -165.0
+[initial_nodes.node28.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node28.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node29]
-    worker_name = "node29"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 123456
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = -45.0
-    y = -110.0
-    [initial_nodes.node29.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node29.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node29"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 123456
+operation_mode = "Simulated"
+[initial_nodes.node29.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node29.position]
+x = -45.0
+y = -110.0
+[initial_nodes.node29.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node29.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [initial_nodes.node30]
-    worker_name = "node30"
-    work_dir = "/tmp/basic_gossip_test508734988"
-    random_seed = 234567
-    operation_mode = "Simulated"
-    protocol = "ReactiveGossip"
-    x = -120.0
-    y = -55.0
-    [initial_nodes.node30.velocity]
-        x = 0.0
-        y = 0.0
-    [initial_nodes.node30.radio_short] 
-        reliability = 1
-        interface_name = "wlan0" 
-        range = 100.0
+worker_name = "node30"
+work_dir = "/tmp/basic_gossip_test508734988"
+random_seed = 234567
+operation_mode = "Simulated"
+[initial_nodes.node30.protocol]
+Protocol = "ReactiveGossip"
+k = 2
+p = 0.70
+[initial_nodes.node30.position]
+x = -120.0
+y = -55.0
+[initial_nodes.node30.velocity]
+x = 0.0
+y = 0.0
+[initial_nodes.node30.radio_short]
+reliability = 1
+interface_name = "wlan0"
+range = 100.0
 
 [available_nodes]

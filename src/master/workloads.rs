@@ -1,9 +1,8 @@
-
 /// Enum representing the possible patterns of transmission
 /// for source nodes in a test.
 #[derive(Debug, Deserialize, PartialEq)]
 pub enum SourceProfiles {
-    ///Constant-Bitrate. Params are: 
+    ///Constant-Bitrate. Params are:
     /// Destination
     /// Packets per second
     /// Packet Size

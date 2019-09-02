@@ -34,4 +34,7 @@ fn test_random_waypoint_basic() {
 
     let node_3_arrived = logging::find_log_record("msg", "1 workers have reached their destinations", &master_log_records);
     assert!(node_3_arrived.is_some());
+
+    //Test passed. Results are not needed.
+    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
 }

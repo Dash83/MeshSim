@@ -1,5 +1,5 @@
 //! Mesh simulator Worker module
-//! This module defines the Worker struct, which represents one of the nodes 
+//! This module defines the Worker struct, which represents one of the nodes
 //! in the Mesh deployment.
 //! The worker process has the following responsibilities:
 //!   1. Receive the test run-time parameters.
@@ -9,7 +9,6 @@
 //!   5. Send messages to any of those peers as required.
 //!   6. Progagate messages receives from other peers that are not destined to itself.
 
-
 //#![deny(missing_docs,
 //        missing_debug_implementations, missing_copy_implementations,
 //        trivial_casts, trivial_numeric_casts,
@@ -18,67 +17,56 @@
 //        unused_import_braces, unused_qualifications)]
 
 // Lint options for this module
-#![deny(missing_docs,
-        trivial_numeric_casts,
-        unstable_features,
-        unused_import_braces)]
+#![deny(
+    missing_docs,
+    trivial_numeric_casts,
+    unstable_features,
+    unused_import_braces
+)]
 
-extern crate rand;
-extern crate rustc_serialize;
-extern crate serde_cbor;
-extern crate serde;
-extern crate byteorder;
-extern crate pnet_datalink;
-extern crate ipnetwork;
-extern crate md5;
-extern crate rusqlite;
-extern crate threadpool;
-extern crate libc;
-
-use std::io::Write;
-use self::serde_cbor::de::*;
-use std::error;
-use std::fmt;
-use std::io;
-use std::str::FromStr;
-use std;
-use std::collections::{HashSet, HashMap};
-use std::process::Child;
-use std::sync::{PoisonError, MutexGuard};
+use crate::worker::listener::Listener;
 use crate::worker::protocols::*;
 use crate::worker::radio::*;
-use self::serde_cbor::ser::*;
-use std::sync::{Mutex, Arc};
-use self::rand::{rngs::StdRng, SeedableRng};
-use self::byteorder::{NativeEndian, WriteBytesExt};
-use std::thread::{self, JoinHandle};
-use self::md5::Digest;
-use crate::worker::mobility::*;
-use crate::worker::listener::Listener;
-use ::slog::Logger;
-use self::libc::{nice, c_int};
 use crate::{MeshSimError, MeshSimErrorKind};
+use byteorder::{NativeEndian, WriteBytesExt};
+use libc::{c_int, nice};
+use md5::Digest;
+use rand::{rngs::StdRng, SeedableRng};
+use serde_cbor::de::*;
+use serde_cbor::ser::*;
+use slog::Logger;
+use std::collections::{HashMap, HashSet};
+use std::io::Write;
+use std::process::Child;
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
+use std::sync::{MutexGuard, PoisonError};
+use std::thread::{self, JoinHandle};
+use std::{self, error, fmt, io};
 
 //Sub-modules declaration
-pub mod worker_config;
+pub mod commands;
+pub mod listener;
+pub mod mobility;
 pub mod protocols;
 pub mod radio;
-pub mod listener;
-pub mod commands;
-pub mod mobility;
+pub mod worker_config;
 
 // *****************************
 // ********** Globals **********
 // *****************************
 //const DNS_SERVICE_NAME : &'static str = "meshsim";
 //const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
-const DNS_SERVICE_PORT : u16 = 23456;
-const WORKER_POOL_SIZE : usize = 2;
-const SYSTEM_THREAD_NICE : c_int = -20; //Threads that need to run with a higher priority will use this
+const DNS_SERVICE_PORT: u16 = 23456;
+const WORKER_POOL_SIZE: usize = 1;
+const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 
 // *****************************
 // ********** Structs **********
 // *****************************
+
+/// Type simplifying the signatures of functions returning a Radio and a Listener.
+pub type Channel = (Arc<dyn Radio>, Box<dyn Listener>);
 
 /// Error type for all possible errors generated in the Worker module.
 #[derive(Debug)]
@@ -104,12 +92,11 @@ impl fmt::Display for WorkerError {
             WorkerError::Serialization(ref err) => write!(f, "Serialization error: {}", err),
             WorkerError::IO(ref err) => write!(f, "IO error: {}", err),
             WorkerError::Configuration(ref err) => write!(f, "Configuration error: {}", err),
-            WorkerError::Sync(ref err) => write!(f, "Synchronization error: {}", err),   
+            WorkerError::Sync(ref err) => write!(f, "Synchronization error: {}", err),
             WorkerError::Command(ref err) => write!(f, "Command error: {}", err),
             WorkerError::DB(ref err) => write!(f, "Command error: {}", err),
         }
     }
-
 }
 
 impl error::Error for WorkerError {
@@ -124,7 +111,7 @@ impl error::Error for WorkerError {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             WorkerError::Serialization(ref err) => Some(err),
             WorkerError::IO(ref err) => Some(err),
@@ -137,67 +124,87 @@ impl error::Error for WorkerError {
 }
 
 impl From<serde_cbor::Error> for WorkerError {
-    fn from(err : serde_cbor::Error) -> WorkerError {
+    fn from(err: serde_cbor::Error) -> WorkerError {
         WorkerError::Serialization(err)
     }
 }
 
 impl From<io::Error> for WorkerError {
-    fn from(err : io::Error) -> WorkerError {
+    fn from(err: io::Error) -> WorkerError {
         WorkerError::IO(err)
     }
 }
 
 impl<'a> From<PoisonError<MutexGuard<'a, HashSet<Peer>>>> for WorkerError {
-    fn from(err : PoisonError<MutexGuard<'a, HashSet<Peer>>>) -> WorkerError {
+    fn from(err: PoisonError<MutexGuard<'a, HashSet<Peer>>>) -> WorkerError {
         WorkerError::Sync(err.to_string())
     }
 }
 
 impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Peer>>>> for WorkerError {
-    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, Peer>>>) -> WorkerError {
+    fn from(err: PoisonError<MutexGuard<'a, HashMap<String, Peer>>>) -> WorkerError {
         WorkerError::Sync(err.to_string())
     }
 }
 
 impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, bool>>>> for WorkerError {
-    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, bool>>>) -> WorkerError {
+    fn from(err: PoisonError<MutexGuard<'a, HashMap<String, bool>>>) -> WorkerError {
         WorkerError::Sync(err.to_string())
     }
 }
 
 impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, String>>>> for WorkerError {
-    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, String>>>) -> WorkerError {
+    fn from(err: PoisonError<MutexGuard<'a, HashMap<String, String>>>) -> WorkerError {
         WorkerError::Sync(err.to_string())
     }
 }
 
 impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, Vec<Vec<u8>>>>>> for WorkerError {
-    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, Vec<Vec<u8>>>>>) -> WorkerError {
+    fn from(err: PoisonError<MutexGuard<'a, HashMap<String, Vec<Vec<u8>>>>>) -> WorkerError {
         WorkerError::Sync(err.to_string())
     }
 }
 
-impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing::DataCacheEntry>>>> for WorkerError {
-    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing::DataCacheEntry>>>) -> WorkerError {
+impl<'a>
+    From<
+        PoisonError<
+            MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing::DataCacheEntry>>,
+        >,
+    > for WorkerError
+{
+    fn from(
+        err: PoisonError<
+            MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing::DataCacheEntry>>,
+        >,
+    ) -> WorkerError {
         WorkerError::Sync(err.to_string())
     }
 }
 
-impl<'a> From<PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing_II::DataCacheEntry>>>> for WorkerError {
-    fn from(err : PoisonError<MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing_II::DataCacheEntry>>>) -> WorkerError {
+impl<'a>
+    From<
+        PoisonError<
+            MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing_II::DataCacheEntry>>,
+        >,
+    > for WorkerError
+{
+    fn from(
+        err: PoisonError<
+            MutexGuard<'a, HashMap<String, protocols::reactive_gossip_routing_II::DataCacheEntry>>,
+        >,
+    ) -> WorkerError {
         WorkerError::Sync(err.to_string())
     }
 }
 
 impl<'a> From<PoisonError<MutexGuard<'a, HashSet<String>>>> for WorkerError {
-    fn from(err : PoisonError<MutexGuard<'a, HashSet<String>>>) -> WorkerError {
+    fn from(err: PoisonError<MutexGuard<'a, HashSet<String>>>) -> WorkerError {
         WorkerError::Sync(err.to_string())
     }
 }
 
 impl From<rusqlite::Error> for WorkerError {
-    fn from(err : rusqlite::Error) -> WorkerError {
+    fn from(err: rusqlite::Error) -> WorkerError {
         WorkerError::DB(err)
     }
 }
@@ -208,13 +215,13 @@ impl From<rusqlite::Error> for WorkerError {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Default)]
 pub struct Peer {
     /// Public key of the peer. It's considered it's public address.
-    pub id: String, 
-    /// Friendly name of the peer. 
-    pub name : String,
+    pub id: String,
+    /// Friendly name of the peer.
+    pub name: String,
     ///Endpoint at which this worker's short_radio is listening for messages.
-    pub short_address : Option<String>,
+    pub short_address: Option<String>,
     ///Endpoint at which this worker's long_radio is listening for messages.
-    pub long_address : Option<String>,
+    pub long_address: Option<String>,
     // ///The addesses that this peer is listening at.
     // addresses : Vec<AddressType>,
 }
@@ -222,10 +229,12 @@ pub struct Peer {
 impl Peer {
     ///Empty constructor for the Peer struct.
     pub fn new() -> Peer {
-        Peer {  id : String::from(""),
-                name : String::from(""),
-                short_address : None,
-                long_address : None }
+        Peer {
+            id: String::from(""),
+            name: String::from(""),
+            short_address: None,
+            long_address: None,
+        }
     }
 }
 
@@ -236,30 +245,35 @@ impl Peer {
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct MessageHeader {
     ///Sender of the message
-    pub sender : Peer,
+    pub sender: Peer,
     ///Destination of the message
-    pub destination : Peer,
+    pub destination: Peer,
     ///Number of hops this message has taken
-    pub hops : u16,
-    ///Optional, serialized payload of the message. 
+    pub hops: u16,
+    ///Indication for the simulated radio of how long to delay the reception of a message for
+    pub delay: u64,
+    ///Optional, serialized payload of the message.
     /// It's the responsibility of the underlying protocol to know how to deserialize this payload
     /// into a protocol-specific message.
-    pub payload : Option<Vec<u8>>,
+    pub payload: Option<Vec<u8>>,
 }
 
 impl MessageHeader {
     ///Creates a MessageHeader from a serialized vector of bytes.
-    pub fn from_vec(data : Vec<u8>) -> Result<MessageHeader, serde_cbor::Error> {
-        let msg : Result<MessageHeader, _> = from_reader(&data[..]);
+    pub fn from_vec(data: Vec<u8>) -> Result<MessageHeader, serde_cbor::Error> {
+        let msg: Result<MessageHeader, _> = from_reader(&data[..]);
         msg
     }
 
     ///Create new, empty MessageHeader.
     pub fn new() -> MessageHeader {
-        MessageHeader{  sender : Peer::new(),
-                        destination : Peer::new(),
-                        hops : 0u16,
-                        payload : None }
+        MessageHeader {
+            sender: Peer::new(),
+            destination: Peer::new(),
+            hops: 0u16,
+            delay: 0u64,
+            payload: None,
+        }
     }
 
     /// Produces the MD5 checksum of this message based on the following data:
@@ -274,8 +288,7 @@ impl MessageHeader {
             data.append(&mut p);
         }
 
-        let dig = md5::compute(&data);
-        dig
+        md5::compute(&data)
     }
 }
 
@@ -358,7 +371,9 @@ pub enum OperationMode {
 }
 
 impl Default for OperationMode {
-    fn default() -> Self { OperationMode::Simulated }
+    fn default() -> Self {
+        OperationMode::Simulated
+    }
 }
 
 impl fmt::Display for OperationMode {
@@ -379,9 +394,9 @@ impl FromStr for OperationMode {
             "DEVICE" => Ok(OperationMode::Device),
             _ => {
                 let err_msg = String::from("Unsupported operation mode.");
-                let err = MeshSimError{
-                    kind : MeshSimErrorKind::Configuration(err_msg),
-                    cause : None,
+                let err = MeshSimError {
+                    kind: MeshSimErrorKind::Configuration(err_msg),
+                    cause: None,
                 };
                 Err(err)
             }
@@ -395,118 +410,131 @@ impl FromStr for OperationMode {
 #[derive(Debug)]
 pub struct Worker {
     ///Name of the current worker.
-    name : String,
+    name: String,
     ///Unique ID composed of 16 random numbers represented in a Hex String.
-    pub id : String,
+    pub id: String,
     /// Short-range radio for the worker.
-    short_radio : Option<(Arc<Radio>, Box<Listener>)>,
+    short_radio: Option<Channel>,
     /// Long-range radio for the worker.
-    long_radio : Option<(Arc<Radio>, Box<Listener>)>,
-    ///Directory for the worker to operate. Must have RW access to it. Operational files and 
+    long_radio: Option<Channel>,
+    ///Directory for the worker to operate. Must have RW access to it. Operational files and
     ///log files will be written here.
-    work_dir : String,
-    ///Random number generator used for all RNG operations. 
-    rng : Arc<Mutex<StdRng>>,
+    work_dir: String,
+    ///Random number generator used for all RNG operations.
+    rng: Arc<Mutex<StdRng>>,
     ///Random number seed used for the rng of all processes.
-    seed : u32,
+    seed: u32,
     ///Simulated or Device operation.
-    operation_mode : OperationMode,
+    operation_mode: OperationMode,
     /// The protocol that this Worker should run for this configuration.
-    pub protocol : Protocols,
+    pub protocol: Protocols,
     /// Logger for this Worker to use.
-    logger : Logger,
+    logger: Logger,
 }
 
 impl Worker {
-
     /// The main function of the worker. The functions performs the following 3 functions:
     /// 1. Starts up all radios.
     /// 2. Joins the network.
     /// 3. It starts to listen for messages of the network on all addresss
     ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
-    pub fn start(&mut self, accept_commands : bool) -> Result<(), MeshSimError> {
+    pub fn start(&mut self, accept_commands: bool) -> Result<(), MeshSimError> {
         //Init the worker
         self.init()?;
 
         //Init the radios and get their respective listeners.
         let short_radio = self.short_radio.take();
         let long_radio = self.long_radio.take();
-        let mut resources = build_protocol_resources( self.protocol, 
-                                                      short_radio, 
-                                                      long_radio, 
-                                                      self.seed, 
-                                                      self.id.clone(), 
-                                                      self.name.clone(),
-                                                      self.logger.clone())?;
-        
+        let mut resources = build_protocol_resources(
+            self.protocol,
+            short_radio,
+            long_radio,
+            self.seed,
+            self.id.clone(),
+            self.name.clone(),
+            self.logger.clone(),
+        )?;
+
         info!(self.logger, "Worker finished initializing.");
-        
+
         //Initialize protocol.
         let _res = resources.handler.init_protocol()?;
 
         //Start listening for messages
         let prot_handler = Arc::clone(&resources.handler);
-        let mut threads : Vec<JoinHandle<()>> = resources.radio_channels.drain(..).map(|(rx, tx)| {
-            let prot_handler = Arc::clone(&prot_handler);
-            let logger = self.logger.clone();
-            let thread_pool = threadpool::Builder::new().num_threads(WORKER_POOL_SIZE).build();
-            
-            thread::spawn(move || {
-                let radio_label : String = match rx.get_radio_range() {
-                    RadioTypes::LongRange => String::from("LoraRadio"),
-                    RadioTypes::ShortRange => String::from("WifiRadio"),
-                };
-                info!(logger, "[{}] Listening for messages", &radio_label);
-                loop {
-                    match rx.read_message() {
-                        Some(hdr) => { 
-                            let prot = Arc::clone(&prot_handler);
-                            let r_type = rx.get_radio_range();
-                            let tx_channel = Arc::clone(&tx);
-                            let log = logger.clone();
-                            
-                            thread_pool.execute(move || {
-                                let response = match prot.handle_message(hdr, r_type) {
-                                    Ok(resp) => { 
-                                        resp
-                                    },
-                                    Err(e) => {
-                                        error!(log, "Error handling message:");
-                                        error!(log, "{}", &e);
-                                        if let Some(cause) = e.cause {
-                                            error!(log, "Cause: {}", cause);
-                                        }
-                                        None
-                                    },
-                                };
+        let mut threads: Vec<JoinHandle<()>> = resources
+            .radio_channels
+            .drain(..)
+            .map(|(rx, tx)| {
+                let prot_handler = Arc::clone(&prot_handler);
+                let logger = self.logger.clone();
+                let thread_pool = threadpool::Builder::new()
+                    .num_threads(WORKER_POOL_SIZE)
+                    .build();
 
-                                if let Some(r) = response {
-                                    match tx_channel.broadcast(r) {
-                                        Ok(()) => { /* All good */ },
+                thread::spawn(move || {
+                    let radio_label: String = match rx.get_radio_range() {
+                        RadioTypes::LongRange => String::from("LoraRadio"),
+                        RadioTypes::ShortRange => String::from("WifiRadio"),
+                    };
+                    info!(logger, "[{}] Listening for messages", &radio_label);
+                    loop {
+                        match rx.read_message() {
+                            Some(hdr) => {
+                                let prot = Arc::clone(&prot_handler);
+                                let r_type = rx.get_radio_range();
+                                let tx_channel = Arc::clone(&tx);
+                                let log = logger.clone();
+
+                                thread_pool.execute(move || {
+                                    let response = match prot.handle_message(hdr, r_type) {
+                                        Ok(resp) => resp,
                                         Err(e) => {
-                                            error!(log, "Error sending response: {}", e);
+                                            error!(log, "Error handling message:");
+                                            error!(log, "{}", &e);
+                                            if let Some(cause) = e.cause {
+                                                error!(log, "Cause: {}", cause);
+                                            }
+                                            None
+                                        }
+                                    };
+
+                                    if let Some(r) = response {
+                                        match tx_channel.broadcast(r) {
+                                            Ok(()) => { /* All good */ }
+                                            Err(e) => {
+                                                error!(log, "Error sending response: {}", e);
+                                                if let Some(cause) = e.cause {
+                                                    error!(log, "Cause: {}", cause);
+                                                }
+                                            }
                                         }
                                     }
-                                }
-                            });
-                            debug!(logger, "Jobs in queue: {}", thread_pool.queued_count());
-                            debug!(logger, "Jobs that have paniced: {}", thread_pool.panic_count());
-                        },
-                        None => { 
-                            warn!(logger, "Failed to read incoming message.");
+                                });
+//                                debug!(logger, "Jobs in queue: {}", thread_pool.queued_count());
+//                                debug!(
+//                                    logger,
+//                                    "Jobs that have paniced: {}",
+//                                    thread_pool.panic_count()
+//                                );
+                            }
+                            None => {
+                                warn!(logger, "Failed to read incoming message.");
+                            }
                         }
                     }
-                }
+                })
             })
-        }).collect();
+            .collect();
 
         if accept_commands {
-            let com_loop_thread = self.start_command_loop_thread(Arc::clone(&prot_handler))
+            let com_loop_thread = self
+                .start_command_loop_thread(Arc::clone(&prot_handler))
                 .map_err(|e| {
                     let err_msg = String::from("Failed to start command_loop_thread");
-                    MeshSimError{
-                        kind : MeshSimErrorKind::Worker(err_msg),
-                        cause : Some(Box::new(e))
+                    MeshSimError {
+                        kind: MeshSimErrorKind::Worker(err_msg),
+                        cause: Some(Box::new(e)),
                     }
                 })?;
             threads.push(com_loop_thread);
@@ -520,7 +548,7 @@ impl Worker {
         for x in threads {
             // if let Some(h) = x {
             //     debug!("Waiting for a listener thread...");
-                let _res = x.join();
+            let _res = x.join();
             // }
         }
 
@@ -528,30 +556,30 @@ impl Worker {
     }
 
     fn init(&mut self) -> Result<(), MeshSimError> {
-//        //Make sure the required directories are there and writable or create them.
-//        //check log dir is there
-//        let mut dir = std::fs::canonicalize(&self.work_dir)?;
-//        dir.push("log"); //Dir is work_dir/log
-//        if !dir.exists() {
-//            //Create log dir
-//            std::fs::create_dir_all(dir.as_path()).unwrap_or(());
-//            info!(self.logger, "Created dir {} ", dir.as_path().display());
-//        }
-//        dir.pop(); //Dir is work_dir
+        //        //Make sure the required directories are there and writable or create them.
+        //        //check log dir is there
+        //        let mut dir = std::fs::canonicalize(&self.work_dir)?;
+        //        dir.push("log"); //Dir is work_dir/log
+        //        if !dir.exists() {
+        //            //Create log dir
+        //            std::fs::create_dir_all(dir.as_path()).unwrap_or(());
+        //            info!(self.logger, "Created dir {} ", dir.as_path().display());
+        //        }
+        //        dir.pop(); //Dir is work_dir
 
         Ok(())
     }
 
     ///Returns a random number generator seeded with the passed parameter.
-    pub fn rng_from_seed(seed : u32) -> StdRng {
+    pub fn rng_from_seed(seed: u32) -> StdRng {
         //Create RNG from the provided random seed.
         let mut random_bytes = vec![];
         //Fill the uper 28 bytes with 0s
         for _i in 0..7 {
-            let _ = random_bytes.write_u32::<NativeEndian>(0);
+            random_bytes.write_u32::<NativeEndian>(0).unwrap_or(());
         }
         //Write the last 4 bytes from the provided seed
-        let _ = random_bytes.write_u32::<NativeEndian>(seed);
+        random_bytes.write_u32::<NativeEndian>(seed).unwrap_or(());
 
         // let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
         let mut randomness = [0; 32];
@@ -559,12 +587,14 @@ impl Worker {
         StdRng::from_seed(randomness)
     }
 
-    fn start_command_loop_thread(&self, protocol_handler : Arc<Protocol>) -> io::Result<JoinHandle<()>> {
+    fn start_command_loop_thread(
+        &self,
+        protocol_handler: Arc<dyn Protocol>,
+    ) -> io::Result<JoinHandle<()>> {
         let tb = thread::Builder::new();
         let logger = self.logger.clone();
 
-        tb.name(String::from("CommandLoop"))
-        .spawn(move || {
+        tb.name(String::from("CommandLoop")).spawn(move || {
             unsafe {
                 let new_nice = nice(SYSTEM_THREAD_NICE);
                 debug!(logger, "[CommandLoop]: New priority: {}", new_nice);
@@ -573,25 +603,24 @@ impl Worker {
         })
     }
 
-// Debug function, only used to make sure the worker is alive and getting scheduled.
-//    fn start_second_counter_thread(&self) -> io::Result<JoinHandle<Result<(), MeshSimError>>> {
-//        let tb = thread::Builder::new();
-//        let logger = self.logger.clone();
-//        let mut i = 0;
-//
-//        tb.name(String::from("AliveThread"))
-//        .spawn(move || {
-//            loop{
-//                thread::sleep(Duration::from_millis(1000));
-//                info!(logger, "{}", i);
-//                i += 1;
-//            }
-//            Ok(())
-//        })
-//    }
+    // Debug function, only used to make sure the worker is alive and getting scheduled.
+    //    fn start_second_counter_thread(&self) -> io::Result<JoinHandle<Result<(), MeshSimError>>> {
+    //        let tb = thread::Builder::new();
+    //        let logger = self.logger.clone();
+    //        let mut i = 0;
+    //
+    //        tb.name(String::from("AliveThread"))
+    //        .spawn(move || {
+    //            loop{
+    //                thread::sleep(Duration::from_millis(1000));
+    //                info!(logger, "{}", i);
+    //                i += 1;
+    //            }
+    //            Ok(())
+    //        })
+    //    }
 
-    fn command_loop(logger : &Logger,
-                    protocol_handler : Arc<dyn Protocol>) {
+    fn command_loop(logger: &Logger, protocol_handler: Arc<dyn Protocol>) {
         let mut input = String::new();
         let stdin = io::stdin();
 
@@ -601,29 +630,46 @@ impl Worker {
                 Ok(_bytes) => {
                     match input.parse::<commands::Commands>() {
                         Ok(command) => {
-                            match Worker::process_command(command, Arc::clone(&protocol_handler), logger) {
-                                Ok(_) => { /* All good! */ },
+                            match Worker::process_command(
+                                command,
+                                Arc::clone(&protocol_handler),
+                                logger,
+                            ) {
+                                Ok(_) => { /* All good! */ }
                                 Err(e) => {
-                                    error!(logger, "Error executing command: {}", e);
+                                    error!(logger, "Error executing command: {}", &e);
+                                    if let Some(cause) = e.cause {
+                                        error!(logger, "Cause: {}", &cause);
+                                    }
                                 }
                             }
-                        },
-                        Err(e) => { 
+                        }
+                        Err(e) => {
                             error!(logger, "Error parsing command: {}", e);
-                        },
+                            if let Some(cause) = e.cause {
+                                error!(logger, "Cause: {}", &cause);
+                            }
+                        }
                     }
                 }
-                Err(error) => { 
-                    error!(logger, "{}", error);
+                Err(e) => {
+                    error!(logger, "{}", &e);
+//                    if let Some(cause) = e.cause {
+//                        error!(logger, "Cause: {}", &cause);
+//                    }
                 }
             }
             input.clear();
         }
-//        #[allow(unreachable_code)]
-//        Ok(()) //Loop should never end
+        //        #[allow(unreachable_code)]
+        //        Ok(()) //Loop should never end
     }
 
-    fn process_command(com : commands::Commands, ph : Arc<Protocol>, logger : &Logger) -> Result<(), MeshSimError> {
+    fn process_command(
+        com: commands::Commands,
+        ph: Arc<dyn Protocol>,
+        logger: &Logger,
+    ) -> Result<(), MeshSimError> {
         match com {
             commands::Commands::Send(destination, data) => {
                 info!(logger, "Send command received");
@@ -634,28 +680,24 @@ impl Worker {
     }
 }
 
-
 // *****************************
 // ******* End structs *********
 // *****************************
-
 
 // *****************************
 // ********** Tests ************
 // *****************************
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::worker::rand::RngCore;
     use std::iter;
+    use rand::RngCore;
 
     //use worker::worker_config::*;
 
     //**** Peer unit tests ****
-    
-    
+
     //**** Worker unit tests ****
     //Unit test for: Worker::new
     // #[test]
@@ -687,14 +729,14 @@ mod tests {
 
     //     assert_eq!(String::from("Worker1"), record.get_txt_record("NAME").unwrap());
     // }
-    
+
     #[test]
     fn test_message_header_hash() {
         let mut msg = MessageHeader::new();
         msg.sender.name = String::from("SENDER");
         msg.destination.name = String::from("DESTINATION");
         let mut rng = Worker::rng_from_seed(12345);
-        let mut data : Vec<u8>= iter::repeat(0u8).take(64).collect();
+        let mut data: Vec<u8> = iter::repeat(0u8).take(64).collect();
 
         rng.fill_bytes(&mut data[..]);
         msg.payload = Some(data.clone());
@@ -718,8 +760,6 @@ mod tests {
     #[test]
     fn test_message_size() {
         use std::mem;
-        
-        use self::serde_cbor::ser::*;
 
         let mut self_peer = Peer::new();
         self_peer.name = String::from("Foo");
@@ -730,8 +770,8 @@ mod tests {
         dest_peer.id = String::from("oija450njjcdlhbaslijdblahsd");
 
         let hdr = MessageHeader::new();
-//        hdr.sender = self_peer.clone();
-//        hdr.destination = dest_peer.clone();
+        //        hdr.sender = self_peer.clone();
+        //        hdr.destination = dest_peer.clone();
 
         println!("Size of MessageHeader: {}", mem::size_of::<MessageHeader>());
         let serialized_hdr = to_vec(&hdr).expect("Could not serialize");
@@ -743,34 +783,33 @@ mod tests {
         let peer_size = mem::size_of_val(&serialized_peer);
         println!("Size of a Peer instance: {}", peer_size);
 
-//        let mut msg = DataMessage{ route_id : String::from("SOME_ROUTE"),
-//            payload :  String::from("SOME DATA TO TRANSMIT").as_bytes().to_vec() };
-//        println!("Size of DataMessage: {}", mem::size_of::<DataMessage>());
-//        let msg_size = mem::size_of_val(&msg);
-//        println!("Size of a MessageHeader instance: {}", msg_size);
-//        let ser_msg = to_vec(&msg).expect("Could not serialize");
-//        println!("Size of ser_msg: {}", mem::size_of_val(&ser_msg));
-//        println!("Len of ser_msg: {}", ser_msg.len());
-//        let ser_hdr = to_vec(&hdr).expect("Could not serialize");
-//        println!("Len of ser_hdr: {}", ser_hdr.len());
-//        hdr.payload = Some(ser_msg);
+        //        let mut msg = DataMessage{ route_id : String::from("SOME_ROUTE"),
+        //            payload :  String::from("SOME DATA TO TRANSMIT").as_bytes().to_vec() };
+        //        println!("Size of DataMessage: {}", mem::size_of::<DataMessage>());
+        //        let msg_size = mem::size_of_val(&msg);
+        //        println!("Size of a MessageHeader instance: {}", msg_size);
+        //        let ser_msg = to_vec(&msg).expect("Could not serialize");
+        //        println!("Size of ser_msg: {}", mem::size_of_val(&ser_msg));
+        //        println!("Len of ser_msg: {}", ser_msg.len());
+        //        let ser_hdr = to_vec(&hdr).expect("Could not serialize");
+        //        println!("Len of ser_hdr: {}", ser_hdr.len());
+        //        hdr.payload = Some(ser_msg);
 
-//        let final_hdr = to_vec(&hdr).expect("Could not serialize");
-//        println!("Len of final_hdr: {}", final_hdr.len());
-//
-//        println!("Size of SampleStruct: {}", mem::size_of::<SampleStruct>());
-//        let s = SampleStruct;
-//        let xs = to_vec(&s).expect("Could not serialize");
-//        println!("Size of serialized SampleStruct: {}", xs.len());
-//        println!("xs: {:?}", &xs);
+        //        let final_hdr = to_vec(&hdr).expect("Could not serialize");
+        //        println!("Len of final_hdr: {}", final_hdr.len());
+        //
+        //        println!("Size of SampleStruct: {}", mem::size_of::<SampleStruct>());
+        //        let s = SampleStruct;
+        //        let xs = to_vec(&s).expect("Could not serialize");
+        //        println!("Size of serialized SampleStruct: {}", xs.len());
+        //        println!("xs: {:?}", &xs);
 
-//        let sample_data = [1u8; 2048];
-//        println!("sample data len: {}", sample_data.len());
-//        println!("sample data sizeof: {}", mem::size_of_val(&sample_data));
-//        let ser_sample_data = to_vec(&sample_data.to_vec()).expect("Could not serialize");
-//        println!("ser_sample_data len: {}", ser_sample_data.len());
+        //        let sample_data = [1u8; 2048];
+        //        println!("sample data len: {}", sample_data.len());
+        //        println!("sample data sizeof: {}", mem::size_of_val(&sample_data));
+        //        let ser_sample_data = to_vec(&sample_data.to_vec()).expect("Could not serialize");
+        //        println!("ser_sample_data len: {}", ser_sample_data.len());
         assert!(false);
-
     }
 }
 

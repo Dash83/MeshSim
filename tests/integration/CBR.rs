@@ -45,4 +45,7 @@ fn test_cbr_basic() {
     //Since the CBR source is configured to transmit 3 packets per second for 5 seconds,
     //we expect to count 15 received packets.
     assert_eq!(received_packets, 15);
+
+    //Test passed. Results are not needed.
+    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
 }

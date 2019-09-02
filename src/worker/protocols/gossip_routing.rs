@@ -1,4 +1,4 @@
-//! Protocol that naively routes data by relaying all messages it receives.
+//! Gossip-based flooding protocol
 
 use crate::worker::protocols::Protocol;
 use crate::worker::radio::*;
@@ -9,8 +9,13 @@ use serde_cbor::de::*;
 use serde_cbor::ser::*;
 use slog::Logger;
 use std::sync::{Arc, Mutex};
+use rand::{rngs::StdRng, Rng};
 
 const MSG_CACHE_SIZE: usize = 200;
+/// The default number of hops messages are guaranteed to be propagated
+pub const DEFAULT_MIN_HOPS: usize = 2;
+/// The default gossip-probability value
+pub const DEFAULT_GOSSIP_PROB: f64 = 0.70;
 
 #[derive(Debug)]
 struct CacheEntry {
@@ -19,11 +24,15 @@ struct CacheEntry {
 
 ///The main struct for this protocol. Implements the worker::protocol::Protocol trait.
 #[derive(Debug)]
-pub struct NaiveRouting {
+pub struct GossipRouting {
+    k : usize,
+    p : f64,
     worker_name: String,
     worker_id: String,
     msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
     short_radio: Arc<dyn Radio>,
+    /// RNG used for gossip calculations
+    rng: Arc<Mutex<StdRng>>,
     logger: Logger,
 }
 
@@ -35,7 +44,7 @@ pub enum Messages {
     Data(Vec<u8>),
 }
 
-impl Protocol for NaiveRouting {
+impl Protocol for GossipRouting {
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
         //No initialization needed
         Ok(None)
@@ -59,7 +68,7 @@ impl Protocol for NaiveRouting {
             }
         };
 
-        let msg = NaiveRouting::build_protocol_message(data).map_err(|e| {
+        let msg = GossipRouting::build_protocol_message(data).map_err(|e| {
             let err_msg = String::from("Failed to deserialize payload into a message");
             MeshSimError {
                 kind: MeshSimErrorKind::Serialization(err_msg),
@@ -67,12 +76,16 @@ impl Protocol for NaiveRouting {
             }
         })?;
         let msg_cache = Arc::clone(&self.msg_cache);
-        NaiveRouting::handle_message_internal(
+        let rng = Arc::clone(&self.rng);
+        GossipRouting::handle_message_internal(
             header,
             msg,
             self.get_self_peer(),
             msg_hash,
+            self.k,
+            self.p,
             msg_cache,
+            rng,
             &self.logger,
         )
     }
@@ -81,7 +94,7 @@ impl Protocol for NaiveRouting {
         let mut dest = Peer::new();
         dest.name = destination;
 
-        let hdr = NaiveRouting::create_data_message(self.get_self_peer(), dest, 1, data)?;
+        let hdr = GossipRouting::create_data_message(self.get_self_peer(), dest, 1, data)?;
         let msg_hash = hdr.get_hdr_hash();
         {
             let mut cache = self.msg_cache.lock().expect("Could not lock message cache");
@@ -99,20 +112,26 @@ impl Protocol for NaiveRouting {
     }
 }
 
-impl NaiveRouting {
+impl GossipRouting {
     /// Creates a new instance of the NaiveRouting protocol handler
     pub fn new(
         worker_name: String,
         worker_id: String,
+        k : usize,
+        p : f64,
         sr: Arc<dyn Radio>,
+        rng: Arc<Mutex<StdRng>>,
         logger: Logger,
-    ) -> NaiveRouting {
+    ) -> GossipRouting {
         let v = Vec::new();
-        NaiveRouting {
+        GossipRouting {
             worker_name,
             worker_id,
+            k,
+            p,
             msg_cache: Arc::new(Mutex::new(v)),
             short_radio: sr,
+            rng,
             logger,
         }
     }
@@ -148,8 +167,11 @@ impl NaiveRouting {
         hdr: MessageHeader,
         data: Vec<u8>,
         msg_hash: Digest,
+        k: usize,
+        p: f64,
         me: Peer,
         msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
+        rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
         info!(
@@ -189,7 +211,19 @@ impl NaiveRouting {
             return Ok(None);
         }
 
-        let response = NaiveRouting::create_data_message(me, hdr.destination, hdr.hops + 1, data)?;
+        //Gossip?
+        let s: f64 = {
+            let mut rng = rng.lock().expect("Could not obtain lock for RNG");
+            rng.gen_range(0f64, 1f64)
+        };
+        debug!(logger, "Gossip prob {}", s);
+        if hdr.hops as usize > k && s > p {
+            info!(logger, "Not forwarding the message");
+            //Not gossiping this message.
+            return Ok(None);
+        }
+
+        let response = GossipRouting::create_data_message(me, hdr.destination, hdr.hops + 1, data)?;
 
         Ok(Some(response))
     }
@@ -199,12 +233,25 @@ impl NaiveRouting {
         msg: Messages,
         me: Peer,
         msg_hash: Digest,
+        k: usize,
+        p: f64,
         msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
+        rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
         match msg {
             Messages::Data(data) => {
-                NaiveRouting::process_data_message(hdr, data, msg_hash, me, msg_cache, logger)
+                GossipRouting::process_data_message(
+                    hdr,
+                    data,
+                    msg_hash,
+                    k,
+                    p,
+                    me,
+                    msg_cache,
+                    rng,
+                    logger
+                )
             }
         }
     }
