@@ -10,7 +10,7 @@ use serde_cbor::ser::*;
 use slog::Logger;
 use std::sync::{Arc, Mutex};
 
-const MSG_CACHE_SIZE: usize = 200;
+const MSG_CACHE_SIZE: usize = 2000;
 
 #[derive(Debug)]
 struct CacheEntry {

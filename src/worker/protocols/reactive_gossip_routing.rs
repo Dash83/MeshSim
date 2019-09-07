@@ -19,7 +19,7 @@ use std::time::Duration;
 pub const DEFAULT_MIN_HOPS: usize = 2;
 /// The default gossip-probability value
 pub const DEFAULT_GOSSIP_PROB: f64 = 0.70;
-const MSG_CACHE_SIZE: usize = 200;
+const MSG_CACHE_SIZE: usize = 2000;
 const CONCCURENT_THREADS_PER_FLOW: usize = 2;
 const MSG_TRANSMISSION_THRESHOLD: u64 = 1000;
 
