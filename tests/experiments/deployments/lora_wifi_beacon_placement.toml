@@ -1,6 +1,6 @@
 name = "lora_wifi_beacon_placement"
 gen_logs = false
-log_dir = "results/lora_wifi_beacon_placement/log"
+log_dir = "~/results/lora_wifi_beacon_placement/log"
 
 command = "cargo"
 args = ["build", "--release"]
