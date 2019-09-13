@@ -252,6 +252,8 @@ pub struct MessageHeader {
     pub hops: u16,
     ///Indication for the simulated radio of how long to delay the reception of a message for
     pub delay: u64,
+    /// Number of hops until the message is discarded
+    pub ttl: usize,
     ///Optional, serialized payload of the message.
     /// It's the responsibility of the underlying protocol to know how to deserialize this payload
     /// into a protocol-specific message.
@@ -272,6 +274,7 @@ impl MessageHeader {
             destination: Peer::new(),
             hops: 0u16,
             delay: 0u64,
+            ttl: std::usize::MAX,
             payload: None,
         }
     }

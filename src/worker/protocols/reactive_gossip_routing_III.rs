@@ -21,7 +21,7 @@ pub const DEFAULT_MIN_HOPS: usize = 2;
 /// The default gossip-probability value
 pub const BASE_GOSSIP_PROB: f64 = 0.50;
 const VICINITY_GOSSIP_PROB: f64 = 0.20;
-const MSG_CACHE_SIZE: usize = 200;
+const MSG_CACHE_SIZE: usize = 2000;
 const CONCCURENT_THREADS_PER_FLOW: usize = 2;
 const MAINTENANCE_LOOP: u64 = 1_000;
 const VC_FRESHNESS_THRESHOLD: i64 = 5_000;
@@ -607,16 +607,16 @@ impl ReactiveGossipRoutingIII {
     ) -> Result<Option<MessageHeader>, MeshSimError> {
         info!(logger, "Received ROUTE_DISCOVERY message"; "route_id" => &msg.route_id, "source" => &hdr.sender.name);
 
-//        //Update vicinity cache with the current route, since all those nodes should be reachable
-//        //by this node.
-//        {
-//            let mut vc = vicinity_cache
-//                .lock()
-//                .expect("Failed to lock vicinity cache");
-//            for node in msg.route.iter() {
-//                vc.insert(node.into(), Utc::now());
-//            }
-//        }
+        //Update vicinity cache with the current route, since all those nodes should be reachable
+        //by this node.
+        {
+            let mut vc = vicinity_cache
+                .lock()
+                .expect("Failed to lock vicinity cache");
+            for node in msg.route.iter() {
+                vc.insert(node.into(), Utc::now());
+            }
+        }
 
         //Is this node the intended destination of the route?
         if hdr.destination.name == self_peer.name {
@@ -698,7 +698,7 @@ impl ReactiveGossipRoutingIII {
         msg.route.push(self_peer.name.clone());
         info!(
             logger,
-            "{} added to route_id {}", &self_peer.name, msg.route_id
+             "RouteDiscovery message forwarded"; "route_id" => &msg.route_id
         );
 
         //Build message and forward it
@@ -816,9 +816,15 @@ impl ReactiveGossipRoutingIII {
             return Ok(None);
         }
 
+        info!(
+            logger,
+            "{} added to route_id {}", &self_peer.name, &msg.route_id
+        );
+
         //Finally, forward the message
         hdr.sender = self_peer.clone();
         hdr.payload = Some(serialize_message(Messages::RouteEstablish(msg))?);
+
         Ok(Some(hdr))
     }
 

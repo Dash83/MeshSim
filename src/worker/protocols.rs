@@ -12,6 +12,7 @@ use reactive_gossip_routing::ReactiveGossipRouting;
 use reactive_gossip_routing_II::ReactiveGossipRoutingII;
 use reactive_gossip_routing_III::ReactiveGossipRoutingIII;
 use gossip_routing::GossipRouting;
+use aodv::AODV;
 use slog::Logger;
 
 use std;
@@ -26,6 +27,7 @@ pub mod reactive_gossip_routing;
 pub mod reactive_gossip_routing_II;
 #[allow(non_snake_case)]
 pub mod reactive_gossip_routing_III;
+pub mod aodv;
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should
@@ -81,6 +83,8 @@ pub enum Protocols {
         /// Probability of retransmission per node.
         p: f64
     },
+    /// Ad-hoc On-Demand Distance Vector routing protocol.
+    AODV,
 }
 
 impl Default for Protocols {
@@ -287,6 +291,7 @@ impl FromStr for Protocols {
                     Protocols::GossipRouting{k, p}
                 )
             },
+            "AODV" => Ok(Protocols::AODV),
             _ => {
                 let err_msg = String::from("The specified protocol is not supported.");
                 let error = MeshSimError {
@@ -445,6 +450,27 @@ pub fn build_protocol_resources(
             let mut radio_channels = Vec::new();
             radio_channels.push((sr_listener, sr));
             radio_channels.push((lr_listener, lr));
+            let resources = ProtocolResources {
+                handler,
+                radio_channels,
+            };
+            Ok(resources)
+        },
+        Protocols::AODV => {
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let (sr, listener) = short_radio
+                .expect("The AODV protocol requires a short_radio to be provided.");
+            let rng = Worker::rng_from_seed(seed);
+            let handler: Arc<dyn Protocol> =
+                Arc::new(AODV::new(
+                    name, 
+                    id, 
+                    Arc::clone(&sr), 
+                    Arc::new(Mutex::new(rng)),
+                    logger
+            ));
+            let mut radio_channels = Vec::new();
+            radio_channels.push((listener, sr));
             let resources = ProtocolResources {
                 handler,
                 radio_channels,

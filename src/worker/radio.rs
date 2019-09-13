@@ -126,13 +126,22 @@ impl Radio for SimulatedRadio {
 
         while i < TRANSMISSION_MAX_RETRY {
             //Get the list of active transmitters in range
-            let active_transmitters_in_range = get_active_transmitters_in_range(
+            let active_transmitters_in_range = match get_active_transmitters_in_range(
                 &conn,
                 &self.worker_name,
                 self.r_type,
                 self.range,
                 &self.logger
-            )?;
+            ) {
+                Ok(atir) => atir,
+                Err(e) => {
+                    warn!(&self.logger, "{}", &e; "ThreadID"=>&thread_id);
+                    if let Some(cause) = e.cause {
+                        warn!(&self.logger, "Cause: {}", cause; "ThreadID"=>&thread_id);
+                    }
+                    continue;
+                },
+            };
 
             debug!(self.logger, "{} active transmitters in range", active_transmitters_in_range.len());
 
@@ -400,7 +409,7 @@ impl SimulatedRadio {
                 },
                 Err(e) => {
                     i += 1;
-                    warn!(self.logger, "Error: {}", &e; "Thread"=> &thread_id);
+                    warn!(self.logger, "{}", &e; "Thread"=> &thread_id);
                     if let Some(cause) = e.cause {
                         warn!(self.logger, "Cause: {}", &cause);
                     }
@@ -444,7 +453,7 @@ impl SimulatedRadio {
                 },
                 Err(e) => {
                     i += 1;
-                    warn!(self.logger, "Error: {}", &e; "Thread"=> &thread_id);
+                    warn!(self.logger, "{}", &e; "Thread"=> &thread_id);
                     if let Some(cause) = e.cause {
                         warn!(self.logger, "Cause: {}", &cause);
                     }

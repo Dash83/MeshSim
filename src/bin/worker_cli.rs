@@ -107,6 +107,7 @@ impl From<toml::de::Error> for CLIError {
 // ***************End Errors****************
 
 fn run(config: WorkerConfig, logger: Logger) -> Result<(), MeshSimError> {
+    debug!(logger, "Worker Config: {:?}", &config);
     let ac = config.accept_commands.unwrap_or(false);
     let mut obj = config.create_worker(logger)?;
     //debug!("Worker Obj: {:?}", obj);
