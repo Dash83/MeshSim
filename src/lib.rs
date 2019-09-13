@@ -9,6 +9,8 @@ extern crate lazy_static;
 extern crate slog;
 #[macro_use]
 extern crate pretty_assertions;
+#[macro_use]
+extern crate bitflags;
 
 //*****************
 //Modules declaration

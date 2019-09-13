@@ -139,6 +139,7 @@ impl NaiveRouting {
             destination,
             hops,
             delay: 0u64,
+            ttl: std::usize::MAX,
             payload: Some(payload),
         };
         Ok(msg)
