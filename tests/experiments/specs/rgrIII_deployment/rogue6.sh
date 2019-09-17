@@ -1,0 +1,1 @@
+(sleep 10; echo "SEND ROGUE9 VEhJUyBJUyBUSEUgREFUQSBUSEFUIFdBUyBTRU5UIEZST00gUk9HVUU2IFRPIFNIT1cgVEhFIFJPVVRJTkctQ0FQQUJJTElUSUVTIE9GIFJHUklJSSBPVkVSIFJFQUwgUkFESU9TLgo=") | ./target/release/worker_cli --config tests/experiments/specs/rgrIII_deployment/rogue6.toml --work_dir results/rgrIII_deployment --register_worker false --accept_commands true --log_to_terminal true
