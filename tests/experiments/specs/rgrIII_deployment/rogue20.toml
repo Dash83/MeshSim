@@ -1,0 +1,26 @@
+worker_name = "rogue20"
+worker_id = "379b04da018497cf2b0d1f2618ce7539"
+work_dir = "/tmp/rgrIII_deployment"
+random_seed = 4271276164
+operation_mode = "Device"
+
+[position]
+x = 0.0 #ignored
+y = 0.0 #ignored
+
+[velocity]
+x = 0.0
+y = 0.0
+
+[protocol]
+Protocol = "ReactiveGossipIII"
+
+[radio_short]
+reliability = 1.0 #ignored
+interface_name = "wlan0"
+range = 20.0 #ignored
+
+[radio_long]
+reliability = 1.0 #ignored
+interface_name = "wlan1" #ignored
+range = 38.0 #ignored
