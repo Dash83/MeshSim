@@ -3,12 +3,17 @@ worker_id = "a70f6acd92ea15138b105b5e64dc7b58"
 work_dir = "/tmp/lora_wifi_beacon_placement307062120"
 random_seed = 2064441343
 operation_mode = "Device"
-protocol = "LoraWifiBeacon"
+
+[position]
 x = 0.0 #ignored
 y = 0.0 #ignored
+
 [velocity]
 x = 0.0
 y = 0.0
+
+[protocol]
+Protocol = "LoraWifiBeacon"
 
 [radio_short]
 reliability = 1.0 #ignored
