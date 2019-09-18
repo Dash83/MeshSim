@@ -1,5 +1,5 @@
 name = "aodv_basic"
-duration = 5000
+duration = 6000
 actions = [ "Ping node1 node25 1500",
             "Ping node6 node25 2500"]
 width = 200.0
