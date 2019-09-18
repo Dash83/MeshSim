@@ -6,6 +6,8 @@ operation_mode = "Device"
 
 [protocol]
 Protocol = "ReactiveGossipIII"
+k = 2
+p = 0.5
 
 [position]
 x = 0.0 #ignored

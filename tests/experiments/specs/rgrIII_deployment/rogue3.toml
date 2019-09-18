@@ -14,6 +14,8 @@ y = 0.0
 
 [protocol]
 Protocol = "ReactiveGossipIII"
+k = 2
+p = 0.5
 
 [radio_short]
 reliability = 1.0 #ignored
