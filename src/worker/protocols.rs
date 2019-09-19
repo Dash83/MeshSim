@@ -337,11 +337,11 @@ pub fn build_protocol_resources(
             radio_channels.push((sr_listener, Arc::clone(&sr)));
             radio_channels.push((lr_listener, Arc::clone(&lr)));
 
-            let _rng = Worker::rng_from_seed(seed);
+            let rng = Worker::rng_from_seed(seed);
 
             //Build the protocol handler
             let handler: Arc<dyn Protocol> =
-                Arc::new(LoraWifiBeacon::new(name, id, sr, lr, logger));
+                Arc::new(LoraWifiBeacon::new(name, id, sr, lr, rng, logger));
 
             //Build the resources context
             let resources = ProtocolResources {
