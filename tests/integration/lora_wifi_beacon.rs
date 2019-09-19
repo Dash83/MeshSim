@@ -37,6 +37,7 @@ fn test_placement() {
     let node1_log_records = logging::get_log_records_from_file(&node1_log_file).unwrap();
     let mut received_packets_wifi = 0;
     let mut received_packets_lora = 0;
+    let mut received_wifi_responses = 0;
     for record in node1_log_records.iter() {
         if record["msg"].as_str().unwrap().contains("Beacon received over wifi from") {
             received_packets_wifi += 1;
@@ -45,9 +46,14 @@ fn test_placement() {
         if record["msg"].as_str().unwrap().contains("Beacon received over lora from") {
             received_packets_lora += 1;
         }
+
+        if record["msg"].as_str().unwrap().contains("BeaconResponse received over wifi") {
+            received_wifi_responses += 1;
+        }
     }
 
     assert_eq!(received_packets_wifi, 10);
+    assert_eq!(received_wifi_responses, 10);
 //    assert_eq!(received_packets_lora, 25);
 
     //Check a central node
@@ -55,6 +61,7 @@ fn test_placement() {
     let node7_log_records = logging::get_log_records_from_file(&node7_log_file).unwrap();
     let mut received_packets_wifi = 0;
     let mut received_packets_lora = 0;
+    let mut received_wifi_responses = 0;
     for record in node7_log_records.iter() {
         if record["msg"].as_str().unwrap().contains("Beacon received over wifi from") {
             received_packets_wifi += 1;
@@ -63,9 +70,14 @@ fn test_placement() {
         if record["msg"].as_str().unwrap().contains("Beacon received over lora from") {
             received_packets_lora += 1;
         }
+
+        if record["msg"].as_str().unwrap().contains("BeaconResponse received over wifi") {
+            received_wifi_responses += 1;
+        }
     }
 
     assert_eq!(received_packets_wifi, 20);
+    assert_eq!(received_wifi_responses, 20);
 //    assert_eq!(received_packets_lora, 100);
 
     //Test passed. Results are not needed.

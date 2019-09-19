@@ -13,6 +13,7 @@ use slog::Logger;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use rand::{rngs::StdRng, Rng};
 
 const WIFI_BEACON_TIMEOUT: u64 = 2_000;
 const LORA_BEACON_TIMEOUT: u64 = 2_000;
@@ -24,7 +25,7 @@ pub struct LoraWifiBeacon {
     worker_id: String,
     wifi_radio: Arc<dyn Radio>,
     lora_radio: Arc<dyn Radio>,
-    //    rng : StdRng,
+    rng : StdRng,
     logger: Logger,
 }
 
@@ -32,6 +33,7 @@ pub struct LoraWifiBeacon {
 #[derive(Debug, Serialize, Deserialize)]
 enum Messages {
     Beacon(u64),
+    BeaconResponse(u64),
 }
 
 impl Protocol for LoraWifiBeacon {
@@ -74,6 +76,11 @@ impl Protocol for LoraWifiBeacon {
 
     /// Function to initialize the protocol.
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
+        //Random startup delay to avoid high collisions
+        let mut rng = thread_rng();
+        let startup_delay: u64 = rng.gen_range(0, 50);
+        std::thread::sleep(Duration::from_millis(startup_delay));
+
         let wifi_radio = Arc::clone(&self.wifi_radio);
         let self_peer = self.get_self_peer();
         let logger = self.logger.clone();
@@ -119,7 +126,7 @@ impl LoraWifiBeacon {
         worker_id: String,
         wifi_radio: Arc<dyn Radio>,
         lora_radio: Arc<dyn Radio>,
-        //               rng : StdRng,
+        rng : StdRng,
         logger: Logger,
     ) -> LoraWifiBeacon {
         LoraWifiBeacon {
@@ -127,7 +134,7 @@ impl LoraWifiBeacon {
             worker_id,
             wifi_radio,
             lora_radio,
-            //                        rng : rng,
+            rng : rng,
             logger,
         }
     }
@@ -195,7 +202,7 @@ impl LoraWifiBeacon {
         hdr: MessageHeader,
         msg: Messages,
         link: String,
-        _self_peer: Peer,
+        self_peer: Peer,
         _msg_hash: Digest,
         _wifi_radio: Arc<dyn Radio>,
         _lora_radio: Arc<dyn Radio>,
@@ -203,21 +210,67 @@ impl LoraWifiBeacon {
     ) -> Result<Option<MessageHeader>, MeshSimError> {
         match msg {
             Messages::Beacon(counter) => {
-                LoraWifiBeacon::process_beacon_msg(hdr, counter, link, logger)
+                LoraWifiBeacon::process_beacon_msg(hdr, counter, link, self_peer, logger)
+            }
+            Messages::BeaconResponse(counter) => {
+                LoraWifiBeacon::process_beacon_response_msg(hdr, counter, link, self_peer, logger)
             }
         }
     }
 
     fn process_beacon_msg(
-        hdr: MessageHeader,
+        mut hdr: MessageHeader,
         counter: u64,
         link: String,
+        me : Peer,
         logger: Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
         info!(
             logger,
             "Beacon received over {} from {}:{}", link, hdr.sender.name, counter
         );
+        hdr.destination = hdr.sender.clone();
+        hdr.sender = me.clone();
+        hdr.payload = Some(serialize_message(Messages::BeaconResponse(counter))?);
+
+        Ok(Some(hdr))
+    }
+
+    fn process_beacon_response_msg(
+        hdr: MessageHeader,
+        counter: u64,
+        link: String,
+        me: Peer,
+        logger: Logger,
+    ) -> Result<Option<MessageHeader>, MeshSimError> {
+
+        if hdr.destination.name == me.name {
+            info!(
+                logger,
+                "BeaconResponse received over {} from {}:{}", link, hdr.sender.name, counter
+            );
+        }
+
         Ok(None)
     }
+}
+
+fn deserialize_message(data: Vec<u8>) -> Result<Messages, MeshSimError> {
+    from_slice(data.as_slice()).map_err(|e| {
+        let err_msg = String::from("Error deserializing data into message");
+        MeshSimError {
+            kind: MeshSimErrorKind::Serialization(err_msg),
+            cause: Some(Box::new(e)),
+        }
+    })
+}
+
+fn serialize_message(msg: Messages) -> Result<Vec<u8>, MeshSimError> {
+    to_vec(&msg).map_err(|e| {
+        let err_msg = String::from("Error serializing message");
+        MeshSimError {
+            kind: MeshSimErrorKind::Serialization(err_msg),
+            cause: Some(Box::new(e)),
+        }
+    })
 }
