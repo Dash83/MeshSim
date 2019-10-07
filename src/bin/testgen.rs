@@ -439,9 +439,14 @@ fn add_cbr_sources(
     spec: &mut TestSpec,
 ) -> Result<bool, Errors> {
     let mut rng = thread_rng();
-    //Earliest start time for any CBR source is when 10% of the sim time has started.
-    let sources_start: u64 = spec.duration / 10;
-    let start_times_sample = Uniform::new(sources_start, spec.duration);
+    //Warm-up time estimated at 10 ms per node.
+    let warm_up_period: u64 = (spec.initial_nodes.len() * 10) as u64;
+    let cool_off_period: u64 = (spec.duration as f64 * 0.10) as u64;
+    let duration: u64 = (spec.duration as f64 * 0.10) as u64;
+    let sources_start_time_limit: u64 = spec.duration - cool_off_period - duration;
+    let start_times_sample = Uniform::new(warm_up_period, sources_start_time_limit);
+    
+    assert!(warm_up_period < sources_start_time_limit);
 
     let param_parts: Vec<&str> = params.split_whitespace().collect();
     //get packet-rate
@@ -455,25 +460,25 @@ fn add_cbr_sources(
         Err(e) => return Err(Errors::TestParsing(format!("{}", e))),
     };
 
+    assert!(num_sources <= (spec.initial_nodes.len() / 2));
+    let mut nodes : Vec<&String> = spec.initial_nodes.keys().clone().collect();
     for _i in 0..num_sources {
         //select source
-        let source_index = rng.next_u32() as usize % spec.initial_nodes.len();
-        let source_name = spec.initial_nodes.keys().nth(source_index).unwrap();
+        let source_index = rng.next_u32() as usize % nodes.len();
+        let source_name = nodes.remove(source_index);
+
         //select destination
-        let mut dest_index = rng.next_u32() as usize % spec.initial_nodes.len();
-        while dest_index == source_index {
-            dest_index = rng.next_u32() as usize % spec.initial_nodes.len();
-        }
-        let dest_name = spec.initial_nodes.keys().nth(dest_index).unwrap();
+        let dest_index = rng.next_u32() as usize % nodes.len();
+        let dest_name = nodes.remove(dest_index);
 
         //select start_time
         let start_time = rng.sample(start_times_sample);
 
         //calculate duration of source
-        let duration_mean: f64 = (spec.duration - start_time) as f64 / 2.0;
-        let duration_std_dev: f64 = duration_mean * 0.20;
-        let duration_sample = Normal::new(duration_mean, duration_std_dev);
-        let duration: u64 = rng.sample(duration_sample) as u64;
+        // let duration_mean: f64 = (spec.duration - start_time) as f64 / 2.0;
+        // let duration_std_dev: f64 = duration_mean * 0.10;
+        // let duration_sample = Uniform::new(start_time, source_end_time_limit);
+        // let duration: u64 = rng.sample(duration_sample) as u64;
 
         let action = format!(
             "ADD_SOURCE {} {} {} {} {} {}",

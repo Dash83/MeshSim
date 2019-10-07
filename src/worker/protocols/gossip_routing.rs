@@ -11,7 +11,7 @@ use slog::Logger;
 use std::sync::{Arc, Mutex};
 use rand::{rngs::StdRng, Rng};
 
-const MSG_CACHE_SIZE: usize = 2000;
+const MSG_CACHE_SIZE: usize = 10000;
 /// The default number of hops messages are guaranteed to be propagated
 pub const DEFAULT_MIN_HOPS: usize = 2;
 /// The default gossip-probability value

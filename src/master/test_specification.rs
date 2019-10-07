@@ -32,10 +32,10 @@ pub struct TestSpec {
     /// Size of the simulation area.
     #[serde(flatten)]
     pub area_size: Area,
-    /// The protocol that this test will run.
-    pub protocol: Protocols,
     /// The pattern of mobility the workers will follow
     pub mobility_model: Option<MobilityModels>,
+    /// The protocol that this test will run.
+    pub protocol: Protocols,
     /// Collection of worker configurations for the master to start at the beginning of the test.
     pub initial_nodes: HashMap<String, WorkerConfig>,
     /// Collection of available worker configurations that the master may start at any time during

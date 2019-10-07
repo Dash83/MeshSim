@@ -514,7 +514,7 @@ impl Worker {
                                         }
                                     }
                                 });
-//                                debug!(logger, "Jobs in queue: {}", thread_pool.queued_count());
+                                info!(logger, "Jobs: {}", thread_pool.queued_count());
 //                                debug!(
 //                                    logger,
 //                                    "Jobs that have paniced: {}",
