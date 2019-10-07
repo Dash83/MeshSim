@@ -10,7 +10,7 @@ use serde_cbor::ser::*;
 use slog::Logger;
 use std::sync::{Arc, Mutex};
 
-const MSG_CACHE_SIZE: usize = 2000;
+const MSG_CACHE_SIZE: usize = 10000;
 
 #[derive(Debug)]
 struct CacheEntry {
@@ -153,16 +153,16 @@ impl NaiveRouting {
         msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
-        info!(
-            logger,
-            "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name
-        );
-
         {
             // LOCK:ACQUIRE:MSG_CACHE
             let mut cache = match msg_cache.lock() {
                 Ok(guard) => guard,
                 Err(e) => {
+                    info!(
+                        logger,
+                        "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
+                        "STATUS"=>"ERROR"
+                    );
                     error!(logger, "Failed to lock message cache: {}", e);
                     return Ok(None);
                 }
@@ -170,7 +170,12 @@ impl NaiveRouting {
 
             for entry in cache.iter() {
                 if entry.msg_id == msg_hash {
-                    info!(logger, "Dropping repeated message {:x}", &msg_hash);
+                    info!(
+                        logger,
+                        "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
+                        "STATUS"=>"DROPPING",
+                        "REASON"=>"REPEATED",
+                    );
                     return Ok(None);
                 }
             }
@@ -178,6 +183,7 @@ impl NaiveRouting {
             //Have not seen this message yet.
             //Is there space in the cache?
             if cache.len() >= MSG_CACHE_SIZE {
+                warn!(logger, "Message cache full");
                 let _res = cache.remove(0);
             }
             //Log message
@@ -186,12 +192,21 @@ impl NaiveRouting {
 
         //Check if this node is the intended recipient of the message.
         if hdr.destination.name == me.name {
-            info!(logger, "Message {:x} reached its destination", &msg_hash; "route_length" => hdr.hops);
+            info!(
+                logger,
+                "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
+                "STATUS"=>"ACCEPTED",
+                "ROUTE_LENGTH" => hdr.hops
+            );
             return Ok(None);
         }
 
         let response = NaiveRouting::create_data_message(me, hdr.destination, hdr.hops + 1, data)?;
-
+        info!(
+            logger,
+            "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
+            "STATUS"=>"FORWARDED",
+        );
         Ok(Some(response))
     }
 

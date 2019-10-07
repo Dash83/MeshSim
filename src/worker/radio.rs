@@ -161,10 +161,16 @@ impl Radio for SimulatedRadio {
             }
 
             //Wait and retry.
-            info!(&self.logger, "Medium is busy"; "thread"=>&thread_id);
+            
             i += 1;
             let sleep_time = SimulatedRadio::get_wait_time(wait_base, i as u64);
-            info!(&self.logger, "Retrying in {:?}", &sleep_time);
+            let st = format!("{:?}", &sleep_time);
+            info!(
+                &self.logger, 
+                "Medium is busy"; 
+                "thread"=>&thread_id,
+                "RETRY"=>st,
+            );
             std::thread::sleep(sleep_time);
         }
 
@@ -178,10 +184,13 @@ impl Radio for SimulatedRadio {
             ; "thread"=>&thread_id
         );
 
-        info!(self.logger, "Starting transmission"; "thread"=>&thread_id);
-
         let peers = get_workers_in_range(&conn, &self.id, self.range, &self.logger)?;
-        info!(self.logger, "{} peers in range", peers.len());
+        info!(
+            self.logger, 
+            "Starting transmission"; 
+            "thread"=>&thread_id,
+            "PeersInRange"=>peers.len(),
+        );
 
         // let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
         let socket = new_socket()?;

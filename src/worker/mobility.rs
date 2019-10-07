@@ -450,11 +450,11 @@ pub fn update_worker_vel(
 
     let rows = conn
         .execute(UPDATE_WORKER_VEL_QRY, &[wid, vel_x, vel_y])
-        .map_err(|_| {
+        .map_err(|e| {
             let err_msg = format!("Failed to update the velocity of worker {}", worker_id);
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
-                cause: None,
+                cause: Some(Box::new(e)),
             }
         })?;
 

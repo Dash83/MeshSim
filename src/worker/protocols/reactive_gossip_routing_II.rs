@@ -682,7 +682,7 @@ impl ReactiveGossipRoutingII {
         msg.route.push(self_peer.name.clone());
         info!(
             logger,
-            "{} added to route_id {}", &self_peer.name, msg.route_id
+             "RouteDiscovery message forwarded"; "route_id" => &msg.route_id
         );
 
         //Build message and forward it
@@ -800,6 +800,11 @@ impl ReactiveGossipRoutingII {
             return Ok(None);
         }
 
+        info!(
+            logger,
+            "{} added to route_id {}", &self_peer.name, msg.route_id
+        );
+        
         //Finally, forward the message
         hdr.sender = self_peer.clone();
         hdr.payload = Some(serialize_message(Messages::RouteEstablish(msg))?);

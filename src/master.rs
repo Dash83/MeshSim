@@ -41,6 +41,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use test_specification::{Area, TestActions};
+use chrono::{Utc, DateTime};
 use workloads::SourceProfiles;
 
 //Sub-modules declaration
@@ -50,6 +51,8 @@ mod workloads;
 
 const RANDOM_WAYPOINT_WAIT_TIME: u64 = 1000; //TODO: This must be parameterized
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
+
+type PendingWorker = (DateTime<Utc>, Velocity);
 
 ///Different supported mobility models
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -746,6 +749,11 @@ impl Master {
 
                 match profile {
                     SourceProfiles::CBR(dest, pps, size, dur) => {
+                        let total_packets: f64 = (dur * pps as u64) as f64 / 1000.0;
+                        info!(
+                            logger,
+                            "[Source]: Will transmit {} packets", total_packets
+                        );
                         match Master::start_cbr_source(
                             source, dest, pps, size, dur, workers, &logger,
                         ) {
@@ -896,6 +904,7 @@ impl Master {
         let db_path = self.work_dir.clone();
         let m_model = self.mobility_model.clone();
         let logger = self.logger.clone();
+        let mut paused_workers: HashMap<i64, PendingWorker> = HashMap::new();
 
         let conn = get_db_connection(&self.work_dir, &logger).map_err(|_| {
             io::Error::new(
@@ -912,6 +921,31 @@ impl Master {
 
             if let Some(model) = &m_model {
                 while Instant::now().duration_since(sim_start_time) < sim_end_time {
+                    //Restart movement for workers whose pause has ended.
+                    let mut restarted_workers: Vec<i64> = Vec::new();
+                    for (key, val) in paused_workers.iter() {
+                        let worker_id = key;
+                        let restart_time = &val.0;
+                        let velocity = &val.1;
+                        if *restart_time <= Utc::now() {
+                            match update_worker_vel(&conn, velocity, *worker_id, &logger) {
+                                Ok(_r) =>  restarted_workers.push(*worker_id),
+                                Err(e) => {
+                                    error!(
+                                        logger,
+                                        "Failed updating target for worker_id {}: {}", worker_id, &e
+                                    );
+                                    if let Some(cause) = e.cause {
+                                        error!(logger, "Cause: {}", cause);
+                                    }
+                                }
+                            } 
+                        }
+                    }
+
+                    //Remove the workers that were succesfully updated from the pending list
+                    paused_workers.retain(|&k, _| !restarted_workers.contains(&k));
+
                     //Wait times will be uniformly sampled from the remain simulation time.
                     let mut lower_bound: u64 = sim_start_time.elapsed().as_secs() * 1000;
                     lower_bound += u64::from(sim_start_time.elapsed().subsec_millis());
@@ -943,8 +977,8 @@ impl Master {
                                 &height_sample,
                                 &walking_sample,
                                 &wait_sample,
+                                &mut paused_workers,
                                 &mut rng,
-                                &db_path,
                                 &logger,
                             );
                         }
@@ -972,8 +1006,9 @@ impl Master {
         height_sample: &Uniform<f64>,
         walking_sample: &Normal,
         _wait_sample: &Uniform<u64>,
+        paused_workers: &mut HashMap<i64, PendingWorker>,
         rng: &mut dyn RngCore,
-        db_path: &str,
+        // db_path: &str,
         logger: &Logger,
     ) {
         debug!(logger, "Entered function handle_random_waypoint");
@@ -1030,52 +1065,66 @@ impl Master {
                     &logger,
                 );
 
-                //Schedule thread
-                let _h = Master::schedule_new_worker_velocity(
-                    pause_time,
-                    w_id,
-                    db_path.to_string(),
-                    Velocity { x: x_vel, y: y_vel },
-                    &logger,
+                // //Schedule thread
+                // let _h = Master::schedule_new_worker_velocity(
+                //     pause_time,
+                //     w_id,
+                //     db_path.to_string(),
+                //     Velocity { x: x_vel, y: y_vel },
+                //     &logger,
+                // );
+                let restart_time = Utc::now() + chrono::Duration::milliseconds(pause_time as i64);
+                paused_workers.insert(
+                    w_id, 
+                    (restart_time, Velocity { x: x_vel, y: y_vel })
                 );
             }
         }
     }
 
-    fn schedule_new_worker_velocity(
-        pause_time: u64,
-        worker_id: i64,
-        db_path: String,
-        velocity: Velocity,
-        logger: &Logger,
-    ) -> JoinHandle<()> {
-        let the_logger = logger.clone();
-        thread::spawn(move || {
-            let dur = Duration::from_millis(pause_time);
-            info!(
-                the_logger,
-                "Worker_id {} will wait for {}ms", worker_id, pause_time
-            );
-            thread::sleep(dur);
-            if let Ok(conn) = get_db_connection(&db_path, &the_logger) {
-                let _res = match update_worker_vel(&conn, &velocity, worker_id, &the_logger) {
-                    Ok(r) => r,
-                    Err(e) => {
-                        error!(
-                            the_logger,
-                            "Failed updating target for worker_id {}: {}", worker_id, e
-                        );
-                        0
-                    }
-                };
-            } else {
-                error!(
-                    the_logger,
-                    "Failed updating target for worker_id {}: Could not connect to DB", worker_id
-                );
-            }
-        })
-    }
+    // fn schedule_new_worker_velocity(
+    //     pause_time: u64,
+    //     worker_id: i64,
+    //     db_path: String,
+    //     velocity: Velocity,
+    //     logger: &Logger,
+    // ) -> JoinHandle<()> {
+    //     let the_logger = logger.clone();
+    //     thread::spawn(move || {
+    //         let dur = Duration::from_millis(pause_time);
+    //         info!(
+    //             the_logger,
+    //             "Worker_id {} will wait for {}ms", worker_id, pause_time
+    //         );
+    //         thread::sleep(dur);
+    //         match get_db_connection(&db_path, &the_logger) {
+    //             Ok(conn) => {
+    //                 let _res = match update_worker_vel(&conn, &velocity, worker_id, &the_logger) {
+    //                     Ok(r) => r,
+    //                     Err(e) => {
+    //                         error!(
+    //                             the_logger,
+    //                             "Failed updating target for worker_id {}: {}", worker_id, &e
+    //                         );
+    //                         if let Some(cause) = e.cause {
+    //                             error!(the_logger, "Cause: {}", cause);
+    //                         }
+    //                         0
+    //                     }
+    //                 };                   
+    //             },
+    //             Err(e) => {
+    //                 error!(
+    //                     the_logger,
+    //                     "Failed updating target for worker {}", &e
+    //                 );
+    //                 if let Some(cause) = e.cause {
+    //                     error!(the_logger, "Cause: {}", cause);
+    //                 }
+    //             }
+    //         }
+    //     })
+    // }
 
     //region command_loop
     // fn start_command_loop_thread(&self) -> io::Result<JoinHandle<Result<(), MasterError>>> {
