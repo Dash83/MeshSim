@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use chrono::{Utc, DateTime};
 
 /// The default number of hops messages are guaranteed to be propagated
 pub const DEFAULT_MIN_HOPS: usize = 2;
@@ -67,6 +68,8 @@ impl RouteMessage {
         let mut data = Vec::new();
         data.append(&mut source.clone().into_bytes());
         data.append(&mut destination.clone().into_bytes());
+        // let ts = Utc::now().timestamp_millis();
+        // data.append(&mut ts.to_le_bytes().to_vec());
         let dig = md5::compute(&data);
         let route_id = format!("{:x}", dig);
 
@@ -429,10 +432,6 @@ impl ReactiveGossipRouting {
         msg_hash: Digest,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
-        info!(
-            logger,
-            "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name
-        );
         let route_id = data_msg.route_id.clone();
 
         {
@@ -447,7 +446,16 @@ impl ReactiveGossipRouting {
             let last_hop = match part_of_route {
                 Some(last_hop) => last_hop,
                 None => {
-                    info!(logger, "Not part of this route. Dropping");
+                    info!(
+                        logger,
+                        "Received message {:x}", &msg_hash;
+                        "msg_type"=>"DATA",
+                        "sender"=>&hdr.sender.name,
+                        "status"=>"DROPPING",
+                        "reason"=>"Not part of route",
+                        "msg_type"=>"DATA",
+                        "sender"=>&hdr.sender.name,
+                    );
                     return Ok(None);
                 }
             };
@@ -469,10 +477,27 @@ impl ReactiveGossipRouting {
                         entry.state = DataMessageStates::Confirmed;
                         let unused_data = entry.data.take();
                         drop(unused_data);
-                        info!(logger, "{:x} marked as confirmed", &msg_hash);
+                        info!(
+                            logger,
+                            "Received message {:x}", &msg_hash;
+                            "msg_type"=>"DATA",
+                            "sender"=>&hdr.sender.name,
+                            "status"=>"CONFIRMED",
+                            "msg_type"=>"DATA",
+                            "sender"=>&hdr.sender.name,
+                        );
                     }
                     DataMessageStates::Confirmed => {
-                        info!(logger, "Dropping duplicate message {:x}", &msg_hash);
+                        info!(
+                            logger,
+                            "Received message {:x}", &msg_hash;
+                            "msg_type"=>"DATA",
+                            "sender"=>&hdr.sender.name,
+                            "status"=>"DROPPING",
+                            "reason"=>"DUPLICATE",
+                            "msg_type"=>"DATA",
+                            "sender"=>&hdr.sender.name,
+                        );
                     }
                 }
                 d_cache.insert(msg, entry);
@@ -508,10 +533,24 @@ impl ReactiveGossipRouting {
 
         //Are the intended recipient?
         if hdr.destination.name == self_peer.name {
-            info!(logger, "Message {:x} has reached its destination", msg_hash; "route_length" => hdr.hops);
+            info!(
+                logger,
+                "Received message {:x}", &msg_hash;
+                "msg_type"=>"DATA",
+                "sender"=>&hdr.sender.name,
+                "status"=>"ACCEPTED",
+                "route_length" => hdr.hops
+            );
             Ok(None)
         } else {
             //We are not. Forward the message.
+            info!(
+                logger,
+                "Received message {:x}", &msg_hash;
+                "msg_type"=>"DATA",
+                "sender"=>&hdr.sender.name,
+                "status"=>"FORWARDED",
+            );
             Ok(Some(hdr))
         }
     }

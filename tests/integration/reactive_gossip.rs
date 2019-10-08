@@ -27,7 +27,7 @@ fn test_basic() {
                                                 std::path::MAIN_SEPARATOR,
                                                 DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_log_record("msg", 
+    let master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 30 processes terminated.", 
                                                    &master_log_records);
     assert!(master_node_num.is_some());
@@ -37,9 +37,13 @@ fn test_basic() {
     let node24_log_records = logging::get_log_records_from_file(&node24_log_file).unwrap();
 
     //node1 receives the command to start transmission
-    let node_24_data_recv = logging::find_log_record("msg", "Message 01b903789ae7d54079e92398434cef61 has reached its destination", &node24_log_records);
+    let node_24_data_recv = logging::find_record_by_msg(
+        "Received message 01b903789ae7d54079e92398434cef61", 
+        &node24_log_records
+    );
 
-    assert!(node_24_data_recv.is_some());
+    assert!(node_24_data_recv.is_some() && 
+            node_24_data_recv.cloned().unwrap().status.unwrap() == "ACCEPTED");
 
     //Test passed. Results are not needed.
     fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
@@ -69,21 +73,26 @@ fn test_route_teardown() {
                                   std::path::MAIN_SEPARATOR,
                                   DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let _master_node_num = logging::find_log_record("msg",
+    let _master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 23 processes terminated.",
                                                    &master_log_records);
 
     let node7_log_file = format!("{}/log/node7.log", &work_dir);
     let node7_log_records = logging::get_log_records_from_file(&node7_log_file).unwrap();
-    let node7_teardown_recv = logging::find_log_record("msg", "Route TEARDOWN msg received for route ec3a7a8fc1f4a1c13c933cadb5f880e8", &node7_log_records);
+    let node7_teardown_recv = logging::find_record_by_msg(
+        "Route TEARDOWN msg received for route ec3a7a8fc1f4a1c13c933cadb5f880e8", 
+        &node7_log_records
+    );
 
     let mut received_packets = 0;
     let node25_log_file = format!("{}/log/node25.log", &work_dir);
     let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
 
     for record in node25_log_records.iter() {
-        if record["msg"].as_str().unwrap().contains("reached its destination") {
-            received_packets += 1;
+        if let Some(status) = &record.status {
+            if status == "ACCEPTED" {
+                received_packets += 1;
+            }
         }
     }
 
@@ -121,7 +130,7 @@ fn test_route_discovery() {
                                   std::path::MAIN_SEPARATOR,
                                   DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_log_record("msg",
+    let master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 100 processes terminated.",
                                                    &master_log_records);
     assert!(master_node_num.is_some());
@@ -131,8 +140,10 @@ fn test_route_discovery() {
     let node43_log_records = logging::get_log_records_from_file(&node43_log_file).unwrap();
     let mut received_packets = 0;
     for record in node43_log_records.iter() {
-        if record["msg"].as_str().unwrap().contains("reached its destination") {
-            received_packets += 1;
+        if let Some(status) = &record.status {
+            if status == "ACCEPTED" {
+                received_packets += 1;
+            }
         }
     }
     assert_eq!(received_packets, 16);
@@ -142,8 +153,10 @@ fn test_route_discovery() {
     let node38_log_records = logging::get_log_records_from_file(&node38_log_file).unwrap();
     let mut received_packets = 0;
     for record in node38_log_records.iter() {
-        if record["msg"].as_str().unwrap().contains("reached its destination") {
-            received_packets += 1;
+        if let Some(status) = &record.status {
+            if status == "ACCEPTED" {
+                received_packets += 1;
+            }
         }
     }
     assert_eq!(received_packets, 16);
@@ -153,8 +166,10 @@ fn test_route_discovery() {
     let node45_log_records = logging::get_log_records_from_file(&node45_log_file).unwrap();
     let mut received_packets = 0;
     for record in node45_log_records.iter() {
-        if record["msg"].as_str().unwrap().contains("reached its destination") {
-            received_packets += 1;
+        if let Some(status) = &record.status {
+            if status == "ACCEPTED" {
+                received_packets += 1;
+            }
         }
     }
     assert_eq!(received_packets, 16);

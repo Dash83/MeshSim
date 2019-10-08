@@ -169,7 +169,7 @@ impl Radio for SimulatedRadio {
                 &self.logger, 
                 "Medium is busy"; 
                 "thread"=>&thread_id,
-                "RETRY"=>st,
+                "retry"=>st,
             );
             std::thread::sleep(sleep_time);
         }
@@ -189,7 +189,7 @@ impl Radio for SimulatedRadio {
             self.logger, 
             "Starting transmission"; 
             "thread"=>&thread_id,
-            "PeersInRange"=>peers.len(),
+            "peers_in_range"=>peers.len(),
         );
 
         // let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
