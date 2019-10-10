@@ -115,14 +115,14 @@ operation_mode = "Simulated"
 [initial_nodes.node3.protocol]
         Protocol = "NaiveRouting"
 [initial_nodes.node3.position]
-    x = 35.67717793843044
-    y = 154.95544393513381
+    x = 35.0
+    y = 150.0
 [initial_nodes.node3.destination]
-    x = 50.00078524832547
-    y = 145.3740226798606
+    x = 50.0
+    y = 140.0
 [initial_nodes.node3.velocity]
-    x = 3.2435651276483305
-    y = 2.8453621406105302
+    x = 3.0
+    y = -2.1
 # x = 1.3435651276483305
 # y = 1.2453621406105302
 [initial_nodes.node3.radio_short]

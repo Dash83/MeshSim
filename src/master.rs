@@ -329,7 +329,7 @@ impl Master {
                             })?;
                         }
 
-                        debug!(&self.logger, "Read from worker's stdout successful: {}", &output);
+                        // debug!(&self.logger, "Read from worker's stdout successful: {}", &output);
 
                         //Register the worker in the DB
                         let worker_id = match val.worker_id {

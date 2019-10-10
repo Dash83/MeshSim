@@ -387,7 +387,7 @@ impl SimulatedRadio {
                 }
             }
         }
-        debug!(logger, "This function did finish!");
+        // debug!(logger, "This function did finish!");
 
         Ok((sr_address, lr_address))
     }

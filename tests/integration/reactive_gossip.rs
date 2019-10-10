@@ -41,9 +41,58 @@ fn test_basic() {
         "Received message 01b903789ae7d54079e92398434cef61", 
         &node24_log_records
     );
-
     assert!(node_24_data_recv.is_some() && 
             node_24_data_recv.cloned().unwrap().status.unwrap() == "ACCEPTED");
+
+    //Test passed. Results are not needed.
+    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+}
+
+#[test]
+fn test_route_retry() {
+    let test = get_test_path("rgr_route_discovery_retry.toml");
+    let work_dir = create_test_dir("rgr_route_discovery_retry");
+
+    let program = get_master_path();
+    let worker = get_worker_path();
+
+
+    println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
+
+    //Assert the test finished succesfully
+    assert_cli::Assert::command(&[&program])
+    .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
+    .succeeds()
+    .unwrap();
+
+    //Check the test ended with the correct number of processes.
+    let master_log_file = format!("{}{}{}{}{}", &work_dir,
+                                                std::path::MAIN_SEPARATOR,
+                                                LOG_DIR_NAME,
+                                                std::path::MAIN_SEPARATOR,
+                                                DEFAULT_MASTER_LOG);
+    let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
+    let master_node_num = logging::find_record_by_msg(
+                                                   "End_Test action: Finished. 6 processes terminated.", 
+                                                   &master_log_records);
+    assert!(master_node_num.is_some());
+
+    let node2_log_file = format!("{}/log/node2.log", &work_dir);
+    let node2_log_records = logging::get_log_records_from_file(&node2_log_file).unwrap();
+    let node_2_route_retry = logging::find_record_by_msg(
+        "Re-trying RouteDiscover for node6", 
+        &node2_log_records
+    );
+    assert!(node_2_route_retry.is_some());
+
+    let node6_log_file = format!("{}/log/node6.log", &work_dir);
+    let node6_log_records = logging::get_log_records_from_file(&node6_log_file).unwrap();
+    let node_6_data_recv = logging::find_record_by_msg(
+        "Received message 64d6f18ec2145cdc6cddb19a908e5b2a", 
+        &node6_log_records
+    );
+    assert!(node_6_data_recv.is_some() && 
+            node_6_data_recv.cloned().unwrap().status.unwrap() == "ACCEPTED");
 
     //Test passed. Results are not needed.
     fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
