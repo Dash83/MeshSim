@@ -264,7 +264,7 @@ fn test_broadcast_timing() {
                                   std::path::MAIN_SEPARATOR,
                                   DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_log_record("msg",
+    let master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 5 processes terminated.",
                                                    &master_log_records);
     assert!(master_node_num.is_some());
@@ -301,59 +301,73 @@ fn test_mac_layer_basic() {
                                   std::path::MAIN_SEPARATOR,
                                   DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_log_record("msg",
+    let master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 25 processes terminated.",
                                                    &master_log_records);
     assert!(master_node_num.is_some());
 
     let node4_log_file = &format!("{}/log/node4.log", &work_dir);
     let node4_log_records = logging::get_log_records_from_file(&node4_log_file).unwrap();
-    let node_4_received = logging::find_log_record(
-        "msg",
-        "Message db805e19ab4bfaa5cef9b146993859a9 reached its destination", &node4_log_records);
-    assert!(node_4_received.is_some());
+    let node_4_received = logging::find_record_by_msg(
+        "Received message db805e19ab4bfaa5cef9b146993859a9", 
+        &node4_log_records
+    );
+    assert!(node_4_received.is_some() && 
+            node_4_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
 
     let node5_log_file = &format!("{}/log/node5.log", &work_dir);
     let node5_log_records = logging::get_log_records_from_file(&node5_log_file).unwrap();
-    let node_5_received = logging::find_log_record(
-        "msg",
-        "Message 920d4c99eb3e393e47fa84268a559abb reached its destination", &node5_log_records);
-    assert!(node_5_received.is_some());
+    let node_5_received = logging::find_record_by_msg(
+        "Received message 920d4c99eb3e393e47fa84268a559abb", 
+        &node5_log_records
+    );
+    assert!(node_5_received.is_some() && 
+            node_5_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
 
     let node19_log_file = &format!("{}/log/node19.log", &work_dir);
     let node19_log_records = logging::get_log_records_from_file(&node19_log_file).unwrap();
-    let node_19_received = logging::find_log_record(
-        "msg",
-        "Message f57790d905cdfd41887f18c6162b99bf reached its destination", &node19_log_records);
-    assert!(node_19_received.is_some());
+    let node_19_received = logging::find_record_by_msg(
+        "Received message f57790d905cdfd41887f18c6162b99bf", 
+        &node19_log_records
+    );
+    assert!(node_19_received.is_some() && 
+            node_19_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
 
     let node20_log_file = &format!("{}/log/node20.log", &work_dir);
     let node20_log_records = logging::get_log_records_from_file(&node20_log_file).unwrap();
-    let node_20_received = logging::find_log_record(
-        "msg",
-        "Message d763e55c7fd41dd1d635ca7e6602e855 reached its destination", &node20_log_records);
-    assert!(node_20_received.is_some());
+    let node_20_received = logging::find_record_by_msg(
+        "Received message d763e55c7fd41dd1d635ca7e6602e855", 
+        &node20_log_records
+    );
+    assert!(node_20_received.is_some() && 
+            node_20_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
     
     let node22_log_file = &format!("{}/log/node22.log", &work_dir);
     let node22_log_records = logging::get_log_records_from_file(&node22_log_file).unwrap();
-    let node_22_received = logging::find_log_record(
-        "msg",
-        "Message d9802591b0658377c3ce50e56822bfe2 reached its destination", &node22_log_records);
-    assert!(node_22_received.is_some());
+    let node_22_received = logging::find_record_by_msg(
+        "Received message d9802591b0658377c3ce50e56822bfe2", 
+        &node22_log_records
+    );
+    assert!(node_22_received.is_some() && 
+            node_22_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
 
     let node24_log_file = &format!("{}/log/node24.log", &work_dir);
     let node24_log_records = logging::get_log_records_from_file(&node24_log_file).unwrap();
-    let node_24_received = logging::find_log_record(
-        "msg",
-        "Message eadd0fef2df22db64ac06de822ae5c15 reached its destination", &node24_log_records);
-    assert!(node_24_received.is_some());
+    let node_24_received = logging::find_record_by_msg(
+        "Received message eadd0fef2df22db64ac06de822ae5c15", 
+        &node24_log_records
+    );
+    assert!(node_24_received.is_some() && 
+            node_24_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
     
     let node25_log_file = &format!("{}/log/node25.log", &work_dir);
     let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
-    let node_25_received = logging::find_log_record(
-        "msg",
-        "Message fbedcdf252b06a96e4b6b7323be7d788 reached its destination", &node25_log_records);
-    assert!(node_25_received.is_some());
+    let node_25_received = logging::find_record_by_msg(
+        "Received message fbedcdf252b06a96e4b6b7323be7d788", 
+        &node25_log_records
+    );
+    assert!(node_25_received.is_some() && 
+            node_25_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
     
     //Teardown
     //If test checks fail, this section won't be reached and not cleaned up for investigation.

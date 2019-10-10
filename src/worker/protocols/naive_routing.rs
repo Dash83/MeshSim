@@ -160,8 +160,10 @@ impl NaiveRouting {
                 Err(e) => {
                     info!(
                         logger,
-                        "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
-                        "STATUS"=>"ERROR"
+                        "Received message {:x}", &msg_hash;
+                        "msg_type"=>"DATA",
+                        "sender"=>&hdr.sender.name,
+                        "status"=>"ERROR",
                     );
                     error!(logger, "Failed to lock message cache: {}", e);
                     return Ok(None);
@@ -172,9 +174,13 @@ impl NaiveRouting {
                 if entry.msg_id == msg_hash {
                     info!(
                         logger,
-                        "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
-                        "STATUS"=>"DROPPING",
-                        "REASON"=>"REPEATED",
+                        "Received message {:x}", &msg_hash;
+                        "msg_type"=>"DATA",
+                        "sender"=>&hdr.sender.name,
+                        "status"=>"DROPPING",
+                        "reason"=>"REPEATED",
+                        "msg_type"=>"DATA",
+                        "sender"=>&hdr.sender.name,
                     );
                     return Ok(None);
                 }
@@ -194,9 +200,11 @@ impl NaiveRouting {
         if hdr.destination.name == me.name {
             info!(
                 logger,
-                "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
-                "STATUS"=>"ACCEPTED",
-                "ROUTE_LENGTH" => hdr.hops
+                "Received message {:x}", &msg_hash;
+                "msg_type"=>"DATA",
+                "sender"=>&hdr.sender.name,
+                "status"=>"ACCEPTED",
+                "route_length" => hdr.hops
             );
             return Ok(None);
         }
@@ -204,8 +212,10 @@ impl NaiveRouting {
         let response = NaiveRouting::create_data_message(me, hdr.destination, hdr.hops + 1, data)?;
         info!(
             logger,
-            "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
-            "STATUS"=>"FORWARDED",
+            "Received message {:x}", &msg_hash;
+            "msg_type"=>"DATA",
+            "sender"=>&hdr.sender.name,
+            "status"=>"FORWARDING",
         );
         Ok(Some(response))
     }

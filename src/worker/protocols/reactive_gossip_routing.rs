@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use chrono::{Utc, DateTime};
 
 /// The default number of hops messages are guaranteed to be propagated
 pub const DEFAULT_MIN_HOPS: usize = 2;
@@ -22,6 +23,11 @@ pub const DEFAULT_GOSSIP_PROB: f64 = 0.70;
 const MSG_CACHE_SIZE: usize = 2000;
 const CONCCURENT_THREADS_PER_FLOW: usize = 2;
 const MSG_TRANSMISSION_THRESHOLD: u64 = 1000;
+const ROUTE_DISCOVERY_THRESHOLD: i64 = 5000;
+const ROUTE_DISCOVERY_MAX_RETRY: usize = 3;
+
+/// Used for the pending_destination table
+type PendingRouteEntry = (String, DateTime<Utc>, usize);
 
 /// Main structure used in this protocol
 #[derive(Debug)]
@@ -37,7 +43,7 @@ pub struct ReactiveGossipRouting {
     /// Used for rapid decision-making of whether to forward a data message or not.
     known_routes: Arc<Mutex<HashMap<String, bool>>>,
     /// Destinations for which a route-discovery process has started but not yet finished.
-    pending_destinations: Arc<Mutex<HashSet<String>>>,
+    pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
     /// Used to cache recent route-discovery messages received.
     route_msg_cache: Arc<Mutex<HashSet<String>>>,
     /// Used to cache recent data messaged received.
@@ -67,6 +73,8 @@ impl RouteMessage {
         let mut data = Vec::new();
         data.append(&mut source.clone().into_bytes());
         data.append(&mut destination.clone().into_bytes());
+        // let ts = Utc::now().timestamp_millis();
+        // data.append(&mut ts.to_le_bytes().to_vec());
         let dig = md5::compute(&data);
         let route_id = format!("{:x}", dig);
 
@@ -172,6 +180,8 @@ impl Protocol for ReactiveGossipRouting {
         let data_msg_cache = Arc::clone(&self.data_msg_cache);
         let dest_routes = Arc::clone(&self.destination_routes);
         let known_routes = Arc::clone(&self.known_routes);
+        let pending_destination = Arc::clone(&self.pending_destinations);
+        let queued_transmissions = Arc::clone(&self.queued_transmissions);
         let self_peer = self.get_self_peer();
         let _handle = thread::spawn(move || {
             info!(logger, "Retransmission loop started");
@@ -179,6 +189,8 @@ impl Protocol for ReactiveGossipRouting {
                 data_msg_cache,
                 dest_routes,
                 known_routes,
+                pending_destination,
+                queued_transmissions,
                 radio,
                 self_peer,
                 logger,
@@ -189,11 +201,12 @@ impl Protocol for ReactiveGossipRouting {
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
-        let routes = Arc::clone(&self.destination_routes);
-        let pending_routes = Arc::clone(&self.pending_destinations);
-        let routes = routes
+        // let routes = Arc::clone(&self.destination_routes);
+        // let pending_destinations = Arc::clone(&self.pending_destinations);
+        let routes = self.destination_routes
             .lock()
             .expect("Failed to lock destination_routes table");
+        let me = self.get_self_peer();
 
         //Check if an available route exists for the destination.
         if let Some(route_id) = routes.get(&destination) {
@@ -201,35 +214,47 @@ impl Protocol for ReactiveGossipRouting {
             ReactiveGossipRouting::start_flow(
                 route_id.to_string(),
                 destination,
-                self.get_self_peer(),
+                me,
                 data,
                 Arc::clone(&self.short_radio),
                 Arc::clone(&self.data_msg_cache),
             )?;
             info!(self.logger, "Data has been transmitted");
         } else {
-            let mut pending_routes = pending_routes
+            let mut pending_destinations = self.pending_destinations
                 .lock()
                 .expect("Failed to lock pending_destinations table");
-            let qt = Arc::clone(&self.queued_transmissions);
-            let route_id = {
-                if !pending_routes.insert(destination.clone()) {
+            
+            let (route_id, _ts, _tries) = match pending_destinations.get(&destination) {
+                Some((route_id, ts, tries)) => {
                     info!(
                         self.logger,
                         "Route discovery process already started for {}", &destination
                     );
-                    pending_routes.get(&destination).unwrap().to_owned()
-                } else {
+                    (route_id, ts, tries)
+                },
+                None => {
                     info!(
                         self.logger,
                         "No known route to {}. Starting discovery process.", &destination
                     );
-                    //If no route exists, start a new route discovery process...
-                    self.start_route_discovery(destination.clone())?
-                }
+                    let route_id = ReactiveGossipRouting::start_route_discovery(
+                        &me, 
+                        destination.clone(), 
+                        Arc::clone(&self.short_radio),
+                        &self.logger
+                    )?;
+                    let expiration = Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);
+                    let entry = pending_destinations.entry(destination.clone())
+                    .or_insert_with(|| (route_id, expiration, 0) );
+
+                    (&entry.0, &entry.1, &entry.2)
+                },
             };
+
             //...and then queue the data transmission for when the route is established
-            ReactiveGossipRouting::queue_transmission(qt, route_id, data)?;
+            let qt = Arc::clone(&self.queued_transmissions);
+            ReactiveGossipRouting::queue_transmission(qt, destination.clone(), data)?;
         }
         Ok(())
     }
@@ -251,7 +276,7 @@ impl ReactiveGossipRouting {
         let k_routes = HashMap::new();
         let route_cache = HashSet::new();
         let data_cache = HashMap::new();
-        let pending_destinations = HashSet::new();
+        let pending_destinations = HashMap::new();
         ReactiveGossipRouting {
             k,
             p,
@@ -269,20 +294,25 @@ impl ReactiveGossipRouting {
         }
     }
 
-    fn start_route_discovery(&self, destination: String) -> Result<String, MeshSimError> {
-        let mut msg = RouteMessage::new(self.worker_id.clone(), destination.clone());
-        msg.route.push(self.worker_name.clone());
+    fn start_route_discovery(
+        me: &Peer, 
+        destination: String, 
+        short_radio: Arc<dyn Radio>,
+        logger: &Logger
+    ) -> Result<String, MeshSimError> {
+        let mut msg = RouteMessage::new(me.id.clone(), destination.clone());
+        msg.route.push(me.name.clone());
         let route_id = msg.route_id.clone();
         let mut hdr = MessageHeader::new();
-        hdr.sender.id = self.worker_id.clone();
-        hdr.sender.name = self.worker_name.clone();
+        hdr.sender.id = me.id.clone();
+        hdr.sender.name = me.name.clone();
         hdr.destination.name = destination;
         let payload = serialize_message(Messages::RouteDiscovery(msg))?;
         hdr.payload = Some(payload);
 
-        self.short_radio.broadcast(hdr)?;
+        short_radio.broadcast(hdr)?;
         info!(
-            self.logger,
+            logger,
             "Route discovery process started for route_id {}", &route_id
         );
 
@@ -332,13 +362,13 @@ impl ReactiveGossipRouting {
 
     fn queue_transmission(
         trans_q: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
-        route_id: String,
+        destination: String,
         data: Vec<u8>,
     ) -> Result<(), MeshSimError> {
         let mut tq = trans_q
             .lock()
             .expect("Error trying to acquire lock to transmissions queue");
-        let e = tq.entry(route_id).or_insert_with(|| vec![]);
+        let e = tq.entry(destination).or_insert_with(|| vec![]);
         e.push(data);
         Ok(())
     }
@@ -352,7 +382,7 @@ impl ReactiveGossipRouting {
         p: f64,
         queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
-        pending_destinations: Arc<Mutex<HashSet<String>>>,
+        pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         route_msg_cache: Arc<Mutex<HashSet<String>>>,
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
@@ -429,10 +459,6 @@ impl ReactiveGossipRouting {
         msg_hash: Digest,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
-        info!(
-            logger,
-            "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name
-        );
         let route_id = data_msg.route_id.clone();
 
         {
@@ -447,7 +473,16 @@ impl ReactiveGossipRouting {
             let last_hop = match part_of_route {
                 Some(last_hop) => last_hop,
                 None => {
-                    info!(logger, "Not part of this route. Dropping");
+                    info!(
+                        logger,
+                        "Received message {:x}", &msg_hash;
+                        "msg_type"=>"DATA",
+                        "sender"=>&hdr.sender.name,
+                        "status"=>"DROPPING",
+                        "reason"=>"Not part of route",
+                        "msg_type"=>"DATA",
+                        "sender"=>&hdr.sender.name,
+                    );
                     return Ok(None);
                 }
             };
@@ -469,10 +504,27 @@ impl ReactiveGossipRouting {
                         entry.state = DataMessageStates::Confirmed;
                         let unused_data = entry.data.take();
                         drop(unused_data);
-                        info!(logger, "{:x} marked as confirmed", &msg_hash);
+                        info!(
+                            logger,
+                            "Received message {:x}", &msg_hash;
+                            "msg_type"=>"DATA",
+                            "sender"=>&hdr.sender.name,
+                            "status"=>"CONFIRMED",
+                            "msg_type"=>"DATA",
+                            "sender"=>&hdr.sender.name,
+                        );
                     }
                     DataMessageStates::Confirmed => {
-                        info!(logger, "Dropping duplicate message {:x}", &msg_hash);
+                        info!(
+                            logger,
+                            "Received message {:x}", &msg_hash;
+                            "msg_type"=>"DATA",
+                            "sender"=>&hdr.sender.name,
+                            "status"=>"DROPPING",
+                            "reason"=>"DUPLICATE",
+                            "msg_type"=>"DATA",
+                            "sender"=>&hdr.sender.name,
+                        );
                     }
                 }
                 d_cache.insert(msg, entry);
@@ -508,10 +560,24 @@ impl ReactiveGossipRouting {
 
         //Are the intended recipient?
         if hdr.destination.name == self_peer.name {
-            info!(logger, "Message {:x} has reached its destination", msg_hash; "route_length" => hdr.hops);
+            info!(
+                logger,
+                "Received message {:x}", &msg_hash;
+                "msg_type"=>"DATA",
+                "sender"=>&hdr.sender.name,
+                "status"=>"ACCEPTED",
+                "route_length" => hdr.hops
+            );
             Ok(None)
         } else {
             //We are not. Forward the message.
+            info!(
+                logger,
+                "Received message {:x}", &msg_hash;
+                "msg_type"=>"DATA",
+                "sender"=>&hdr.sender.name,
+                "status"=>"FORWARDED",
+            );
             Ok(Some(hdr))
         }
     }
@@ -610,7 +676,7 @@ impl ReactiveGossipRouting {
         mut msg: RouteMessage,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
-        pending_destinations: Arc<Mutex<HashSet<String>>>,
+        pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
         queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         self_peer: Peer,
@@ -708,7 +774,7 @@ impl ReactiveGossipRouting {
         msg: RouteMessage,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
-        _pending_destinations: Arc<Mutex<HashSet<String>>>,
+        _pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
         _queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         _data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         self_peer: Peer,
@@ -756,14 +822,14 @@ impl ReactiveGossipRouting {
     ) -> Result<(), MeshSimError> {
         info!(
             logger,
-            "Looking for queued flows for route_id {}", &route_id
+            "Looking for queued flows for {}", &destination
         );
 
         let entry: Option<(String, Vec<Vec<u8>>)> = {
             let mut qt = queued_transmissions
                 .lock()
                 .expect("Error trying to acquire lock to transmissions queue");
-            qt.remove_entry(&route_id)
+            qt.remove_entry(&destination)
         };
 
         let thread_pool = threadpool::Builder::new()
@@ -816,64 +882,121 @@ impl ReactiveGossipRouting {
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         destination_routes: Arc<Mutex<HashMap<String, String>>>,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
+        pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         short_radio: Arc<dyn Radio>,
-        self_peer: Peer,
+        me: Peer,
         logger: Logger,
     ) -> Result<(), MeshSimError> {
         let sleep_time = Duration::from_millis(MSG_TRANSMISSION_THRESHOLD);
 
         loop {
             thread::sleep(sleep_time);
-            let mut cache = data_msg_cache
-                .lock()
-                .expect("Error trying to acquire lock to data_messages cache");
-            for (msg_hash, entry) in cache
-                .iter_mut()
-                .filter(|(_msg_hash, entry)| entry.state.is_pending())
+
+            //Message-retransmission logic
             {
-                debug!(logger, "Message {} is pending confirmation", &msg_hash);
+                let mut cache = data_msg_cache
+                    .lock()
+                    .expect("Error trying to acquire lock to data_messages cache");
+                for (msg_hash, entry) in cache
+                    .iter_mut()
+                    .filter(|(_msg_hash, entry)| entry.state.is_pending())
+                {
+                    debug!(logger, "Message {} is pending confirmation", &msg_hash);
 
-                if let Some(hdr) = entry.data.take() {
-                    info!(logger, "Retransmitting message {:x}", &hdr.get_hdr_hash());
+                    if let Some(hdr) = entry.data.take() {
+                        info!(logger, "Retransmitting message {:x}", &hdr.get_hdr_hash());
 
-                    //The message is still cached, so re-transmit it.
-                    short_radio
-                        .broadcast(hdr)
-                        .map_err(|e| {
-                            error!(logger, "Failed to re-transmit message. {}", e);
-                        })
-                        .unwrap_or(());
-                } else {
-                    // The message is no longer cached.
-                    // At this point, we assume the route is broken.
-                    // Send the route teardown message.
-                    if let DataMessageStates::Pending(ref route_id) = entry.state.clone() {
-                        info!(logger, "Starting route {} teardown", route_id);
-
-                        //Mark this entry in the message cache as confirmed so that we don't
-                        //process it again.
-                        entry.state = DataMessageStates::Confirmed;
-
-                        //Tear down the route in the internal caches
-                        let hdr = ReactiveGossipRouting::route_teardown(
-                            route_id,
-                            &self_peer,
-                            Arc::clone(&destination_routes),
-                            Arc::clone(&known_routes),
-                            &logger,
-                        )?;
-                        //Send the teardown message
+                        //The message is still cached, so re-transmit it.
                         short_radio
                             .broadcast(hdr)
                             .map_err(|e| {
-                                error!(logger, "Failed to send route-teardown message. {}", e);
+                                error!(logger, "Failed to re-transmit message. {}", e);
                             })
                             .unwrap_or(());
                     } else {
-                        error!(logger, "Inconsistent state reached");
-                        unreachable!();
+                        // The message is no longer cached.
+                        // At this point, we assume the route is broken.
+                        // Send the route teardown message.
+                        if let DataMessageStates::Pending(ref route_id) = entry.state.clone() {
+                            info!(logger, "Starting route {} teardown", route_id);
+
+                            //Mark this entry in the message cache as confirmed so that we don't
+                            //process it again.
+                            entry.state = DataMessageStates::Confirmed;
+
+                            //Tear down the route in the internal caches
+                            let hdr = ReactiveGossipRouting::route_teardown(
+                                route_id,
+                                &me,
+                                Arc::clone(&destination_routes),
+                                Arc::clone(&known_routes),
+                                &logger,
+                            )?;
+                            //Send the teardown message
+                            short_radio
+                                .broadcast(hdr)
+                                .map_err(|e| {
+                                    error!(logger, "Failed to send route-teardown message. {}", e);
+                                })
+                                .unwrap_or(());
+                        } else {
+                            error!(logger, "Inconsistent state reached");
+                            unreachable!();
+                        }
                     }
                 }
+            }
+
+            let mut expired_discoveries = Vec::new();
+            //Route expiration retransmission
+            {
+                let mut pd = pending_destinations
+                    .lock()
+                    .expect("Failed to lock pending_destinations table");    
+                for (dest, (route_id, ts, retries)) in pd
+                    .iter_mut()
+                    .filter(|(_dest, entry)| entry.1 < Utc::now()) {
+                    //Should we retry?
+                    if *retries < ROUTE_DISCOVERY_MAX_RETRY {
+                        info!(
+                            logger, 
+                            "Re-trying RouteDiscover for {}", &dest;
+                            "reason"=>"Time limit for discover exceeded"
+                        );
+                        //Transmit new route discovery
+                        let new_route_id = ReactiveGossipRouting::start_route_discovery(
+                            &me, 
+                            dest.clone(), 
+                            Arc::clone(&short_radio),
+                            &logger
+                        )?;
+
+                        //Increase retries for route-discovery
+                        *retries += 1;
+                        *route_id = new_route_id;
+                        *ts = Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);                        
+                    } else {
+                        //Retries exhausted. Add to list.
+                        expired_discoveries.push(dest.clone());
+                        warn!(
+                            logger, 
+                            "Dropping queued packets for {}", &dest;
+                            "reason"=>"RouteDiscover retries exceeded"
+                        );
+
+                    }
+                }
+                //Remove the expired entries from the pending_destinations list.
+                pd.retain(|k, _| !expired_discoveries.contains(&k));
+            }
+            
+            //Purge queued packets of expired routes
+            {
+                let mut qt = queued_transmissions
+                    .lock()
+                    .expect("Failed to lock queued_transmissions queue");
+                qt.retain(|k, _| !expired_discoveries.contains(&k));
             }
         }
         #[allow(unreachable_code)]

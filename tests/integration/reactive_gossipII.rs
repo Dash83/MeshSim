@@ -28,7 +28,7 @@ fn test_route_discovery_optimization() {
                                                 std::path::MAIN_SEPARATOR,
                                                 DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_log_record("msg", 
+    let master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 100 processes terminated.",
                                                    &master_log_records);
     assert!(master_node_num.is_some());
@@ -38,8 +38,10 @@ fn test_route_discovery_optimization() {
     let node43_log_records = logging::get_log_records_from_file(&node43_log_file).unwrap();
     let mut received_packets = 0;
     for record in node43_log_records.iter() {
-        if record["msg"].as_str().unwrap().contains("reached its destination") {
-            received_packets += 1;
+        if let Some(status) = &record.status {
+            if status == "ACCEPTED" {
+                received_packets += 1;
+            }
         }
     }
     assert_eq!(received_packets, 16);
@@ -49,8 +51,10 @@ fn test_route_discovery_optimization() {
     let node38_log_records = logging::get_log_records_from_file(&node38_log_file).unwrap();
     let mut received_packets = 0;
     for record in node38_log_records.iter() {
-        if record["msg"].as_str().unwrap().contains("reached its destination") {
-            received_packets += 1;
+        if let Some(status) = &record.status {
+            if status == "ACCEPTED" {
+                received_packets += 1;
+            }
         }
     }
     assert_eq!(received_packets, 16);
@@ -60,8 +64,10 @@ fn test_route_discovery_optimization() {
     let node45_log_records = logging::get_log_records_from_file(&node45_log_file).unwrap();
     let mut received_packets = 0;
     for record in node45_log_records.iter() {
-        if record["msg"].as_str().unwrap().contains("reached its destination") {
-            received_packets += 1;
+        if let Some(status) = &record.status {
+            if status == "ACCEPTED" {
+                received_packets += 1;
+            }
         }
     }
     assert_eq!(received_packets, 16);

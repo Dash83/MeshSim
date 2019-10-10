@@ -27,7 +27,7 @@ fn aodv_basic() {
                                                 std::path::MAIN_SEPARATOR,
                                                 DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_log_record("msg", 
+    let master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 25 processes terminated.", 
                                                    &master_log_records);
     assert!(master_node_num.is_some());
@@ -38,8 +38,10 @@ fn aodv_basic() {
 
     let mut received_packets = 0 ;
     for record in node25_log_records.iter() {
-        if record["msg"].as_str().unwrap().contains("DATA message reached its destination") {
-            received_packets += 1;
+        if let Some(status) = &record.status {
+            if status == "ACCEPTED" {
+                received_packets += 1;
+            }
         }
     }
     assert_eq!(received_packets, 2);

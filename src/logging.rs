@@ -26,21 +26,34 @@ pub const DEFAULT_MASTER_LOG: &str = "Master.log";
 const LOG_CHANNEL_SIZE: usize = 512; //Default is 128
 const LOG_THREAD_NAME: &str = "LoggerThread";
 
-// struct LogRecord {
-//     msg : String,
-//     level : String,
-//     ts : String,
-// }
+/// Struct that encapsulates a log entry
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LogEntry {
+    /// Main log message
+    pub msg: String,
+    /// Logging level
+    pub level: String,
+    /// Timestamp of the event
+    pub ts: String,
+    /// Packet status
+    pub status : Option<String>,
+    /// Reason for status
+    pub reason: Option<String>,
+    /// Length of the route that delivered the packet
+    pub route_length: Option<usize>,
+    /// Number of peers when transmitting
+    pub peers_in_range: Option<usize>,
+}
 
 ///Loads a log file and produces an array of log records for processing.
-pub fn get_log_records_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<Value>, io::Error> {
+pub fn get_log_records_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<LogEntry>, io::Error> {
     let file = File::open(path)?;
     let mut records = Vec::new();
     let reader = io::BufReader::new(file);
 
     for line in reader.lines() {
         let data = line?;
-        let u: Value = serde_json::from_str(&data)?;
+        let u: LogEntry = serde_json::from_str(&data)?;
         records.push(u);
     }
 
@@ -48,13 +61,12 @@ pub fn get_log_records_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<Value>, 
 }
 
 ///Given a log key (such as ts) will return the first log record that matches the log_value passed.
-pub fn find_log_record<'a, 'b>(
-    log_key: &'a str,
-    log_value: &'a str,
-    records: &'b [Value],
-) -> Option<&'b Value> {
+pub fn find_record_by_msg<'a>(
+    msg: &str,
+    records: &'a [LogEntry],
+) -> Option<&'a LogEntry> {
     for rec in records {
-        if rec[log_key] == log_value {
+        if &rec.msg == &msg {
             return Some(rec);
         }
     }

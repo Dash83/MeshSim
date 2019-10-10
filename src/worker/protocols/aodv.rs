@@ -778,23 +778,32 @@ impl AODV {
         route_table : Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         me : Peer,
         logger : &Logger,
-    ) -> Result<Option<MessageHeader>, MeshSimError> { 
-        info!(
-            logger,
-            "DATA message received";
-            "Dest" => &msg.destination,
-            "Hdr.sender" => &hdr.sender.name,
-            "Hdr.dest" => &hdr.destination.name,
-        );
+    ) -> Result<Option<MessageHeader>, MeshSimError> {         
         
         if hdr.destination.name != me.name {
-            info!(logger, "Not meant for this node"; "STATUS" => "Dropping");
+            info!(
+                logger,
+                "Message received";
+                "dest" => &msg.destination,
+                "type" => "DATA",
+                "hdr.sender" => &hdr.sender.name,
+                "hdr.dest" => &hdr.destination.name,
+                "status"=>"DROPPING",
+                "reason"=>"Not meant for this node",
+            );
             return Ok(None)
         }
 
         //Is this the destination of the data?
         if msg.destination == me.name {
-            info!(logger, "DATA message reached its destination");
+            info!(
+                logger,
+                "Message received";
+                "msg_type"=>"DATA",
+                "sender"=>&hdr.sender.name,
+                "status"=>"ACCEPTED",
+                "route_length" => hdr.hops
+            );
             return Ok(None)
         }
 
@@ -812,6 +821,14 @@ impl AODV {
                         kind : MeshSimErrorKind::Worker(err_msg),
                         cause : None,
                     };
+                    info!(
+                        logger,
+                        "Message received";
+                        "msg_type"=>"DATA",
+                        "sender"=>&hdr.sender.name,
+                        "status"=>"DROPPING",
+                        "reason"=>"Route to destination is marked as invalid",
+                    );
                     return Err(err)
                 }
             },
@@ -821,6 +838,14 @@ impl AODV {
                     kind : MeshSimErrorKind::Worker(err_msg),
                     cause : None,
                 };
+                info!(
+                    logger,
+                    "Message received";
+                    "msg_type"=>"DATA",
+                    "sender"=>&hdr.sender.name,
+                    "status"=>"DROPPING",
+                    "reason"=>"No route to destination",
+                );
                 return Err(err)
             },
         };
@@ -828,9 +853,17 @@ impl AODV {
         //Update header
         hdr.sender = me.clone();
         hdr.hops += 1;
-        hdr.destination.name = next_hop;
+        hdr.destination.name = next_hop.clone();
         hdr.payload = Some(serialize_message(Messages::DATA(msg))?);
 
+        info!(
+            logger,
+            "Message received";
+            "msg_type"=>"DATA",
+            "sender"=>&hdr.sender.name,
+            "status"=>"FORWARDING",
+            "next_hop"=>next_hop,
+        );
         Ok(Some(hdr))
     }
 
