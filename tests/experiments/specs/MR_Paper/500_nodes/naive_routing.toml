@@ -1,4 +1,4 @@
-name = "500_random_nodes_mobility_gossip"
+name = "500_random_nodes_mobility_naive"
 duration = 400000
 actions = [
         "ADD_SOURCE node497 node156 4 64 40000 13348",
@@ -44,11 +44,8 @@ actions = [
         ]
 width = 400.0
 height = 400.0
-mobility_model = "RandomWaypoint"
 [protocol]
-Protocol = "ReactiveGossip"
-k = 3
-p = 0.7
+Protocol = "NaiveRouting"
 
 [initial_nodes.node367]
 worker_name = "node367"

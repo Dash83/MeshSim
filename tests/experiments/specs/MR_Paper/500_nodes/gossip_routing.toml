@@ -44,9 +44,8 @@ actions = [
         ]
 width = 400.0
 height = 400.0
-mobility_model = "RandomWaypoint"
 [protocol]
-Protocol = "ReactiveGossip"
+Protocol = "GossipRouting"
 k = 3
 p = 0.7
 
