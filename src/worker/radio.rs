@@ -27,9 +27,11 @@ use sx1276;
 const SHORT_RANGE_DIR: &str = "SHORT";
 const LONG_RANGE_DIR: &str = "LONG";
 const DELAY_PER_NODE: u64 = 50; //microseconds
-const TRANSMISSION_MAX_RETRY: usize = 20;
+const TRANSMISSION_MAX_RETRY: usize = 10;
+const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
 const MIN_WAIT_BASE: u64 = 5;
 const WAIT_BASE_SERIES_LIMIT: u64 = 11;
+const RETRANSMISSION_WAIT_BASE: u64 = 50; //µs
 
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE: usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
@@ -163,7 +165,7 @@ impl Radio for SimulatedRadio {
             //Wait and retry.
             
             i += 1;
-            let sleep_time = SimulatedRadio::get_wait_time(wait_base, i as u64);
+            let sleep_time = self.get_wait_time(i as u32);
             let st = format!("{:?}", &sleep_time);
             info!(
                 &self.logger, 
@@ -395,13 +397,13 @@ impl SimulatedRadio {
     fn register_transmitter(&self, mut conn : &mut Connection) -> Result<(), MeshSimError> {
         let tx = start_tx(&mut conn)?;
         let mut i = 0;
-        let wait_base = self.get_wait_base();
+        // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
 
         //Increase the count of transmitting threads
         self.transmitting_threads.fetch_add(1, Ordering::SeqCst);
 
-        while i < TRANSMISSION_MAX_RETRY {
+        while i < TRANSMITTER_REGISTER_MAX_RETRY {
             if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
                 //Another thread is attempting to register this node or has already done it.
                 //No need to perform DB operation
@@ -424,7 +426,7 @@ impl SimulatedRadio {
                     }
                 },
             }
-            let sleep_time = SimulatedRadio::get_wait_time(wait_base, (i + 1) as u64);
+            let sleep_time = self.get_wait_time(i as u32);
             warn!(self.logger, "Will Retry in {:?}", &sleep_time);
             std::thread::sleep(sleep_time);
         }
@@ -441,10 +443,10 @@ impl SimulatedRadio {
     fn deregister_transmitter(&self, mut conn : &mut Connection) -> Result<(), MeshSimError> {
         let tx = start_tx(&mut conn)?;
         let mut i = 0;
-        let wait_base = self.get_wait_base();
+        // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
 
-        while i < TRANSMISSION_MAX_RETRY {
+        while i < TRANSMITTER_REGISTER_MAX_RETRY {
             if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
                 //More threads transmitting, so we shouldn't de-register the worker. Leave that to
                 //the last thread. Just descrease the count of active threads.
@@ -468,7 +470,7 @@ impl SimulatedRadio {
                     }
                 },
             }
-            let sleep_time = SimulatedRadio::get_wait_time(wait_base, (i + 1) as u64);
+            let sleep_time = self.get_wait_time(i as u32);
             warn!(self.logger, "Will Retry in {:?}", &sleep_time);
             std::thread::sleep(sleep_time);
         }
@@ -486,9 +488,10 @@ impl SimulatedRadio {
         (rng.next_u64() % WAIT_BASE_SERIES_LIMIT) + MIN_WAIT_BASE
     }
 
-    fn get_wait_time(base: u64, i: u64) -> Duration {
-        let x = base * i;
-        Duration::from_micros(x.pow(2))
+    fn get_wait_time(&self, i: u32) -> Duration {
+        let mut rng = self.rng.lock().expect("Could not lock RNG");
+        let r = rng.next_u64() % 2u64.pow(i);
+        Duration::from_micros(RETRANSMISSION_WAIT_BASE * r)
     }
 }
 
