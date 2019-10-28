@@ -26,12 +26,13 @@ use sx1276;
 //const SIMULATED_SCAN_DIR : &'static str = "addr";
 const SHORT_RANGE_DIR: &str = "SHORT";
 const LONG_RANGE_DIR: &str = "LONG";
-const DELAY_PER_NODE: u64 = 50; //microseconds
-const TRANSMISSION_MAX_RETRY: usize = 10;
+const DELAY_PER_NODE: u64 = 50; //µs
+const TRANSMISSION_MAX_RETRY: usize = 12;
 const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
 const MIN_WAIT_BASE: u64 = 5;
 const WAIT_BASE_SERIES_LIMIT: u64 = 11;
-const RETRANSMISSION_WAIT_BASE: u64 = 50; //µs
+const RETRANSMISSION_WAIT_BASE: u64 = 250; //µs
+const DB_CONTENTION_SLEEP: u64 = 100; //ms
 
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE: usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
@@ -123,10 +124,10 @@ impl Radio for SimulatedRadio {
         let radio_range: String = self.r_type.into();
 //        let mut peers = Vec::new();
         let mut i = 0;
-        let wait_base = self.get_wait_base();
+        // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
 
-        while i < TRANSMISSION_MAX_RETRY {
+        loop {
             //Get the list of active transmitters in range
             let active_transmitters_in_range = match get_active_transmitters_in_range(
                 &conn,
@@ -141,6 +142,7 @@ impl Radio for SimulatedRadio {
                     if let Some(cause) = e.cause {
                         warn!(&self.logger, "Cause: {}", cause; "ThreadID"=>&thread_id);
                     }
+                    std::thread::sleep(Duration::from_millis(DB_CONTENTION_SLEEP));
                     continue;
                 },
             };
@@ -153,7 +155,7 @@ impl Radio for SimulatedRadio {
             }
 
             //Error out?
-            if i == TRANSMISSION_MAX_RETRY {
+            if i >= TRANSMISSION_MAX_RETRY {
                 let err_msg = String::from("TRANSMISSION_MAX_RETRY reached. Aborting transmission");
                 let err = MeshSimError{
                     kind : MeshSimErrorKind::Networking(err_msg),
@@ -163,17 +165,17 @@ impl Radio for SimulatedRadio {
             }
 
             //Wait and retry.
-            
-            i += 1;
             let sleep_time = self.get_wait_time(i as u32);
             let st = format!("{:?}", &sleep_time);
             info!(
                 &self.logger, 
                 "Medium is busy"; 
                 "thread"=>&thread_id,
-                "retry"=>st,
+                "retry"=>i,
+                "wait_time"=>st,
             );
             std::thread::sleep(sleep_time);
+            i += 1;
         }
 
         self.register_transmitter(&mut conn)?;
@@ -419,7 +421,6 @@ impl SimulatedRadio {
                     return Ok(())
                 },
                 Err(e) => {
-                    i += 1;
                     warn!(self.logger, "{}", &e; "Thread"=> &thread_id);
                     if let Some(cause) = e.cause {
                         warn!(self.logger, "Cause: {}", &cause);
@@ -429,6 +430,7 @@ impl SimulatedRadio {
             let sleep_time = self.get_wait_time(i as u32);
             warn!(self.logger, "Will Retry in {:?}", &sleep_time);
             std::thread::sleep(sleep_time);
+            i += 1;
         }
         rollback_tx(tx)?;
         self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
@@ -463,7 +465,6 @@ impl SimulatedRadio {
                     return Ok(())
                 },
                 Err(e) => {
-                    i += 1;
                     warn!(self.logger, "{}", &e; "Thread"=> &thread_id);
                     if let Some(cause) = e.cause {
                         warn!(self.logger, "Cause: {}", &cause);
@@ -473,6 +474,7 @@ impl SimulatedRadio {
             let sleep_time = self.get_wait_time(i as u32);
             warn!(self.logger, "Will Retry in {:?}", &sleep_time);
             std::thread::sleep(sleep_time);
+            i += 1;
         }
         rollback_tx(tx)?;
         let err_msg = String::from("Gave up removing worker from active_transmitter_list");
@@ -489,8 +491,10 @@ impl SimulatedRadio {
     }
 
     fn get_wait_time(&self, i: u32) -> Duration {
-        let mut rng = self.rng.lock().expect("Could not lock RNG");
-        let r = rng.next_u64() % 2u64.pow(i);
+        //CSMA-CA algorithm
+        // let mut rng = self.rng.lock().expect("Could not lock RNG");
+        // let r = rng.next_u64() % 2u64.pow(i);
+        let r = 2u64.pow(i);
         Duration::from_micros(RETRANSMISSION_WAIT_BASE * r)
     }
 }

@@ -25,6 +25,7 @@ const CONCCURENT_THREADS_PER_FLOW: usize = 2;
 const MSG_TRANSMISSION_THRESHOLD: u64 = 1000;
 const ROUTE_DISCOVERY_THRESHOLD: i64 = 5000;
 const ROUTE_DISCOVERY_MAX_RETRY: usize = 3;
+const MAX_PACKET_RETRANSMISSION: usize = 3;
 
 /// Used for the pending_destination table
 type PendingRouteEntry = (String, DateTime<Utc>, usize);
@@ -114,7 +115,8 @@ impl DataMessageStates {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataCacheEntry {
     state: DataMessageStates,
-    data: Option<MessageHeader>,
+    retries: usize,
+    payload: MessageHeader,
 }
 
 /// Enum that lists all the possible messages in this protocol as well as the associated data for each one
@@ -352,7 +354,8 @@ impl ReactiveGossipRouting {
             msg_hsh,
             DataCacheEntry {
                 state: DataMessageStates::Pending(route_id.clone()),
-                data: Some(hdr.clone()),
+                retries: 0,
+                payload: hdr.clone(),
             },
         );
         //Right now this assumes the data can be sent in a single broadcast message
@@ -502,8 +505,8 @@ impl ReactiveGossipRouting {
                 match entry.state {
                     DataMessageStates::Pending(_route_id) => {
                         entry.state = DataMessageStates::Confirmed;
-                        let unused_data = entry.data.take();
-                        drop(unused_data);
+                        // let unused_data = entry.data;
+                        // drop(entry);
                         info!(
                             logger,
                             "Received message {:x}", &msg_hash;
@@ -552,7 +555,8 @@ impl ReactiveGossipRouting {
                     format!("{:x}", &msg_hash),
                     DataCacheEntry {
                         state,
-                        data: Some(hdr.clone()),
+                        retries: 0,
+                        payload: hdr.clone(),
                     },
                 );
             }
@@ -904,8 +908,14 @@ impl ReactiveGossipRouting {
                 {
                     debug!(logger, "Message {} is pending confirmation", &msg_hash);
 
-                    if let Some(hdr) = entry.data.take() {
-                        info!(logger, "Retransmitting message {:x}", &hdr.get_hdr_hash());
+                    if entry.retries < MAX_PACKET_RETRANSMISSION {
+                        let hdr = entry.payload.clone();
+                        entry.retries += 1;
+                        info!(
+                            logger, 
+                            "Retransmitting message {:x}", &hdr.get_hdr_hash();
+                            "retries"=>entry.retries,
+                        );
 
                         //The message is still cached, so re-transmit it.
                         short_radio
@@ -982,7 +992,8 @@ impl ReactiveGossipRouting {
                         warn!(
                             logger, 
                             "Dropping queued packets for {}", &dest;
-                            "reason"=>"RouteDiscover retries exceeded"
+                            "reason"=>"RouteDiscover retries exceeded",
+                            "route"=>&(*route_id),
                         );
 
                     }

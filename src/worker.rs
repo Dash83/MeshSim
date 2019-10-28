@@ -60,6 +60,7 @@ pub mod worker_config;
 const DNS_SERVICE_PORT: u16 = 23456;
 const WORKER_POOL_SIZE: usize = 1;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
+const PACKET_QUEUE_SIZE: usize = 3000; //Max number of queued packets
 
 // *****************************
 // ********** Structs **********
@@ -488,6 +489,16 @@ impl Worker {
                                 let r_type = rx.get_radio_range();
                                 let tx_channel = Arc::clone(&tx);
                                 let log = logger.clone();
+
+                                if thread_pool.queued_count() >= PACKET_QUEUE_SIZE {
+                                    info!(
+                                        logger, 
+                                        "Message received";
+                                        "status"=>"dropping",
+                                        "reason"=>"packet_queue is full"
+                                    );
+                                    continue;
+                                }
 
                                 thread_pool.execute(move || {
                                     let response = match prot.handle_message(hdr, r_type) {
