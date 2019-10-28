@@ -566,7 +566,7 @@ pub fn select_final_positions(conn: &Connection) -> Result<Vec<(i64, f64, f64)>,
     let mut arrived: Vec<(i64, f64, f64)> = Vec::new();
     for r in rows {
         let r = r.map_err(|e| {
-            let err_msg = String::from("Failed to read row");
+            let err_msg = String::from("select_final_positions: Failed to read rows");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
                 cause: Some(Box::new(e)),
@@ -686,7 +686,7 @@ pub fn get_workers_in_range(
 
     for row in rows {
         let row = row.map_err(|e| {
-            let err_msg = String::from("Failed to read row");
+            let err_msg = String::from("get_workers_in_range: Failed to read rows");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
                 cause: Some(Box::new(e)),
@@ -762,7 +762,7 @@ pub fn get_all_worker_positions(
     let mut results: Vec<(i64, String, f64, f64)> = Vec::new();
     for row in rows {
         let row = row.map_err(|e| {
-            let err_msg = String::from("Failed to read row");
+            let err_msg = String::from("get_all_worker_positions: Failed to read rows");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
                 cause: Some(Box::new(e)),
@@ -882,7 +882,7 @@ pub fn get_active_transmitters_in_range(
     let mut results = Vec::new();
     for row in rows {
         let worker = row.map_err(|e| {
-            let err_msg = String::from("Failed to read row");
+            let err_msg = String::from("get_active_transmitters_in_range: Failed to read rows");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
                 cause: Some(Box::new(e)),

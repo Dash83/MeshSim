@@ -9,7 +9,9 @@ use serde_cbor::de::*;
 use serde_cbor::ser::*;
 use slog::Logger;
 use std::sync::{Arc, Mutex};
-use rand::{rngs::StdRng, Rng};
+use std::collections::HashSet;
+use rand::{rngs::StdRng, RngCore, Rng};
+use std::iter::Iterator;
 
 const MSG_CACHE_SIZE: usize = 10000;
 /// The default number of hops messages are guaranteed to be propagated
@@ -17,7 +19,7 @@ pub const DEFAULT_MIN_HOPS: usize = 2;
 /// The default gossip-probability value
 pub const DEFAULT_GOSSIP_PROB: f64 = 0.70;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct CacheEntry {
     msg_id: Digest,
 }
@@ -29,7 +31,7 @@ pub struct GossipRouting {
     p : f64,
     worker_name: String,
     worker_id: String,
-    msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
+    msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
     short_radio: Arc<dyn Radio>,
     /// RNG used for gossip calculations
     rng: Arc<Mutex<StdRng>>,
@@ -101,10 +103,13 @@ impl Protocol for GossipRouting {
             //Have not seen this message yet.
             //Is there space in the cache?
             if cache.len() >= MSG_CACHE_SIZE {
-                let _res = cache.remove(0);
+                let mut rng = self.rng.lock().expect("Could not lock RNG");
+                let r = rng.next_u64() as usize % cache.len();
+                let e = cache.iter().nth(r).unwrap().clone();
+                cache.remove(&e);
             }
             //Log message
-            cache.push(CacheEntry { msg_id: msg_hash });
+            cache.insert(CacheEntry { msg_id: msg_hash });
         }
 
         self.short_radio.broadcast(hdr)?;
@@ -123,7 +128,7 @@ impl GossipRouting {
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
     ) -> GossipRouting {
-        let v = Vec::new();
+        let v = HashSet::with_capacity(MSG_CACHE_SIZE);
         GossipRouting {
             worker_name,
             worker_id,
@@ -171,7 +176,7 @@ impl GossipRouting {
         k: usize,
         p: f64,
         me: Peer,
-        msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
+        msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
@@ -206,10 +211,13 @@ impl GossipRouting {
             //Is there space in the cache?
             if cache.len() >= MSG_CACHE_SIZE {
                 warn!(logger, "Message cache full");
-                let _res = cache.remove(0);
+                let mut rng = rng.lock().expect("Could not lock RNG");
+                let r = rng.next_u64() as usize % cache.len();
+                let e = cache.iter().nth(r).unwrap().clone();
+                cache.remove(&e);
             }
             //Log message
-            cache.push(CacheEntry { msg_id: msg_hash });
+            cache.insert(CacheEntry { msg_id: msg_hash });
         } // LOCK:RELEASE:MSG_CACHE
 
         //Check if this node is the intended recipient of the message.
@@ -256,7 +264,7 @@ impl GossipRouting {
         msg_hash: Digest,
         k: usize,
         p: f64,
-        msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
+        msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {

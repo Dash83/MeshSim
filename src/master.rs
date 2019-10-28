@@ -49,7 +49,7 @@ use workloads::SourceProfiles;
 pub mod test_specification;
 mod workloads;
 
-const RANDOM_WAYPOINT_WAIT_TIME: u64 = 1000; //TODO: This must be parameterized
+const RANDOM_WAYPOINT_WAIT_TIME: u64 = 5000; //TODO: This must be parameterized
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 
 type PendingWorker = (DateTime<Utc>, Velocity);

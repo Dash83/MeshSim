@@ -441,7 +441,7 @@ fn add_cbr_sources(
     let mut rng = thread_rng();
     //Warm-up time estimated at 10 ms per node.
     let warm_up_period: u64 = (spec.initial_nodes.len() * 10) as u64;
-    let cool_off_period: u64 = (spec.duration as f64 * 0.10) as u64;
+    let cool_off_period: u64 = (spec.duration as f64 * 0.05) as u64;
     let duration: u64 = (spec.duration as f64 * 0.10) as u64;
     let sources_start_time_limit: u64 = spec.duration - cool_off_period - duration;
     let start_times_sample = Uniform::new(warm_up_period, sources_start_time_limit);
