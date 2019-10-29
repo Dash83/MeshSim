@@ -18,7 +18,9 @@ pub const DB_NAME: &str = "worker_positions.db";
 pub const HUMAN_SPEED_MEAN: f64 = 1.462; //meters per second.
 /// Standard deviation of human walking speeds
 pub const HUMAN_SPEED_STD_DEV: f64 = 0.164;
-const MAX_DBOPEN_RETRY: i32 = 11;
+const MAX_DBOPEN_RETRY: i32 = 20;
+const MAX_WAIT_MULTIPLIER: i32 = 10;
+const BASE_WAIT_TIME: u64 = 250; //µs
 
 //region Queries
 const CREATE_WORKERS_TBL_QRY : &str = "CREATE TABLE IF NOT EXISTS workers (
@@ -493,21 +495,16 @@ fn set_wal_mode(conn: &Connection, logger: &Logger) -> Result<(), MeshSimError> 
 }
 
 fn busy_callback(i: i32) -> bool {
-    let mut rng = rand::thread_rng();
-
     if i == MAX_DBOPEN_RETRY {
         return false;
     }
-
-    let base: u64 = 2;
-    let wait_time = (rng.next_u64() % 30) * base.pow(i as u32);
+    let r = std::cmp::min(i, MAX_WAIT_MULTIPLIER);
+    let wait_time = Duration::from_micros(BASE_WAIT_TIME * 2u64.pow(r as u32));
     eprintln!(
-        "Database busy({}). Will retry operation in {}",
+        "Database busy({}). Will retry operation in {:?}",
         i, wait_time
     );
-    let wait_dur = Duration::from_millis(wait_time);
-    thread::sleep(wait_dur);
-
+    thread::sleep(wait_time);
     true
 }
 
