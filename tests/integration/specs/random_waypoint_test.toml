@@ -3,7 +3,9 @@ duration = 10000
 actions = []
 width = 200.0
 height = 200.0
-mobility_model = "RandomWaypoint"
+[mobility]
+Model = "RandomWaypoint"
+pause_time = 10
 [protocol]
 Protocol = "NaiveRouting"
 

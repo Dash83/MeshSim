@@ -29,8 +29,6 @@ const LONG_RANGE_DIR: &str = "LONG";
 const DELAY_PER_NODE: u64 = 50; //µs
 const TRANSMISSION_MAX_RETRY: usize = 12;
 const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
-const MIN_WAIT_BASE: u64 = 5;
-const WAIT_BASE_SERIES_LIMIT: u64 = 11;
 const RETRANSMISSION_WAIT_BASE: u64 = 250; //µs
 const DB_CONTENTION_SLEEP: u64 = 100; //ms
 
@@ -485,10 +483,10 @@ impl SimulatedRadio {
         Err(err)
     }
 
-    fn get_wait_base(&self) -> u64 {
-        let mut rng = self.rng.lock().expect("Could not lock RNG");
-        (rng.next_u64() % WAIT_BASE_SERIES_LIMIT) + MIN_WAIT_BASE
-    }
+    // fn get_wait_base(&self) -> u64 {
+    //     let mut rng = self.rng.lock().expect("Could not lock RNG");
+    //     (rng.next_u64() % WAIT_BASE_SERIES_LIMIT) + MIN_WAIT_BASE
+    // }
 
     fn get_wait_time(&self, i: u32) -> Duration {
         //CSMA-CA algorithm

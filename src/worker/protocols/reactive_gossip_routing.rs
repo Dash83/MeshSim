@@ -580,7 +580,7 @@ impl ReactiveGossipRouting {
                 "Received message {:x}", &msg_hash;
                 "msg_type"=>"DATA",
                 "sender"=>&hdr.sender.name,
-                "status"=>"FORWARDED",
+                "status"=>"FORWARDING",
             );
             Ok(Some(hdr))
         }
@@ -774,7 +774,7 @@ impl ReactiveGossipRouting {
     }
 
     fn process_route_teardown_msg(
-        _hdr: MessageHeader,
+        hdr: MessageHeader,
         msg: RouteMessage,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
@@ -785,11 +785,6 @@ impl ReactiveGossipRouting {
         _short_radio: Arc<dyn Radio>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
-        info!(
-            logger,
-            "Route TEARDOWN msg received for route {}", &msg.route_id
-        );
-
         let subscribed = {
             let kr = known_routes
                 .lock()
@@ -799,6 +794,14 @@ impl ReactiveGossipRouting {
 
         let response = {
             if subscribed {
+                info!(
+                    logger,
+                    "Received ROUTE_TEARDOWN message";
+                    "route_id" => &msg.route_id, 
+                    "source" => &hdr.sender.name,
+                    "status"=>"FORWARDING",
+                    "cause"=>"Subscribed to route",
+                );
                 let hdr = ReactiveGossipRouting::route_teardown(
                     &msg.route_id,
                     &self_peer,
@@ -808,7 +811,14 @@ impl ReactiveGossipRouting {
                 )?;
                 Some(hdr)
             } else {
-                info!(logger, "Not subscribed to route. Ignoring");
+                info!(
+                    logger,
+                    "Received ROUTE_TEARDOWN message";
+                    "route_id" => &msg.route_id, 
+                    "source" => &hdr.sender.name,
+                    "status"=>"DROPPED",
+                    "cause"=>"Not subscribed to route",
+                );
                 None
             }
         };

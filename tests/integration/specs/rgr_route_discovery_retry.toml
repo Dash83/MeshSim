@@ -3,7 +3,9 @@ duration = 9000
 width = 200 
 height = 200 
 actions = ["ping node2 node6 1000"]
-mobility_model = "RandomWaypoint"
+[mobility]
+Model = "RandomWaypoint"
+pause_time = 1
 [protocol]
 Protocol = "ReactiveGossip"
 k = 2
