@@ -43,6 +43,10 @@ pub struct LogEntry {
     pub route_length: Option<usize>,
     /// Number of peers when transmitting
     pub peers_in_range: Option<usize>,
+    /// Route to which the operation is associated
+    pub route_id: Option<String>,
+    /// Type of message
+    pub msg_type: Option<String>,
 }
 
 ///Loads a log file and produces an array of log records for processing.

@@ -2,7 +2,7 @@
 #It will run for for 6 seconds, starting transmission 1 second in, and transmit 15 packets in total of 1024 bytes each
 
 name = "cbr_test"
-duration = 6000
+duration = 6100
 width = 200
 height = 200
 #AddSource source destination Packets_Per_Sec Packet_Size duration start_time

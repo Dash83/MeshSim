@@ -191,7 +191,6 @@ impl NaiveRouting {
                     "sender"=>&hdr.sender.name,
                     "status"=>"DROPPING",
                     "reason"=>"REPEATED",
-                    "msg_type"=>"DATA",
                     "sender"=>&hdr.sender.name,
                 );
                 return Ok(None);                
