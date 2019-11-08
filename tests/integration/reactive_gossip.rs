@@ -128,10 +128,20 @@ fn test_route_teardown() {
 
     let node7_log_file = format!("{}/log/node7.log", &work_dir);
     let node7_log_records = logging::get_log_records_from_file(&node7_log_file).unwrap();
-    let node7_teardown_recv = logging::find_record_by_msg(
-        "Route TEARDOWN msg received for route ec3a7a8fc1f4a1c13c933cadb5f880e8", 
-        &node7_log_records
-    );
+    // let node7_teardown_recv = logging::find_record_by_msg(
+    //     "Route TEARDOWN msg received for route ec3a7a8fc1f4a1c13c933cadb5f880e8", 
+    //     &node7_log_records
+    // );
+    let mut node7_teardown_recv = false;
+    for record in node7_log_records.iter() {
+        if record.msg != "Received ROUTE_TEARDOWN message" {
+            continue;
+        }
+
+        if let Some(route_id) = &record.route_id {
+            node7_teardown_recv = route_id == "ec3a7a8fc1f4a1c13c933cadb5f880e8";
+        }
+    }
 
     let mut received_packets = 0;
     let node25_log_file = format!("{}/log/node25.log", &work_dir);
@@ -148,7 +158,7 @@ fn test_route_teardown() {
     //3 packets should arrive before the route is torn-down
     assert_eq!(received_packets, 3);
     //Confirm the route disruption was detected and the source node received it.
-    assert!(node7_teardown_recv.is_some());
+    assert!(node7_teardown_recv);
 
     //Test passed. Results are not needed.
     fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");

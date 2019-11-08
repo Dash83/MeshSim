@@ -483,7 +483,6 @@ impl ReactiveGossipRouting {
                         "sender"=>&hdr.sender.name,
                         "status"=>"DROPPING",
                         "reason"=>"Not part of route",
-                        "msg_type"=>"DATA",
                         "sender"=>&hdr.sender.name,
                     );
                     return Ok(None);
@@ -513,7 +512,6 @@ impl ReactiveGossipRouting {
                             "msg_type"=>"DATA",
                             "sender"=>&hdr.sender.name,
                             "status"=>"CONFIRMED",
-                            "msg_type"=>"DATA",
                             "sender"=>&hdr.sender.name,
                         );
                     }
@@ -525,7 +523,6 @@ impl ReactiveGossipRouting {
                             "sender"=>&hdr.sender.name,
                             "status"=>"DROPPING",
                             "reason"=>"DUPLICATE",
-                            "msg_type"=>"DATA",
                             "sender"=>&hdr.sender.name,
                         );
                     }
