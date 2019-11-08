@@ -949,7 +949,7 @@ impl AODV {
             info!(
                 logger,
                 "Message received";
-                "msg_type" => &msg.destination,
+                "dest" => &msg.destination,
                 "msg_type" => "DATA",
                 "hdr.sender" => &hdr.sender.name,
                 "hdr.dest" => &hdr.destination.name,
