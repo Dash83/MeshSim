@@ -13,7 +13,7 @@ use self::mesh_simulator::worker::*;
 use self::mesh_simulator::worker::radio::*;
 use super::super::*;
 use mesh_simulator::logging::*;
-
+use mesh_simulator::worker::mobility::*;
 
 //**** Radio unit tests ****
 //TODO: Implement test
@@ -24,25 +24,6 @@ use mesh_simulator::logging::*;
 //     let radio_string = "Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }";
 
 //     assert_eq!(format!("{:?}", radio), String::from(radio_string));
-// }
-
-//TODO: Implement test
-// //Unit test for: Radio::add_bcast_group
-// #[test]
-// fn test_radio_add_bcast_group() {
-//     let mut radio = Radio::new();
-//     radio.add_bcast_group(String::from("group1"));
-
-//     assert_eq!(radio.broadcast_groups, vec![String::from("group1")]);
-// }
-
-// fn setup<'a>(path : &'a str ) {
-//     use self::mesh_simulator::worker::mobility::*;
-
-//     let db_path = format!("{}{}{}", path, std::path::MAIN_SEPARATOR, &DB_NAME);
-//     println!("DB path: {}", &db_path);
-//     let conn = get_db_connection(&db_path).expect("Could not create DB file");
-//     let _res = create_db_objects(&conn).expect("Could not create positions table");
 // }
 
 //TODO: Review if this test is still needed.
@@ -424,3 +405,65 @@ fn test_broadcast_device() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn test_last_transmission() -> TestResult {
+    let test_name = "last_transmission";
+    let worker_name = String::from("node1");
+    let worker_id = String::from("SOME_UNIQUE_ID");
+    let random_seed = 12345;
+    // let rng = Worker::rng_from_seed(random_seed);
+    let work_dir = create_test_dir(&test_name);
+    let mut log_file = PathBuf::from(&work_dir);
+    log_file.push("node1.log");
+    let logger = create_logger(log_file, false).expect("Could not create logger");
+    let conn = mobility::get_db_connection(&work_dir, &logger).expect("Could not create DB file");
+    let _res = mobility::create_db_objects(&conn, &logger).expect("Could not create positions table");
+
+    let config = RadioConfig::new();
+    let (tx, _rx) = config.create_radio(
+        OperationMode::Simulated,
+        RadioTypes::ShortRange,
+        work_dir.clone(),
+        worker_name.clone(),
+        worker_id.clone(),
+        random_seed,
+        // Some(Arc::clone(&rng)),
+        None,
+        logger.clone(),
+    ).expect("Could not create radio-channels");
+    let radio_address = tx.get_address();
+    let pos = Position{x:0.0, y:0.0};
+    let vel = Velocity{x:0.0, y:0.0};
+    let dest = None;
+    let _db_id = mobility::register_worker(
+        &conn,
+        worker_name,
+        &worker_id,
+        &pos,
+        &vel,
+        &dest,
+        Some(radio_address.to_string()),
+        None,
+        &logger,
+    ).expect("Could not register worker");
+
+    //Time before
+    let ts1 = Utc::now();
+
+    let hdr = MessageHeader::new();
+    tx.broadcast(hdr).expect("Could not broadcast message");
+    //Broadcast time
+    let bc_ts = tx.last_transmission();
+
+    //Now
+    let ts2 = Utc::now();
+
+    assert!(ts1.timestamp_nanos() < bc_ts);
+    assert!(bc_ts < ts2.timestamp_nanos());
+
+    //Teardown
+    //If test checks fail, this section won't be reached and not cleaned up for investigation.
+    let _res = std::fs::remove_dir_all(&work_dir).unwrap();
+
+    Ok(())
+}

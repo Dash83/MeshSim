@@ -14,7 +14,8 @@ use rand::RngCore;
 use std::str::FromStr;
 use rusqlite::Connection;
 use std::thread;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering, AtomicI64};
+use chrono::Utc;
 
 #[cfg(target_os = "linux")]
 use self::sx1276::socket::{Link, LoRa};
@@ -83,6 +84,8 @@ pub trait Radio: std::fmt::Debug + Send + Sync {
     fn get_address(&self) -> &str;
     ///Used to broadcast a message using the radio
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError>;
+    ///Get the time of the last transmission made by this readio
+    fn last_transmission(&self) -> i64;
 }
 
 /// Represents a radio used by the worker to send a message to the network.
@@ -110,11 +113,17 @@ pub struct SimulatedRadio {
     logger: Logger,
     /// Use for syncronising thread operations on the DB
     transmitting_threads: AtomicU8,
+    /// The last time this radio made a transmission
+    last_transmission: AtomicI64,
 }
 
 impl Radio for SimulatedRadio {
     fn get_address(&self) -> &str {
         &self.address
+    }
+
+    fn last_transmission(&self) -> i64 {
+        self.last_transmission.load(Ordering::SeqCst)
     }
 
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
@@ -248,6 +257,10 @@ impl Radio for SimulatedRadio {
             }
         }
 
+        //Update last transmission time
+        self.last_transmission.store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
+        debug!(&self.logger, "last_transmission:{}", self.last_transmission());
+
         self.deregister_transmitter(&mut conn)?;
 
         info!(
@@ -287,6 +300,7 @@ impl SimulatedRadio {
             rng,
             logger,
             transmitting_threads: AtomicU8::new(0),
+            last_transmission: Default::default(),
         };
         Ok((sr, listener))
     }
@@ -516,11 +530,17 @@ pub struct WifiRadio {
     r_type: RadioTypes,
     /// Logger for this Radio to use.
     logger: Logger,
+    /// The last time this radio made a transmission
+    last_transmission: AtomicI64,
 }
 
 impl Radio for WifiRadio {
     fn get_address(&self) -> &str {
         &self.address
+    }
+
+    fn last_transmission(&self) -> i64 {
+        self.last_transmission.load(Ordering::SeqCst)
     }
 
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
@@ -555,7 +575,7 @@ impl Radio for WifiRadio {
                     cause: Some(Box::new(e)),
                 }
             })?;
-
+        self.last_transmission.store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
         Ok(())
     }
 }
@@ -621,6 +641,7 @@ impl WifiRadio {
             rng,
             r_type,
             logger,
+            last_transmission: Default::default(),
         };
         Ok((radio, listener))
     }
