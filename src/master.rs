@@ -49,16 +49,20 @@ use workloads::SourceProfiles;
 pub mod test_specification;
 mod workloads;
 
-const RANDOM_WAYPOINT_WAIT_TIME: u64 = 1000; //TODO: This must be parameterized
+const RANDOM_WAYPOINT_WAIT_TIME: u64 = 1000;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 
 type PendingWorker = (DateTime<Utc>, Velocity);
 
 ///Different supported mobility models
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
+#[serde(tag = "Model")]
 pub enum MobilityModels {
     /// Random waypoint model
-    RandomWaypoint,
+    RandomWaypoint{
+        /// The amount of time a node will wait once it reaches its destination.
+        pause_time : u64
+    },
     /// No movement
     Stationary,
 }
@@ -67,8 +71,22 @@ impl FromStr for MobilityModels {
     type Err = MeshSimError;
 
     fn from_str(s: &str) -> Result<MobilityModels, MeshSimError> {
-        match s.to_uppercase().as_str() {
-            "RANDOMWAYPOINT" => Ok(MobilityModels::RandomWaypoint),
+        let parts: Vec<&str> = s.split_whitespace().collect();
+        
+        if parts.is_empty() {
+            let msg = String::from("Empty mobility model");
+            let err = MeshSimError {
+                kind: MeshSimErrorKind::TestParsing(msg),
+                cause: None,
+            };
+            return Err(err);
+        }
+
+        match parts[0].to_uppercase().as_str() {
+            "RANDOMWAYPOINT" => {
+                let pause_time = parts[1].parse::<u64>().unwrap_or(RANDOM_WAYPOINT_WAIT_TIME);
+                Ok(MobilityModels::RandomWaypoint{pause_time})
+            },
             "STATIONARY" => Ok(MobilityModels::Stationary),
             _ => {
                 let err_msg = String::from("Invalid mobility model");
@@ -329,7 +347,7 @@ impl Master {
                             })?;
                         }
 
-                        debug!(&self.logger, "Read from worker's stdout successful: {}", &output);
+                        // debug!(&self.logger, "Read from worker's stdout successful: {}", &output);
 
                         //Register the worker in the DB
                         let worker_id = match val.worker_id {
@@ -970,13 +988,14 @@ impl Master {
                     // }
 
                     match model {
-                        MobilityModels::RandomWaypoint => {
+                        MobilityModels::RandomWaypoint{pause_time} => {
                             Master::handle_random_waypoint(
                                 &conn,
                                 &width_sample,
                                 &height_sample,
                                 &walking_sample,
                                 &wait_sample,
+                                *pause_time,
                                 &mut paused_workers,
                                 &mut rng,
                                 &logger,
@@ -1006,6 +1025,7 @@ impl Master {
         height_sample: &Uniform<f64>,
         walking_sample: &Normal,
         _wait_sample: &Uniform<u64>,
+        pause_time: u64,
         paused_workers: &mut HashMap<i64, PendingWorker>,
         rng: &mut dyn RngCore,
         // db_path: &str,
@@ -1045,7 +1065,7 @@ impl Master {
 
                 //Calculate parameters
                 // let pause_time :u64 = rng.sample(wait_sample); RANDOM_WAYPOINT_WAIT_TIME
-                let pause_time = RANDOM_WAYPOINT_WAIT_TIME;
+                // let pause_time = RANDOM_WAYPOINT_WAIT_TIME;
                 let next_x: f64 = rng.sample(width_sample);
                 let next_y: f64 = rng.sample(height_sample);
                 let vel: f64 = rng.sample(walking_sample);

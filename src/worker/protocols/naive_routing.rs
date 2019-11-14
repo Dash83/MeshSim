@@ -9,10 +9,13 @@ use serde_cbor::de::*;
 use serde_cbor::ser::*;
 use slog::Logger;
 use std::sync::{Arc, Mutex};
+use std::collections::HashSet;
+use rand::{rngs::StdRng, RngCore};
+use std::iter::Iterator;
 
 const MSG_CACHE_SIZE: usize = 10000;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct CacheEntry {
     msg_id: Digest,
 }
@@ -22,8 +25,9 @@ struct CacheEntry {
 pub struct NaiveRouting {
     worker_name: String,
     worker_id: String,
-    msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
+    msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
     short_radio: Arc<dyn Radio>,
+    rng: Arc<Mutex<StdRng>>,
     logger: Logger,
 }
 
@@ -67,12 +71,14 @@ impl Protocol for NaiveRouting {
             }
         })?;
         let msg_cache = Arc::clone(&self.msg_cache);
+        let rng = Arc::clone(&self.rng);
         NaiveRouting::handle_message_internal(
             header,
             msg,
             self.get_self_peer(),
             msg_hash,
             msg_cache,
+            rng,
             &self.logger,
         )
     }
@@ -88,10 +94,13 @@ impl Protocol for NaiveRouting {
             //Have not seen this message yet.
             //Is there space in the cache?
             if cache.len() >= MSG_CACHE_SIZE {
-                let _res = cache.remove(0);
+                let mut rng = self.rng.lock().expect("Could not lock RNG");
+                let r = rng.next_u64() as usize % cache.len();
+                let e = cache.iter().nth(r).unwrap().clone();
+                cache.remove(&e);
             }
             //Log message
-            cache.push(CacheEntry { msg_id: msg_hash });
+            cache.insert(CacheEntry { msg_id: msg_hash });
         }
 
         self.short_radio.broadcast(hdr)?;
@@ -105,14 +114,16 @@ impl NaiveRouting {
         worker_name: String,
         worker_id: String,
         sr: Arc<dyn Radio>,
+        rng: Arc<Mutex<StdRng>>,
         logger: Logger,
     ) -> NaiveRouting {
-        let v = Vec::new();
+        let v = HashSet::with_capacity(MSG_CACHE_SIZE);
         NaiveRouting {
             worker_name,
             worker_id,
             msg_cache: Arc::new(Mutex::new(v)),
             short_radio: sr,
+            rng,
             logger,
         }
     }
@@ -150,7 +161,8 @@ impl NaiveRouting {
         data: Vec<u8>,
         msg_hash: Digest,
         me: Peer,
-        msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
+        msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
+        rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
         {
@@ -160,43 +172,52 @@ impl NaiveRouting {
                 Err(e) => {
                     info!(
                         logger,
-                        "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
-                        "STATUS"=>"ERROR"
+                        "Received message {:x}", &msg_hash;
+                        "msg_type"=>"DATA",
+                        "sender"=>&hdr.sender.name,
+                        "status"=>"ERROR",
                     );
                     error!(logger, "Failed to lock message cache: {}", e);
                     return Ok(None);
                 }
             };
 
-            for entry in cache.iter() {
-                if entry.msg_id == msg_hash {
-                    info!(
-                        logger,
-                        "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
-                        "STATUS"=>"DROPPING",
-                        "REASON"=>"REPEATED",
-                    );
-                    return Ok(None);
-                }
+            let entry = CacheEntry{ msg_id : msg_hash };
+            if cache.contains(&entry) {
+                info!(
+                    logger,
+                    "Received message {:x}", &msg_hash;
+                    "msg_type"=>"DATA",
+                    "sender"=>&hdr.sender.name,
+                    "status"=>"DROPPING",
+                    "reason"=>"REPEATED",
+                    "sender"=>&hdr.sender.name,
+                );
+                return Ok(None);                
             }
 
             //Have not seen this message yet.
             //Is there space in the cache?
             if cache.len() >= MSG_CACHE_SIZE {
                 warn!(logger, "Message cache full");
-                let _res = cache.remove(0);
+                let mut rng = rng.lock().expect("Could not lock RNG");
+                let r = rng.next_u64() as usize % cache.len();
+                let e = cache.iter().nth(r).unwrap().clone();
+                cache.remove(&e);
             }
             //Log message
-            cache.push(CacheEntry { msg_id: msg_hash });
+            cache.insert(CacheEntry { msg_id: msg_hash });
         } // LOCK:RELEASE:MSG_CACHE
 
         //Check if this node is the intended recipient of the message.
         if hdr.destination.name == me.name {
             info!(
                 logger,
-                "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
-                "STATUS"=>"ACCEPTED",
-                "ROUTE_LENGTH" => hdr.hops
+                "Received message {:x}", &msg_hash;
+                "msg_type"=>"DATA",
+                "sender"=>&hdr.sender.name,
+                "status"=>"ACCEPTED",
+                "route_length" => hdr.hops
             );
             return Ok(None);
         }
@@ -204,8 +225,10 @@ impl NaiveRouting {
         let response = NaiveRouting::create_data_message(me, hdr.destination, hdr.hops + 1, data)?;
         info!(
             logger,
-            "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
-            "STATUS"=>"FORWARDED",
+            "Received message {:x}", &msg_hash;
+            "msg_type"=>"DATA",
+            "sender"=>&hdr.sender.name,
+            "status"=>"FORWARDING",
         );
         Ok(Some(response))
     }
@@ -215,12 +238,13 @@ impl NaiveRouting {
         msg: Messages,
         me: Peer,
         msg_hash: Digest,
-        msg_cache: Arc<Mutex<Vec<CacheEntry>>>,
+        msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
+        rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
         match msg {
             Messages::Data(data) => {
-                NaiveRouting::process_data_message(hdr, data, msg_hash, me, msg_cache, logger)
+                NaiveRouting::process_data_message(hdr, data, msg_hash, me, msg_cache, rng, logger)
             }
         }
     }

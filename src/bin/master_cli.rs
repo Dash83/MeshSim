@@ -108,7 +108,7 @@ fn run(mut master: Master, matches: &ArgMatches) -> Result<(), MeshSimError> {
         master.duration = test_spec.duration;
         master.test_area.height = test_spec.area_size.height;
         master.test_area.width = test_spec.area_size.width;
-        master.mobility_model = test_spec.mobility_model.clone();
+        master.mobility_model = test_spec.mobility.clone();
         master.run_test(test_spec, &logger)?;
     }
 

@@ -27,12 +27,12 @@ fn test_random_waypoint_basic() {
                                                 std::path::MAIN_SEPARATOR,
                                                 DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_log_record("msg", 
+    let master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 5 processes terminated.", 
                                                    &master_log_records);
     assert!(master_node_num.is_some());
 
-    let node_3_arrived = logging::find_log_record("msg", "1 workers have reached their destinations", &master_log_records);
+    let node_3_arrived = logging::find_record_by_msg("1 workers have reached their destinations", &master_log_records);
     assert!(node_3_arrived.is_some());
 
     //Test passed. Results are not needed.

@@ -431,6 +431,8 @@ pub struct Worker {
     operation_mode: OperationMode,
     /// The protocol that this Worker should run for this configuration.
     pub protocol: Protocols,
+    /// The maximum number of queued packets a worker can have
+    packet_queue_size: usize,
     /// Logger for this Worker to use.
     logger: Logger,
 }
@@ -474,7 +476,8 @@ impl Worker {
                 let thread_pool = threadpool::Builder::new()
                     .num_threads(WORKER_POOL_SIZE)
                     .build();
-
+                let max_queued_jobs = self.packet_queue_size;
+                
                 thread::spawn(move || {
                     let radio_label: String = match rx.get_radio_range() {
                         RadioTypes::LongRange => String::from("LoraRadio"),
@@ -488,6 +491,16 @@ impl Worker {
                                 let r_type = rx.get_radio_range();
                                 let tx_channel = Arc::clone(&tx);
                                 let log = logger.clone();
+
+                                if thread_pool.queued_count() >= max_queued_jobs {
+                                    info!(
+                                        logger, 
+                                        "Message received";
+                                        "status"=>"dropping",
+                                        "reason"=>"packet_queue is full"
+                                    );
+                                    continue;
+                                }
 
                                 thread_pool.execute(move || {
                                     let response = match prot.handle_message(hdr, r_type) {

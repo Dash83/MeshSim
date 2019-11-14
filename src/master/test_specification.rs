@@ -33,7 +33,9 @@ pub struct TestSpec {
     #[serde(flatten)]
     pub area_size: Area,
     /// The pattern of mobility the workers will follow
-    pub mobility_model: Option<MobilityModels>,
+    pub mobility: Option<MobilityModels>,
+    /// The maximum number of queued packets a worker can have
+    pub packet_queue_size: Option<usize>,
     /// The protocol that this test will run.
     pub protocol: Protocols,
     /// Collection of worker configurations for the master to start at the beginning of the test.
@@ -88,7 +90,8 @@ impl TestSpec {
                 width: 0.0,
                 height: 0.0,
             },
-            mobility_model: None,
+            mobility: None,
+            packet_queue_size: Default::default(),
             actions: vec![],
             protocol : Default::default(),
             initial_nodes: HashMap::new(),

@@ -18,7 +18,9 @@ pub const DB_NAME: &str = "worker_positions.db";
 pub const HUMAN_SPEED_MEAN: f64 = 1.462; //meters per second.
 /// Standard deviation of human walking speeds
 pub const HUMAN_SPEED_STD_DEV: f64 = 0.164;
-const MAX_DBOPEN_RETRY: i32 = 11;
+const MAX_DBOPEN_RETRY: i32 = 20;
+const MAX_WAIT_MULTIPLIER: i32 = 10;
+const BASE_WAIT_TIME: u64 = 250; //µs
 
 //region Queries
 const CREATE_WORKERS_TBL_QRY : &str = "CREATE TABLE IF NOT EXISTS workers (
@@ -121,15 +123,18 @@ const STOP_WORKERS_QRY: &str = "
                                         vel_y = 0
                                 WHERE worker_velocities.worker_id in ";
 const SELECT_REMAINING_DIST_QRY : &str = "
-                                select workers.ID,
-                                        worker_destinations.dest_x,
-                                        worker_positions.X,
-                                        worker_destinations.dest_y,
-                                        worker_positions.Y
-                                from workers
-                                join worker_positions on worker_positions.worker_id = workers.ID
-                                join worker_destinations on worker_destinations.worker_id = workers.ID
-                                order by workers.Worker_Name;";
+    SELECT  workers.ID,
+	    	worker_destinations.dest_x,
+            worker_positions.X,
+            worker_destinations.dest_y,
+            worker_positions.Y,
+            worker_velocities.vel_x,
+            worker_velocities.vel_y
+    FROM    workers
+    JOIN    worker_positions ON worker_positions.worker_id = workers.ID
+    JOIN    worker_destinations ON worker_destinations.worker_id = workers.ID
+    JOIN    worker_velocities ON worker_velocities.worker_id = workers.ID
+    ORDER BY workers.Worker_Name;";
 const SELECT_WIFI_TRANSMITTERS_IN_RANGE_QRY: &str = "
     SELECT b.worker_id
     FROM worker_positions b, (
@@ -490,21 +495,16 @@ fn set_wal_mode(conn: &Connection, logger: &Logger) -> Result<(), MeshSimError> 
 }
 
 fn busy_callback(i: i32) -> bool {
-    let mut rng = rand::thread_rng();
-
     if i == MAX_DBOPEN_RETRY {
         return false;
     }
-
-    let base: u64 = 2;
-    let wait_time = (rng.next_u64() % 30) * base.pow(i as u32);
+    let r = std::cmp::min(i, MAX_WAIT_MULTIPLIER);
+    let wait_time = Duration::from_micros(BASE_WAIT_TIME * 2u64.pow(r as u32));
     eprintln!(
-        "Database busy({}). Will retry operation in {}",
+        "Database busy({}). Will retry operation in {:?}",
         i, wait_time
     );
-    let wait_dur = Duration::from_millis(wait_time);
-    thread::sleep(wait_dur);
-
+    thread::sleep(wait_time);
     true
 }
 
@@ -540,8 +540,13 @@ pub fn select_final_positions(conn: &Connection) -> Result<Vec<(i64, f64, f64)>,
             let current_x: f64 = row.get(2);
             let target_y: f64 = row.get(3);
             let current_y: f64 = row.get(4);
+            let vel_x: f64 = row.get(5);
+            let vel_y: f64 = row.get(6);
 
-            if (target_x - current_x) <= 0.0 && (target_y - current_y) <= 0.0 {
+            let vel_magnitude = (vel_x.powi(2) + vel_y.powi(2)).sqrt();
+            let remaining_distance = euclidean_distance(current_x, current_y, target_x, target_y);
+            let dist_threshold = vel_magnitude / 2.0;
+            if remaining_distance <= dist_threshold {
                 Some((w_id, current_x, current_y))
             } else {
                 None
@@ -558,7 +563,7 @@ pub fn select_final_positions(conn: &Connection) -> Result<Vec<(i64, f64, f64)>,
     let mut arrived: Vec<(i64, f64, f64)> = Vec::new();
     for r in rows {
         let r = r.map_err(|e| {
-            let err_msg = String::from("Failed to read row");
+            let err_msg = String::from("select_final_positions: Failed to read rows");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
                 cause: Some(Box::new(e)),
@@ -678,7 +683,7 @@ pub fn get_workers_in_range(
 
     for row in rows {
         let row = row.map_err(|e| {
-            let err_msg = String::from("Failed to read row");
+            let err_msg = String::from("get_workers_in_range: Failed to read rows");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
                 cause: Some(Box::new(e)),
@@ -754,7 +759,7 @@ pub fn get_all_worker_positions(
     let mut results: Vec<(i64, String, f64, f64)> = Vec::new();
     for row in rows {
         let row = row.map_err(|e| {
-            let err_msg = String::from("Failed to read row");
+            let err_msg = String::from("get_all_worker_positions: Failed to read rows");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
                 cause: Some(Box::new(e)),
@@ -874,7 +879,7 @@ pub fn get_active_transmitters_in_range(
     let mut results = Vec::new();
     for row in rows {
         let worker = row.map_err(|e| {
-            let err_msg = String::from("Failed to read row");
+            let err_msg = String::from("get_active_transmitters_in_range: Failed to read rows");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
                 cause: Some(Box::new(e)),

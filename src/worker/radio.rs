@@ -14,7 +14,8 @@ use rand::RngCore;
 use std::str::FromStr;
 use rusqlite::Connection;
 use std::thread;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering, AtomicI64};
+use chrono::Utc;
 
 #[cfg(target_os = "linux")]
 use self::sx1276::socket::{Link, LoRa};
@@ -26,10 +27,11 @@ use sx1276;
 //const SIMULATED_SCAN_DIR : &'static str = "addr";
 const SHORT_RANGE_DIR: &str = "SHORT";
 const LONG_RANGE_DIR: &str = "LONG";
-const DELAY_PER_NODE: u64 = 50; //microseconds
-const TRANSMISSION_MAX_RETRY: usize = 20;
-const MIN_WAIT_BASE: u64 = 5;
-const WAIT_BASE_SERIES_LIMIT: u64 = 11;
+const DELAY_PER_NODE: u64 = 50; //µs
+const TRANSMISSION_MAX_RETRY: usize = 12;
+const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
+const RETRANSMISSION_WAIT_BASE: u64 = 250; //µs
+const DB_CONTENTION_SLEEP: u64 = 100; //ms
 
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE: usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
@@ -82,6 +84,8 @@ pub trait Radio: std::fmt::Debug + Send + Sync {
     fn get_address(&self) -> &str;
     ///Used to broadcast a message using the radio
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError>;
+    ///Get the time of the last transmission made by this readio
+    fn last_transmission(&self) -> i64;
 }
 
 /// Represents a radio used by the worker to send a message to the network.
@@ -109,6 +113,8 @@ pub struct SimulatedRadio {
     logger: Logger,
     /// Use for syncronising thread operations on the DB
     transmitting_threads: AtomicU8,
+    /// The last time this radio made a transmission
+    last_transmission: AtomicI64,
 }
 
 impl Radio for SimulatedRadio {
@@ -116,15 +122,19 @@ impl Radio for SimulatedRadio {
         &self.address
     }
 
+    fn last_transmission(&self) -> i64 {
+        self.last_transmission.load(Ordering::SeqCst)
+    }
+
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
         let mut conn = get_db_connection(&self.work_dir, &self.logger)?;
         let radio_range: String = self.r_type.into();
 //        let mut peers = Vec::new();
         let mut i = 0;
-        let wait_base = self.get_wait_base();
+        // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
 
-        while i < TRANSMISSION_MAX_RETRY {
+        loop {
             //Get the list of active transmitters in range
             let active_transmitters_in_range = match get_active_transmitters_in_range(
                 &conn,
@@ -139,6 +149,7 @@ impl Radio for SimulatedRadio {
                     if let Some(cause) = e.cause {
                         warn!(&self.logger, "Cause: {}", cause; "ThreadID"=>&thread_id);
                     }
+                    std::thread::sleep(Duration::from_millis(DB_CONTENTION_SLEEP));
                     continue;
                 },
             };
@@ -151,7 +162,7 @@ impl Radio for SimulatedRadio {
             }
 
             //Error out?
-            if i == TRANSMISSION_MAX_RETRY {
+            if i >= TRANSMISSION_MAX_RETRY {
                 let err_msg = String::from("TRANSMISSION_MAX_RETRY reached. Aborting transmission");
                 let err = MeshSimError{
                     kind : MeshSimErrorKind::Networking(err_msg),
@@ -161,17 +172,17 @@ impl Radio for SimulatedRadio {
             }
 
             //Wait and retry.
-            
-            i += 1;
-            let sleep_time = SimulatedRadio::get_wait_time(wait_base, i as u64);
+            let sleep_time = self.get_wait_time(i as u32);
             let st = format!("{:?}", &sleep_time);
             info!(
                 &self.logger, 
                 "Medium is busy"; 
                 "thread"=>&thread_id,
-                "RETRY"=>st,
+                "retry"=>i,
+                "wait_time"=>st,
             );
             std::thread::sleep(sleep_time);
+            i += 1;
         }
 
         self.register_transmitter(&mut conn)?;
@@ -189,7 +200,7 @@ impl Radio for SimulatedRadio {
             self.logger, 
             "Starting transmission"; 
             "thread"=>&thread_id,
-            "PeersInRange"=>peers.len(),
+            "peers_in_range"=>peers.len(),
         );
 
         // let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
@@ -246,6 +257,10 @@ impl Radio for SimulatedRadio {
             }
         }
 
+        //Update last transmission time
+        self.last_transmission.store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
+        debug!(&self.logger, "last_transmission:{}", self.last_transmission());
+
         self.deregister_transmitter(&mut conn)?;
 
         info!(
@@ -285,6 +300,7 @@ impl SimulatedRadio {
             rng,
             logger,
             transmitting_threads: AtomicU8::new(0),
+            last_transmission: Default::default(),
         };
         Ok((sr, listener))
     }
@@ -387,7 +403,7 @@ impl SimulatedRadio {
                 }
             }
         }
-        debug!(logger, "This function did finish!");
+        // debug!(logger, "This function did finish!");
 
         Ok((sr_address, lr_address))
     }
@@ -395,13 +411,13 @@ impl SimulatedRadio {
     fn register_transmitter(&self, mut conn : &mut Connection) -> Result<(), MeshSimError> {
         let tx = start_tx(&mut conn)?;
         let mut i = 0;
-        let wait_base = self.get_wait_base();
+        // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
 
         //Increase the count of transmitting threads
         self.transmitting_threads.fetch_add(1, Ordering::SeqCst);
 
-        while i < TRANSMISSION_MAX_RETRY {
+        while i < TRANSMITTER_REGISTER_MAX_RETRY {
             if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
                 //Another thread is attempting to register this node or has already done it.
                 //No need to perform DB operation
@@ -417,16 +433,16 @@ impl SimulatedRadio {
                     return Ok(())
                 },
                 Err(e) => {
-                    i += 1;
                     warn!(self.logger, "{}", &e; "Thread"=> &thread_id);
                     if let Some(cause) = e.cause {
                         warn!(self.logger, "Cause: {}", &cause);
                     }
                 },
             }
-            let sleep_time = SimulatedRadio::get_wait_time(wait_base, (i + 1) as u64);
+            let sleep_time = self.get_wait_time(i as u32);
             warn!(self.logger, "Will Retry in {:?}", &sleep_time);
             std::thread::sleep(sleep_time);
+            i += 1;
         }
         rollback_tx(tx)?;
         self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
@@ -441,10 +457,10 @@ impl SimulatedRadio {
     fn deregister_transmitter(&self, mut conn : &mut Connection) -> Result<(), MeshSimError> {
         let tx = start_tx(&mut conn)?;
         let mut i = 0;
-        let wait_base = self.get_wait_base();
+        // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
 
-        while i < TRANSMISSION_MAX_RETRY {
+        while i < TRANSMITTER_REGISTER_MAX_RETRY {
             if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
                 //More threads transmitting, so we shouldn't de-register the worker. Leave that to
                 //the last thread. Just descrease the count of active threads.
@@ -461,16 +477,16 @@ impl SimulatedRadio {
                     return Ok(())
                 },
                 Err(e) => {
-                    i += 1;
                     warn!(self.logger, "{}", &e; "Thread"=> &thread_id);
                     if let Some(cause) = e.cause {
                         warn!(self.logger, "Cause: {}", &cause);
                     }
                 },
             }
-            let sleep_time = SimulatedRadio::get_wait_time(wait_base, (i + 1) as u64);
+            let sleep_time = self.get_wait_time(i as u32);
             warn!(self.logger, "Will Retry in {:?}", &sleep_time);
             std::thread::sleep(sleep_time);
+            i += 1;
         }
         rollback_tx(tx)?;
         let err_msg = String::from("Gave up removing worker from active_transmitter_list");
@@ -481,14 +497,17 @@ impl SimulatedRadio {
         Err(err)
     }
 
-    fn get_wait_base(&self) -> u64 {
-        let mut rng = self.rng.lock().expect("Could not lock RNG");
-        (rng.next_u64() % WAIT_BASE_SERIES_LIMIT) + MIN_WAIT_BASE
-    }
+    // fn get_wait_base(&self) -> u64 {
+    //     let mut rng = self.rng.lock().expect("Could not lock RNG");
+    //     (rng.next_u64() % WAIT_BASE_SERIES_LIMIT) + MIN_WAIT_BASE
+    // }
 
-    fn get_wait_time(base: u64, i: u64) -> Duration {
-        let x = base * i;
-        Duration::from_micros(x.pow(2))
+    fn get_wait_time(&self, i: u32) -> Duration {
+        //CSMA-CA algorithm
+        // let mut rng = self.rng.lock().expect("Could not lock RNG");
+        // let r = rng.next_u64() % 2u64.pow(i);
+        let r = 2u64.pow(i);
+        Duration::from_micros(RETRANSMISSION_WAIT_BASE * r)
     }
 }
 
@@ -511,11 +530,17 @@ pub struct WifiRadio {
     r_type: RadioTypes,
     /// Logger for this Radio to use.
     logger: Logger,
+    /// The last time this radio made a transmission
+    last_transmission: AtomicI64,
 }
 
 impl Radio for WifiRadio {
     fn get_address(&self) -> &str {
         &self.address
+    }
+
+    fn last_transmission(&self) -> i64 {
+        self.last_transmission.load(Ordering::SeqCst)
     }
 
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
@@ -550,7 +575,7 @@ impl Radio for WifiRadio {
                     cause: Some(Box::new(e)),
                 }
             })?;
-
+        self.last_transmission.store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
         Ok(())
     }
 }
@@ -616,6 +641,7 @@ impl WifiRadio {
             rng,
             r_type,
             logger,
+            last_transmission: Default::default(),
         };
         Ok((radio, listener))
     }
@@ -721,6 +747,10 @@ where
             }
         })?;
         Ok(())
+    }
+
+    fn last_transmission(&self) -> i64 {
+        unimplemented!("LoraRadio does not yet implement last_transmission")
     }
 }
 

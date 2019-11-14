@@ -26,6 +26,7 @@ pub const DEFAULT_INTERFACE_NAME: &str = "wlan";
 const DEFAULT_SPREADING_FACTOR: u32 = 0;
 const DEFAULT_LORA_FREQ: LoraFrequencies = LoraFrequencies::Europe;
 const DEFAULT_LORA_TRANS_POWER: u8 = 15;
+const DEFAULT_PACKET_QUEUE_SIZE: usize = 3000; //Max number of queued packets
 
 //TODO: Cleanup this struct
 ///Configuration pertaining to a given radio of the worker.
@@ -137,6 +138,8 @@ pub struct WorkerConfig {
     pub accept_commands: Option<bool>,
     /// Should this worker log output to the terminal
     pub term_log: Option<bool>,
+    /// The maximum number of queued packets a worker can have
+    pub packet_queue_size: Option<usize>,
     /// Initial position of the worker
 //    #[serde(flatten)]
     pub position: Position,
@@ -165,6 +168,7 @@ impl WorkerConfig {
             operation_mode: OperationMode::Simulated,
             accept_commands: None,
             term_log: None,
+            packet_queue_size: Some(DEFAULT_PACKET_QUEUE_SIZE),
             protocol: Some(Protocols::NaiveRouting),
             radio_short: None,
             radio_long: None,
@@ -252,7 +256,7 @@ impl WorkerConfig {
             operation_mode: self.operation_mode,
             id,
             protocol,
-            // db_id : db_id,
+            packet_queue_size: self.packet_queue_size.unwrap_or(DEFAULT_PACKET_QUEUE_SIZE),
             logger,
         };
         Ok(w)
@@ -315,6 +319,7 @@ mod tests {
             operation_mode: Simulated, \
             accept_commands: None, \
             term_log: None, \
+            packet_queue_size: Some(3000), \
             position: Position { x: 0.0, y: 0.0 }, \
             destination: None, \
             velocity: Velocity { x: 0.0, y: 0.0 }, \
@@ -370,6 +375,7 @@ mod tests {
         work_dir = \".\"\n\
         random_seed = 0\n\
         operation_mode = \"Simulated\"\n\
+        packet_queue_size = 3000\n\
         \n[position]\n\
         x = 0.0\n\
         y = 0.0\n\

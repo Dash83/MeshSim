@@ -27,7 +27,7 @@ fn test_placement() {
                                   std::path::MAIN_SEPARATOR,
                                   DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_log_record("msg",
+    let master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 20 processes terminated.",
                                                    &master_log_records);
     assert!(master_node_num.is_some());
@@ -39,15 +39,15 @@ fn test_placement() {
     let mut received_packets_lora = 0;
     let mut received_wifi_responses = 0;
     for record in node1_log_records.iter() {
-        if record["msg"].as_str().unwrap().contains("Beacon received over wifi from") {
+        if record.msg.contains("Beacon received over wifi from") {
             received_packets_wifi += 1;
         }
 
-        if record["msg"].as_str().unwrap().contains("Beacon received over lora from") {
+        if record.msg.contains("Beacon received over lora from") {
             received_packets_lora += 1;
         }
 
-        if record["msg"].as_str().unwrap().contains("BeaconResponse received over wifi") {
+        if record.msg.contains("BeaconResponse received over wifi") {
             received_wifi_responses += 1;
         }
     }
@@ -63,15 +63,15 @@ fn test_placement() {
     let mut received_packets_lora = 0;
     let mut received_wifi_responses = 0;
     for record in node7_log_records.iter() {
-        if record["msg"].as_str().unwrap().contains("Beacon received over wifi from") {
+        if record.msg.contains("Beacon received over wifi from") {
             received_packets_wifi += 1;
         }
 
-        if record["msg"].as_str().unwrap().contains("Beacon received over lora from") {
+        if record.msg.contains("Beacon received over lora from") {
             received_packets_lora += 1;
         }
 
-        if record["msg"].as_str().unwrap().contains("BeaconResponse received over wifi") {
+        if record.msg.contains("BeaconResponse received over wifi") {
             received_wifi_responses += 1;
         }
     }

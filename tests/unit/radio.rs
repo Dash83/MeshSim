@@ -13,7 +13,7 @@ use self::mesh_simulator::worker::*;
 use self::mesh_simulator::worker::radio::*;
 use super::super::*;
 use mesh_simulator::logging::*;
-
+use mesh_simulator::worker::mobility::*;
 
 //**** Radio unit tests ****
 //TODO: Implement test
@@ -24,25 +24,6 @@ use mesh_simulator::logging::*;
 //     let radio_string = "Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }";
 
 //     assert_eq!(format!("{:?}", radio), String::from(radio_string));
-// }
-
-//TODO: Implement test
-// //Unit test for: Radio::add_bcast_group
-// #[test]
-// fn test_radio_add_bcast_group() {
-//     let mut radio = Radio::new();
-//     radio.add_bcast_group(String::from("group1"));
-
-//     assert_eq!(radio.broadcast_groups, vec![String::from("group1")]);
-// }
-
-// fn setup<'a>(path : &'a str ) {
-//     use self::mesh_simulator::worker::mobility::*;
-
-//     let db_path = format!("{}{}{}", path, std::path::MAIN_SEPARATOR, &DB_NAME);
-//     println!("DB path: {}", &db_path);
-//     let conn = get_db_connection(&db_path).expect("Could not create DB file");
-//     let _res = create_db_objects(&conn).expect("Could not create positions table");
 // }
 
 //TODO: Review if this test is still needed.
@@ -264,7 +245,7 @@ fn test_broadcast_timing() {
                                   std::path::MAIN_SEPARATOR,
                                   DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_log_record("msg",
+    let master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 5 processes terminated.",
                                                    &master_log_records);
     assert!(master_node_num.is_some());
@@ -301,59 +282,73 @@ fn test_mac_layer_basic() {
                                   std::path::MAIN_SEPARATOR,
                                   DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_log_record("msg",
+    let master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 25 processes terminated.",
                                                    &master_log_records);
     assert!(master_node_num.is_some());
 
     let node4_log_file = &format!("{}/log/node4.log", &work_dir);
     let node4_log_records = logging::get_log_records_from_file(&node4_log_file).unwrap();
-    let node_4_received = logging::find_log_record(
-        "msg",
-        "Message db805e19ab4bfaa5cef9b146993859a9 reached its destination", &node4_log_records);
-    assert!(node_4_received.is_some());
+    let node_4_received = logging::find_record_by_msg(
+        "Received message db805e19ab4bfaa5cef9b146993859a9", 
+        &node4_log_records
+    );
+    assert!(node_4_received.is_some() && 
+            node_4_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
 
     let node5_log_file = &format!("{}/log/node5.log", &work_dir);
     let node5_log_records = logging::get_log_records_from_file(&node5_log_file).unwrap();
-    let node_5_received = logging::find_log_record(
-        "msg",
-        "Message 920d4c99eb3e393e47fa84268a559abb reached its destination", &node5_log_records);
-    assert!(node_5_received.is_some());
+    let node_5_received = logging::find_record_by_msg(
+        "Received message 920d4c99eb3e393e47fa84268a559abb", 
+        &node5_log_records
+    );
+    assert!(node_5_received.is_some() && 
+            node_5_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
 
     let node19_log_file = &format!("{}/log/node19.log", &work_dir);
     let node19_log_records = logging::get_log_records_from_file(&node19_log_file).unwrap();
-    let node_19_received = logging::find_log_record(
-        "msg",
-        "Message f57790d905cdfd41887f18c6162b99bf reached its destination", &node19_log_records);
-    assert!(node_19_received.is_some());
+    let node_19_received = logging::find_record_by_msg(
+        "Received message f57790d905cdfd41887f18c6162b99bf", 
+        &node19_log_records
+    );
+    assert!(node_19_received.is_some() && 
+            node_19_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
 
     let node20_log_file = &format!("{}/log/node20.log", &work_dir);
     let node20_log_records = logging::get_log_records_from_file(&node20_log_file).unwrap();
-    let node_20_received = logging::find_log_record(
-        "msg",
-        "Message d763e55c7fd41dd1d635ca7e6602e855 reached its destination", &node20_log_records);
-    assert!(node_20_received.is_some());
+    let node_20_received = logging::find_record_by_msg(
+        "Received message d763e55c7fd41dd1d635ca7e6602e855", 
+        &node20_log_records
+    );
+    assert!(node_20_received.is_some() && 
+            node_20_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
     
     let node22_log_file = &format!("{}/log/node22.log", &work_dir);
     let node22_log_records = logging::get_log_records_from_file(&node22_log_file).unwrap();
-    let node_22_received = logging::find_log_record(
-        "msg",
-        "Message d9802591b0658377c3ce50e56822bfe2 reached its destination", &node22_log_records);
-    assert!(node_22_received.is_some());
+    let node_22_received = logging::find_record_by_msg(
+        "Received message d9802591b0658377c3ce50e56822bfe2", 
+        &node22_log_records
+    );
+    assert!(node_22_received.is_some() && 
+            node_22_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
 
     let node24_log_file = &format!("{}/log/node24.log", &work_dir);
     let node24_log_records = logging::get_log_records_from_file(&node24_log_file).unwrap();
-    let node_24_received = logging::find_log_record(
-        "msg",
-        "Message eadd0fef2df22db64ac06de822ae5c15 reached its destination", &node24_log_records);
-    assert!(node_24_received.is_some());
+    let node_24_received = logging::find_record_by_msg(
+        "Received message eadd0fef2df22db64ac06de822ae5c15", 
+        &node24_log_records
+    );
+    assert!(node_24_received.is_some() && 
+            node_24_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
     
     let node25_log_file = &format!("{}/log/node25.log", &work_dir);
     let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
-    let node_25_received = logging::find_log_record(
-        "msg",
-        "Message fbedcdf252b06a96e4b6b7323be7d788 reached its destination", &node25_log_records);
-    assert!(node_25_received.is_some());
+    let node_25_received = logging::find_record_by_msg(
+        "Received message fbedcdf252b06a96e4b6b7323be7d788", 
+        &node25_log_records
+    );
+    assert!(node_25_received.is_some() && 
+            node_25_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
     
     //Teardown
     //If test checks fail, this section won't be reached and not cleaned up for investigation.
@@ -410,3 +405,65 @@ fn test_broadcast_device() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn test_last_transmission() -> TestResult {
+    let test_name = "last_transmission";
+    let worker_name = String::from("node1");
+    let worker_id = String::from("SOME_UNIQUE_ID");
+    let random_seed = 12345;
+    // let rng = Worker::rng_from_seed(random_seed);
+    let work_dir = create_test_dir(&test_name);
+    let mut log_file = PathBuf::from(&work_dir);
+    log_file.push("node1.log");
+    let logger = create_logger(log_file, false).expect("Could not create logger");
+    let conn = mobility::get_db_connection(&work_dir, &logger).expect("Could not create DB file");
+    let _res = mobility::create_db_objects(&conn, &logger).expect("Could not create positions table");
+
+    let config = RadioConfig::new();
+    let (tx, _rx) = config.create_radio(
+        OperationMode::Simulated,
+        RadioTypes::ShortRange,
+        work_dir.clone(),
+        worker_name.clone(),
+        worker_id.clone(),
+        random_seed,
+        // Some(Arc::clone(&rng)),
+        None,
+        logger.clone(),
+    ).expect("Could not create radio-channels");
+    let radio_address = tx.get_address();
+    let pos = Position{x:0.0, y:0.0};
+    let vel = Velocity{x:0.0, y:0.0};
+    let dest = None;
+    let _db_id = mobility::register_worker(
+        &conn,
+        worker_name,
+        &worker_id,
+        &pos,
+        &vel,
+        &dest,
+        Some(radio_address.to_string()),
+        None,
+        &logger,
+    ).expect("Could not register worker");
+
+    //Time before
+    let ts1 = Utc::now();
+
+    let hdr = MessageHeader::new();
+    tx.broadcast(hdr).expect("Could not broadcast message");
+    //Broadcast time
+    let bc_ts = tx.last_transmission();
+
+    //Now
+    let ts2 = Utc::now();
+
+    assert!(ts1.timestamp_nanos() < bc_ts);
+    assert!(bc_ts < ts2.timestamp_nanos());
+
+    //Teardown
+    //If test checks fail, this section won't be reached and not cleaned up for investigation.
+    let _res = std::fs::remove_dir_all(&work_dir).unwrap();
+
+    Ok(())
+}

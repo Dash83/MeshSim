@@ -232,7 +232,7 @@ fn start_command_loop(data: TestBasics) -> Result<(), Errors> {
     //Get test duration
     spec.duration = data.end_time;
     //Get mobility model
-    spec.mobility_model = data.m_model.clone();
+    spec.mobility = data.m_model.clone();
 
     println!("Input commands to continue building the test spec.");
     println!("Input ? for a list of commands or \"finish\" for writing the current configuration to file.");
@@ -357,7 +357,7 @@ fn command_add_nodes(
 
         if let Some(model) = &data.m_model {
             match model {
-                MobilityModels::RandomWaypoint => {
+                MobilityModels::RandomWaypoint{pause_time} => {
                     let target_x = rng.sample(width_sample);
                     let target_y = rng.sample(height_sample);
                     w.destination = Some(Position {
@@ -441,7 +441,7 @@ fn add_cbr_sources(
     let mut rng = thread_rng();
     //Warm-up time estimated at 10 ms per node.
     let warm_up_period: u64 = (spec.initial_nodes.len() * 10) as u64;
-    let cool_off_period: u64 = (spec.duration as f64 * 0.10) as u64;
+    let cool_off_period: u64 = (spec.duration as f64 * 0.05) as u64;
     let duration: u64 = (spec.duration as f64 * 0.10) as u64;
     let sources_start_time_limit: u64 = spec.duration - cool_off_period - duration;
     let start_times_sample = Uniform::new(warm_up_period, sources_start_time_limit);
