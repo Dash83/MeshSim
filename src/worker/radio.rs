@@ -748,6 +748,10 @@ where
         })?;
         Ok(())
     }
+
+    fn last_transmission(&self) -> i64 {
+        unimplemented!("LoraRadio does not yet implement last_transmission")
+    }
 }
 
 #[cfg(target_os = "linux")]
