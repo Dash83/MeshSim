@@ -36,14 +36,17 @@ fn test_basic() {
     let node24_log_file = format!("{}/log/node24.log", &work_dir);
     let node24_log_records = logging::get_log_records_from_file(&node24_log_file).unwrap();
 
-    //node1 receives the command to start transmission
-    let node_24_data_recv = logging::find_record_by_msg(
-        "Received message 01b903789ae7d54079e92398434cef61", 
-        &node24_log_records
-    );
-    assert!(node_24_data_recv.is_some() && 
-            node_24_data_recv.cloned().unwrap().status.unwrap() == "ACCEPTED");
-
+    let mut received_packets = 0 ;
+    for record in node24_log_records.iter() {
+        if record.status.is_some() && record.msg_type.is_some() {
+            let status = &record.status.clone().unwrap();
+            let msg_type = &record.msg_type.clone().unwrap();
+            if status == "ACCEPTED" && msg_type == "DATA" {
+                received_packets += 1;
+            }
+        } 
+    }
+    assert_eq!(received_packets, 1);
     //Test passed. Results are not needed.
     fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
 }
@@ -87,12 +90,16 @@ fn test_route_retry() {
 
     let node6_log_file = format!("{}/log/node6.log", &work_dir);
     let node6_log_records = logging::get_log_records_from_file(&node6_log_file).unwrap();
-    let node_6_data_recv = logging::find_record_by_msg(
-        "Received message 64d6f18ec2145cdc6cddb19a908e5b2a", 
-        &node6_log_records
-    );
-    assert!(node_6_data_recv.is_some() && 
-            node_6_data_recv.cloned().unwrap().status.unwrap() == "ACCEPTED");
+    let mut received_packets = 0 ;
+    for record in node6_log_records.iter() {
+        if record.status.is_some() && record.msg_type.is_some() {
+            let status = &record.status.clone().unwrap();
+            let msg_type = &record.msg_type.clone().unwrap();
+            if status == "ACCEPTED" && msg_type == "DATA" {
+                received_packets += 1;
+            }
+        } 
+    }
 
     //Test passed. Results are not needed.
     fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
@@ -138,8 +145,8 @@ fn test_route_teardown() {
             continue;
         }
 
-        if let Some(route_id) = &record.route_id {
-            node7_teardown_recv = route_id == "ec3a7a8fc1f4a1c13c933cadb5f880e8";
+        if let Some(status) = &record.status {
+            node7_teardown_recv = status == "FORWARDING";
         }
     }
 
@@ -148,8 +155,10 @@ fn test_route_teardown() {
     let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
 
     for record in node25_log_records.iter() {
-        if let Some(status) = &record.status {
-            if status == "ACCEPTED" {
+        if record.status.is_some() && record.msg_type.is_some() {
+            let status = &record.status.clone().unwrap();
+            let msg_type = &record.msg_type.clone().unwrap();
+            if status == "ACCEPTED" && msg_type == "DATA" {
                 received_packets += 1;
             }
         }

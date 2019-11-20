@@ -74,8 +74,8 @@ impl RouteMessage {
         let mut data = Vec::new();
         data.append(&mut source.clone().into_bytes());
         data.append(&mut destination.clone().into_bytes());
-        // let ts = Utc::now().timestamp_millis();
-        // data.append(&mut ts.to_le_bytes().to_vec());
+        let ts = Utc::now().timestamp_millis();
+        data.append(&mut ts.to_le_bytes().to_vec());
         let dig = md5::compute(&data);
         let route_id = format!("{:x}", dig);
 
@@ -338,7 +338,7 @@ impl ReactiveGossipRouting {
         let mut hdr = MessageHeader::new();
         hdr.sender = self_peer;
         hdr.destination = dest_peer;
-        hdr.hops = 1;
+        hdr.hops = 0;
         hdr.payload = Some(serialize_message(Messages::Data(DataMessage {
             route_id: route_id.clone(),
             payload: data,
@@ -463,38 +463,37 @@ impl ReactiveGossipRouting {
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
         let route_id = data_msg.route_id.clone();
+        let part_of_route = {
+            let known_routes = known_routes
+                .lock()
+                .expect("Failed to lock known_routes table");
+            known_routes.get(&data_msg.route_id).copied()
+        };
 
+        //Are we part of this route?
+        let last_hop = match part_of_route {
+            Some(last_hop) => last_hop,
+            None => {
+                info!(
+                    logger,
+                    "Received message";
+                    "msg_id"=>format!("{:x}", &msg_hash),
+                    "msg_type"=>"DATA",
+                    "sender"=>&hdr.sender.name,
+                    "status"=>"DROPPING",
+                    "reason"=>"Not part of route",
+                    "sender"=>&hdr.sender.name,
+                );
+                return Ok(None);
+            }
+        };
+
+        //We are part of the route then.
+        //Increase hop count...
+        hdr.hops += 1;
+        //...and re-package the message.
+        hdr.payload = Some(serialize_message(Messages::Data(data_msg))?);
         {
-            let part_of_route = {
-                let known_routes = known_routes
-                    .lock()
-                    .expect("Failed to lock known_routes table");
-                known_routes.get(&data_msg.route_id).copied()
-            };
-
-            //Are we part of this route?
-            let last_hop = match part_of_route {
-                Some(last_hop) => last_hop,
-                None => {
-                    info!(
-                        logger,
-                        "Received message {:x}", &msg_hash;
-                        "msg_type"=>"DATA",
-                        "sender"=>&hdr.sender.name,
-                        "status"=>"DROPPING",
-                        "reason"=>"Not part of route",
-                        "sender"=>&hdr.sender.name,
-                    );
-                    return Ok(None);
-                }
-            };
-
-            //We are part of the route then.
-            //Increase hop count...
-            hdr.hops += 1;
-            //...and re-package the message.
-            hdr.payload = Some(serialize_message(Messages::Data(data_msg))?);
-
             let mut d_cache = data_msg_cache
                 .lock()
                 .expect("Failed to lock data_message cache");
@@ -508,7 +507,8 @@ impl ReactiveGossipRouting {
                         // drop(entry);
                         info!(
                             logger,
-                            "Received message {:x}", &msg_hash;
+                            "Received message";
+                            "msg_id"=>format!("{:x}", &msg_hash),
                             "msg_type"=>"DATA",
                             "sender"=>&hdr.sender.name,
                             "status"=>"CONFIRMED",
@@ -518,7 +518,8 @@ impl ReactiveGossipRouting {
                     DataMessageStates::Confirmed => {
                         info!(
                             logger,
-                            "Received message {:x}", &msg_hash;
+                            "Received message";
+                            "msg_id"=>format!("{:x}", &msg_hash),
                             "msg_type"=>"DATA",
                             "sender"=>&hdr.sender.name,
                             "status"=>"DROPPING",
@@ -563,7 +564,8 @@ impl ReactiveGossipRouting {
         if hdr.destination.name == self_peer.name {
             info!(
                 logger,
-                "Received message {:x}", &msg_hash;
+                "Received message";
+                "msg_id"=>format!("{:x}", &msg_hash),
                 "msg_type"=>"DATA",
                 "sender"=>&hdr.sender.name,
                 "status"=>"ACCEPTED",
@@ -574,7 +576,8 @@ impl ReactiveGossipRouting {
             //We are not. Forward the message.
             info!(
                 logger,
-                "Received message {:x}", &msg_hash;
+                "Received message";
+                "msg_id"=>format!("{:x}", &msg_hash),
                 "msg_type"=>"DATA",
                 "sender"=>&hdr.sender.name,
                 "status"=>"FORWARDING",
@@ -595,15 +598,16 @@ impl ReactiveGossipRouting {
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
-        info!(logger, "Received ROUTE_DISCOVERY message"; "route_id" => &msg.route_id, "source" => &hdr.sender.name);
-
         //Is this node the intended destination of the route?
         if hdr.destination.name == self_peer.name {
             info!(
                 logger,
-                "Route discovery succeeded! Route_id {}", &msg.route_id
+                "Received message";
+                "msg_type"=>"ROUTE_DISCOVERY",
+                "route_id" => &msg.route_id,
+                "sender"=>&hdr.sender.name,
+                "status"=>"ACCEPTED",
             );
-
             //Add this route to the list of known routes.
             //This is now needed in the current version of the protocol as the process_data_msg
             //function discriminates on route-membership first of all. Also, must add this route as
@@ -642,7 +646,12 @@ impl ReactiveGossipRouting {
                 //We have processed this route before. Discard message
                 info!(
                     logger,
-                    "Route {} has already been processed. Dropping message", &msg.route_id
+                    "Received message";
+                    "msg_type"=>"ROUTE_DISCOVERY",
+                    "route_id" => &msg.route_id,
+                    "sender"=>&hdr.sender.name,
+                    "status"=>"DROPPED",
+                    "reason"=>"DUPLICATE",
                 );
                 return Ok(None);
             }
@@ -655,7 +664,15 @@ impl ReactiveGossipRouting {
         };
         debug!(logger, "Gossip prob {}", s);
         if msg.route.len() > k && s > p {
-            info!(logger, "Not forwarding the message");
+            info!(
+                logger,
+                "Received message";
+                "msg_type"=>"ROUTE_DISCOVERY",
+                "route_id" => &msg.route_id,
+                "sender"=>&hdr.sender.name,
+                "status"=>"DROPPED",
+                "reason"=>"Gossip failed",
+            );            
             //Not gossiping this message.
             return Ok(None);
         }
@@ -664,8 +681,12 @@ impl ReactiveGossipRouting {
         msg.route.push(self_peer.name.clone());
         info!(
             logger,
-             "RouteDiscovery message forwarded"; "route_id" => &msg.route_id
-        );
+            "Received message";
+            "msg_type"=>"ROUTE_DISCOVERY",
+            "route_id" => &msg.route_id,
+            "sender"=>&hdr.sender.name,
+            "status"=>"FORWARDED",
+        );  
 
         //Build message and forward it
         hdr.payload = Some(serialize_message(Messages::RouteDiscovery(msg))?);
@@ -684,8 +705,6 @@ impl ReactiveGossipRouting {
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
     ) -> Result<Option<MessageHeader>, MeshSimError> {
-        info!(logger, "Received ROUTE_ESTABLISH message"; "route_id" => &msg.route_id, "source" => &hdr.sender.name);
-
         //Who's the next hop in the route?
         let next_hop = match msg.route.pop() {
             Some(h) => h,
@@ -693,7 +712,12 @@ impl ReactiveGossipRouting {
                 //The route in this message is empty. Discard the message.
                 warn!(
                     logger,
-                    "Received empty route message for route_id {}", &msg.route_id
+                    "Received message";
+                    "msg_type"=>"ROUTE_ESTABLISH",
+                    "route_id" => &msg.route_id,
+                    "sender"=>&hdr.sender.name,
+                    "status"=>"DROPPED",
+                    "reason"=>"Empty payload",
                 );
                 return Ok(None);
             }
@@ -701,6 +725,15 @@ impl ReactiveGossipRouting {
         //Is the message meant for this node?
         if next_hop != self_peer.name {
             //Not us. Discard message
+            info!(
+                logger,
+                "Received message";
+                "msg_type"=>"ROUTE_ESTABLISH",
+                "route_id" => &msg.route_id,
+                "sender"=>&hdr.sender.name,
+                "status"=>"DROPPED",
+                "reason"=>"Not meant for this node",
+            );
             return Ok(None);
         }
 
@@ -727,18 +760,21 @@ impl ReactiveGossipRouting {
         //This is the next hop in the route. Update route to reflect this.
         msg.route.insert(0, next_hop);
 
-        // DEBUG
-        info!(logger, "Known_routes: {:?}", &known_routes);
-        info!(logger, "Destination_routes: {:?}", &dest_routes);
+        debug!(logger, "Known_routes: {:?}", &known_routes);
+        debug!(logger, "Destination_routes: {:?}", &dest_routes);
 
         //Is this the final destination of the route?
         if hdr.destination.name == self_peer.name {
+            let route = format!("Route: {:?}", &msg.route);
             info!(
                 logger,
-                "Route establish succeeded! Route_id: {}", &msg.route_id
+                "Received message";
+                "msg_type"=>"ROUTE_ESTABLISH",
+                "route_id" => &msg.route_id,
+                "sender"=>&hdr.sender.name,
+                "status"=>"ACCEPTED",
+                "route"=>route,
             );
-            info!(logger, "Route: {:?}", &msg.route);
-
             //...and remove this node from the pending destinations
             {
                 let mut pd = pending_destinations
@@ -762,7 +798,11 @@ impl ReactiveGossipRouting {
 
         info!(
             logger,
-            "{} added to route_id {}", &self_peer.name, msg.route_id
+            "Received message";
+            "msg_type"=>"ROUTE_ESTABLISH",
+            "route_id" => &msg.route_id,
+            "sender"=>&hdr.sender.name,
+            "status"=>"FORWARDING",
         );
 
         //Finally, forward the message
