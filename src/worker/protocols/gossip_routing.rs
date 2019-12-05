@@ -187,8 +187,10 @@ impl GossipRouting {
                 Err(e) => {
                     info!(
                         logger,
-                        "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
-                        "status"=>"ERROR"
+                        "Received message {:x}", &msg_hash;
+                        "msg_type"=>"DATA",
+                        "sender"=>&hdr.sender.name,
+                        "status"=>"ERROR",
                     );
                     error!(logger, "Failed to lock message cache: {}", e);
                     return Ok(None);
@@ -199,9 +201,12 @@ impl GossipRouting {
                 if entry.msg_id == msg_hash {
                     info!(
                         logger,
-                        "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
+                        "Received message {:x}", &msg_hash;
+                        "msg_type"=>"DATA",
+                        "sender"=>&hdr.sender.name,
                         "status"=>"DROPPING",
                         "reason"=>"REPEATED",
+                        "sender"=>&hdr.sender.name,
                     );
                     return Ok(None);
                 }
@@ -224,7 +229,9 @@ impl GossipRouting {
         if hdr.destination.name == me.name {
             info!(
                 logger,
-                "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
+                "Received message {:x}", &msg_hash;
+                "msg_type"=>"DATA",
+                "sender"=>&hdr.sender.name,
                 "status"=>"ACCEPTED",
                 "route_length" => hdr.hops
             );
@@ -240,7 +247,9 @@ impl GossipRouting {
         if hdr.hops as usize > k && s > p {
             info!(
                 logger,
-                "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
+                "Received message {:x}", &msg_hash;
+                "msg_type"=>"DATA",
+                "sender"=>&hdr.sender.name,
                 "status"=>"DROPPING",
                 "reason"=>"GOSSIP",
             );
@@ -251,8 +260,10 @@ impl GossipRouting {
         let response = GossipRouting::create_data_message(me, hdr.destination, hdr.hops + 1, data)?;
         info!(
             logger,
-            "Received DATA message {:x} from {}", &msg_hash, &hdr.sender.name;
-            "status"=>"FORWARDED",
+            "Received message {:x}", &msg_hash;
+            "msg_type"=>"DATA",
+            "sender"=>&hdr.sender.name,
+            "status"=>"FORWARDING",
         );
         Ok(Some(response))
     }

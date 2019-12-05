@@ -146,7 +146,7 @@ impl FromStr for Protocols {
                     if p.is_none() {
                         p = Some(reactive_gossip_routing::DEFAULT_GOSSIP_PROB);
                     }
-                    (k.unwrap(), p.unwrap())
+                    (k.unwrap(), p.unwrap()) //Guaranted to not panic
                 };
                 Ok(
                     Protocols::ReactiveGossip{k, p}
@@ -192,7 +192,7 @@ impl FromStr for Protocols {
                     if p.is_none() {
                         p = Some(reactive_gossip_routing_II::BASE_GOSSIP_PROB);
                     }
-                    (k.unwrap(), p.unwrap())
+                    (k.unwrap(), p.unwrap()) //Guaranted to not panic
                 };
                 Ok(
                     Protocols::ReactiveGossipII{k, p}
@@ -238,7 +238,7 @@ impl FromStr for Protocols {
                     if p.is_none() {
                         p = Some(reactive_gossip_routing_III::BASE_GOSSIP_PROB);
                     }
-                    (k.unwrap(), p.unwrap())
+                    (k.unwrap(), p.unwrap()) //Guaranted to not panic
                 };
                 Ok(
                     Protocols::ReactiveGossipIII{k, p}
@@ -285,7 +285,7 @@ impl FromStr for Protocols {
                     if p.is_none() {
                         p = Some(gossip_routing::DEFAULT_GOSSIP_PROB);
                     }
-                    (k.unwrap(), p.unwrap())
+                    (k.unwrap(), p.unwrap()) //Guaranted to not panic
                 };
                 Ok(
                     Protocols::GossipRouting{k, p}

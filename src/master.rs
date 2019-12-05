@@ -510,7 +510,7 @@ impl Master {
             let workers_handle = workers_handle.deref_mut();
             let mut i = 0;
             for (_id, handle) in workers_handle.values_mut() {
-                let mut h = handle.lock().unwrap();
+                let mut h = handle.lock().expect("Could not get lock to worker handle");
                 info!(logger, "Killing worker pid {}", h.id());
                 match h.kill() {
                     Ok(_) => {
@@ -654,7 +654,7 @@ impl Master {
             match workers {
                 Ok(mut w) => {
                     if let Some(child) = w.get_mut(&name) {
-                        let mut c = child.1.lock().unwrap();
+                        let mut c = child.1.lock().expect("Could not get lock to worker handle");
                         match c.kill() {
                             Ok(_) => {
                                 let exit_status = c.wait();
@@ -714,7 +714,7 @@ impl Master {
             match workers {
                 Ok(mut w) => {
                     if let Some(child) = w.get_mut(&source) {
-                        let mut c = child.1.lock().unwrap();
+                        let mut c = child.1.lock().expect("Could not get lock to worker handle");
                         let ping_data = base64::encode(b"PING");
                         let payload = format!("SEND {} {}\n", &destination, &ping_data);
                         let _res = c.stdin.as_mut().unwrap().write_all(payload.as_bytes());
