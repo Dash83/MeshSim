@@ -163,7 +163,14 @@ impl Radio for SimulatedRadio {
 
             //Error out?
             if i >= TRANSMISSION_MAX_RETRY {
-                let err_msg = String::from("TRANSMISSION_MAX_RETRY reached. Aborting transmission");
+                info!(
+                    &self.logger, 
+                    "Aborting transmission"; 
+                    "thread"=>&thread_id,
+                    "radio"=>&radio_range,
+                    "reason"=>"TRANSMISSION_MAX_RETRY reached",
+                );
+                let err_msg = String::from("Aborting transmission");
                 let err = MeshSimError{
                     kind : MeshSimErrorKind::Networking(err_msg),
                     cause : None,
@@ -180,6 +187,7 @@ impl Radio for SimulatedRadio {
                 "thread"=>&thread_id,
                 "retry"=>i,
                 "wait_time"=>st,
+                "radio"=>&radio_range,
             );
             std::thread::sleep(sleep_time);
             i += 1;

@@ -1,7 +1,6 @@
 extern crate mesh_simulator;
 
 use super::super::*;
-use mesh_simulator::logging::*;
 
 #[test]
 fn test_basic() {
@@ -28,25 +27,16 @@ fn test_basic() {
                                                 DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
     let master_node_num = logging::find_record_by_msg(
-                                                   "End_Test action: Finished. 30 processes terminated.", 
+                                                   "End_Test action: Finished. 25 processes terminated.", 
                                                    &master_log_records);
     assert!(master_node_num.is_some());
 
-    //Check the handshake between the nodes
-    let node24_log_file = format!("{}/log/node24.log", &work_dir);
-    let node24_log_records = logging::get_log_records_from_file(&node24_log_file).unwrap();
+    let node25_log_file = format!("{}/log/node25.log", &work_dir);
+    let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
 
-    let mut received_packets = 0 ;
-    for record in node24_log_records.iter() {
-        if record.status.is_some() && record.msg_type.is_some() {
-            let status = &record.status.clone().unwrap();
-            let msg_type = &record.msg_type.clone().unwrap();
-            if status == "ACCEPTED" && msg_type == "DATA" {
-                received_packets += 1;
-            }
-        } 
-    }
+    let received_packets = count_data_packets(&node25_log_records);
     assert_eq!(received_packets, 1);
+
     //Test passed. Results are not needed.
     fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
 }
@@ -83,23 +73,15 @@ fn test_route_retry() {
     let node2_log_file = format!("{}/log/node2.log", &work_dir);
     let node2_log_records = logging::get_log_records_from_file(&node2_log_file).unwrap();
     let node_2_route_retry = logging::find_record_by_msg(
-        "Re-trying RouteDiscover for node6", 
+        "Re-trying ROUTE_DISCOVERY for node6", 
         &node2_log_records
     );
     assert!(node_2_route_retry.is_some());
 
     let node6_log_file = format!("{}/log/node6.log", &work_dir);
     let node6_log_records = logging::get_log_records_from_file(&node6_log_file).unwrap();
-    let mut received_packets = 0 ;
-    for record in node6_log_records.iter() {
-        if record.status.is_some() && record.msg_type.is_some() {
-            let status = &record.status.clone().unwrap();
-            let msg_type = &record.msg_type.clone().unwrap();
-            if status == "ACCEPTED" && msg_type == "DATA" {
-                received_packets += 1;
-            }
-        } 
-    }
+    let received_packets = count_data_packets(&node6_log_records);
+    assert_eq!(received_packets, 1);
 
     //Test passed. Results are not needed.
     fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
@@ -150,19 +132,9 @@ fn test_route_teardown() {
         }
     }
 
-    let mut received_packets = 0;
     let node25_log_file = format!("{}/log/node25.log", &work_dir);
     let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
-
-    for record in node25_log_records.iter() {
-        if record.status.is_some() && record.msg_type.is_some() {
-            let status = &record.status.clone().unwrap();
-            let msg_type = &record.msg_type.clone().unwrap();
-            if status == "ACCEPTED" && msg_type == "DATA" {
-                received_packets += 1;
-            }
-        }
-    }
+    let received_packets = count_data_packets(&node25_log_records);
 
     //3 packets should arrive before the route is torn-down
     assert_eq!(received_packets, 3);
@@ -174,10 +146,9 @@ fn test_route_teardown() {
 }
 
 #[test]
-#[ignore]
 fn test_route_discovery() {
-    let test = get_test_path("rgrI_route_discovery.toml");
-    let work_dir = create_test_dir("rgrI_route_discovery");
+    let test = get_test_path("rgrI_route_discovery_optimization.toml");
+    let work_dir = create_test_dir("rgrI_route_discovery_optimization");
 
     let program = get_master_path();
     let worker = get_worker_path();
@@ -199,49 +170,36 @@ fn test_route_discovery() {
                                   DEFAULT_MASTER_LOG);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
     let master_node_num = logging::find_record_by_msg(
-                                                   "End_Test action: Finished. 100 processes terminated.",
+                                                   "End_Test action: Finished. 81 processes terminated.",
                                                    &master_log_records);
     assert!(master_node_num.is_some());
 
     //Node 43 should received 16 packets
     let node43_log_file = format!("{}/log/node43.log", &work_dir);
     let node43_log_records = logging::get_log_records_from_file(&node43_log_file).unwrap();
-    let mut received_packets = 0;
-    for record in node43_log_records.iter() {
-        if let Some(status) = &record.status {
-            if status == "ACCEPTED" {
-                received_packets += 1;
-            }
-        }
-    }
+    let received_packets = count_data_packets(&node43_log_records);
     assert_eq!(received_packets, 16);
 
     //Node 38 should received 16 packets
     let node38_log_file = format!("{}/log/node38.log", &work_dir);
     let node38_log_records = logging::get_log_records_from_file(&node38_log_file).unwrap();
-    let mut received_packets = 0;
-    for record in node38_log_records.iter() {
-        if let Some(status) = &record.status {
-            if status == "ACCEPTED" {
-                received_packets += 1;
-            }
-        }
-    }
+    let received_packets = count_data_packets(&node38_log_records);
     assert_eq!(received_packets, 16);
 
     //Node 45 should received 16 packets
     let node45_log_file = format!("{}/log/node45.log", &work_dir);
     let node45_log_records = logging::get_log_records_from_file(&node45_log_file).unwrap();
-    let mut received_packets = 0;
-    for record in node45_log_records.iter() {
-        if let Some(status) = &record.status {
-            if status == "ACCEPTED" {
-                received_packets += 1;
-            }
-        }
-    }
+    let received_packets = count_data_packets(&node45_log_records);
     assert_eq!(received_packets, 16);
 
     //Test passed. Results are not needed.
-//    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+   fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+}
+
+#[ignore]
+#[test]
+fn test_packet_counting() {
+    let path = String::from("/tmp/rgrII_route_discovery_optimization_1575207368/log/");
+    let num = count_all_packets("RouteDiscovery", &path);
+
 }
