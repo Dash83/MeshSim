@@ -2,7 +2,7 @@ name = "aodv_rerr"
 duration = 11000
 actions = [ "Ping node1 node5 1000",
             "Ping node11 node5 1500",
-            "Kill_Node node4 1600"]
+            "Kill_Node node4 1650"]
 width = 200.0
 height = 200.0
 [protocol]

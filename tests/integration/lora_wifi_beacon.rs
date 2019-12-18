@@ -26,7 +26,7 @@ fn test_placement() {
                                   LOG_DIR_NAME,
                                   std::path::MAIN_SEPARATOR,
                                   DEFAULT_MASTER_LOG);
-    let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
+    let master_log_records = logging::get_log_records_from_file(&master_log_file).expect("Failed to get log records from Master");
     let master_node_num = logging::find_record_by_msg(
                                                    "End_Test action: Finished. 20 processes terminated.",
                                                    &master_log_records);
@@ -34,7 +34,7 @@ fn test_placement() {
 
     //Check the upper left corner of the grid
     let node1_log_file = format!("{}/log/node1.log", &work_dir);
-    let node1_log_records = logging::get_log_records_from_file(&node1_log_file).unwrap();
+    let node1_log_records = logging::get_log_records_from_file(&node1_log_file).expect("Failed to get log records from node1");
     let mut received_packets_wifi = 0;
     let mut received_packets_lora = 0;
     let mut received_wifi_responses = 0;
@@ -58,7 +58,7 @@ fn test_placement() {
 
     //Check a central node
     let node7_log_file = format!("{}/log/node7.log", &work_dir);
-    let node7_log_records = logging::get_log_records_from_file(&node7_log_file).unwrap();
+    let node7_log_records = logging::get_log_records_from_file(&node7_log_file).expect("Failed to get log records from node7");
     let mut received_packets_wifi = 0;
     let mut received_packets_lora = 0;
     let mut received_wifi_responses = 0;

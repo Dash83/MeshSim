@@ -16,6 +16,7 @@ use rusqlite::Connection;
 use std::thread;
 use std::sync::atomic::{AtomicU8, Ordering, AtomicI64};
 use chrono::Utc;
+use std::convert::TryFrom;
 
 #[cfg(target_os = "linux")]
 use self::sx1276::socket::{Link, LoRa};
@@ -133,6 +134,7 @@ impl Radio for SimulatedRadio {
         let mut i = 0;
         // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
+        let start_ts = Utc::now();
 
         loop {
             //Get the list of active transmitters in range
@@ -270,13 +272,33 @@ impl Radio for SimulatedRadio {
         debug!(&self.logger, "last_transmission:{}", self.last_transmission());
 
         self.deregister_transmitter(&mut conn)?;
-
+        let duration = Utc::now() - start_ts;
+        let dur = match duration.num_nanoseconds() {
+            Some(n) => { 
+                u128::try_from(n).map_err(|e| { 
+                    let err_msg = String::from("Failed to convert duration to u128");
+                    MeshSimError {
+                        kind: MeshSimErrorKind::Serialization(err_msg),
+                        cause: Some(Box::new(e)),
+                    }
+                })?
+            },
+            None => { 
+                // This should NEVER happen, as it would require the duration to be
+                // over 9_223_372_036.854_775_808 seconds. Still, let's cover the case.
+                let secs = duration.num_seconds();
+                let nanos = duration.num_nanoseconds().expect("Could not extract nanoseconds from Duration");
+                //Extrat seconds, convert to nanos, add subsecond-nanos
+                ((secs * 1000_000_000) + nanos ) as u128
+            },
+        };
         info!(
             self.logger,
             "Message {:x} sent",
             &hdr.get_hdr_hash();
             "radio" => &radio_range,
-            "thread"=>&thread_id
+            "thread"=>&thread_id,
+            "duration"=>dur,
         );
         Ok(())
     }

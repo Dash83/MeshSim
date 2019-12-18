@@ -127,6 +127,8 @@ pub struct Master {
     pub logger: Logger,
     /// The log file to which the master will log
     pub log_file: String,
+    /// Has the sleep_time for workers been overriden in the passed params?
+    pub sleep_time_override: Option<u64>,
 }
 
 //region Errors
@@ -230,6 +232,7 @@ impl Master {
             mobility_model: None,
             logger,
             log_file,
+            sleep_time_override: None,
         }
     }
 
@@ -282,6 +285,7 @@ impl Master {
     pub fn run_test(
         &mut self,
         mut spec: test_specification::TestSpec,
+        sleep_time_override: Option<&str>,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
         info!(self.logger, "Running test {}", &spec.name);
@@ -295,6 +299,19 @@ impl Master {
 
         //Get a set of all nodes performing test actions
         let active_nodes = Master::get_active_nodes(&actions);
+
+        //Check if the sleep_time needs to be overriden
+        if let Some(st) = sleep_time_override {
+            let new_sleep_time = st.parse::<u64>()
+                .map_err(|e| {
+                    let err_msg = String::from("Failed to parse new worker sleep_time");
+                    MeshSimError {
+                        kind: MeshSimErrorKind::Master(err_msg),
+                        cause: Some(Box::new(e)),
+                    }
+            })?;
+            self.sleep_time_override = Some(new_sleep_time);
+        }
 
         //Handles for all the threads that will run test actions
         let mut action_handles = Vec::new();
@@ -919,104 +936,129 @@ impl Master {
         let width = self.test_area.width;
         let height = self.test_area.height;
         let duration = self.duration;
-        let db_path = self.work_dir.clone();
+        let mut initialized: bool = Default::default();
         let m_model = self.mobility_model.clone();
         let logger = self.logger.clone();
         let mut paused_workers: HashMap<i64, PendingWorker> = HashMap::new();
-
+        let sleep_time_override = self.sleep_time_override.clone();
         let conn = get_db_connection(&self.work_dir, &logger).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::Other,
                 MasterError::Sync(String::from("Could not connect to DB")),
             )
         })?;
-
         tb.name(String::from("MobilityThread")).spawn(move || {
             let mut rng = thread_rng();
             let width_sample = Uniform::new(0.0, width);
             let height_sample = Uniform::new(0.0, height);
             let walking_sample = Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV);
 
-            if let Some(model) = &m_model {
-                while Instant::now().duration_since(sim_start_time) < sim_end_time {
-                    //Restart movement for workers whose pause has ended.
-                    let mut restarted_workers: Vec<i64> = Vec::new();
-                    for (key, val) in paused_workers.iter() {
-                        let worker_id = key;
-                        let restart_time = &val.0;
-                        let velocity = &val.1;
-                        if *restart_time <= Utc::now() {
-                            match update_worker_vel(&conn, velocity, *worker_id, &logger) {
-                                Ok(_r) =>  restarted_workers.push(*worker_id),
-                                Err(e) => {
-                                    error!(
-                                        logger,
-                                        "Failed updating target for worker_id {}: {}", worker_id, &e
-                                    );
-                                    if let Some(cause) = e.cause {
-                                        error!(logger, "Cause: {}", cause);
-                                    }
+            let model = match m_model {
+                Some(m) => m,
+                None => {
+                    info!(
+                        logger,
+                        "No mobility model defined. Setting Stationary model"
+                    );
+                    MobilityModels::Stationary
+                },
+            };
+
+            let sleep_time = match sleep_time_override {
+                Some(time) => time,
+                None => {
+                    match &model {
+                        MobilityModels::RandomWaypoint{pause_time} => *pause_time,
+                        MobilityModels::Stationary => duration,
+                    }
+                },
+            };
+
+            while Instant::now().duration_since(sim_start_time) < sim_end_time {
+                //Restart movement for workers whose pause has ended.
+                let mut restarted_workers: Vec<i64> = Vec::new();
+                for (key, val) in paused_workers.iter() {
+                    let worker_id = key;
+                    let restart_time = &val.0;
+                    let velocity = &val.1;
+                    if *restart_time <= Utc::now() {
+                        match update_worker_vel(&conn, velocity, *worker_id, &logger) {
+                            Ok(_r) =>  restarted_workers.push(*worker_id),
+                            Err(e) => {
+                                error!(
+                                    logger,
+                                    "Failed updating target for worker_id {}: {}", worker_id, &e
+                                );
+                                if let Some(cause) = e.cause {
+                                    error!(logger, "Cause: {}", cause);
                                 }
-                            } 
-                        }
-                    }
-
-                    //Remove the workers that were succesfully updated from the pending list
-                    paused_workers.retain(|&k, _| !restarted_workers.contains(&k));
-
-                    //Wait times will be uniformly sampled from the remain simulation time.
-                    let mut lower_bound: u64 = sim_start_time.elapsed().as_secs() * 1000;
-                    lower_bound += u64::from(sim_start_time.elapsed().subsec_millis());
-                    let wait_sample = Uniform::new(lower_bound, duration);
-
-                    thread::sleep(update_time);
-
-                    //Update worker positions
-                    match update_worker_positions(&conn) {
-                        Ok(rows) => {
-                            debug!(logger, "The position of {} workers has been updated", rows);
-                        }
-                        Err(e) => {
-                            error!(logger, "Error updating worker positions: {}", e);
-                        }
-                    }
-
-                    // ****** DEBUG ******* //
-                    // let workers = get_all_worker_positions(&conn)?;
-                    // for w in workers {
-                    //     debug!(logger, "{}({}): ({}, {})", w.1, w.0, w.2, w.3);
-                    // }
-
-                    match model {
-                        MobilityModels::RandomWaypoint{pause_time} => {
-                            Master::handle_random_waypoint(
-                                &conn,
-                                &width_sample,
-                                &height_sample,
-                                &walking_sample,
-                                &wait_sample,
-                                *pause_time,
-                                &mut paused_workers,
-                                &mut rng,
-                                &logger,
-                            );
-                        }
-                        MobilityModels::Stationary => {
-                            info!(
-                                logger,
-                                "Stationary mobility model detected. Exiting mobility thread."
-                            );
-                        }
+                            }
+                        } 
                     }
                 }
-            } else {
-                //No mobility model defined
-                info!(
-                    logger,
-                    "No mobility model defined. Exiting mobility thread."
-                );
+
+                //Remove the workers that were succesfully updated from the pending list
+                paused_workers.retain(|&k, _| !restarted_workers.contains(&k));
+
+                //Wait times will be uniformly sampled from the remain simulation time.
+                let mut lower_bound: u64 = sim_start_time.elapsed().as_secs() * 1000;
+                lower_bound += u64::from(sim_start_time.elapsed().subsec_millis());
+                let wait_sample = Uniform::new(lower_bound, duration);
+
+                thread::sleep(update_time);
+
+                // ****** DEBUG ******* //
+                // let workers = get_all_worker_positions(&conn)?;
+                // for w in workers {
+                //     debug!(logger, "{}({}): ({}, {})", w.1, w.0, w.2, w.3);
+                // }
+
+                match model {
+                    MobilityModels::RandomWaypoint{pause_time: _} => {
+                        Master::handle_random_waypoint(
+                            &conn,
+                            &width_sample,
+                            &height_sample,
+                            &walking_sample,
+                            &wait_sample,
+                            sleep_time,
+                            &mut paused_workers,
+                            &mut rng,
+                            &logger,
+                        );
+                    },
+                    MobilityModels::Stationary => {
+                        if !initialized {
+                            Master::handle_stationary(&conn, &logger);
+                            initialized = true;
+                        }
+                    },
+                }
+
+                //Update worker positions
+                match update_worker_positions(&conn) {
+                    Ok(rows) => {
+                        debug!(logger, "The position of {} workers has been updated", rows);
+                    }
+                    Err(e) => {
+                        error!(logger, "Error updating worker positions: {}", e);
+                    }
+                }
             }
         })
+    }
+
+    fn handle_stationary(
+        conn: &Connection,
+        logger: &Logger,
+    ) {
+        let _rows = match stop_all_workers(conn) {
+            Ok(rows) => rows,
+            Err(e) => {
+                error!(logger, "{}", e);
+                0
+            }
+        };
     }
 
     fn handle_random_waypoint(

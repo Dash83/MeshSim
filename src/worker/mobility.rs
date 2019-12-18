@@ -167,6 +167,14 @@ const REMOVE_LORA_TRANSMITTER_QRY: &str = "
     WHERE worker_id=(SELECT ID from workers WHERE worker_name = ?1);
 ";
 
+const STOP_ALL_WORKERS_QRY: &str = "
+    UPDATE
+    worker_velocities
+    SET
+    vel_x=0.0,
+    vel_y=0.0
+";
+
 const SET_WAL_MODE: &str = "PRAGMA journal_mode=WAL;";
 const WAL_MODE_QRY: &str = "PRAGMA journal_mode;";
 //const SET_TMP_MODE : &'static str = "PRAGMA temp_store=2"; //Instruct the database to keep temp tables in memory
@@ -925,6 +933,19 @@ pub fn start_tx(conn : &mut Connection) -> Result<Transaction, MeshSimError> {
         }
     })?;
     Ok(tx)
+}
+
+/// Set the velocity of all workers to 0
+pub fn stop_all_workers(
+    conn: &Connection
+) -> Result<usize, MeshSimError> {
+    conn.execute(STOP_ALL_WORKERS_QRY, NO_PARAMS).map_err(|e| {
+        let err_msg = String::from("Failed to stop workers");
+        MeshSimError {
+            kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+            cause: Some(Box::new(e)),
+        }
+    })
 }
 
 #[cfg(test)]

@@ -357,7 +357,7 @@ fn command_add_nodes(
 
         if let Some(model) = &data.m_model {
             match model {
-                MobilityModels::RandomWaypoint{pause_time} => {
+                MobilityModels::RandomWaypoint{pause_time: _} => {
                     let target_x = rng.sample(width_sample);
                     let target_y = rng.sample(height_sample);
                     w.destination = Some(Position {
