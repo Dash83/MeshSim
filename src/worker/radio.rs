@@ -201,8 +201,8 @@ impl Radio for SimulatedRadio {
             &self.logger,
             "{} registered as an active transmitter for radio {}",
             &self.worker_name,
-            &radio_range
-            ; "thread"=>&thread_id
+            &radio_range; 
+            "thread"=>&thread_id
         );
 
         let peers = get_workers_in_range(&conn, &self.id, self.range, &self.logger)?;
@@ -211,6 +211,7 @@ impl Radio for SimulatedRadio {
             "Starting transmission"; 
             "thread"=>&thread_id,
             "peers_in_range"=>peers.len(),
+            "radio"=>&radio_range,
         );
 
         // let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
