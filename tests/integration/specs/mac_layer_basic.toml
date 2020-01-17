@@ -1,5 +1,5 @@
 name = "mac_layer_basic"
-duration = 3000
+duration = 3500
 actions = [ "Ping node1 node25 1000",
             "Ping node2 node24 1000",
             "Ping node3 node22 1000",
