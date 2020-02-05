@@ -132,74 +132,13 @@ impl Radio for SimulatedRadio {
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
         let mut conn = get_db_connection(&self.work_dir, &self.logger)?;
         let radio_range: String = self.r_type.into();
-//        let mut peers = Vec::new();
-        // let mut i = 0;
-        // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
         let start_ts = Utc::now();
-
-        // loop {
-        //     //Get the list of active transmitters in range
-        //     let active_transmitters_in_range = match get_active_transmitters_in_range(
-        //         &conn,
-        //         &self.worker_name,
-        //         self.r_type,
-        //         self.range,
-        //         &self.logger
-        //     ) {
-        //         Ok(atir) => atir,
-        //         Err(e) => {
-        //             warn!(&self.logger, "{}", &e; "ThreadID"=>&thread_id);
-        //             if let Some(cause) = e.cause {
-        //                 warn!(&self.logger, "Cause: {}", cause; "ThreadID"=>&thread_id);
-        //             }
-        //             std::thread::sleep(Duration::from_millis(DB_CONTENTION_SLEEP));
-        //             continue;
-        //         },
-        //     };
-
-        //     debug!(self.logger, "{} active transmitters in range", active_transmitters_in_range.len());
-
-        //     //How many active transmitters are in range? If more than 0, the medium is busy.
-        //     if active_transmitters_in_range.len() == 0 {
-        //         break;
-        //     }
-
-        //     //Error out?
-        //     if i >= TRANSMISSION_MAX_RETRY {
-        //         info!(
-        //             &self.logger, 
-        //             "Aborting transmission"; 
-        //             "thread"=>&thread_id,
-        //             "radio"=>&radio_range,
-        //             "reason"=>"TRANSMISSION_MAX_RETRY reached",
-        //         );
-        //         let err_msg = String::from("Aborting transmission");
-        //         let err = MeshSimError{
-        //             kind : MeshSimErrorKind::Networking(err_msg),
-        //             cause : None,
-        //         };
-        //         return Err(err)
-        //     }
-
-        //     //Wait and retry.
-        //     let sleep_time = self.get_wait_time(i as u32);
-        //     let st = format!("{:?}", &sleep_time);
-        //     info!(
-        //         &self.logger, 
-        //         "Medium is busy"; 
-        //         "thread"=>&thread_id,
-        //         "retry"=>i,
-        //         "wait_time"=>st,
-        //         "radio"=>&radio_range,
-        //     );
-        //     std::thread::sleep(sleep_time);
-        //     i += 1;
-        // }
 
         //Register this node as an active transmitter if the medium is free
         self.register_transmitter(&mut conn)?;
 
+        //Get the list of peers in radio-range
         let peers = get_workers_in_range(&conn, &self.id, self.range, &self.logger)?;
         info!(
             self.logger, 
@@ -209,7 +148,6 @@ impl Radio for SimulatedRadio {
             "radio"=>&radio_range,
         );
 
-        // let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
         let socket = new_socket()?;
         let mut acc_delay: u64 = 0;
         let max_delay = std::cmp::min(

@@ -73,15 +73,19 @@ pub enum Protocols {
     ReactiveGossipII{
         /// Minimum number of hops before applying probabilistic retransmission.
         k: usize,
-        /// Probability of retransmission per node.
-        p: f64
+        /// Base-probability of retransmission per node.
+        p: f64,
+        /// Adaptive-probability of retransmission per node.
+        q: f64,
     },
     /// Improved version of RGRII that uses 2 radios
     ReactiveGossipIII{
         /// Minimum number of hops before applying probabilistic retransmission.
         k: usize,
         /// Probability of retransmission per node.
-        p: f64
+        p: f64,
+        /// Adaptive-probability of retransmission per node.
+        q: f64,
     },
     /// Ad-hoc On-Demand Distance Vector routing protocol.
     AODV,
@@ -113,8 +117,7 @@ impl FromStr for Protocols {
                     let mut p = None;
                     for c in parts[1..].iter() {
                         let c: Vec<&str> = c.split('=').collect();
-
-                        match c[0] {
+                        match c[0].to_uppercase().as_str() {
                             "K" => {
                                 let x: usize = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid K value");
@@ -154,13 +157,13 @@ impl FromStr for Protocols {
             },
             "REACTIVEGOSSIPII" => {
                 // Expected format: ReactiveGossipII k=1, p=0.70
-                let (k,p) = {
+                let (k,p,q) = {
                     let mut k = None;
                     let mut p = None;
+                    let mut q = None;
                     for c in parts[1..].iter() {
                         let c: Vec<&str> = c.split('=').collect();
-
-                        match c[0] {
+                        match c[0].to_uppercase().as_str() {
                             "K" => {
                                 let x: usize = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid K value");
@@ -181,6 +184,16 @@ impl FromStr for Protocols {
                                 })?;
                                 p = Some(x);
                             },
+                            "Q" => {
+                                let x: f64 = c[1].parse().map_err(|e| {
+                                    let err_msg = String::from("Invalid Q value");
+                                    MeshSimError{
+                                        kind : MeshSimErrorKind::Configuration(err_msg),
+                                        cause : Some(Box::new(e))
+                                    }
+                                })?;
+                                q = Some(x);
+                            },                            
                             _ => {
                                 /* Unrecognised option, do nothing */
                             },
@@ -192,21 +205,25 @@ impl FromStr for Protocols {
                     if p.is_none() {
                         p = Some(reactive_gossip_routing_II::BASE_GOSSIP_PROB);
                     }
-                    (k.unwrap(), p.unwrap()) //Guaranted to not panic
+                    if q.is_none() {
+                        q = Some(reactive_gossip_routing_II::VICINITY_GOSSIP_PROB);
+                    }
+                    (k.unwrap(), p.unwrap(), q.unwrap()) //Guaranted to not panic
                 };
                 Ok(
-                    Protocols::ReactiveGossipII{k, p}
+                    Protocols::ReactiveGossipII{k, p, q}
                 )
             },
             "REACTIVEGOSSIPIII" => {
                 // Expected format: ReactiveGossipIII k=1, p=0.70
-                let (k,p) = {
+                let (k,p,q) = {
                     let mut k = None;
                     let mut p = None;
+                    let mut q = None;
                     for c in parts[1..].iter() {
                         let c: Vec<&str> = c.split('=').collect();
 
-                        match c[0] {
+                        match c[0].to_uppercase().as_str() {
                             "K" => {
                                 let x: usize = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid K value");
@@ -227,6 +244,16 @@ impl FromStr for Protocols {
                                 })?;
                                 p = Some(x);
                             },
+                            "Q" => {
+                                let x: f64 = c[1].parse().map_err(|e| {
+                                    let err_msg = String::from("Invalid Q value");
+                                    MeshSimError{
+                                        kind : MeshSimErrorKind::Configuration(err_msg),
+                                        cause : Some(Box::new(e))
+                                    }
+                                })?;
+                                q = Some(x);
+                            },                             
                             _ => {
                                 /* Unrecognised option, do nothing */
                             },
@@ -238,10 +265,13 @@ impl FromStr for Protocols {
                     if p.is_none() {
                         p = Some(reactive_gossip_routing_III::BASE_GOSSIP_PROB);
                     }
-                    (k.unwrap(), p.unwrap()) //Guaranted to not panic
+                    if q.is_none() {
+                        q = Some(reactive_gossip_routing_III::VICINITY_GOSSIP_PROB);
+                    }
+                    (k.unwrap(), p.unwrap(), q.unwrap()) //Guaranted to not panic
                 };
                 Ok(
-                    Protocols::ReactiveGossipIII{k, p}
+                    Protocols::ReactiveGossipIII{k, p, q}
                 )
             },
             "LORAWIFIBEACON" => Ok(Protocols::LoraWifiBeacon),
@@ -414,7 +444,7 @@ pub fn build_protocol_resources(
             };
             Ok(resources)
         },
-        Protocols::ReactiveGossipII{k, p} => {
+        Protocols::ReactiveGossipII{k, p, q} => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");
@@ -424,6 +454,7 @@ pub fn build_protocol_resources(
                 id,
                 k,
                 p,
+                q,
                 Arc::clone(&sr),
                 Arc::new(Mutex::new(rng)),
                 logger,
@@ -436,7 +467,7 @@ pub fn build_protocol_resources(
             };
             Ok(resources)
         },
-        Protocols::ReactiveGossipIII{k, p} => {
+        Protocols::ReactiveGossipIII{k, p, q} => {
             //Obtain both radios
             let (sr, sr_listener) = short_radio
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");
@@ -448,6 +479,7 @@ pub fn build_protocol_resources(
                 id,
                 k,
                 p,
+                q,
                 Arc::clone(&sr),
                 Arc::clone(&lr),
                 Arc::new(Mutex::new(rng)),

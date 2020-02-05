@@ -20,7 +20,8 @@ use chrono::{Utc, DateTime};
 pub const DEFAULT_MIN_HOPS: usize = 2;
 /// The default gossip-probability value
 pub const BASE_GOSSIP_PROB: f64 = 0.50;
-const VICINITY_GOSSIP_PROB: f64 = 0.20;
+/// The adaptive gossip probability value
+pub const VICINITY_GOSSIP_PROB: f64 = 0.20;
 const MSG_CACHE_SIZE: usize = 2000;
 const CONCCURENT_THREADS_PER_FLOW: usize = 2;
 const MAINTENANCE_LOOP: u64 = 1_000;
@@ -39,8 +40,10 @@ pub struct ReactiveGossipRoutingII {
     /// Configuration parameter for the protocol that indicates the minimum number of hops a message
     /// has to traverse before applying the gossip probability.
     k: usize,
-    /// Gossip probability per node
+    /// Gossip base-probability per node
     p: f64,
+    /// Gossip adaptive-probability per node
+    q: f64,
     worker_name: String,
     worker_id: String,
     short_radio: Arc<dyn Radio>,
@@ -176,6 +179,7 @@ impl Protocol for ReactiveGossipRoutingII {
             msg_hash,
             self.k,
             self.p,
+            self.q,
             queued_transmissions,
             dest_routes,
             pending_destinations,
@@ -286,6 +290,7 @@ impl ReactiveGossipRoutingII {
         worker_id: String,
         k : usize,
         p : f64,
+        q : f64,
         short_radio: Arc<dyn Radio>,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
@@ -300,6 +305,7 @@ impl ReactiveGossipRoutingII {
         ReactiveGossipRoutingII {
             k,
             p,
+            q,
             worker_name,
             worker_id,
             short_radio,
@@ -415,6 +421,7 @@ impl ReactiveGossipRoutingII {
         msg_hash: Digest,
         k: usize,
         p: f64,
+        q: f64,
         queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
         pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
@@ -451,6 +458,7 @@ impl ReactiveGossipRoutingII {
                     route_msg,
                     k,
                     p,
+                    q,
                     known_routes,
                     route_msg_cache,
                     vicinity_cache,
@@ -632,6 +640,7 @@ impl ReactiveGossipRoutingII {
         mut msg: RouteMessage,
         k: usize,
         p: f64,
+        q: f64,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         route_msg_cache: Arc<Mutex<HashSet<String>>>,
         vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
@@ -723,8 +732,8 @@ impl ReactiveGossipRoutingII {
 
         };
 
-        let p = p + (in_vicinity as f64 * VICINITY_GOSSIP_PROB);
-        if msg.route.len() > k && s > p {
+        let prob = p + (in_vicinity as f64 * q);
+        if msg.route.len() > k && s > prob {
             info!(
                 logger,
                 "Received message";

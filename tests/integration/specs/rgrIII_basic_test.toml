@@ -7,6 +7,7 @@ height = 300.0
 Protocol = "ReactiveGossipIII"
 k = 1
 p = 0.5
+q = 0.2
 
 [initial_nodes.node8]
 worker_name = "node8"
