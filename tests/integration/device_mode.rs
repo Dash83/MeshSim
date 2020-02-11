@@ -5,13 +5,20 @@
 //! Since this test module addresses device mode in particular, we can't use the master to drive the execution of the tests, and therefore can't 
 //! rely on the test_specification features.
 
-//extern crate mesh_simulator;
+extern crate mesh_simulator;
+use std::thread;
+use std::time::Duration;
+use std::fs::File;
+use std::io::Read;
+use super::super::*;
+use mesh_simulator::worker::worker_config;
+use mesh_simulator::worker::OperationMode;
 
 /// This test makes sure that the basic components of device mode are activated when running the worker on device mode.
 /// At the moment, this test is tied up to my lab computer due to network-interface names. Not sure this will be addressed later.
 /// This test could be a part of the tests that only run every now and then.
 #[test]
-#[cfg(target_os = "linux")]
+// #[cfg(target_os = "linux")]
 fn integration_device_mode_basic() -> TestResult {
     let host = env::var("MESHSIM_HOST").unwrap_or(String::from(""));
     let test_duration :u64 = 3000; //3000 ms
@@ -71,7 +78,7 @@ fn integration_device_mode_basic() -> TestResult {
     //assert!(output.contains("Starting the heartbeat thread."));
 
     //Test passed. Results are not needed.
-    std::fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+    std::fs::remove_dir_all(&config.work_dir).expect("Failed to remove results directory");
 
     Ok(())
 }
