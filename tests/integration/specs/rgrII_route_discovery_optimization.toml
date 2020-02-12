@@ -19,6 +19,7 @@ height = 400.0
 Protocol = "ReactiveGossipII"
 k = 2
 p = 0.5
+q = 0.2
 
 [initial_nodes.node22]
 worker_name = "node22"
@@ -34,11 +35,6 @@ y = 54.0
 [initial_nodes.node22.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node22.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node22.radio_short]
 reliability = 1.0
@@ -65,11 +61,6 @@ y = 108.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node42.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node42.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -94,11 +85,6 @@ y = 54.0
 [initial_nodes.node26.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node26.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node26.radio_short]
 reliability = 1.0
@@ -125,11 +111,6 @@ y = 162.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node63.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node63.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -154,11 +135,6 @@ y = 0.0
 [initial_nodes.node4.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node4.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node4.radio_short]
 reliability = 1.0
@@ -185,11 +161,6 @@ y = 108.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node39.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node39.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -214,11 +185,6 @@ y = 189.0
 [initial_nodes.node66.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node66.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node66.radio_short]
 reliability = 1.0
@@ -245,11 +211,6 @@ y = 216.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node80.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node80.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -274,11 +235,6 @@ y = 162.0
 [initial_nodes.node55.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node55.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node55.radio_short]
 reliability = 1.0
@@ -305,11 +261,6 @@ y = 0.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node6.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node6.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -334,11 +285,6 @@ y = 27.0
 [initial_nodes.node17.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node17.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node17.radio_short]
 reliability = 1.0
@@ -365,11 +311,6 @@ y = 54.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node20.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node20.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -394,11 +335,6 @@ y = 81.0
 [initial_nodes.node28.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node28.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node28.radio_short]
 reliability = 1.0
@@ -425,11 +361,6 @@ y = 216.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node73.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node73.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -454,11 +385,6 @@ y = 81.0
 [initial_nodes.node30.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node30.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node30.radio_short]
 reliability = 1.0
@@ -485,11 +411,6 @@ y = 108.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node37.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node37.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -514,11 +435,6 @@ y = 27.0
 [initial_nodes.node16.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node16.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node16.radio_short]
 reliability = 1.0
@@ -545,11 +461,6 @@ y = 135.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node50.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node50.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -574,11 +485,6 @@ y = 54.0
 [initial_nodes.node27.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node27.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node27.radio_short]
 reliability = 1.0
@@ -605,11 +511,6 @@ y = 27.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node10.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node10.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -634,11 +535,6 @@ y = 54.0
 [initial_nodes.node19.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node19.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node19.radio_short]
 reliability = 1.0
@@ -665,11 +561,6 @@ y = 135.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node46.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node46.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -694,11 +585,6 @@ y = 81.0
 [initial_nodes.node29.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node29.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node29.radio_short]
 reliability = 1.0
@@ -725,11 +611,6 @@ y = 135.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node48.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node48.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -754,11 +635,6 @@ y = 189.0
 [initial_nodes.node72.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node72.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node72.radio_short]
 reliability = 1.0
@@ -785,11 +661,6 @@ y = 0.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node8.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node8.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -814,11 +685,6 @@ y = 135.0
 [initial_nodes.node47.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node47.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node47.radio_short]
 reliability = 1.0
@@ -845,11 +711,6 @@ y = 189.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node71.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node71.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -874,11 +735,6 @@ y = 162.0
 [initial_nodes.node57.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node57.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node57.radio_short]
 reliability = 1.0
@@ -905,11 +761,6 @@ y = 27.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node15.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node15.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -934,11 +785,6 @@ y = 54.0
 [initial_nodes.node23.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node23.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node23.radio_short]
 reliability = 1.0
@@ -965,11 +811,6 @@ y = 108.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node44.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node44.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -994,11 +835,6 @@ y = 135.0
 [initial_nodes.node53.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node53.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node53.radio_short]
 reliability = 1.0
@@ -1025,11 +861,6 @@ y = 0.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node5.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node5.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1054,11 +885,6 @@ y = 0.0
 [initial_nodes.node7.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node7.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node7.radio_short]
 reliability = 1.0
@@ -1085,11 +911,6 @@ y = 54.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node25.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node25.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1114,11 +935,6 @@ y = 81.0
 [initial_nodes.node36.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node36.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node36.radio_short]
 reliability = 1.0
@@ -1145,11 +961,6 @@ y = 162.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node59.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node59.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1174,11 +985,6 @@ y = 135.0
 [initial_nodes.node49.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node49.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node49.radio_short]
 reliability = 1.0
@@ -1205,11 +1011,6 @@ y = 189.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node69.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node69.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1234,11 +1035,6 @@ y = 216.0
 [initial_nodes.node81.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node81.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node81.radio_short]
 reliability = 1.0
@@ -1265,11 +1061,6 @@ y = 0.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node9.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node9.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1294,11 +1085,6 @@ y = 108.0
 [initial_nodes.node38.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node38.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node38.radio_short]
 reliability = 1.0
@@ -1325,11 +1111,6 @@ y = 108.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node43.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node43.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1354,11 +1135,6 @@ y = 54.0
 [initial_nodes.node24.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node24.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node24.radio_short]
 reliability = 1.0
@@ -1385,11 +1161,6 @@ y = 216.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node76.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node76.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1414,11 +1185,6 @@ y = 162.0
 [initial_nodes.node56.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node56.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node56.radio_short]
 reliability = 1.0
@@ -1445,11 +1211,6 @@ y = 216.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node79.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node79.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1474,11 +1235,6 @@ y = 108.0
 [initial_nodes.node41.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node41.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node41.radio_short]
 reliability = 1.0
@@ -1505,11 +1261,6 @@ y = 0.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node2.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node2.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1534,11 +1285,6 @@ y = 162.0
 [initial_nodes.node58.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node58.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node58.radio_short]
 reliability = 1.0
@@ -1565,11 +1311,6 @@ y = 27.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node11.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node11.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1594,11 +1335,6 @@ y = 27.0
 [initial_nodes.node12.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node12.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node12.radio_short]
 reliability = 1.0
@@ -1625,11 +1361,6 @@ y = 27.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node13.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node13.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1654,11 +1385,6 @@ y = 0.0
 [initial_nodes.node3.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node3.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node3.radio_short]
 reliability = 1.0
@@ -1685,11 +1411,6 @@ y = 81.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node33.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node33.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1714,11 +1435,6 @@ y = 81.0
 [initial_nodes.node35.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node35.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node35.radio_short]
 reliability = 1.0
@@ -1745,11 +1461,6 @@ y = 135.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node51.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node51.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1774,11 +1485,6 @@ y = 216.0
 [initial_nodes.node78.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node78.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node78.radio_short]
 reliability = 1.0
@@ -1805,11 +1511,6 @@ y = 135.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node54.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node54.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1834,11 +1535,6 @@ y = 108.0
 [initial_nodes.node45.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node45.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node45.radio_short]
 reliability = 1.0
@@ -1865,11 +1561,6 @@ y = 189.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node64.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node64.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1894,11 +1585,6 @@ y = 189.0
 [initial_nodes.node67.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node67.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node67.radio_short]
 reliability = 1.0
@@ -1925,11 +1611,6 @@ y = 135.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node52.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node52.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -1954,11 +1635,6 @@ y = 81.0
 [initial_nodes.node31.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node31.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node31.radio_short]
 reliability = 1.0
@@ -1985,11 +1661,6 @@ y = 189.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node65.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node65.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -2014,11 +1685,6 @@ y = 162.0
 [initial_nodes.node60.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node60.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node60.radio_short]
 reliability = 1.0
@@ -2045,11 +1711,6 @@ y = 162.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node62.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node62.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -2074,11 +1735,6 @@ y = 216.0
 [initial_nodes.node74.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node74.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node74.radio_short]
 reliability = 1.0
@@ -2105,11 +1761,6 @@ y = 162.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node61.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node61.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -2134,11 +1785,6 @@ y = 0.0
 [initial_nodes.node1.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node1.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node1.radio_short]
 reliability = 1.0
@@ -2165,11 +1811,6 @@ y = 189.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node68.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node68.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -2194,11 +1835,6 @@ y = 27.0
 [initial_nodes.node18.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node18.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node18.radio_short]
 reliability = 1.0
@@ -2225,11 +1861,6 @@ y = 54.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node21.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node21.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -2254,11 +1885,6 @@ y = 81.0
 [initial_nodes.node32.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node32.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node32.radio_short]
 reliability = 1.0
@@ -2285,11 +1911,6 @@ y = 108.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node40.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node40.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -2314,11 +1935,6 @@ y = 189.0
 [initial_nodes.node70.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node70.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node70.radio_short]
 reliability = 1.0
@@ -2345,11 +1961,6 @@ y = 27.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node14.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node14.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -2374,11 +1985,6 @@ y = 81.0
 [initial_nodes.node34.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node34.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node34.radio_short]
 reliability = 1.0
@@ -2405,11 +2011,6 @@ y = 216.0
 x = 0.0
 y = 0.0
 
-[initial_nodes.node75.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
-
 [initial_nodes.node75.radio_short]
 reliability = 1.0
 interface_name = "wlan0"
@@ -2434,11 +2035,6 @@ y = 216.0
 [initial_nodes.node77.velocity]
 x = 0.0
 y = 0.0
-
-[initial_nodes.node77.protocol]
-Protocol = "ReactiveGossipII"
-k = 2
-p = 0.5
 
 [initial_nodes.node77.radio_short]
 reliability = 1.0

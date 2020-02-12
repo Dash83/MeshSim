@@ -16,6 +16,7 @@ use rusqlite::Connection;
 use std::thread;
 use std::sync::atomic::{AtomicU8, Ordering, AtomicI64};
 use chrono::Utc;
+use std::convert::TryFrom;
 
 #[cfg(target_os = "linux")]
 use self::sx1276::socket::{Link, LoRa};
@@ -28,7 +29,9 @@ use sx1276;
 const SHORT_RANGE_DIR: &str = "SHORT";
 const LONG_RANGE_DIR: &str = "LONG";
 const DELAY_PER_NODE: u64 = 50; //µs
-const TRANSMISSION_MAX_RETRY: usize = 12;
+const MAX_DELAY: u64 = DELAY_PER_NODE * 10; //µs
+const TRANSMISSION_MAX_RETRY: usize = 16;
+const TRANSMISSION_EXP_CAP: u32 = 9; //no more than 128ms
 const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
 const RETRANSMISSION_WAIT_BASE: u64 = 250; //µs
 const DB_CONTENTION_SLEEP: u64 = 100; //ms
@@ -129,88 +132,33 @@ impl Radio for SimulatedRadio {
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
         let mut conn = get_db_connection(&self.work_dir, &self.logger)?;
         let radio_range: String = self.r_type.into();
-//        let mut peers = Vec::new();
-        let mut i = 0;
-        // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
+        let start_ts = Utc::now();
 
-        loop {
-            //Get the list of active transmitters in range
-            let active_transmitters_in_range = match get_active_transmitters_in_range(
-                &conn,
-                &self.worker_name,
-                self.r_type,
-                self.range,
-                &self.logger
-            ) {
-                Ok(atir) => atir,
-                Err(e) => {
-                    warn!(&self.logger, "{}", &e; "ThreadID"=>&thread_id);
-                    if let Some(cause) = e.cause {
-                        warn!(&self.logger, "Cause: {}", cause; "ThreadID"=>&thread_id);
-                    }
-                    std::thread::sleep(Duration::from_millis(DB_CONTENTION_SLEEP));
-                    continue;
-                },
-            };
-
-            debug!(self.logger, "{} active transmitters in range", active_transmitters_in_range.len());
-
-            //How many active transmitters are in range? If more than 0, the medium is busy.
-            if active_transmitters_in_range.len() == 0 {
-                break;
-            }
-
-            //Error out?
-            if i >= TRANSMISSION_MAX_RETRY {
-                let err_msg = String::from("TRANSMISSION_MAX_RETRY reached. Aborting transmission");
-                let err = MeshSimError{
-                    kind : MeshSimErrorKind::Networking(err_msg),
-                    cause : None,
-                };
-                return Err(err)
-            }
-
-            //Wait and retry.
-            let sleep_time = self.get_wait_time(i as u32);
-            let st = format!("{:?}", &sleep_time);
-            info!(
-                &self.logger, 
-                "Medium is busy"; 
-                "thread"=>&thread_id,
-                "retry"=>i,
-                "wait_time"=>st,
-            );
-            std::thread::sleep(sleep_time);
-            i += 1;
-        }
-
+        //Register this node as an active transmitter if the medium is free
         self.register_transmitter(&mut conn)?;
 
-        debug!(
-            &self.logger,
-            "{} registered as an active transmitter for radio {}",
-            &self.worker_name,
-            &radio_range
-            ; "thread"=>&thread_id
-        );
-
+        //Get the list of peers in radio-range
         let peers = get_workers_in_range(&conn, &self.id, self.range, &self.logger)?;
         info!(
             self.logger, 
             "Starting transmission"; 
             "thread"=>&thread_id,
             "peers_in_range"=>peers.len(),
+            "radio"=>&radio_range,
         );
 
-        // let socket = Socket::new(Domain::unix(), Type::dgram(), None)?;
         let socket = new_socket()?;
-        let mut delay: u64 = 0;
-        let max_delay = peers.len() as u64 * DELAY_PER_NODE;
+        let mut acc_delay: u64 = 0;
+        let max_delay = std::cmp::min(
+            MAX_DELAY,
+            peers.len() as u64 * DELAY_PER_NODE
+        );
+        let delay_per_node = max_delay / std::cmp::max(1, peers.len()) as u64;
         for p in peers.into_iter() {
             let mut msg = hdr.clone();
-            msg.delay = max_delay - delay;
-            delay += DELAY_PER_NODE;
+            msg.delay = max_delay - acc_delay;
+            acc_delay += delay_per_node;
             let data = to_vec(&msg).map_err(|e| {
                 let err_msg = String::from("Failed to serialize message");
                 MeshSimError {
@@ -262,13 +210,33 @@ impl Radio for SimulatedRadio {
         debug!(&self.logger, "last_transmission:{}", self.last_transmission());
 
         self.deregister_transmitter(&mut conn)?;
-
+        let duration = Utc::now() - start_ts;
+        let dur = match duration.num_nanoseconds() {
+            Some(n) => { 
+                u128::try_from(n).map_err(|e| { 
+                    let err_msg = String::from("Failed to convert duration to u128");
+                    MeshSimError {
+                        kind: MeshSimErrorKind::Serialization(err_msg),
+                        cause: Some(Box::new(e)),
+                    }
+                })?
+            },
+            None => { 
+                // This should NEVER happen, as it would require the duration to be
+                // over 9_223_372_036.854_775_808 seconds. Still, let's cover the case.
+                let secs = duration.num_seconds();
+                let nanos = duration.num_nanoseconds().expect("Could not extract nanoseconds from Duration");
+                //Extrat seconds, convert to nanos, add subsecond-nanos
+                ((secs * 1000_000_000) + nanos ) as u128
+            },
+        };
         info!(
             self.logger,
             "Message {:x} sent",
             &hdr.get_hdr_hash();
             "radio" => &radio_range,
-            "thread"=>&thread_id
+            "thread"=>&thread_id,
+            "duration"=>dur,
         );
         Ok(())
     }
@@ -408,49 +376,90 @@ impl SimulatedRadio {
         Ok((sr_address, lr_address))
     }
 
-    fn register_transmitter(&self, mut conn : &mut Connection) -> Result<(), MeshSimError> {
-        let tx = start_tx(&mut conn)?;
+    fn register_transmitter(&self, conn : &Connection) -> Result<(), MeshSimError> {
+        // let tx = start_tx(&mut conn)?;
         let mut i = 0;
         // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
+        let radio_range: String = self.r_type.into();
 
         //Increase the count of transmitting threads
         self.transmitting_threads.fetch_add(1, Ordering::SeqCst);
-
-        while i < TRANSMITTER_REGISTER_MAX_RETRY {
+        while i < TRANSMISSION_MAX_RETRY {
             if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
                 //Another thread is attempting to register this node or has already done it.
+                debug!(
+                    self.logger, 
+                    "Node already registered as an active-transmitter"; 
+                    "ThreadID"=>thread_id
+                );
                 //No need to perform DB operation
                 return Ok(())
             }
 
-            match insert_active_transmitter(&tx,
-                                              &self.worker_name,
-                                              self.r_type,
-                                              &self.logger) {
-                Ok(_) => {
-                    commit_tx(tx)?;
-                    return Ok(())
+            match register_active_transmitters_if_free(
+                conn, 
+                &self.worker_name,
+                self.r_type,
+                self.range,
+                &self.logger
+            ) {
+                Ok(rows) => { 
+                    if rows > 0 {
+                        debug!(
+                            &self.logger,
+                            "{} registered as an active transmitter for radio {}",
+                            &self.worker_name,
+                            &radio_range; 
+                            "thread"=>&thread_id
+                        );
+                        return Ok(())
+                    } 
                 },
-                Err(e) => {
+                Err(e) => { 
                     warn!(self.logger, "{}", &e; "Thread"=> &thread_id);
                     if let Some(cause) = e.cause {
                         warn!(self.logger, "Cause: {}", &cause);
-                    }
+                    }                    
                 },
             }
+
+            //Wait and retry.
             let sleep_time = self.get_wait_time(i as u32);
-            warn!(self.logger, "Will Retry in {:?}", &sleep_time);
+            let st = format!("{:?}", &sleep_time);
+            info!(
+                &self.logger, 
+                "Medium is busy"; 
+                "thread"=>&thread_id,
+                "retry"=>i,
+                "wait_time"=>st,
+                "radio"=>&radio_range,
+            );
             std::thread::sleep(sleep_time);
             i += 1;
         }
-        rollback_tx(tx)?;
+        // rollback_tx(tx)?;
+        
         self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
-        let err_msg = String::from("Gave up registering worker in active_transmitter_list");
-        let err = MeshSimError{
-            kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
+        info!(
+            &self.logger, 
+            "Aborting transmission"; 
+            "thread"=>&thread_id,
+            "radio"=>&radio_range,
+            "reason"=>"TRANSMISSION_MAX_RETRY reached",
+        );
+
+        let err_cause = String::from("Gave up registering worker in active_transmitter_list");
+        let cause = MeshSimError{
+            kind : MeshSimErrorKind::SQLExecutionFailure(err_cause),
             cause : None
         };
+        let err_msg = String::from("Aborting transmission");
+        let err = MeshSimError{
+            kind : MeshSimErrorKind::Networking(err_msg),
+            cause : Some(Box::new(cause)),
+        };
+
         Err(err)
     }
 
@@ -506,7 +515,7 @@ impl SimulatedRadio {
         //CSMA-CA algorithm
         // let mut rng = self.rng.lock().expect("Could not lock RNG");
         // let r = rng.next_u64() % 2u64.pow(i);
-        let r = 2u64.pow(i);
+        let r = 2u64.pow(std::cmp::min(i, TRANSMISSION_EXP_CAP));
         Duration::from_micros(RETRANSMISSION_WAIT_BASE * r)
     }
 }

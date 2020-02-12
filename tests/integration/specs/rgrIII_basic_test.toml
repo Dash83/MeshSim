@@ -4,9 +4,10 @@ actions = ["ping node7 node25 3000 "]
 width = 300.0
 height = 300.0
 [protocol]
-Protocol = "ReactiveGossip"
+Protocol = "ReactiveGossipIII"
 k = 1
-p = 0.7
+p = 0.5
+q = 0.2
 
 [initial_nodes.node8]
 worker_name = "node8"

@@ -34,12 +34,8 @@ fn gossip_basic() {
 
     let node25_log_file = format!("{}/log/node25.log", &work_dir);
     let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
-    let node_25_msg_recv = logging::find_record_by_msg(
-        "Received DATA message fbedcdf252b06a96e4b6b7323be7d788 from node20",
-        &node25_log_records
-    );
-    assert!(node_25_msg_recv.is_some() && 
-            node_25_msg_recv.cloned().unwrap().status.unwrap() == "ACCEPTED");
+    let received_packets = count_data_packets(&node25_log_records);
+    assert_eq!(received_packets, 1);
 
     //Test passed. Results are not needed.
     std::fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");

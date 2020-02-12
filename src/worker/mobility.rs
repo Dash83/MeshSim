@@ -18,8 +18,8 @@ pub const DB_NAME: &str = "worker_positions.db";
 pub const HUMAN_SPEED_MEAN: f64 = 1.462; //meters per second.
 /// Standard deviation of human walking speeds
 pub const HUMAN_SPEED_STD_DEV: f64 = 0.164;
-const MAX_DBOPEN_RETRY: i32 = 20;
-const MAX_WAIT_MULTIPLIER: i32 = 10;
+const MAX_DBOPEN_RETRY: i32 = 25;
+const MAX_WAIT_MULTIPLIER: i32 = 8;
 const BASE_WAIT_TIME: u64 = 250; //µs
 
 //region Queries
@@ -30,6 +30,11 @@ const CREATE_WORKERS_TBL_QRY : &str = "CREATE TABLE IF NOT EXISTS workers (
                                                     Short_Range_Address	    TEXT,
                                                     Long_Range_Address	    TEXT
                                             )";
+const CREATE_WORKERS_TBL_INDEX: &str = "
+    CREATE INDEX index_worker_name
+    ON workers(Worker_Name)
+";
+
 const CREATE_WORKER_POS_TBL_QRY: &str = "CREATE TABLE IF NOT EXISTS  `worker_positions` (
                                                     `worker_id`	INTEGER UNIQUE,
                                                     X	REAL NOT NULL,
@@ -167,6 +172,75 @@ const REMOVE_LORA_TRANSMITTER_QRY: &str = "
     WHERE worker_id=(SELECT ID from workers WHERE worker_name = ?1);
 ";
 
+const STOP_ALL_WORKERS_QRY: &str = "
+    UPDATE
+    worker_velocities
+    SET
+    vel_x=0.0,
+    vel_y=0.0
+";
+
+const SELECT_ALL_WORKERS_IN_WIFI_RANGE_IF_FREE: &str = "
+    SELECT workers.worker_id, workers.Worker_Name, workers.Short_Range_Address, workers.Long_Range_Address
+    FROM worker_positions a
+    LEFT JOIN worker_positions b ON a.worker_id <> b.worker_id
+    JOIN workers on workers.ID = b.worker_id
+        WHERE a.worker_id = ?1
+        AND distance(b.x, b.y, a.x, a.y) < ?2
+        AND (
+            SELECT COUNT(*)
+            FROM worker_positions a
+            LEFT JOIN worker_positions b ON a.worker_id <> b.worker_id
+            INNER JOIN active_wifi_transmitters c ON b.worker_id = c.worker_id
+                WHERE a.worker_id = ?1
+                AND distance(b.x, b.y, a.x, a.y) < ?2) = 0;
+";
+
+const SELECT_ALL_WORKERS_IN_LORA_RANGE_IF_FREE: &str = "
+    SELECT workers.worker_id, workers.Worker_Name, workers.Short_Range_Address, workers.Long_Range_Address
+    FROM worker_positions a
+    LEFT JOIN worker_positions b ON a.worker_id <> b.worker_id
+    JOIN workers on workers.ID = b.worker_id
+        WHERE a.worker_id = ?1
+        AND distance(b.x, b.y, a.x, a.y) < ?2
+        AND (
+            SELECT COUNT(*)
+            FROM worker_positions a
+            LEFT JOIN worker_positions b ON a.worker_id <> b.worker_id
+            INNER JOIN active_lora_transmitters c ON b.worker_id = c.worker_id
+                WHERE a.worker_id = ?1
+                AND distance(b.x, b.y, a.x, a.y) < ?2) = 0;
+";
+//Registers the passed node as an active wifi transmitter if the medium is free
+const REGISTER_WIFI_TRANSMITTER_IF_FREE: &str = "
+    INSERT INTO active_wifi_transmitters (worker_id)
+    SELECT ID 
+        FROM workers 
+        WHERE Worker_Name = ?1 AND
+            (SELECT COUNT(*)
+                FROM worker_positions a
+                JOIN workers on workers.ID = a.worker_id
+                LEFT JOIN worker_positions b ON a.worker_id <> b.worker_id
+                INNER JOIN active_wifi_transmitters c ON b.worker_id = c.worker_id
+                WHERE workers.Worker_Name = ?1
+                            AND distance(b.x, b.y, a.x, a.y) <= ?2) = 0		
+";
+
+//Registers the passed node as an active lora transmitter if the medium is free
+const REGISTER_LORA_TRANSMITTER_IF_FREE: &str = "
+    INSERT INTO active_lora_transmitters (worker_id)
+    SELECT ID 
+        FROM workers 
+        WHERE Worker_Name = ?1 AND
+            (SELECT COUNT(*)
+                FROM worker_positions a
+                JOIN workers on workers.ID = a.worker_id
+                LEFT JOIN worker_positions b ON a.worker_id <> b.worker_id
+                INNER JOIN active_lora_transmitters c ON b.worker_id = c.worker_id
+                WHERE workers.Worker_Name = ?1
+                            AND distance(b.x, b.y, a.x, a.y) <= ?2) = 0	
+";
+
 const SET_WAL_MODE: &str = "PRAGMA journal_mode=WAL;";
 const WAL_MODE_QRY: &str = "PRAGMA journal_mode;";
 //const SET_TMP_MODE : &'static str = "PRAGMA temp_store=2"; //Instruct the database to keep temp tables in memory
@@ -267,6 +341,17 @@ pub fn create_db_objects(conn: &Connection, logger: &Logger) -> Result<usize, Me
         .execute(CREATE_WORKERS_TBL_QRY, NO_PARAMS)
         .map_err(|e| {
             let error_msg = String::from("Failed to create Workers table");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
+    //Create workers-table index
+    let _ = conn
+        .execute(CREATE_WORKERS_TBL_INDEX, NO_PARAMS)
+        .map_err(|e| {
+            let error_msg = String::from("Failed to create worker_name index for Workers table");
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
                 cause: Some(Box::new(e)),
@@ -891,6 +976,103 @@ pub fn get_active_transmitters_in_range(
     Ok(results)
 }
 
+/// Function to get the active transmitters that correspond to the radio-type provided
+pub fn register_active_transmitters_if_free(
+    conn : &Connection,
+    worker_name: &String,
+    r_type: RadioTypes,
+    range : f64,
+    _logger: &Logger,
+) -> Result<usize, MeshSimError> {
+    let qry = match r_type {
+        RadioTypes::ShortRange => REGISTER_WIFI_TRANSMITTER_IF_FREE,
+        RadioTypes::LongRange => REGISTER_LORA_TRANSMITTER_IF_FREE,
+    };
+
+    let range : &ToSql = &range;
+    let rows = conn
+        .execute(qry, &[&worker_name, range])
+        .map_err(|_| {
+            let err_msg = format!("Failed to run REGISTER_TRANSMITTER_IF_FREE for worker {}", worker_name);
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: None,
+            }
+        })?;
+
+    Ok(rows)
+}
+
+///Function to get workers in range IF the medium is free
+pub fn get_nodes_in_range_if_free(
+    conn : &Connection,
+    worker_name: &String,
+    r_type: RadioTypes,
+    range : f64,
+    _logger: &Logger,
+) -> Result<Vec<Peer>, MeshSimError> {
+    let qry = match r_type {
+        RadioTypes::ShortRange => SELECT_ALL_WORKERS_IN_WIFI_RANGE_IF_FREE,
+        RadioTypes::LongRange => SELECT_ALL_WORKERS_IN_LORA_RANGE_IF_FREE,
+    };
+    let db_id: i64 = conn
+        .prepare(GET_WORKER_QRY)
+        .and_then(|mut stmt| stmt.query_row(&[&worker_name], |row| row.get(0)))
+        .map_err(|e| {
+            let error_msg = String::from("get_nodes_in_range_if_free: Could not get worker_id");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
+    let mut stmt = conn.prepare(qry).map_err(|e| {
+        let err_msg = String::from("Failed to prepare query SELECT_ALL_WORKERS_IN_RANGE_IF_FREE");
+        MeshSimError {
+            kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+            cause: Some(Box::new(e)),
+        }
+    })?;
+
+    let db_id : &ToSql = &db_id;
+    let range : &ToSql = &range;
+    let rows = stmt
+        .query_map(&[db_id, range], |row| {
+            let id: String = row.get(0);
+            let name: String = row.get(1);
+            let sr: Option<String> = row.get(2);
+            let lr: Option<String> = row.get(3);
+
+            let mut p = Peer::new();
+            p.id = id;
+            p.name = name;
+            p.short_address = sr;
+            p.long_address = lr;
+            p
+        })
+        .map_err(|e| {
+            let err_msg = String::from("SELECT_ACTIVE_TRANSMITTER_QRY failed");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        let worker = row.map_err(|e| {
+            let err_msg = String::from("get_nodes_in_range_if_free: Failed to read rows");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        results.push(worker);
+    }
+
+    Ok(results)
+}
+
 /// Commit a transaction
 pub fn commit_tx(tx : Transaction) -> Result<(), MeshSimError> {
     let _ = tx.commit().map_err(|e| {
@@ -925,6 +1107,19 @@ pub fn start_tx(conn : &mut Connection) -> Result<Transaction, MeshSimError> {
         }
     })?;
     Ok(tx)
+}
+
+/// Set the velocity of all workers to 0
+pub fn stop_all_workers(
+    conn: &Connection
+) -> Result<usize, MeshSimError> {
+    conn.execute(STOP_ALL_WORKERS_QRY, NO_PARAMS).map_err(|e| {
+        let err_msg = String::from("Failed to stop workers");
+        MeshSimError {
+            kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+            cause: Some(Box::new(e)),
+        }
+    })
 }
 
 #[cfg(test)]

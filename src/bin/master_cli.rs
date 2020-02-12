@@ -18,6 +18,7 @@ const ARG_WORK_DIR: &str = "work_dir";
 const ARG_TEST_FILE: &str = "test_file";
 const ARG_WORKER_PATH: &str = "worker_path";
 const ARG_TERMINAL_LOG: &str = "term_log";
+const ARG_SLEEP_TIME: &str = "sleep_time";
 
 const ERROR_LOG_INITIALIZATION: i32 = 1;
 const ERROR_EXECUTION_FAILURE: i32 = 2;
@@ -75,33 +76,10 @@ impl From<master::MasterError> for CLIError {
     }
 }
 
-// fn init_logger(work_dir : &Path) -> Result<(), CLIError> {
-//     let mut log_dir_buf = work_dir.to_path_buf();
-//     log_dir_buf.push("log");
-//     if !log_dir_buf.exists() {
-//         try!(std::fs::create_dir(log_dir_buf.as_path()));
-//     }
-
-//     log_dir_buf.push("MeshMaster.log");
-//     //At this point the log folder has been created, so the path should be valid.
-//     let log_file_name = log_dir_buf.to_str().unwrap();
-
-//     let log_file = try!(OpenOptions::new()
-//                         .create(true)
-//                         .write(true)
-//                         .truncate(true)
-//                         .open(log_file_name));
-//     // let console_drain = slog_term::streamer().build();
-//     // let file_drain = slog_stream::stream(log_file, slog_json::default());
-//     // let logger = slog::Logger::root(slog::duplicate(console_drain, file_drain).fuse(), o!());
-//     // try!(slog_stdlog::set_logger(logger));
-
-//     Ok(())
-// }
-
 fn run(mut master: Master, matches: &ArgMatches) -> Result<(), MeshSimError> {
     //Has a test file been provided?
     let test_file = matches.value_of(ARG_TEST_FILE);
+    let sleep_time_override = matches.value_of(ARG_SLEEP_TIME);
     let logger = master.logger.clone();
     if let Some(file) = test_file {
         let test_spec = test_specification::TestSpec::parse_test_spec(file)?;
@@ -109,7 +87,7 @@ fn run(mut master: Master, matches: &ArgMatches) -> Result<(), MeshSimError> {
         master.test_area.height = test_spec.area_size.height;
         master.test_area.width = test_spec.area_size.width;
         master.mobility_model = test_spec.mobility.clone();
-        master.run_test(test_spec, &logger)?;
+        master.run_test(test_spec, sleep_time_override, &logger)?;
     }
 
     //Temporary fix. Since the logging now runs in a separate thread, the tests may end before
@@ -216,6 +194,14 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                 .long("log_to_terminal")
                 .value_name("true/false")
                 .help("Should this worker log operations to the terminal as well")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name(ARG_SLEEP_TIME)
+                .short("sleep")
+                .long("worker_sleep_time")
+                .value_name("MILLISECONDS")
+                .help("Override the sleep time of workers specified in the test file")
                 .takes_value(true),
         )
         .get_matches()

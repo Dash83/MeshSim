@@ -808,23 +808,42 @@ impl AODV {
         let mut rt = route_table
                 .lock()
                 .expect("Could not lock route table");
-        let neighbours : Vec<String> = rt
-            .iter()
-            .filter(|(_,v)| v.next_hop == me.name)
-            .map(|(k,_)| k.clone())
-            .collect();
-        let mut entry = rt.entry(msg.originator.clone()).or_insert_with(|| {
-            // This node does NOT have a route to ORIGINATOR.
-            // Choose a neighbour at random (except the one that sent this RREP).
-            let i: usize = { 
-                let mut rng = rng.lock().expect("Could not lock RNG");
-                rng.gen()
-            };
-            let next_hop = &neighbours[i % neighbours.len()];
-            //TODO: Check this assumption. This might be completely wrong.
-            // Create new route to ORIGINATOR, UNKNOWN SEQ_NO, NEXT_HOP is the chosen neighbour.
-            RouteTableEntry::new(&msg.originator, next_hop, None)
-        }); 
+        let mut entry = match rt.get_mut(&msg.originator) {
+            Some(entry) => entry,
+            None => {
+                //This should not happen. Drop the packet.
+                info!(
+                    logger, 
+                    "Message received";
+                    "msg_type" => "RREP",
+                    "status"=>"DROPPING",
+                    "action"=>"RREP_CANCELLED",
+                    "reason"=>"No route to RREQ originator",
+                    "Orig" => &msg.originator,
+                    "Dest" => &msg.destination,
+                    "Hdr.sender" => &hdr.sender.name,
+                    "Hdr.dest" => &hdr.destination.name,
+                );
+                return Ok(None)
+            },
+        }; 
+        // let neighbours : Vec<String> = rt
+        //     .iter()
+        //     .filter(|(_,v)| v.next_hop == me.name)
+        //     .map(|(k,_)| k.clone())
+        //     .collect();
+        // let mut entry = rt.entry(msg.originator.clone()).or_insert_with(|| {
+        //     // This node does NOT have a route to ORIGINATOR.
+        //     // Choose a neighbour at random (except the one that sent this RREP).
+        //     let i: usize = { 
+        //         let mut rng = rng.lock().expect("Could not lock RNG");
+        //         rng.gen()
+        //     };
+        //     let next_hop = &neighbours[i % neighbours.len()];
+        //     //TODO: Check this assumption. This might be completely wrong.
+        //     // Create new route to ORIGINATOR, UNKNOWN SEQ_NO, NEXT_HOP is the chosen neighbour.
+        //     RouteTableEntry::new(&msg.originator, next_hop, None)
+        // }); 
         // RFC(6.7) - At each node the (reverse) route used to forward a RREP has its lifetime changed to be
         // the maximum of (existing-lifetime, (current time + ACTIVE_ROUTE_TIMEOUT).
         entry.lifetime = std::cmp::max( entry.lifetime, 
