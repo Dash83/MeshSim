@@ -115,7 +115,7 @@ fn run(mut master: Master, matches: &ArgMatches) -> Result<(), MeshSimError> {
     Ok(())
 }
 
-fn init(matches: &ArgMatches) -> Result<(Master), MeshSimError> {
+fn init(matches: &ArgMatches) -> Result<Master, MeshSimError> {
     //Determine the work_dir
     let work_dir = match matches.value_of(ARG_WORK_DIR) {
         Some(arg) => String::from(arg),
