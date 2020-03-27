@@ -19,7 +19,7 @@ extern crate diesel_migrations;
 //*****************
 //Diesel Operations
 //*****************
-embed_migrations!("migrations");
+// embed_migrations!("migrations");
 
 //*****************
 //Modules declaration
@@ -27,6 +27,7 @@ embed_migrations!("migrations");
 pub mod logging;
 pub mod master;
 pub mod worker;
+pub mod mobility2;
 
 //*****************
 //Errors

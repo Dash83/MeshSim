@@ -40,7 +40,7 @@ libc = "0.2.55"
 sx1276 = { git = "https://github.com/doctorn/sx1276"}
 chrono = "0.4.10"
 bitflags = "1.1.0"
-diesel = { version = "1.4.3", features = ["postgres"] }
+diesel = { version = "1.4.3", features = ["postgres", "numeric"] }
 dotenv = "0.15.0"
 strfmt = "0.1.6"
 diesel_migrations = "1.4.0"

@@ -1,28 +1,30 @@
 -- Your SQL goes here
 CREATE TABLE workers (
     id serial PRIMARY KEY,
-    Worker_Name varchar (100) NOT NULL,
-    Worker_ID varchar (100) NOT NULL,
-    Short_Range_Address varchar(50),
-    Long_Range_Address varchar(50)
+    worker_name varchar (100) NOT NULL,
+    worker_id varchar (100) NOT NULL,
+    short_range_address varchar(50),
+    long_range_address varchar(50)
 );
+
+CREATE UNIQUE INDEX worker_name_idx ON workers (worker_name);
 
 CREATE TABLE worker_positions (
     worker_id integer REFERENCES workers(id) PRIMARY KEY,
-    x real NOT NULL,
-    y real NOT NULL
+    x double precision NOT NULL,
+    y double precision NOT NULL
 );
 
 CREATE TABLE worker_velocities (
     worker_id integer REFERENCES workers(id) PRIMARY KEY,
-    vel_x REAL NOT NULL,
-    vel_y REAL NOT NULL
+    x double precision NOT NULL,
+    y double precision NOT NULL
 );
 
 CREATE TABLE worker_destinations (
     worker_id integer REFERENCES workers(id) PRIMARY KEY,
-    dest_x real NOT NULL,
-    dest_y real NOT NULL
+    x double precision NOT NULL,
+    y double precision NOT NULL
 );
 
 CREATE TABLE active_wifi_transmitters (
@@ -32,3 +34,8 @@ CREATE TABLE active_wifi_transmitters (
 CREATE TABLE active_lora_transmitters (
     worker_id integer REFERENCES workers(id) PRIMARY KEY
 );
+
+CREATE FUNCTION distance(x1 double precision, y1 double precision, x2 double precision, y2 double precision) RETURNS double precision
+AS '
+	SELECT sqrt((x2 - x1)^2 + (y2 - y1)^2);
+' LANGUAGE SQL;
