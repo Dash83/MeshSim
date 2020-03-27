@@ -44,6 +44,8 @@ use std::sync::{MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::{self, error, fmt, io};
 
+use super::mobility2::schema::workers;
+
 //Sub-modules declaration
 pub mod commands;
 pub mod listener;
@@ -213,11 +215,12 @@ impl From<rusqlite::Error> for WorkerError {
 /// Peer struct.
 /// Defines the public identity of a node in the mesh.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Default)]
+// #[table_name="workers"]
 pub struct Peer {
-    /// Public key of the peer. It's considered it's public address.
-    pub id: String,
     /// Friendly name of the peer.
     pub name: String,
+    /// Public key of the peer. It's considered it's public address.
+    pub id: String,
     ///Endpoint at which this worker's short_radio is listening for messages.
     pub short_address: Option<String>,
     ///Endpoint at which this worker's long_radio is listening for messages.

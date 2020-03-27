@@ -11,6 +11,15 @@ extern crate slog;
 extern crate pretty_assertions;
 #[macro_use]
 extern crate bitflags;
+#[macro_use]
+extern crate diesel;
+#[macro_use]
+extern crate diesel_migrations;
+
+//*****************
+//Diesel Operations
+//*****************
+// embed_migrations!("migrations");
 
 //*****************
 //Modules declaration
@@ -18,6 +27,7 @@ extern crate bitflags;
 pub mod logging;
 pub mod master;
 pub mod worker;
+pub mod mobility2;
 
 //*****************
 //Errors
