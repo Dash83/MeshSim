@@ -1,7 +1,7 @@
 //! This module defines the abstraction and functionality for what a Radio is in MeshSim
 
 use crate::worker::listener::*;
-use crate::worker::mobility::*;
+use crate::mobility2::*;
 use crate::worker::*;
 use crate::{MeshSimError, MeshSimErrorKind};
 use pnet_datalink as datalink;
@@ -17,6 +17,7 @@ use std::thread;
 use std::sync::atomic::{AtomicU8, Ordering, AtomicI64};
 use chrono::Utc;
 use std::convert::TryFrom;
+use diesel::pg::PgConnection;
 
 #[cfg(target_os = "linux")]
 use self::sx1276::socket::{Link, LoRa};
@@ -130,16 +131,17 @@ impl Radio for SimulatedRadio {
     }
 
     fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
-        let mut conn = get_db_connection(&self.work_dir, &self.logger)?;
+        let env_file = format!("{}{}.env", &self.work_dir, std::path::MAIN_SEPARATOR);
+        let conn = get_db_connection(&env_file, &self.logger)?;
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
         let start_ts = Utc::now();
 
         //Register this node as an active transmitter if the medium is free
-        self.register_transmitter(&mut conn)?;
+        self.register_transmitter(&conn)?;
 
         //Get the list of peers in radio-range
-        let peers = get_workers_in_range(&conn, &self.id, self.range, &self.logger)?;
+        let peers = get_workers_in_range(&conn, &self.worker_name, self.range, &self.logger)?;
         info!(
             self.logger, 
             "Starting transmission"; 
@@ -168,8 +170,8 @@ impl Radio for SimulatedRadio {
             })?;
 
             let selected_address = match self.r_type {
-                RadioTypes::ShortRange => p.short_address.clone(),
-                RadioTypes::LongRange => p.long_address.clone(),
+                RadioTypes::ShortRange => p.short_range_address.clone(),
+                RadioTypes::LongRange => p.long_range_address.clone(),
             };
 
             if let Some(addr) = selected_address {
@@ -200,7 +202,7 @@ impl Radio for SimulatedRadio {
             } else {
                 error!(
                     self.logger,
-                    "No known address for peer {} in range {:?}", p.name, self.r_type
+                    "No known address for peer {} in range {:?}", p.worker_name, self.r_type
                 );
             }
         }
@@ -209,7 +211,7 @@ impl Radio for SimulatedRadio {
         self.last_transmission.store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
         debug!(&self.logger, "last_transmission:{}", self.last_transmission());
 
-        self.deregister_transmitter(&mut conn)?;
+        self.deregister_transmitter(&conn)?;
         let duration = Utc::now() - start_ts;
         let dur = match duration.num_nanoseconds() {
             Some(n) => { 
@@ -376,7 +378,7 @@ impl SimulatedRadio {
         Ok((sr_address, lr_address))
     }
 
-    fn register_transmitter(&self, conn : &Connection) -> Result<(), MeshSimError> {
+    fn register_transmitter(&self, conn : &PgConnection) -> Result<(), MeshSimError> {
         // let tx = start_tx(&mut conn)?;
         let mut i = 0;
         // let wait_base = self.get_wait_base();
@@ -397,7 +399,7 @@ impl SimulatedRadio {
                 return Ok(())
             }
 
-            match register_active_transmitters_if_free(
+            match register_active_transmitter_if_free(
                 conn, 
                 &self.worker_name,
                 self.r_type,
@@ -463,8 +465,8 @@ impl SimulatedRadio {
         Err(err)
     }
 
-    fn deregister_transmitter(&self, mut conn : &mut Connection) -> Result<(), MeshSimError> {
-        let tx = start_tx(&mut conn)?;
+    fn deregister_transmitter(&self, mut conn : &PgConnection) -> Result<(), MeshSimError> {
+        // let tx = start_tx(&mut conn)?;
         let mut i = 0;
         // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
@@ -476,12 +478,12 @@ impl SimulatedRadio {
                 self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
                 return Ok(())
             }
-            match remove_active_transmitter(&tx,
+            match remove_active_transmitter(conn,
                                             &self.worker_name,
                                             self.r_type,
                                             &self.logger) {
                 Ok(_) => {
-                    commit_tx(tx)?;
+                    // commit_tx(tx)?;
                     self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
                     return Ok(())
                 },
@@ -497,7 +499,7 @@ impl SimulatedRadio {
             std::thread::sleep(sleep_time);
             i += 1;
         }
-        rollback_tx(tx)?;
+        // rollback_tx(tx)?;
         let err_msg = String::from("Gave up removing worker from active_transmitter_list");
         let err = MeshSimError{
             kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),

@@ -18,14 +18,14 @@
     unused_qualifications
 )]
 
-use crate::worker::mobility::*;
+use crate::mobility2::*;
 use crate::worker::radio::SimulatedRadio;
 use crate::worker::worker_config::WorkerConfig;
 use crate::{MeshSimError, MeshSimErrorKind};
 use libc::{c_int, nice};
 use rand::distributions::{Normal, Uniform};
 use rand::{thread_rng, Rng, RngCore};
-use rusqlite::Connection;
+// use rusqlite::Connection;
 use slog::Logger;
 use std::collections::{HashMap, HashSet};
 use std::error;
@@ -34,7 +34,7 @@ use std::io;
 use std::io::{BufRead, BufReader, Write};
 use std::iter;
 use std::ops::DerefMut;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -43,6 +43,7 @@ use std::time::{Duration, Instant};
 use test_specification::{Area, TestActions};
 use chrono::{Utc, DateTime};
 use workloads::SourceProfiles;
+use diesel::pg::PgConnection;
 
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
@@ -101,7 +102,7 @@ impl FromStr for MobilityModels {
 }
 
 /// Represents a child process that the master controls.
-type Process = (i64, Arc<Mutex<Child>>);
+type Process = (i32, Arc<Mutex<Child>>);
 
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
@@ -123,6 +124,10 @@ pub struct Master {
     pub test_area: Area,
     /// Current mobility model (if any)
     pub mobility_model: Option<MobilityModels>,
+    /// Name of the experiment DB that will be created for this run.
+    db_name: String,
+    /// DB-connection file
+    env_file: String,
     /// The logger to be usef by the Master
     pub logger: Logger,
     /// The log file to which the master will log
@@ -214,14 +219,20 @@ impl error::Error for MasterError {
 
 impl Master {
     /// Constructor for the struct.
-    pub fn new(logger: Logger, log_file: String) -> Master {
+    pub fn new(work_dir: String, log_file: String, logger: Logger) -> Result<Master, MeshSimError> {
         let workers = Arc::new(Mutex::new(HashMap::new()));
         let wb = String::from("./worker_cli");
         let an = HashMap::new();
+        let parts: Vec<&str> = work_dir.as_str().rsplit(std::path::MAIN_SEPARATOR).collect();
+        let db_name = parts[0].to_string();
+        let env_file = create_db_objects(&work_dir, &db_name, &logger)?;
 
-        Master {
+        debug!(&logger, "Using connection file: {}", &env_file);
+        debug!(&logger, "Using DB name: {}", &db_name);
+
+        let m = Master {
             workers,
-            work_dir: String::from("."),
+            work_dir,
             worker_binary: wb,
             available_nodes: Arc::new(an),
             duration: 0,
@@ -230,10 +241,14 @@ impl Master {
                 height: 0.0,
             },
             mobility_model: None,
+            db_name,
+            env_file, 
             logger,
             log_file,
             sleep_time_override: None,
-        }
+        };
+
+        Ok(m)
     }
 
     /// Adds a single worker to the worker vector with a specified name and starts the worker process
@@ -320,11 +335,8 @@ impl Master {
         let end_test_handle = self.testaction_end_test(self.duration)?;
         action_handles.push(end_test_handle);
 
-        //Obtain database connection
-        let conn = get_db_connection(&self.work_dir, logger)?;
-
-        //Create the DB objects
-        let _rows = create_db_objects(&conn, &logger)?;
+        // Obtain database connection
+        let conn = get_db_connection(&self.env_file, &self.logger)?;
 
         //Start all workers and add save their child process handle.
         {
@@ -384,9 +396,9 @@ impl Master {
                         let res = register_worker(
                             &conn,
                             val.worker_name.clone(),
-                            &worker_id,
-                            &val.position,
-                            &val.velocity,
+                            worker_id.clone(),
+                            val.position,
+                            val.velocity,
                             &val.destination,
                             sr_addr,
                             lr_addr,
@@ -556,7 +568,7 @@ impl Master {
         let worker_binary = self.worker_binary.clone();
         let work_dir = self.work_dir.clone();
         let logger = self.logger.clone();
-        let conn = get_db_connection(&work_dir, &logger)?;
+        let conn = get_db_connection(&self.env_file, &self.logger)?;
 
         let handle = thread::spawn(move || {
             let test_endtime = Duration::from_millis(time);
@@ -617,9 +629,9 @@ impl Master {
                             let id = register_worker(
                                 &conn,
                                 config.worker_name.clone(),
-                                &worker_id,
-                                &config.position,
-                                &config.velocity,
+                                worker_id.clone(),
+                                config.position,
+                                config.velocity,
                                 &config.destination,
                                 sr_addr,
                                 lr_addr,
@@ -939,9 +951,9 @@ impl Master {
         let mut initialized: bool = Default::default();
         let m_model = self.mobility_model.clone();
         let logger = self.logger.clone();
-        let mut paused_workers: HashMap<i64, PendingWorker> = HashMap::new();
+        let mut paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
         let sleep_time_override = self.sleep_time_override.clone();
-        let conn = get_db_connection(&self.work_dir, &logger).map_err(|_| {
+        let conn = get_db_connection(&self.env_file, &self.logger).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::Other,
                 MasterError::Sync(String::from("Could not connect to DB")),
@@ -976,13 +988,13 @@ impl Master {
 
             while Instant::now().duration_since(sim_start_time) < sim_end_time {
                 //Restart movement for workers whose pause has ended.
-                let mut restarted_workers: Vec<i64> = Vec::new();
+                let mut restarted_workers: Vec<i32> = Vec::new();
                 for (key, val) in paused_workers.iter() {
                     let worker_id = key;
                     let restart_time = &val.0;
                     let velocity = &val.1;
                     if *restart_time <= Utc::now() {
-                        match update_worker_vel(&conn, velocity, *worker_id, &logger) {
+                        match update_worker_vel(&conn, *velocity, *worker_id, &logger) {
                             Ok(_r) =>  restarted_workers.push(*worker_id),
                             Err(e) => {
                                 error!(
@@ -1049,7 +1061,7 @@ impl Master {
     }
 
     fn handle_stationary(
-        conn: &Connection,
+        conn: &PgConnection,
         logger: &Logger,
     ) {
         let _rows = match stop_all_workers(conn) {
@@ -1062,13 +1074,13 @@ impl Master {
     }
 
     fn handle_random_waypoint(
-        conn: &Connection,
+        conn: &PgConnection,
         width_sample: &Uniform<f64>,
         height_sample: &Uniform<f64>,
         walking_sample: &Normal,
         _wait_sample: &Uniform<u64>,
         pause_time: u64,
-        paused_workers: &mut HashMap<i64, PendingWorker>,
+        paused_workers: &mut HashMap<i32, PendingWorker>,
         rng: &mut dyn RngCore,
         // db_path: &str,
         logger: &Logger,
@@ -1076,11 +1088,11 @@ impl Master {
         debug!(logger, "Entered function handle_random_waypoint");
 
         //Select workers that reached their destination
-        let rows = match select_final_positions(&conn) {
+        let rows = match select_workers_that_arrived(&conn) {
             Ok(rows) => rows,
             Err(e) => {
                 error!(logger, "Error updating worker positions: {}", e);
-                vec![]
+                HashMap::new()
             }
         };
 
@@ -1091,7 +1103,8 @@ impl Master {
                 rows.len()
             );
             //Stop workers that have reached their destination
-            match stop_workers(&conn, &rows, logger) {
+            let stoppable: Vec<i32> = rows.keys().map(|v| *v).collect();
+            match stop_workers(&conn, &stoppable, logger) {
                 Ok(r) => {
                     info!(logger, "{} workers have been stopped", r);
                 }
@@ -1102,8 +1115,7 @@ impl Master {
 
             for w in rows {
                 let w_id = w.0;
-                let current_x = w.1;
-                let current_y = w.2;
+                let pos = w.1;
 
                 //Calculate parameters
                 // let pause_time :u64 = rng.sample(wait_sample); RANDOM_WAYPOINT_WAIT_TIME
@@ -1111,19 +1123,19 @@ impl Master {
                 let next_x: f64 = rng.sample(width_sample);
                 let next_y: f64 = rng.sample(height_sample);
                 let vel: f64 = rng.sample(walking_sample);
-                let distance: f64 = euclidean_distance(current_x, current_y, next_x, next_y);
+                let distance: f64 = euclidean_distance(pos.x, pos.y, next_x, next_y);
                 let time: f64 = distance / vel;
-                let x_vel = (next_x - current_x) / time;
-                let y_vel = (next_y - current_y) / time;
+                let x_vel = (next_x - pos.x) / time;
+                let y_vel = (next_y - pos.y) / time;
 
                 //Update worker target position
                 let _res = update_worker_target(
                     &conn,
-                    w_id,
-                    Position {
+              Position {
                         x: next_x,
                         y: next_y,
                     },
+                    w_id,
                     &logger,
                 );
 

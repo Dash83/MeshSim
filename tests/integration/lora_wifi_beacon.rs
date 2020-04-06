@@ -2,26 +2,23 @@ extern crate mesh_simulator;
 
 use super::super::*;
 use mesh_simulator::logging::*;
+use mesh_simulator::tests::common::*;
 
 #[test]
 fn test_placement() {
-    let test = get_test_path("lora_wifi_beacon_placement.toml");
-    let work_dir = create_test_dir("lora_wifi_beacon_placement");
+    let test_name = String::from("lora_wifi_beacon_placement");
+    let data= setup(&test_name, false, false);
 
-    let program = get_master_path();
-    let worker = get_worker_path();
-
-
-    println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
+    println!("Running command: {} -t {} -w {} -d {}", &data.master, &data.test_file, &data.worker, &data.work_dir);
 
     //Assert the test finished succesfully
-    assert_cli::Assert::command(&[&program])
-        .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
-        .succeeds()
-        .unwrap();
+    assert_cli::Assert::command(&[&data.master])
+    .with_args(&["-t",  &data.test_file, "-w", &data.worker, "-d", &data.work_dir])
+    .succeeds()
+    .unwrap();
 
     //Check the test ended with the correct number of processes.
-    let master_log_file = format!("{}{}{}{}{}", &work_dir,
+    let master_log_file = format!("{}{}{}{}{}", &data.work_dir,
                                   std::path::MAIN_SEPARATOR,
                                   LOG_DIR_NAME,
                                   std::path::MAIN_SEPARATOR,
@@ -33,7 +30,7 @@ fn test_placement() {
     assert!(master_node_num.is_some());
 
     //Check the upper left corner of the grid
-    let node1_log_file = format!("{}/log/node1.log", &work_dir);
+    let node1_log_file = format!("{}/log/node1.log", &data.work_dir);
     let node1_log_records = logging::get_log_records_from_file(&node1_log_file).expect("Failed to get log records from node1");
     let mut received_packets_wifi = 0;
     let mut received_packets_lora = 0;
@@ -57,7 +54,7 @@ fn test_placement() {
 //    assert_eq!(received_packets_lora, 25);
 
     //Check a central node
-    let node7_log_file = format!("{}/log/node7.log", &work_dir);
+    let node7_log_file = format!("{}/log/node7.log", &data.work_dir);
     let node7_log_records = logging::get_log_records_from_file(&node7_log_file).expect("Failed to get log records from node7");
     let mut received_packets_wifi = 0;
     let mut received_packets_lora = 0;
@@ -81,5 +78,5 @@ fn test_placement() {
 //    assert_eq!(received_packets_lora, 100);
 
     //Test passed. Results are not needed.
-    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+    teardown(data, true);
 }

@@ -151,8 +151,8 @@ fn init(matches: &ArgMatches) -> Result<Master, MeshSimError> {
             cause: Some(Box::new(e)),
         }
     })?;
-    let mut master = Master::new(logger, log_file);
-    master.work_dir = work_dir.clone();
+    let mut master = Master::new(work_dir, log_file, logger)?;
+
     //What else was passed to the master?
     master.worker_binary = match matches.value_of(ARG_WORKER_PATH) {
         Some(path_arg) => String::from(path_arg),

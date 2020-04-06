@@ -75,7 +75,7 @@ random_seed = 78
 operation_mode = "Simulated"
 [initial_nodes.node4.position]
 x = 50.0
-y = 115.0
+y = 110.0
 [initial_nodes.node4.destination]
 x = 50.0 
 y = 100.0 
