@@ -2,7 +2,7 @@
 //! deserialize a configuration file into a worker_config object that eventually creates a worker object.
 
 use crate::worker::listener::Listener;
-use crate::worker::mobility::{Position, Velocity};
+use crate::mobility2::{Position, Velocity};
 use crate::worker::protocols::*;
 use crate::worker::radio::*;
 use crate::worker::radio::{self, LoraFrequencies, SimulatedRadio, WifiRadio};

@@ -1,27 +1,23 @@
 extern crate mesh_simulator;
 
 use super::super::*;
-use mesh_simulator::logging::*;
+use mesh_simulator::tests::common::*;
 
 #[test]
 fn test_cbr_basic() {
-    let test = get_test_path("CBR_test.toml");
-    let work_dir = create_test_dir("cbr_basic");
+    let test_name = String::from("CBR");
+    let data= setup(&test_name, false, false);
 
-    let program = get_master_path();
-    let worker = get_worker_path();
-
-
-    println!("Running command: {} -t {} -w {} -d {}", &program, &test, &worker, &work_dir);
+    println!("Running command: {} -t {} -w {} -d {}", &data.master, &data.test_file, &data.worker, &data.work_dir);
 
     //Assert the test finished succesfully
-    assert_cli::Assert::command(&[&program])
-    .with_args(&["-t",  &test, "-w", &worker, "-d", &work_dir])
+    assert_cli::Assert::command(&[&data.master])
+    .with_args(&["-t",  &data.test_file, "-w", &data.worker, "-d", &data.work_dir])
     .succeeds()
     .unwrap();
 
     //Check the test ended with the correct number of processes.
-    let master_log_file = format!("{}{}{}{}{}", &work_dir,
+    let master_log_file = format!("{}{}{}{}{}", &data.work_dir,
                                                 std::path::MAIN_SEPARATOR,
                                                 LOG_DIR_NAME,
                                                 std::path::MAIN_SEPARATOR,
@@ -32,7 +28,7 @@ fn test_cbr_basic() {
                                                    &master_log_records);
     assert!(master_node_num.is_some());
     
-    let node3_log_file = &format!("{}/log/node3.log", &work_dir);
+    let node3_log_file = &format!("{}/log/node3.log", &data.work_dir);
     let node3_log_records = logging::get_log_records_from_file(&node3_log_file).unwrap();
     let mut received_packets = 0;
 
@@ -49,5 +45,5 @@ fn test_cbr_basic() {
     assert_eq!(received_packets, 15);
 
     //Test passed. Results are not needed.
-    fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+    teardown(data, true);
 }

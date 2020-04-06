@@ -6,7 +6,7 @@ extern crate chrono;
 extern crate strfmt;
 
 use crate::{MeshSimError, MeshSimErrorKind};
-use crate::worker::Peer;
+// use crate::worker::Peer;
 use crate::worker::radio::RadioTypes;
 use models::*;
 
@@ -14,6 +14,7 @@ use std::env;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
+use std::path::PathBuf;
 
 use slog::Logger;
 use diesel::pg::PgConnection;
@@ -21,7 +22,6 @@ use diesel::prelude::*;
 use diesel::sql_query;
 use diesel::Connection;
 use diesel::sql_types::{Text, Double};
-use chrono::prelude::*;
 use strfmt::strfmt;
 
 embed_migrations!("migrations");
@@ -29,7 +29,15 @@ embed_migrations!("migrations");
 pub mod models;
 pub mod schema;
 
-const ROOT_ENV_FILE: &str = ".env_root";
+/// The mean of human walking speeds
+pub const HUMAN_SPEED_MEAN: f64 = 1.462; //meters per second.
+/// Standard deviation of human walking speeds
+pub const HUMAN_SPEED_STD_DEV: f64 = 0.164;
+const MAX_DBOPEN_RETRY: i32 = 25;
+const MAX_WAIT_MULTIPLIER: i32 = 8;
+const BASE_WAIT_TIME: u64 = 250; //µs
+///Postgres connection file for root DB
+pub const ROOT_ENV_FILE: &str = ".env_root";
 const EXP_ENV_FILE: &str = ".env";
 const DB_BASE_NAME: &str = "meshsim";
 const DB_CONN_PREAMBLE: &str = "DATABASE_URL=postgres://";
@@ -55,7 +63,7 @@ pub struct Position {
 }
 
 ///Struct to encapsule the velocity vector of a worker
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Copy, Default)]
 pub struct Velocity {
     /// X component
     pub x: f64,
@@ -75,24 +83,11 @@ pub enum db_type {
 //********** Exported functions **********
 //****************************************
 /// Returns a connection to the database
-pub fn get_db_connection(db : db_type, logger: &Logger) -> Result<PgConnection, MeshSimError> {
-    // dotenv().ok();
+pub fn get_db_connection(env_file: &String, logger: &Logger) -> Result<PgConnection, MeshSimError> {
     env::remove_var(DB_CONN_ENV_VAR);
 
-    match db {
-        db_type::root => {
-            dotenv::from_filename(ROOT_ENV_FILE).ok();
-            let url_conn = env::var("DATABASE_URL").expect("Could not find DATABASE_URL environment var");
-            debug!(logger, "DATABASE_URL={}", url_conn);
-        },
-        db_type::experiment => {
-            dotenv::from_filename(EXP_ENV_FILE).ok();
-            let url_conn = env::var("DATABASE_URL").expect("Could not find DATABASE_URL environment var");
-            debug!(logger, "DATABASE_URL={}", url_conn);
-        },
-    }
-    
-    let database_url = env::var("DATABASE_URL")
+    dotenv::from_filename(env_file).ok();
+    let database_url = env::var(DB_CONN_ENV_VAR)
         .map_err(|e| {
             let error_msg = String::from("Failed to read DATABASE_URL environment variable");
             MeshSimError {
@@ -100,9 +95,10 @@ pub fn get_db_connection(db : db_type, logger: &Logger) -> Result<PgConnection, 
                 cause: Some(Box::new(e)),
             }
         })?;
+    debug!(logger, "DATABASE_URL={}", database_url);
     let conn = PgConnection::establish(&database_url)
         .map_err(|e| {
-            let error_msg = String::from("Could not establish a connection to the DB");
+            let error_msg = format!("Could not establish a connection to the DB: {}", &database_url);
             MeshSimError {
                 kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
                 cause: Some(Box::new(e)),
@@ -111,20 +107,76 @@ pub fn get_db_connection(db : db_type, logger: &Logger) -> Result<PgConnection, 
     Ok(conn)
 }
 
+pub fn create_database(conn: &PgConnection, db_name: &String, logger: &Logger) -> Result<(), MeshSimError> { 
+    //Insert the DB name into the CREATE_DB query
+    let mut vars = HashMap::new();
+    vars.insert("db_name".to_string(), &db_name);
+    let qry = strfmt(CREATE_DB_SQL, &vars)
+        .map_err(|e| {
+            let error_msg = String::from("Could not bind DB name");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+    
+    //Create the experiment DB
+    let _ = sql_query(qry)
+        .execute(conn)
+        .map_err(|e| {
+            let error_msg = String::from("Could not create experiment DB");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+    
+    Ok(())
+}
+
+pub fn create_env_file(db_name : &str, work_dir: &str, logger: &Logger) -> Result<String, MeshSimError> { 
+    let mut root_file_content = String::new();
+    let mut root_file = File::open(ROOT_ENV_FILE).expect("Could not open .env file");
+    root_file.read_to_string(&mut root_file_content).expect("Could not read file");
+
+    let conn_data = root_file_content.as_str().replace(DB_CONN_PREAMBLE, "");
+    let parts =  conn_data.split(|c| c == '/' || c == '@').collect::<Vec<&str>>();
+    let env_content = format!("{}{}@{}/{}", DB_CONN_PREAMBLE, parts[0], parts[1], db_name);
+    let mut file_name = PathBuf::new();
+    file_name.push(work_dir); //the parent directory
+    file_name.push(EXP_ENV_FILE); //Add the file name;
+    if !file_name.exists() {
+        let mut file = File::create(&file_name).expect("Could not create new .env file");
+        file.write_all(env_content.as_bytes()).expect("Could not write new .env file");
+    } else {
+        debug!(&logger, "Env file already existed");
+    }
+
+    let f = file_name.to_string_lossy().into_owned();
+
+    Ok(f)
+}
+
 /// Creates all the required database objects for a simulation
-pub fn create_db_objects(logger: &Logger) -> Result<(), MeshSimError> {
+pub fn create_db_objects(work_dir: &String, db_name : &String, logger: &Logger) -> Result<String, MeshSimError> {
+    //Make sure we use a lowercase version of db_name all throughout.
+    let dbm = db_name.to_lowercase();
+    
     //Create experiment database
-    let root_conn = get_db_connection(db_type::root, &logger)?;
-    let db_name = create_database(&root_conn, &logger)?;
+    let root_env_file = String::from(ROOT_ENV_FILE);
+    let root_conn = get_db_connection(&root_env_file, &logger)?;
+    let _ = create_database(&root_conn, &dbm, &logger)?;
+    debug!(logger, "Experiment database created: {}", &dbm);
 
     //Write the .env file for the experiment
-    let _ = create_env_file(&db_name, &logger);
+    let fpath = create_env_file(&dbm, work_dir, &logger)?;
+    debug!(logger, "Connection file created: {}", &fpath);
 
     //Run all the migrations on the experiment DB
-    let exp_conn = get_db_connection(db_type::experiment, &logger)?;
+    let exp_conn = get_db_connection(&fpath, &logger)?;
     let _ = embedded_migrations::run(&exp_conn);
 
-    Ok(())
+    Ok(fpath)
 }
 
 /// Registers a newly created worker into the mobility system
@@ -138,7 +190,7 @@ pub fn register_worker(
     sr_address: Option<String>,
     lr_address: Option<String>,
     logger: &Logger,
-) -> Result<usize, MeshSimError> { 
+) -> Result<i32, MeshSimError> { 
     //Insert new worker
     let wr = insert_worker(
         conn, 
@@ -174,7 +226,7 @@ pub fn register_worker(
         )?;        
     }
 
-    Ok(rows)
+    Ok(wr.id)
 }
 
 /// Updates the worker's velocity
@@ -231,7 +283,7 @@ pub fn update_worker_target(
 
 /// Function exported exclusively for the use of the Master module.
 /// Returns ids of all workers that have reached their destination.
-pub fn select_workers_that_arrived(conn: &PgConnection) -> Result<Vec<(i32, f64, f64)>, MeshSimError> {
+pub fn select_workers_that_arrived(conn: &PgConnection) -> Result<HashMap<i32, Position>, MeshSimError> {
     use schema::worker_positions;
     use schema::worker_destinations;
     use schema::worker_velocities;
@@ -257,13 +309,13 @@ pub fn select_workers_that_arrived(conn: &PgConnection) -> Result<Vec<(i32, f64,
             }         
         })?;
     
-    let mut result = Vec::new();
+    let mut result = HashMap::new();
     for (w_id, pos_x, pos_y, dest_x, dest_y, vel_x, vel_y) in source {
         let vel_magnitude = (vel_x.powi(2) + vel_y.powi(2)).sqrt();
         let remaining_distance = euclidean_distance(pos_x, pos_y, dest_x, dest_y);
         let dist_threshold = vel_magnitude / 2.0;
         if remaining_distance <= dist_threshold {
-            result.push((w_id, pos_x, pos_y));
+            result.insert(w_id, Position{x: pos_x, y: pos_y}) ;
         }
     }
 
@@ -370,8 +422,8 @@ pub fn get_workers_in_range(
     let q = sql_query(query_str)
         .bind::<Text, _>(worker_name)
         .bind::<Double, _>(range);
-    let debug_q = diesel::debug_query::<diesel::pg::Pg, _>(&q);
-    debug!(logger, "Query: {}", &debug_q);
+    // let debug_q = diesel::debug_query::<diesel::pg::Pg, _>(&q);
+    // debug!(logger, "Query: {}", &debug_q);
     
 
     let rows: Vec<worker_record> = q.get_results(conn)
@@ -558,8 +610,8 @@ pub fn register_active_transmitter_if_free(
         .bind::<Text, _>(worker_name)
         .bind::<Text, _>(worker_name)
         .bind::<Double, _>(range);
-    let debug_q = diesel::debug_query::<diesel::pg::Pg, _>(&q);
-    debug!(logger, "Query: {}", &debug_q);
+    // let debug_q = diesel::debug_query::<diesel::pg::Pg, _>(&q);
+    // debug!(logger, "Query: {}", &debug_q);
     
 
     let rows = q.execute(conn)
@@ -655,147 +707,92 @@ fn update_worker_position(
     Ok(rows)
 }
 
-
-fn create_database(conn: &PgConnection, logger: &Logger) -> Result<String, MeshSimError> { 
-    //Create a unique name for this database
-    let utc: DateTime<Utc> = Utc::now();
-    let num = utc.timestamp_millis();
-    let mut vars = HashMap::new();
-    let db_name = format!("{}_{}", DB_BASE_NAME, num);
-    info!(logger, "DB name for the experiment:{}", &db_name);
-
-    //Insert the DB name into the CREATE_DB query
-    vars.insert("db_name".to_string(), &db_name);
-    let qry = strfmt(CREATE_DB_SQL, &vars)
-        .map_err(|e| {
-            let error_msg = String::from("Could not bind DB name");
-            MeshSimError {
-                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
-                cause: Some(Box::new(e)),
-            }
-        })?;
-    
-    //Create the experiment DB
-    let _ = sql_query(qry)
-        .execute(conn)
-        .map_err(|e| {
-            let error_msg = String::from("Could not create experiment DB");
-            MeshSimError {
-                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
-                cause: Some(Box::new(e)),
-            }
-        })?;
-    
-    Ok(db_name)
-}
-
-fn create_env_file(db_name : &str, _logger: &Logger) -> Result<(), MeshSimError> { 
-    let mut root_file_content = String::new();
-    let mut root_file = File::open(ROOT_ENV_FILE).expect("Could not open .env file");
-    root_file.read_to_string(&mut root_file_content).expect("Could not read file");
-
-    let conn_data = root_file_content.as_str().replace(DB_CONN_PREAMBLE, "");
-    let parts =  conn_data.split(|c| c == '/' || c == '@').collect::<Vec<&str>>();
-    let env_content = format!("{}{}@{}/{}", DB_CONN_PREAMBLE, parts[0], parts[1], db_name);
-    let mut file = File::create(EXP_ENV_FILE).expect("Could not create new .env file");
-    file.write_all(env_content.as_bytes()).expect("Could not write new .env file");
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests { 
+    // extern crate tests;
     use crate::mobility2::*;
-    use crate::logging;
-    use std::fs;
-    use std::path::{Path, PathBuf};
     use std::sync::Mutex;
     use std::time::Duration;
     use std::thread;
+    use crate::tests::common::*;
+    use std::fs;
 
     lazy_static! {
         /// Used to serialize some tests that will create conflicts if running in parallel.
         static ref DB: Mutex<()> = Mutex::new(());
     }
 
-    /*******************************************
-     *********** Utility functions *************
-     ********************************************/
-     fn get_tests_root() -> String {
-        use std::env;
-        let test_home = env::var("MESHSIM_TEST_DIR").unwrap_or(String::from("/tmp/"));
-        test_home
-    }
-
-    fn create_test_dir<'a>(test_name: &'a str) -> String {
-        let now: DateTime<Utc> = Utc::now();
-        let test_dir_path = format!("{}{}_{}", &get_tests_root(), test_name, now.timestamp());
-        let test_dir = Path::new(&test_dir_path);
-
-        if !test_dir.exists() {
-            fs::create_dir(&test_dir_path).expect(&format!(
-                "Unable to create test results directory {}",
-                test_dir_path
-            ));
-        }
-
-        test_dir_path.clone()
-    }
+    pub const TEST_DB_ENV_FILE: &str = "TEST_DB_ENV_FILE";
+    pub const TEST_DB_NAME: &str = "TEST_DB_NAME";
 
     #[test]
-    fn test_conn_1_get_db_connection_root() {
-        let work_dir = create_test_dir("get_db_connection_root");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "test_get_db_connection_root.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
+    fn test_conn_get_db_connection_root() {
+        let test_data = setup("get_db_connection_root", false, false);
+
         // Connect to root DB. If nothing failed, the test was succesful.
-        let _conn = get_db_connection(db_type::root, &logger).expect("Could not get DB connection");
+        let root_env_file = String::from(ROOT_ENV_FILE);
+        let _conn = get_db_connection(&root_env_file, &test_data.logger).expect("Could not get DB connection");
 
         //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        teardown(test_data, false);
     }
 
-    #[test]
-    fn test_conn_2_get_db_connection_exp() {
-        let work_dir = create_test_dir("get_db_connection_exp");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "test_get_db_connection_exp.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
-        // Connect to root DB. If nothing failed, the test was succesful.
-        let _conn = get_db_connection(db_type::experiment, &logger).expect("Could not get DB connection");
+    // #[test]
+    // fn test_conn_2_get_db_connection_exp() {
+    //     let work_dir = create_test_dir("get_db_connection_exp");
+    //     let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "test_get_db_connection_exp.log");
+    //     let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
+    //     // Connect to root DB. If nothing failed, the test was succesful.
+    //     let _conn = get_db_connection(db_type::experiment, &logger).expect("Could not get DB connection");
 
-        //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
-    }
+    //     //Test passed. Results are not needed.
+    //     fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+    // }
 
     #[test]
-    fn test_db_01_create_db_objects() {
-        let work_dir = create_test_dir("create_db_objects");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "create_db_objects.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
-        
+    fn test_db_01_create_db_objects() {       
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        let _ = create_db_objects(&logger).expect("Could not create db objects");
+        // let _ = create_db_objects(&logger).expect("Could not create db objects");
+        let mut data = setup("create_db_objects", false, true);
         
         //Connect to experiment DB
         //If nothing failed, the test was succesful.
-        let conn = get_db_connection(db_type::experiment, &logger)
+        let env_file = data.db_env_file.take().unwrap();
+        let conn = get_db_connection(&env_file, &data.logger)
             .expect("Failed to connect to experiment DB");
+        
         //TODO: Select db name and check it matches de DB_NAME pattern: SELECT current_database();
+        // let query_str = String::from("SELECT oid FROM pg_database WHERE datname = $1;");
+    
+        // let q = sql_query(query_str)
+        //     .bind::<Text, _>(data.db_name);
+        // let debug_q = diesel::debug_query::<diesel::pg::Pg, _>(&q);
+        // debug!(&data.logger, "Query: {}", &debug_q);
+        
+        // let _rows: Vec<String>  = q.get_results(&conn).expect("Could not execute select database from catalog");
 
-        //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        //Set an environment variable with the .env file that will be used in this test module
+        env::set_var(TEST_DB_ENV_FILE, &env_file.clone());
+        env::set_var(TEST_DB_NAME, &data.db_name.clone());
+
+        //No teardown performed, as all other tests in this module depend on this test.
+        
+        //Do not delete anything, as the other tests depend on this test directory.
+        // teardown(data, false);
     }
 
 
     #[test]
     fn test_db_02_register_new_workers() {
+        use schema::workers::dsl::*;
+
+        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
         thread::sleep(Duration::from_millis(10));
-        let work_dir = create_test_dir("register_new_worker");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "register_new_worker.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
-        // let _ = create_db_objects(&logger).expect("Could not create db objects");
-        
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        let conn = get_db_connection(db_type::experiment, &logger)
+        
+        let mut data = setup("register_new_worker", false, false);
+        data.db_env_file = Some(env::var(TEST_DB_ENV_FILE).expect("Could not read TEST_DB_ENV_FILE environment variable"));
+        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
 
         let _ = register_worker(
@@ -807,7 +804,7 @@ mod tests {
             &Some(Position{x: 100.0, y: 100.0}),
             Some(String::from("[::]:1234")),
             Some(String::from("[::]:2345")),
-            &logger
+            &data.logger
         ).expect("Failed to register Worker1");
         
         let _ = register_worker(
@@ -819,7 +816,7 @@ mod tests {
             &Some(Position{x: 100.0, y: 100.0}),
             Some(String::from("[::]:2341")),
             Some(String::from("[::]:3452")),
-            &logger
+            &data.logger
         ).expect("Failed to register Worker2");
 
         let _ = register_worker(
@@ -831,7 +828,7 @@ mod tests {
             &Some(Position{x: 100.0, y: 100.0}),
             Some(String::from("[::]:3412")),
             Some(String::from("[::]:4523")),
-            &logger
+            &data.logger
         ).expect("Failed to register Worker3");
 
         let _ = register_worker(
@@ -843,7 +840,7 @@ mod tests {
             &Some(Position{x: -8.0, y: -8.0}),
             Some(String::from("[::]:4123")),
             Some(String::from("[::]:5234")),
-            &logger
+            &data.logger
         ).expect("Failed to register Worker4");
 
         let _ = register_worker(
@@ -855,51 +852,48 @@ mod tests {
             &Some(Position{x: 100.0, y: 100.0}),
             Some(String::from("[::]:6789")),
             Some(String::from("[::]:7890")),
-            &logger
+            &data.logger
         ).expect("Failed to register Worker5");
 
+        let source: Vec<i32> = workers.select(id).get_results(&conn).expect("Could not select workers");
+        assert_eq!(source.len(), 5);
+
         //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        teardown(data, false);
     }
 
     #[test]
     fn test_db_03_update_worker_positions() {
+        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
         thread::sleep(Duration::from_millis(15));
-        let work_dir = create_test_dir("update_worker_positions");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "update_worker_positions.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
-        
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        // let _ = create_db_objects(&logger).expect("Could not create db objects");
         
-        //Connect to experiment DB
-        let conn = get_db_connection(db_type::experiment, &logger)
+        let mut data = setup("update_worker_positions", false, false);
+        data.db_env_file = Some(env::var(TEST_DB_ENV_FILE).expect("Could not read TEST_DB_ENV_FILE environment variable"));
+        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let positions = update_worker_positions(&conn).expect("Could not update all workers");
-        debug!(logger, "New Positions: {:?}", positions);
+        debug!(&data.logger, "New Positions: {:?}", positions);
 
         //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        teardown(data, false);
     }
 
     #[test]
     fn test_db_04_insert_active_wifi_transmitter() {
+        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
         thread::sleep(Duration::from_millis(20));
-        let work_dir = create_test_dir("insert_active_wifi_transmitter");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "insert_active_wifi_transmitter.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
-        
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        // let _ = create_db_objects(&logger).expect("Could not create db objects");
         
-        //Connect to experiment DB
-        let conn = get_db_connection(db_type::experiment, &logger)
+        let mut data = setup("insert_active_wifi_transmitter", false, false);
+        data.db_env_file = Some(env::var(TEST_DB_ENV_FILE).expect("Could not read TEST_DB_ENV_FILE environment variable"));
+        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = insert_active_transmitter(
             &conn, 
             &String::from("Worker1"), 
             RadioTypes::ShortRange, 
-            &logger
+            &data.logger
         ).expect("Failed to register Worker1 as an active wifi transmitter");
         assert_eq!(rows, 1);
 
@@ -908,32 +902,29 @@ mod tests {
             &conn, 
             &String::from("Worker1"), 
             RadioTypes::ShortRange, 
-            &logger
+            &data.logger
         ).expect("Failed to register Worker1 as an active wifi transmitter");
         assert_eq!(rows, 0);
 
         //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        teardown(data, false);
     }
 
     #[test]
     fn test_db_05_insert_active_lora_transmitter() {
+        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
         thread::sleep(Duration::from_millis(25));
-        let work_dir = create_test_dir("insert_active_lora_transmitter");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "insert_active_lora_transmitter.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
-        
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        // let _ = create_db_objects(&logger).expect("Could not create db objects");
         
-        //Connect to experiment DB
-        let conn = get_db_connection(db_type::experiment, &logger)
+        let mut data = setup("insert_active_lora_transmitter", false, false);
+        data.db_env_file = Some(env::var(TEST_DB_ENV_FILE).expect("Could not read TEST_DB_ENV_FILE environment variable"));
+        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = insert_active_transmitter(
             &conn, 
             &String::from("Worker1"), 
             RadioTypes::LongRange, 
-            &logger
+            &data.logger
         ).expect("Failed to register Worker1 as an active wifi transmitter");
         assert_eq!(rows, 1);
 
@@ -942,60 +933,53 @@ mod tests {
             &conn, 
             &String::from("Worker1"), 
             RadioTypes::LongRange, 
-            &logger
+            &data.logger
         ).expect("Failed to register Worker1 as an active wifi transmitter");
         assert_eq!(rows, 0);
 
         //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        teardown(data, false);
     }
 
     #[test]
     fn test_db_06_register_if_wifi_free_fail() {
+        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
         thread::sleep(Duration::from_millis(30));
-        let work_dir = create_test_dir("register_if_free_fail");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "register_if_free_fail.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
-        
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        // let _ = create_db_objects(&logger).expect("Could not create db objects");
         
-        //Connect to experiment DB
-        let conn = get_db_connection(db_type::experiment, &logger)
+        let mut data = setup("register_if_free_fail", false, false);
+        data.db_env_file = Some(env::var(TEST_DB_ENV_FILE).expect("Could not read TEST_DB_ENV_FILE environment variable"));
+        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = register_active_transmitter_if_free(
             &conn, 
             &String::from("Worker2"), 
             RadioTypes::ShortRange, 
             50.0, 
-            &logger)
+            &data.logger)
         .expect("register_active_transmitter_if_free Failed");
         assert_eq!(rows, 0);
 
         //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        teardown(data, false);
     }
 
     #[test]
     fn test_db_07_remove_active_transmitter() {
+        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
         thread::sleep(Duration::from_millis(35));
-        let work_dir = create_test_dir("remove_active_transmitter");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "remove_active_transmitter.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
-        
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        // let _ = create_db_objects(&logger).expect("Could not create db objects");
         
-        //Connect to experiment DB
-        let conn = get_db_connection(db_type::experiment, &logger)
+        let mut data = setup("remove_active_transmitter", false, false);
+        data.db_env_file = Some(env::var(TEST_DB_ENV_FILE).expect("Could not read TEST_DB_ENV_FILE environment variable"));
+        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = remove_active_transmitter(
             &conn, 
             &String::from("Worker1"), 
             RadioTypes::ShortRange, 
-            &logger
+            &data.logger
         ).expect("Failed to remove Worker1 as an active wifi transmitter");
-        debug!(logger, "Affected rows: {}", rows);
         assert_eq!(rows, 1);
 
         //If called a second time, it should not affect any rows
@@ -1003,86 +987,76 @@ mod tests {
             &conn, 
             &String::from("Worker1"), 
             RadioTypes::ShortRange, 
-            &logger
+            &data.logger
         ).expect("Failed to remove Worker1 as an active wifi transmitter");
-        debug!(logger, "Affected rows: {}", rows);
         assert_eq!(rows, 0);
 
         //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        teardown(data, false);
     }
 
     #[test]
     fn test_db_08_register_if_wifi_free_ok() {
+        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
         thread::sleep(Duration::from_millis(40));
-        let work_dir = create_test_dir("register_if_wifi_free_ok");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "register_if_wifi_free_ok.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
-        
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        // let _ = create_db_objects(&logger).expect("Could not create db objects");
         
-        //Connect to experiment DB
-        let conn = get_db_connection(db_type::experiment, &logger)
+        let mut data = setup("register_if_wifi_free_ok", false, false);
+        data.db_env_file = Some(env::var(TEST_DB_ENV_FILE).expect("Could not read TEST_DB_ENV_FILE environment variable"));
+        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = register_active_transmitter_if_free(
             &conn, 
             &String::from("Worker2"), 
             RadioTypes::ShortRange, 
             50.0, 
-            &logger)
+            &data.logger)
         .expect("register_active_transmitter_if_free Failed");
         assert_eq!(rows, 1);
 
         //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        teardown(data, false);
     }
 
     #[test]
     fn test_db_09_get_workers_in_range() {
+        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
         thread::sleep(Duration::from_millis(45));
-        let work_dir = create_test_dir("get_workers_in_range");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "get_workers_in_range.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
-        
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        // let _ = create_db_objects(&logger).expect("Could not create db objects");
         
-        //Connect to experiment DB
-        let conn = get_db_connection(db_type::experiment, &logger)
+        let mut data = setup("get_workers_in_range", false, false);
+        data.db_env_file = Some(env::var(TEST_DB_ENV_FILE).expect("Could not read TEST_DB_ENV_FILE environment variable"));
+        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = get_workers_in_range(
             &conn, 
             "Worker2", 
             50.0, 
-            &logger)
+            &data.logger)
         .expect("get_workers_in_range Failed");
         let names: Vec<&String> = rows.iter().map(|v| &v.worker_name).collect();
         assert_eq!(rows.len(), 4);
 
         //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        teardown(data, false);
     }
 
     #[test]
     fn test_db_10_stop_two_workers() {
         use schema::worker_velocities::dsl::*;
-
+        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
         thread::sleep(Duration::from_millis(50));
-        let work_dir = create_test_dir("stop_two_workers");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "stop_two_workers.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
-        let workers_to_stop = [1, 3];
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        // let _ = create_db_objects(&logger).expect("Could not create db objects");
         
-        //Connect to experiment DB
-        let conn = get_db_connection(db_type::experiment, &logger)
+        let mut data = setup("stop_two_workers", false, false);
+        data.db_env_file = Some(env::var(TEST_DB_ENV_FILE).expect("Could not read TEST_DB_ENV_FILE environment variable"));
+        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
+        let workers_to_stop = [1, 3];
         let rows = stop_workers(
             &conn, 
             &workers_to_stop,
-            &logger)
+            &data.logger)
         .expect("get_workers_in_range Failed");
         assert_eq!(rows, 2);
 
@@ -1095,47 +1069,46 @@ mod tests {
         assert_eq!(&stopped, &workers_to_stop);
 
         //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        teardown(data, false);
     }
 
     #[test]
     fn test_db_11_destination_reached() {
+        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
         thread::sleep(Duration::from_millis(55));
-        let work_dir = create_test_dir("destination_reached");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "destination_reached.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        // let _ = create_db_objects(&logger).expect("Could not create db objects");
         
-        //Connect to experiment DB
-        let conn = get_db_connection(db_type::experiment, &logger)
+        let mut data = setup("destination_reached", false, false);
+        data.db_env_file = Some(env::var(TEST_DB_ENV_FILE).expect("Could not read TEST_DB_ENV_FILE environment variable"));
+        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = select_workers_that_arrived(&conn)
             .expect("get_workers_in_range Failed");
-        debug!(logger, "Worker that arrived: {:?}", rows[0]);
         assert_eq!(rows.len(), 1);
 
         //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        teardown(data, false);
     }
 
     #[test]
     fn test_db_12_stop_all_workers() {
+        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
         thread::sleep(Duration::from_millis(60));
-        let work_dir = create_test_dir("stop_all_workers");
-        let log_file = format!("{}{}{}", work_dir, std::path::MAIN_SEPARATOR, "stop_all_workers.log");
-        let logger = logging::create_logger(log_file, false).expect("Failed to create logger");
         let _db = DB.lock().expect("Unable to acquire DB lock");
-        // let _ = create_db_objects(&logger).expect("Could not create db objects");
         
-        //Connect to experiment DB
-        let conn = get_db_connection(db_type::experiment, &logger)
-            .expect("Failed to connect to experiment DB");
-        let rows = stop_all_workers(&conn)
-            .expect("get_workers_in_range Failed");
-        assert_eq!(rows, 5);
-        
-        //Test passed. Results are not needed.
-        fs::remove_dir_all(&work_dir).expect("Failed to remove results directory");
+        let mut data = setup("stop_all_workers", false, false);
+        {
+            data.db_env_file = Some(env::var(TEST_DB_ENV_FILE).expect("Could not read TEST_DB_ENV_FILE environment variable"));
+            data.db_name = env::var(TEST_DB_NAME).expect("Could not read TEST_DB_NAME environment variable");
+            let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+                .expect("Failed to connect to experiment DB");
+            let rows = stop_all_workers(&conn)
+                .expect("get_workers_in_range Failed");
+            assert_eq!(rows, 5);            
+        }
+
+        // Test passed. Results are not needed.
+        // Make sure conn has been dropped before attempting to drop the database
+        teardown(data, true);
     }
 }

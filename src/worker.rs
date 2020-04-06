@@ -44,12 +44,11 @@ use std::sync::{MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::{self, error, fmt, io};
 
-use super::mobility2::schema::workers;
 
 //Sub-modules declaration
 pub mod commands;
 pub mod listener;
-pub mod mobility;
+// pub mod mobility;
 pub mod protocols;
 pub mod radio;
 pub mod worker_config;

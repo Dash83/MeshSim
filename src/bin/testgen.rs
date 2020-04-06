@@ -3,7 +3,7 @@ extern crate mesh_simulator;
 use mesh_simulator::master::test_specification::*;
 use mesh_simulator::master::MobilityModels;
 use mesh_simulator::worker;
-use mesh_simulator::worker::mobility::*;
+use mesh_simulator::mobility2::*;
 use mesh_simulator::worker::protocols::Protocols;
 use mesh_simulator::worker::worker_config::*;
 
