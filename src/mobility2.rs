@@ -14,7 +14,7 @@ use std::env;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use slog::Logger;
 use diesel::pg::PgConnection;
@@ -42,13 +42,14 @@ const EXP_ENV_FILE: &str = ".env";
 const DB_BASE_NAME: &str = "meshsim";
 const DB_CONN_PREAMBLE: &str = "DATABASE_URL=postgres://";
 const DB_CONN_ENV_VAR: &str = "DATABASE_URL";
+const DB_DEFAULT_COLLATION: &str = "en_GB.UTF-8";
 const CREATE_DB_SQL: &str = "
 CREATE DATABASE {db_name}
     WITH 
-    OWNER = marco
+    OWNER = {owner}
     ENCODING = 'UTF8'
-    LC_COLLATE = 'en_US.UTF-8'
-    LC_CTYPE = 'en_US.UTF-8'
+    LC_COLLATE = '{lc_collate}'
+    LC_CTYPE = '{lc_ctype}'
     TABLESPACE = pg_default
     CONNECTION LIMIT = -1;
 ";
@@ -70,20 +71,27 @@ pub struct Velocity {
     /// Y component
     pub y: f64,
 }
-
-/// Used with get_db_connection.
-pub enum db_type {
-    /// Should only be used with create_db_objects.
-    root,
-    /// All other simulation operations should be used with this.
-    experiment,
+/// Struct used for parsing connection files
+pub struct ConnectionParts {
+    pub user_pwd: String,
+    // password: String,
+    pub host: String,
+    pub db_name: String,
 }
+
+// /// Used with get_db_connection.
+// pub enum db_type {
+//     /// Should only be used with create_db_objects.
+//     root,
+//     /// All other simulation operations should be used with this.
+//     experiment,
+// }
 
 //****************************************
 //********** Exported functions **********
 //****************************************
 /// Returns a connection to the database
-pub fn get_db_connection(env_file: &String, logger: &Logger) -> Result<PgConnection, MeshSimError> {
+pub fn get_db_connection<P: AsRef<Path>>(env_file: P, logger: &Logger) -> Result<PgConnection, MeshSimError> {
     env::remove_var(DB_CONN_ENV_VAR);
 
     dotenv::from_filename(env_file).ok();
@@ -107,10 +115,14 @@ pub fn get_db_connection(env_file: &String, logger: &Logger) -> Result<PgConnect
     Ok(conn)
 }
 
-pub fn create_database(conn: &PgConnection, db_name: &String, logger: &Logger) -> Result<(), MeshSimError> { 
+pub fn create_database(conn: &PgConnection, db_name: &String, owner: &String, logger: &Logger) -> Result<(), MeshSimError> { 
     //Insert the DB name into the CREATE_DB query
     let mut vars = HashMap::new();
-    vars.insert("db_name".to_string(), &db_name);
+    vars.insert("db_name".to_string(), db_name);
+    vars.insert("owner".to_string(), owner);
+    let collation = env::var("MESHSIM_DB_COLLATE").unwrap_or(DB_DEFAULT_COLLATION.to_string());
+    vars.insert("lc_collate".to_string(), &collation);
+    vars.insert("lc_ctype".to_string(), &collation);
     let qry = strfmt(CREATE_DB_SQL, &vars)
         .map_err(|e| {
             let error_msg = String::from("Could not bind DB name");
@@ -135,13 +147,9 @@ pub fn create_database(conn: &PgConnection, db_name: &String, logger: &Logger) -
 }
 
 pub fn create_env_file(db_name : &str, work_dir: &str, logger: &Logger) -> Result<String, MeshSimError> { 
-    let mut root_file_content = String::new();
-    let mut root_file = File::open(ROOT_ENV_FILE).expect("Could not open .env file");
-    root_file.read_to_string(&mut root_file_content).expect("Could not read file");
+    let conn_parts = parse_env_file(ROOT_ENV_FILE)?;
+    let env_content = format!("{}{}@{}/{}", DB_CONN_PREAMBLE, &conn_parts.user_pwd, &conn_parts.host, db_name);
 
-    let conn_data = root_file_content.as_str().replace(DB_CONN_PREAMBLE, "");
-    let parts =  conn_data.split(|c| c == '/' || c == '@').collect::<Vec<&str>>();
-    let env_content = format!("{}{}@{}/{}", DB_CONN_PREAMBLE, parts[0], parts[1], db_name);
     let mut file_name = PathBuf::new();
     file_name.push(work_dir); //the parent directory
     file_name.push(EXP_ENV_FILE); //Add the file name;
@@ -163,9 +171,10 @@ pub fn create_db_objects(work_dir: &String, db_name : &String, logger: &Logger) 
     let dbm = db_name.to_lowercase();
     
     //Create experiment database
-    let root_env_file = String::from(ROOT_ENV_FILE);
-    let root_conn = get_db_connection(&root_env_file, &logger)?;
-    let _ = create_database(&root_conn, &dbm, &logger)?;
+    let root_conn_parts = parse_env_file(ROOT_ENV_FILE)?;
+    let owner: String = root_conn_parts.user_pwd.split(':').collect::<Vec<&str>>()[0].into();
+    let root_conn = get_db_connection(ROOT_ENV_FILE, &logger)?;
+    let _ = create_database(&root_conn, &dbm, &owner, &logger)?;
     debug!(logger, "Experiment database created: {}", &dbm);
 
     //Write the .env file for the experiment
@@ -645,6 +654,50 @@ pub fn stop_all_workers(
     })?;
 
     Ok(rows)
+}
+
+pub fn parse_env_file<P: AsRef<Path>>(file_path: P) -> Result<ConnectionParts, MeshSimError> {
+    let mut root_file_content = String::new();
+    let mut root_file = File::open(file_path)
+    .map_err(|e| {
+        let error_msg = String::from("Could not open connection file");
+        MeshSimError {
+            kind: MeshSimErrorKind::Configuration(error_msg),
+            cause: Some(Box::new(e)),
+        }
+    })?;
+    root_file.read_to_string(&mut root_file_content)
+    // .expect("Could not read file");
+    .map_err(|e| {
+        let error_msg = String::from("Failed to read connection file");
+        MeshSimError {
+            kind: MeshSimErrorKind::Configuration(error_msg),
+            cause: Some(Box::new(e)),
+        }
+    })?;
+    let conn_data = root_file_content.as_str().replace(DB_CONN_PREAMBLE, "");
+    let parts =  conn_data.split(|c| c == '/' || c == '@').collect::<Vec<&str>>();
+    //Make sure the file content was properly formed
+    assert_eq!(parts.len(), 3);
+    let user_pwd = parts[0].into();
+    let host = parts[1].into();
+    let db_name = parts[2].into();
+    // let cp_parts =  user_pwd.split(|c| c == ':').collect::<Vec<&str>>();
+    // assert!(cp_parts.len() > 0);
+    // let user = cp_parts[0].into();
+    // let password = if cp_parts.len() > 1 {
+    //     cp_parts[1].into()
+    // } else {
+    //     String::from("")
+    // };
+
+    let cp = ConnectionParts {
+        user_pwd,
+        host,
+        db_name,
+    };
+
+    Ok(cp)
 }
 
 //****************************************

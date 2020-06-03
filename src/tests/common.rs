@@ -110,9 +110,10 @@ pub fn setup(base_name : &str, log_to_term: bool, create_db: bool) -> TestSetup 
     let db_env_file = create_env_file(&db_name, &work_dir, &logger).expect("Could not create env file");
 
     if create_db {
-        let root_env_file = String::from(ROOT_ENV_FILE);
-        let root_conn = get_db_connection(&root_env_file, &logger).expect("Could not connect to root DB");
-        let _ = create_database(&root_conn, &db_name, &logger).expect("Could not crete DB");
+        let root_conn_parts = parse_env_file(ROOT_ENV_FILE).expect("Could not parse env file");
+        let owner: String = root_conn_parts.user_pwd.split(':').collect::<Vec<&str>>()[0].into();
+        let root_conn = get_db_connection(ROOT_ENV_FILE, &logger).expect("Could not connect to root DB");
+        let _ = create_database(&root_conn, &db_name, &owner, &logger).expect("Could not crete DB");
 
         let exp_conn = get_db_connection(&db_env_file, &logger).expect("Could not connect to experiment DB");;
         let _ = embedded_migrations::run(&exp_conn);
