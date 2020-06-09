@@ -34,7 +34,7 @@ use md5::Digest;
 use rand::{rngs::StdRng, SeedableRng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
-use slog::Logger;
+use slog::{Logger, Key, Value, Record, Serializer};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::process::Child;
@@ -297,6 +297,35 @@ impl MessageHeader {
     }
 }
 
+/// Enum that represents the possible status of a Message as it is transmitted in the system
+pub enum MessageStatus {
+    /// The message has reached its destination.
+    ACCEPTED,
+    /// The message has been dropped. The *reason* field should provide more data.
+    DROPPED,
+    /// The message has reached an intermediate node and has thus been forwarded per the protocol rules.
+    FORWARDED,
+    /// A new message has been initiated
+    SENT,
+}
+
+impl fmt::Display for MessageStatus {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            MessageStatus::ACCEPTED => write!(f, "ACCEPTED"),
+            MessageStatus::DROPPED => write!(f, "DROPPED"),
+            MessageStatus::FORWARDED => write!(f, "FORWARDED"),
+            MessageStatus::SENT => write!(f, "SENT"),
+        }
+    }
+}
+
+impl Value for MessageStatus {
+    fn serialize(&self, _rec: &Record, key: Key, serializer: &mut Serializer) -> slog::Result { 
+        serializer.emit_str(key, &self.to_string())
+    }
+}
+
 /////Struct to represent DNS TXT records for advertising the meshsim service and obtain records from peers.
 //#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 //pub struct ServiceRecord {
@@ -498,7 +527,7 @@ impl Worker {
                                     info!(
                                         logger, 
                                         "Message received";
-                                        "status"=>"dropping",
+                                        "status"=>MessageStatus::DROPPED,
                                         "reason"=>"packet_queue is full"
                                     );
                                     continue;

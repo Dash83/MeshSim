@@ -117,7 +117,7 @@ fn test_route_teardown() {
         }
 
         if let Some(status) = &record.status {
-            node7_teardown_recv = status == "FORWARDING";
+            node7_teardown_recv = status == "FORWARDED";
         }
     }
 

@@ -2,7 +2,7 @@
 
 use crate::worker::protocols::Protocol;
 use crate::worker::radio::*;
-use crate::worker::{MessageHeader, Peer};
+use crate::worker::{MessageHeader, Peer, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 use md5::Digest;
 use serde_cbor::de::*;
@@ -173,9 +173,10 @@ impl NaiveRouting {
                     info!(
                         logger,
                         "Received message {:x}", &msg_hash;
-                        "msg_type"=>"DATA",
-                        "sender"=>&hdr.sender.name,
-                        "status"=>"ERROR",
+                        "msg_type"=> "DATA",
+                        "sender"=> &hdr.sender.name,
+                        "status"=> MessageStatus::DROPPED,
+                        "reason"=> "Message is not well formed"
                     );
                     error!(logger, "Failed to lock message cache: {}", e);
                     return Ok(None);
@@ -189,8 +190,8 @@ impl NaiveRouting {
                     "Received message {:x}", &msg_hash;
                     "msg_type"=>"DATA",
                     "sender"=>&hdr.sender.name,
-                    "status"=>"DROPPING",
-                    "reason"=>"REPEATED",
+                    "status"=> MessageStatus::DROPPED,
+                    "reason"=>"DUPLICATE",
                     "sender"=>&hdr.sender.name,
                 );
                 return Ok(None);                
@@ -214,9 +215,9 @@ impl NaiveRouting {
             info!(
                 logger,
                 "Received message {:x}", &msg_hash;
-                "msg_type"=>"DATA",
-                "sender"=>&hdr.sender.name,
-                "status"=>"ACCEPTED",
+                "msg_type" => "DATA",
+                "sender" => &hdr.sender.name,
+                "status" => MessageStatus::ACCEPTED,
                 "route_length" => hdr.hops
             );
             return Ok(None);
@@ -226,9 +227,9 @@ impl NaiveRouting {
         info!(
             logger,
             "Received message {:x}", &msg_hash;
-            "msg_type"=>"DATA",
-            "sender"=>&hdr.sender.name,
-            "status"=>"FORWARDING",
+            "msg_type" => "DATA",
+            "sender" => &hdr.sender.name,
+            "status" => MessageStatus::FORWARDED,
         );
         Ok(Some(response))
     }

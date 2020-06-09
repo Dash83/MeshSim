@@ -86,9 +86,10 @@ fn aodv_rerr() {
             }
         } 
         //Check node5 detected node4 going down and sent an RERR
-        if record.msg == "Sending message" && record.msg_type.is_some() {
+        if record.msg == "Broken links detected" && record.msg_type.is_some() {
             let msg_type = &record.msg_type.clone().unwrap();
-            if  msg_type == "RERR" {
+            let status = &record.status.clone().unwrap();
+            if  msg_type == "RERR" && status == "SENT" {
                 rerr_sent = true;
             }
         } 
@@ -101,9 +102,10 @@ fn aodv_rerr() {
     rerr_sent = false;
     for record in node3_log_records.iter() {
         //Check node3 detected node4 going down and sent an RERR
-        if record.msg == "Sending message" && record.msg_type.is_some() {
+        if record.msg == "Broken links detected" && record.msg_type.is_some() {
             let msg_type = &record.msg_type.clone().unwrap();
-            if  msg_type == "RERR" {
+            let status = &record.status.clone().unwrap();
+            if  msg_type == "RERR" && status == "SENT" {
                 rerr_sent = true;
             }
         } 
@@ -115,9 +117,10 @@ fn aodv_rerr() {
     rerr_sent = false;
     for record in node9_log_records.iter() {
         //Check node3 detected node4 going down and sent an RERR
-        if record.msg == "Sending message" && record.msg_type.is_some() {
+        if record.msg == "Broken links detected" && record.msg_type.is_some() {
             let msg_type = &record.msg_type.clone().unwrap();
-            if  msg_type == "RERR" {
+            let status = &record.status.clone().unwrap();
+            if  msg_type == "RERR" && status == "SENT" {
                 rerr_sent = true;
             }
         } 
@@ -129,9 +132,10 @@ fn aodv_rerr() {
     rerr_sent = false;
     for record in node15_log_records.iter() {
         //Check node3 detected node4 going down and sent an RERR
-        if record.msg == "Sending message" && record.msg_type.is_some() {
+        if record.msg == "Broken links detected" && record.msg_type.is_some() {
             let msg_type = &record.msg_type.clone().unwrap();
-            if  msg_type == "RERR" {
+            let status = &record.status.clone().unwrap();
+            if  msg_type == "RERR" && status == "SENT" {
                 rerr_sent = true;
             }
         } 

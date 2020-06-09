@@ -1,7 +1,7 @@
 //! Implemention of the AODV protocol, per its RFC https://www.rfc-editor.org/info/rfc3561
 use crate::worker::protocols::Protocol;
 use crate::worker::radio::*;
-use crate::worker::{MessageHeader, Peer};
+use crate::worker::{MessageHeader, MessageStatus, Peer};
 use crate::{MeshSimError, MeshSimErrorKind};
 
 use md5::Digest;
@@ -545,7 +545,7 @@ impl AODV {
                     logger, 
                     "Message received";
                     "msg_type" => "RREQ",
-                    "status"=>"DROPPING",
+                    "status"=>MessageStatus::DROPPED,
                     "reason"=>"Duplicate",
                     "RREQ_ID" => msg.rreq_id,
                     "Orig" => &msg.originator,
@@ -584,8 +584,8 @@ impl AODV {
                 logger, 
                 "Message received";
                 "msg_type" => "RREQ",
-                "status"=>"ACCEPTED",
-                "reason"=>"Reached destination",
+                "status"=> MessageStatus::ACCEPTED,
+                "reason"=> "Reached destination",
                 "RREQ_ID" => msg.rreq_id,
                 "Orig" => &msg.originator,
                 "Dest" => &msg.destination,
@@ -628,8 +628,8 @@ impl AODV {
                         logger, 
                         "Message received";
                         "msg_type" => "RREQ",
-                        "status"=>"ACCEPTED",
-                        "reason"=>"A valid route to destination has been found!",
+                        "status"=> MessageStatus::ACCEPTED,
+                        "reason"=> "A valid route to destination has been found!",
                         "RREQ_ID" => msg.rreq_id,
                         "Orig" => &msg.originator,
                         "Dest" => &msg.destination,
@@ -680,7 +680,7 @@ impl AODV {
             logger, 
             "Message received";
             "msg_type" => "RREQ",
-            "status"=>"FORWARDING",
+            "status"=> MessageStatus::FORWARDED,
             "RREQ_ID" => msg.rreq_id,
             "Orig" => &msg.originator,
             "Dest" => &msg.destination,
@@ -715,8 +715,8 @@ impl AODV {
                 logger, 
                 "Message received";
                 "msg_type" => "RREP",
-                "status"=>"DROPPING",
-                "reason"=>"Not meant for this node",
+                "status"=> MessageStatus::DROPPED,
+                "reason"=> "Not meant for this node",
                 "Orig" => &msg.originator,
                 "Dest" => &msg.destination,
                 "Hdr.sender" => &hdr.sender.name,
@@ -774,7 +774,7 @@ impl AODV {
                 logger, 
                 "Message received";
                 "msg_type" => "RREP",
-                "status"=>"ACCEPTED",
+                "status"=> MessageStatus::ACCEPTED,
                 "Orig" => &msg.originator,
                 "Dest" => &msg.destination,
                 "Hdr.sender" => &hdr.sender.name,
@@ -816,9 +816,9 @@ impl AODV {
                     logger, 
                     "Message received";
                     "msg_type" => "RREP",
-                    "status"=>"DROPPING",
-                    "action"=>"RREP_CANCELLED",
-                    "reason"=>"No route to RREQ originator",
+                    "status"=> MessageStatus::DROPPED,
+                    "reason"=> "No route to RREQ originator",
+                    "action"=> "RREP_CANCELLED",
                     "Orig" => &msg.originator,
                     "Dest" => &msg.destination,
                     "Hdr.sender" => &hdr.sender.name,
@@ -886,7 +886,7 @@ impl AODV {
             logger, 
             "Message received";
             "msg_type" => "RREP",
-            "status"=>"FORWARDING",
+            "status"=> MessageStatus::FORWARDED,
             "Orig" => &msg.originator,
             "Dest" => &msg.destination,
             "Hdr.sender" => &hdr.sender.name,
@@ -970,13 +970,13 @@ impl AODV {
         }
 
         //Deliver an appropriate RERR to such neighbours
-        let mut packet_status = "DROPPED";
+        let mut packet_status = MessageStatus::DROPPED;
         if affected_neighbours.len() > 0 {
             let mut resp = MessageHeader::new();
             resp.payload = Some(serialize_message(Messages::REER(msg))?);
             resp.sender = me.clone();
             response = Some(resp);
-            packet_status = "FORWARDED";
+            packet_status = MessageStatus::FORWARDED;
         }
         info!(
             logger, 
@@ -1033,8 +1033,8 @@ impl AODV {
                 "msg_type" => "DATA",
                 "hdr.sender" => &hdr.sender.name,
                 "hdr.dest" => &hdr.destination.name,
-                "status"=>"DROPPING",
-                "reason"=>"Not meant for this node",
+                "status"=> MessageStatus::DROPPED,
+                "reason"=> "Not meant for this node",
                 "confirmed"=>confirmed,
             );
             return Ok(None)
@@ -1047,7 +1047,7 @@ impl AODV {
                 "Message received";
                 "msg_type"=>"DATA",
                 "sender"=>&hdr.sender.name,
-                "status"=>"ACCEPTED",
+                "status"=> MessageStatus::ACCEPTED,
                 "route_length" => hdr.hops
             );
             return Ok(None)
@@ -1076,8 +1076,9 @@ impl AODV {
                         "Message received";
                         "msg_type"=>"DATA",
                         "sender"=>&hdr.sender.name,
-                        "status"=>"Generating RouteError",
+                        "status"=>MessageStatus::DROPPED,
                         "reason"=>"Route to destination is marked as invalid",
+                        "action"=>"Generating RouteError",
                     );
 
                     //No valid route, so reply with an RERR
@@ -1104,8 +1105,8 @@ impl AODV {
                     "Message received";
                     "msg_type"=>"DATA",
                     "sender"=>&hdr.sender.name,
-                    "status"=>"DROPPING",
-                    "reason"=>"No route to destination",
+                    "status"=> MessageStatus::DROPPED,
+                    "reason"=> "No route to destination",
                 );
                 return Err(err)
             },
@@ -1116,7 +1117,7 @@ impl AODV {
             "Message received";
             "msg_type"=>"DATA",
             "sender"=>&hdr.sender.name,
-            "status"=>"FORWARDING",
+            "status"=> MessageStatus::FORWARDED,
             "next_hop"=>next_hop.clone(),
         );
 
@@ -1445,14 +1446,6 @@ impl AODV {
 
             //Broken links to send?
             if broken_links.len() > 0 {
-                info!(
-                    logger, 
-                    "Sending message";
-                    "msg_type" => "RERR",
-                    "sender"=>&me.name,
-                    "status"=>"SENDING",
-                    // "unreachable_dests"=>&msg.destinations,
-                );
                 let rerr_msg = RouteErrorMessage{
                     flags: Default::default(),
                     destinations: broken_links,
@@ -1461,7 +1454,16 @@ impl AODV {
                 hdr.payload = Some(serialize_message(Messages::REER(rerr_msg))?);
                 hdr.sender = me.clone();
                 match short_radio.broadcast(hdr) {
-                    Ok(_) => { /* All good */ },
+                    Ok(_) => { 
+                        info!(
+                            logger, 
+                            "Broken links detected";
+                            "msg_type" => "RERR",
+                            "sender"=>&me.name,
+                            "status"=>MessageStatus::SENT,
+                            // "unreachable_dests"=>&msg.destinations,
+                        );
+                    },
                     Err(e) => { 
                         error!(
                             logger,

@@ -2,7 +2,7 @@
 
 use crate::worker::protocols::Protocol;
 use crate::worker::radio::*;
-use crate::worker::{MessageHeader, Peer};
+use crate::worker::{MessageHeader, Peer, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 use md5::Digest;
 use rand::{rngs::StdRng, Rng};
@@ -331,11 +331,11 @@ impl ReactiveGossipRouting {
 
         info!(
             logger,
-            "Sending message";
+            "Route discovery initiated";
             "msg_type" => "ROUTE_DISCOVERY",
-	    "route_id"=>&route_id,
+	        "route_id"=>&route_id,
             "sender"=>&me.name,
-            "status"=>"SENDING",
+            "status"=>MessageStatus::SENT,
         );
 
         short_radio.broadcast(hdr)?;
@@ -502,7 +502,7 @@ impl ReactiveGossipRouting {
                     "msg_id"=>format!("{:x}", &msg_hash),
                     "msg_type"=>"DATA",
                     "sender"=>&hdr.sender.name,
-                    "status"=>"DROPPING",
+                    "status"=>MessageStatus::DROPPED,
                     "reason"=>"Not part of route",
                 );
                 return Ok(None);
@@ -533,7 +533,8 @@ impl ReactiveGossipRouting {
                             "msg_id"=>format!("{:x}", &msg_hash),
                             "msg_type"=>"DATA",
                             "sender"=>&hdr.sender.name,
-                            "status"=>"CONFIRMED",
+                            "status"=>MessageStatus::DROPPED,
+                            "reason"=>"CONFIRMED",
                         );
                     }
                     DataMessageStates::Confirmed => {
@@ -543,7 +544,7 @@ impl ReactiveGossipRouting {
                             "msg_id"=>format!("{:x}", &msg_hash),
                             "msg_type"=>"DATA",
                             "sender"=>&hdr.sender.name,
-                            "status"=>"DROPPING",
+                            "status"=>MessageStatus::DROPPED,
                             "reason"=>"DUPLICATE",
                         );
                     }
@@ -588,7 +589,7 @@ impl ReactiveGossipRouting {
                 "msg_id"=>format!("{:x}", &msg_hash),
                 "msg_type"=>"DATA",
                 "sender"=>&hdr.sender.name,
-                "status"=>"ACCEPTED",
+                "status"=>MessageStatus::ACCEPTED,
                 "route_length" => hdr.hops
             );
             Ok(None)
@@ -600,7 +601,7 @@ impl ReactiveGossipRouting {
                 "msg_id"=>format!("{:x}", &msg_hash),
                 "msg_type"=>"DATA",
                 "sender"=>&hdr.sender.name,
-                "status"=>"FORWARDING",
+                "status"=>MessageStatus::FORWARDED,
             );
             hdr.sender = self_peer;
             Ok(Some(hdr))
@@ -627,7 +628,7 @@ impl ReactiveGossipRouting {
                 "msg_type"=>"ROUTE_DISCOVERY",
                 "route_id" => &msg.route_id,
                 "sender"=>&hdr.sender.name,
-                "status"=>"ACCEPTED",
+                "status"=>MessageStatus::ACCEPTED,
             );
 
             //Add this route to the list of known routes.
@@ -664,7 +665,7 @@ impl ReactiveGossipRouting {
                     "msg_type"=>"ROUTE_DISCOVERY",
                     "route_id" => &msg.route_id,
                     "sender"=>&hdr.sender.name,
-                    "status"=>"DROPPED",
+                    "status"=>MessageStatus::DROPPED,
                     "reason"=>"DUPLICATE",
                 );
                 return Ok(None);
@@ -684,7 +685,7 @@ impl ReactiveGossipRouting {
                 "msg_type"=>"ROUTE_DISCOVERY",
                 "route_id" => &msg.route_id,
                 "sender"=>&hdr.sender.name,
-                "status"=>"DROPPED",
+                "status"=>MessageStatus::DROPPED,
                 "reason"=>"Gossip failed",
             );            
             //Not gossiping this message.
@@ -699,7 +700,7 @@ impl ReactiveGossipRouting {
             "msg_type"=>"ROUTE_DISCOVERY",
             "route_id" => &msg.route_id,
             "sender"=>&hdr.sender.name,
-            "status"=>"FORWARDED",
+            "status"=>MessageStatus::FORWARDED,
         );
 
         //Build message and forward it
@@ -731,7 +732,7 @@ impl ReactiveGossipRouting {
                     "msg_type"=>"ROUTE_ESTABLISH",
                     "route_id" => &msg.route_id,
                     "sender"=>&hdr.sender.name,
-                    "status"=>"DROPPED",
+                    "status"=>MessageStatus::DROPPED,
                     "reason"=>"Empty payload",
                 );
                 return Ok(None);
@@ -746,7 +747,7 @@ impl ReactiveGossipRouting {
                 "msg_type"=>"ROUTE_ESTABLISH",
                 "route_id" => &msg.route_id,
                 "sender"=>&hdr.sender.name,
-                "status"=>"DROPPED",
+                "status"=>MessageStatus::DROPPED,
                 "reason"=>"Not meant for this node",
             );
             return Ok(None);
@@ -788,7 +789,7 @@ impl ReactiveGossipRouting {
                 "msg_type"=>"ROUTE_ESTABLISH",
                 "route_id" => &msg.route_id,
                 "sender"=>&hdr.sender.name,
-                "status"=>"ACCEPTED",
+                "status"=>MessageStatus::ACCEPTED,
                 "route"=>route,
             );
             //...and remove this node from the pending destinations
@@ -819,7 +820,7 @@ impl ReactiveGossipRouting {
             "msg_type"=>"ROUTE_ESTABLISH",
             "route_id" => &msg.route_id,
             "sender"=>&hdr.sender.name,
-            "status"=>"FORWARDING",
+            "status"=>MessageStatus::FORWARDED,
         );
 
         //Finally, forward the message
@@ -855,7 +856,7 @@ impl ReactiveGossipRouting {
                     "Received ROUTE_TEARDOWN message";
                     "route_id" => &msg.route_id, 
                     "source" => &hdr.sender.name,
-                    "status"=>"FORWARDING",
+                    "status"=>MessageStatus::FORWARDED,
                     "cause"=>"Subscribed to route",
                 );
                 let hdr = ReactiveGossipRouting::route_teardown(
@@ -872,7 +873,7 @@ impl ReactiveGossipRouting {
                     "Received ROUTE_TEARDOWN message";
                     "route_id" => &msg.route_id, 
                     "source" => &hdr.sender.name,
-                    "status"=>"DROPPED",
+                    "status"=>MessageStatus::DROPPED,
                     "cause"=>"Not subscribed to route",
                 );
                 None
@@ -1012,11 +1013,11 @@ impl ReactiveGossipRouting {
 
                             info!(
                                 logger,
-                                "Sending message";
+                                "Route Teardown initiated";
                                 "msg_type" => "ROUTE_TEARDOWN",
                                 "route_id"=>&route_id,
                                 "sender"=>&me.name,
-                                "status"=>"SENDING",
+                                "status"=>MessageStatus::SENT,
                             );
 
                             //Send the teardown message
