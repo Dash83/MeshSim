@@ -286,26 +286,27 @@ impl MessageHeader {
     /// Destination name
     /// Payload
     /// This is done instead of getting the md5sum of the entire structure for testability purposes
-    pub fn get_hdr_hash(&self) -> Digest {
+    pub fn get_hdr_hash(&self) -> String {
         let mut data = Vec::new();
         data.append(&mut self.destination.name.clone().into_bytes());
         if let Some(mut p) = self.payload.clone() {
             data.append(&mut p);
         }
 
-        md5::compute(&data)
+        let d = md5::compute(&data);
+        format!("{:x}", d)
     }
 }
 
-/// Enum that represents the possible status of a Message as it is transmitted in the system
+/// Enum that represents the possible status of a Message as it moves through the network
 pub enum MessageStatus {
     /// The message has reached its destination.
     ACCEPTED,
     /// The message has been dropped. The *reason* field should provide more data.
     DROPPED,
-    /// The message has reached an intermediate node and has thus been forwarded per the protocol rules.
-    FORWARDED,
-    /// A new message has been initiated
+    /// The message has reached an intermediate node and will be forwarded.
+    FORWARDING,
+    /// A new message has been transmitted
     SENT,
 }
 
@@ -314,7 +315,7 @@ impl fmt::Display for MessageStatus {
         match *self {
             MessageStatus::ACCEPTED => write!(f, "ACCEPTED"),
             MessageStatus::DROPPED => write!(f, "DROPPED"),
-            MessageStatus::FORWARDED => write!(f, "FORWARDED"),
+            MessageStatus::FORWARDING => write!(f, "FORWARDING"),
             MessageStatus::SENT => write!(f, "SENT"),
         }
     }
@@ -534,7 +535,7 @@ impl Worker {
                                 }
 
                                 thread_pool.execute(move || {
-                                    let response = match prot.handle_message(hdr, r_type) {
+                                    let (response , md)= match prot.handle_message(hdr, r_type) {
                                         Ok(resp) => resp,
                                         Err(e) => {
                                             error!(log, "Error handling message:");
@@ -542,13 +543,20 @@ impl Worker {
                                             if let Some(cause) = e.cause {
                                                 error!(log, "Cause: {}", cause);
                                             }
-                                            None
+                                            (None, None)
                                         }
                                     };
 
                                     if let Some(r) = response {
+                                        let msg_id = r.get_hdr_hash();
                                         match tx_channel.broadcast(r) {
-                                            Ok(()) => { /* All good */ }
+                                            Ok(tx) => { 
+                                                /* All good */
+                                                let md: MessageMetadata = md.unwrap_or_else(|| {
+                                                    MessageMetadata::new(msg_id, "", MessageStatus::SENT)
+                                                });
+                                                radio::log_tx(&log, tx, md);
+                                            }
                                             Err(e) => {
                                                 error!(log, "Error sending response: {}", e);
                                                 if let Some(cause) = e.cause {
@@ -558,7 +566,7 @@ impl Worker {
                                         }
                                     }
                                 });
-                                info!(logger, "Jobs: {}", thread_pool.queued_count());
+                                // info!(logger, "Jobs: {}", thread_pool.queued_count());
 //                                debug!(
 //                                    logger,
 //                                    "Jobs that have paniced: {}",
@@ -788,17 +796,17 @@ mod tests {
         rng.fill_bytes(&mut data[..]);
         msg.payload = Some(data.clone());
         let hash = msg.get_hdr_hash();
-        assert_eq!(&format!("{:x}", &hash), "16c37d4dbeed437d377fc131b016cf38");
+        assert_eq!(&hash, "16c37d4dbeed437d377fc131b016cf38");
 
         rng.fill_bytes(&mut data[..]);
         msg.payload = Some(data.clone());
         let hash = msg.get_hdr_hash();
-        assert_eq!(&format!("{:x}", &hash), "48b9f1d803d6829bcab59056981e6771");
+        assert_eq!(&hash, "48b9f1d803d6829bcab59056981e6771");
 
         rng.fill_bytes(&mut data[..]);
         msg.payload = Some(data.clone());
         let hash = msg.get_hdr_hash();
-        assert_eq!(&format!("{:x}", &hash), "a6048051b8727b181a6c69edf820914f");
+        assert_eq!(&hash, "a6048051b8727b181a6c69edf820914f");
     }
 
     //This test will me removed at some point, but it's useful at the moment for the message size calculations

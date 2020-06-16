@@ -1,7 +1,7 @@
 //! Protocol that naively routes data by relaying all messages it receives.
 
-use crate::worker::protocols::Protocol;
-use crate::worker::radio::*;
+use crate::worker::protocols::{Protocol, Outcome};
+use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, Peer, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 use md5::Digest;
@@ -17,7 +17,7 @@ const MSG_CACHE_SIZE: usize = 10000;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct CacheEntry {
-    msg_id: Digest,
+    msg_id: String,
 }
 
 ///The main struct for this protocol. Implements the worker::protocol::Protocol trait.
@@ -49,17 +49,22 @@ impl Protocol for NaiveRouting {
         &self,
         mut header: MessageHeader,
         _r_type: RadioTypes,
-    ) -> Result<Option<MessageHeader>, MeshSimError> {
-        let msg_hash = header.get_hdr_hash();
+    ) -> Result<Outcome, MeshSimError> {
+        let msg_id = header.get_hdr_hash();
 
         let data = match header.payload.take() {
             Some(d) => d,
             None => {
                 warn!(
                     self.logger,
-                    "Messaged received from {:?} had empty payload.", header.sender
+                    "Received message";
+                    "msg_id" => &msg_id,
+                    "msg_type"=> "UNKNOWN",
+                    "sender"=> &header.sender.name,
+                    "status"=> MessageStatus::DROPPED,
+                    "reason"=> "Message has empty payload"
                 );
-                return Ok(None);
+                return Ok((None, None));
             }
         };
 
@@ -76,7 +81,7 @@ impl Protocol for NaiveRouting {
             header,
             msg,
             self.get_self_peer(),
-            msg_hash,
+            msg_id,
             msg_cache,
             rng,
             &self.logger,
@@ -88,7 +93,7 @@ impl Protocol for NaiveRouting {
         dest.name = destination;
 
         let hdr = NaiveRouting::create_data_message(self.get_self_peer(), dest, 1, data)?;
-        let msg_hash = hdr.get_hdr_hash();
+        let msg_id = hdr.get_hdr_hash();
         {
             let mut cache = self.msg_cache.lock().expect("Could not lock message cache");
             //Have not seen this message yet.
@@ -100,10 +105,13 @@ impl Protocol for NaiveRouting {
                 cache.remove(&e);
             }
             //Log message
-            cache.insert(CacheEntry { msg_id: msg_hash });
+            cache.insert(CacheEntry { msg_id: msg_id.clone() });
         }
 
-        self.short_radio.broadcast(hdr)?;
+        let tx = self.short_radio.broadcast(hdr)?;
+        let md = MessageMetadata::new(msg_id, "DATA", MessageStatus::SENT);
+        radio::log_tx(&self.logger, tx, md);
+
         Ok(())
     }
 }
@@ -159,42 +167,45 @@ impl NaiveRouting {
     fn process_data_message(
         hdr: MessageHeader,
         data: Vec<u8>,
-        msg_hash: Digest,
+        msg_id: String,
         me: Peer,
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<Option<MessageHeader>, MeshSimError> {
+    ) -> Result<Outcome, MeshSimError> {
         {
             // LOCK:ACQUIRE:MSG_CACHE
-            let mut cache = match msg_cache.lock() {
-                Ok(guard) => guard,
-                Err(e) => {
-                    info!(
-                        logger,
-                        "Received message {:x}", &msg_hash;
-                        "msg_type"=> "DATA",
-                        "sender"=> &hdr.sender.name,
-                        "status"=> MessageStatus::DROPPED,
-                        "reason"=> "Message is not well formed"
-                    );
-                    error!(logger, "Failed to lock message cache: {}", e);
-                    return Ok(None);
+            let mut cache = msg_cache.lock().map_err(|e| {
+                let err_msg = String::from("Failed to lock message cache");
+                error!(
+                    logger,
+                    "Received message";
+                    "msg_id" => &msg_id,
+                    "msg_type"=> "DATA",
+                    "sender"=> &hdr.sender.name,
+                    "status"=> MessageStatus::DROPPED,
+                    "reason"=> &err_msg,
+                );
+                MeshSimError {
+                    kind: MeshSimErrorKind::Contention(err_msg),
+                    // cause: Some(Box::new(e)),
+                    cause: None,
                 }
-            };
+            })?; 
 
-            let entry = CacheEntry{ msg_id : msg_hash };
+            let entry = CacheEntry{ msg_id : msg_id.clone() };
             if cache.contains(&entry) {
                 info!(
                     logger,
-                    "Received message {:x}", &msg_hash;
+                    "Received message";
+                    "msg_id" => &msg_id,
                     "msg_type"=>"DATA",
                     "sender"=>&hdr.sender.name,
                     "status"=> MessageStatus::DROPPED,
                     "reason"=>"DUPLICATE",
                     "sender"=>&hdr.sender.name,
                 );
-                return Ok(None);                
+                return Ok((None, None));
             }
 
             //Have not seen this message yet.
@@ -207,42 +218,45 @@ impl NaiveRouting {
                 cache.remove(&e);
             }
             //Log message
-            cache.insert(CacheEntry { msg_id: msg_hash });
+            cache.insert(CacheEntry { msg_id: msg_id.clone() });
         } // LOCK:RELEASE:MSG_CACHE
 
         //Check if this node is the intended recipient of the message.
         if hdr.destination.name == me.name {
             info!(
                 logger,
-                "Received message {:x}", &msg_hash;
+                "Received message";
+                "msg_id" => &msg_id,
                 "msg_type" => "DATA",
                 "sender" => &hdr.sender.name,
                 "status" => MessageStatus::ACCEPTED,
                 "route_length" => hdr.hops
             );
-            return Ok(None);
+            return Ok((None, None));
         }
 
         let response = NaiveRouting::create_data_message(me, hdr.destination, hdr.hops + 1, data)?;
-        info!(
-            logger,
-            "Received message {:x}", &msg_hash;
-            "msg_type" => "DATA",
-            "sender" => &hdr.sender.name,
-            "status" => MessageStatus::FORWARDED,
-        );
-        Ok(Some(response))
+        let mut md = MessageMetadata::new(response.get_hdr_hash(), "DATA", MessageStatus::FORWARDING);
+        // md.source = Some(&hdr.sender.name);
+        // info!(
+        //     logger,
+        //     "Received message {:x}", &msg_hash;
+        //     "msg_type" => "DATA",
+        //     "sender" => &hdr.sender.name,
+        //     "status" => MessageStatus::FORWARDED,
+        // );
+        Ok((Some(response), Some(md)))
     }
 
     fn handle_message_internal(
         hdr: MessageHeader,
         msg: Messages,
         me: Peer,
-        msg_hash: Digest,
+        msg_hash: String,
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<Option<MessageHeader>, MeshSimError> {
+    ) -> Result<Outcome, MeshSimError> {
         match msg {
             Messages::Data(data) => {
                 NaiveRouting::process_data_message(hdr, data, msg_hash, me, msg_cache, rng, logger)

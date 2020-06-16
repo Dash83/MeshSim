@@ -112,13 +112,13 @@ fn test_route_teardown() {
     // );
     let mut node7_teardown_recv = false;
     for record in node7_log_records.iter() {
-        if record.msg != "Received ROUTE_TEARDOWN message" {
+        if record.msg != "Received message" {
             continue;
         }
 
-        if let Some(status) = &record.status {
-            node7_teardown_recv = status == "FORWARDED";
-        }
+        let status = record.status.clone().unwrap_or_default();
+        let msg_type = record.msg_type.clone().unwrap_or_default();
+        node7_teardown_recv = msg_type == "ROUTE_TEARDOWN" && status == "FORWARDED";
     }
 
     let node25_log_file = format!("{}/log/node25.log", &data.work_dir);
