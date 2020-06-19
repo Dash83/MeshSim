@@ -43,17 +43,17 @@ fn naive_basic() {
     //node1 sends the message. node2 is the only node in range.
     let node_1_msg_sent = logging::find_record_by_msg("Message 763ecd437c5bd4aa764380b63d5951ba sent", &node1_log_records);
     //node2 receives the message. It's a new message so it relays it
-    let node_2_msg_recv = logging::find_record_by_msg("Received message 763ecd437c5bd4aa764380b63d5951ba", &node2_log_records);   
+    let node_2_msg_recv = logging::find_record_by_msg("Message 763ecd437c5bd4aa764380b63d5951ba sent", &node2_log_records);   
     //node3 receives the message. Since node3 it's the intended receiver, it does not relay it
     let node_3_msg_recv = logging::find_record_by_msg("Received message 763ecd437c5bd4aa764380b63d5951ba", &node3_log_records);   
     //node1 also receives the message from node2. Since it has never received the message from that node, it relays it for reliability.
     let node_1_msg_recv = logging::find_record_by_msg("Received message 763ecd437c5bd4aa764380b63d5951ba", &node1_log_records);
 
     assert!(node_1_cmd_recv.is_some());
-    assert!(node_1_msg_sent.is_some());
-    assert!(node_2_msg_recv.is_some());
+    assert!(node_1_msg_sent.is_some() && node_1_msg_sent.cloned().unwrap().status.unwrap() == "SENT");
+    assert!(node_2_msg_recv.is_some() && node_2_msg_recv.cloned().unwrap().status.unwrap() == "FORWARDED");
     assert!(node_3_msg_recv.is_some() && node_3_msg_recv.cloned().unwrap().status.unwrap() == "ACCEPTED");
-    assert!(node_1_msg_recv.is_some());
+    assert!(node_1_msg_recv.is_some()  && node_1_msg_recv.cloned().unwrap().status.unwrap() == "DROPPED");
 
     //Test passed. Results are not needed.
     teardown(data, true);

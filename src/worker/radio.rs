@@ -5,7 +5,7 @@ use crate::mobility2::*;
 use crate::worker::*;
 use crate::{MeshSimError, MeshSimErrorKind};
 use pnet_datalink as datalink;
-use slog::Logger;
+use slog::{Logger, KV};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
@@ -43,6 +43,53 @@ pub const MAX_UDP_PAYLOAD_SIZE: usize = 65507; //65,507 bytes (65,535 − 8 byte
 lazy_static! {
     ///Address used for multicast group
     pub static ref SERVICE_ADDRESS: Ipv6Addr = Ipv6Addr::new(0xFF02, 0, 0, 0, 0, 0, 0, 0x0123);
+}
+
+/// Metadata referring to a radio transmission
+#[derive(Default)]
+pub struct TxMetadata {
+    /// Radio type (short/long)
+    pub radio_type : String,
+    /// Id of the thread that made the transmission
+    pub thread_id : String,
+    /// Duration of the broadcast operation
+    pub duration : u128, 
+}
+
+/// Metadata of a packet. Used for unified logging.
+pub struct MessageMetadata<'a> {
+    /// ID of the message sent
+    msg_id : String,
+    /// The type of message, defined by the current protocol.
+    msg_type: &'a str, 
+    /// Status of the message
+    status: MessageStatus,
+    /// Reason for the status
+    pub reason: Option<&'a str>,
+    /// Action derived from this message
+    pub action: Option<&'a str>,
+    /// The route (if any) associated with this message
+    pub route_id : Option<&'a str>,
+    /// The node (if any) from which this message was received
+    pub source: Option<&'a str>,
+    /// The intended destination (if any) for this message
+    pub destination: Option<&'a str>,
+}
+
+impl<'a> MessageMetadata<'a> {
+    /// Creates a new instance
+    pub fn new(msg_id : String, msg_type: &'a str, status: MessageStatus) -> Self {
+        MessageMetadata {
+            msg_id: msg_id,
+            msg_type: msg_type,
+            status: status,
+            reason: None,
+            action: None,
+            route_id: None,
+            source: None,
+            destination: None,
+        }
+    }
 }
 
 ///Types of radio supported by the system. Used by Protocols that need to
@@ -87,7 +134,7 @@ pub trait Radio: std::fmt::Debug + Send + Sync {
     ///Gets the current address at which the radio is listening.
     fn get_address(&self) -> &str;
     ///Used to broadcast a message using the radio
-    fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError>;
+    fn broadcast(&self, hdr: MessageHeader) -> Result<TxMetadata, MeshSimError>;
     ///Get the time of the last transmission made by this readio
     fn last_transmission(&self) -> i64;
 }
@@ -130,12 +177,13 @@ impl Radio for SimulatedRadio {
         self.last_transmission.load(Ordering::SeqCst)
     }
 
-    fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
+    fn broadcast(&self, hdr: MessageHeader) -> Result<TxMetadata, MeshSimError> {
         let env_file = format!("{}{}.env", &self.work_dir, std::path::MAIN_SEPARATOR);
         let conn = get_db_connection(&env_file, &self.logger)?;
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
         let start_ts = Utc::now();
+        let msg_id = &hdr.get_msg_id();
 
         //Register this node as an active transmitter if the medium is free
         self.register_transmitter(&conn)?;
@@ -232,15 +280,20 @@ impl Radio for SimulatedRadio {
                 ((secs * 1000_000_000) + nanos ) as u128
             },
         };
-        info!(
-            self.logger,
-            "Message {:x} sent",
-            &hdr.get_hdr_hash();
-            "radio" => &radio_range,
-            "thread"=>&thread_id,
-            "duration"=>dur,
-        );
-        Ok(())
+        let tx = TxMetadata { 
+            radio_type : radio_range,
+            thread_id : thread_id,
+            duration : dur,
+        };
+        // info!(
+        //     self.logger,
+        //     "Message {:x} sent",
+        //     &hdr.get_hdr_hash();
+        //     "radio" => &radio_range,
+        //     "thread"=>&thread_id,
+        //     "duration"=>dur,
+        // );
+        Ok(tx)
     }
 }
 
@@ -554,9 +607,14 @@ impl Radio for WifiRadio {
         self.last_transmission.load(Ordering::SeqCst)
     }
 
-    fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
+    fn broadcast(&self, hdr: MessageHeader) -> Result<TxMetadata, MeshSimError> {
+        let start_ts = Utc::now();
+        let radio_range: String = self.r_type.into();
+        let thread_id = format!("{:?}", thread::current().id());
+        let msg_id = &hdr.get_msg_id();
         let sock_addr = SocketAddr::new(IpAddr::V6(*SERVICE_ADDRESS), DNS_SERVICE_PORT);
         let socket = new_socket()?;
+
         socket
             .set_multicast_if_v6(self.interface_index)
             .map_err(|e| {
@@ -580,14 +638,42 @@ impl Radio for WifiRadio {
         let _bytes_sent = socket
             .send_to(&data, &socket2::SockAddr::from(sock_addr))
             .map_err(|e| {
-                let err_msg = format!("Failed to broadcast message {:x}", hdr.get_hdr_hash());
+                let err_msg = format!("Failed to broadcast message {}", &msg_id);
                 MeshSimError {
                     kind: MeshSimErrorKind::Networking(err_msg),
                     cause: Some(Box::new(e)),
                 }
             })?;
         self.last_transmission.store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
-        Ok(())
+
+        let duration = Utc::now() - start_ts;
+        let dur = match duration.num_nanoseconds() {
+            Some(n) => { 
+                u128::try_from(n).map_err(|e| { 
+                    let err_msg = String::from("Failed to convert duration to u128");
+                    MeshSimError {
+                        kind: MeshSimErrorKind::Serialization(err_msg),
+                        cause: Some(Box::new(e)),
+                    }
+                })?
+            },
+            None => { 
+                // This should NEVER happen, as it would require the duration to be
+                // over 9_223_372_036.854_775_808 seconds. Still, let's cover the case.
+                let secs = duration.num_seconds();
+                let nanos = duration.num_nanoseconds().expect("Could not extract nanoseconds from Duration");
+                //Extrat seconds, convert to nanos, add subsecond-nanos
+                ((secs * 1000_000_000) + nanos ) as u128
+            },
+        };
+
+        let tx = TxMetadata { 
+            radio_type : radio_range,
+            thread_id : thread_id,
+            duration : dur,
+        };
+
+        Ok(tx)
     }
 }
 
@@ -712,6 +798,48 @@ fn new_socket() -> Result<socket2::Socket, MeshSimError> {
         }
     })
 }
+
+/// Logs outgoing packets in a standard format
+pub fn log_tx(logger: &Logger, tx: TxMetadata, md : MessageMetadata) {
+    let status = md.status.to_string();
+    info!(
+        logger,
+        "Message {} sent", md.msg_id;
+        "radio" => tx.radio_type,
+        "thread" => tx.thread_id,
+        "duration" => tx.duration,
+        "msg_type" => md.msg_type,
+        "status" => &status,
+        "reason" => md.reason.unwrap_or(""),
+        "action" => md.action.unwrap_or(""),
+        "route_id" => md.route_id.unwrap_or(""),
+        "source" => md.source.unwrap_or(""),
+        "destination" => md.destination.unwrap_or(""),
+    );
+}
+
+/// Logs an incoming message
+pub fn log_rx<T: KV>(
+    logger: &Logger, 
+    hdr : &MessageHeader,
+    status : MessageStatus, 
+    reason: Option<&str>,
+    action: Option<&str>,
+    msg : &T) {
+    info!(
+        logger,
+        "Received message";
+        "source"=>&hdr.sender,
+        "destination"=>&hdr.destination,
+        "msg_id"=>&hdr.get_msg_id(),
+        "hops"=>hdr.hops,
+        "status"=>status,
+        "reason"=>reason.unwrap_or(""),
+        "action"=>action.unwrap_or(""),
+        msg
+    );
+}
+    
 #[allow(dead_code)]
 const NSS_PIN: u64 = 25;
 #[allow(dead_code)]

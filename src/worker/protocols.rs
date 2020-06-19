@@ -4,7 +4,7 @@
 
 use crate::worker::listener::*;
 use crate::worker::radio::*;
-use crate::worker::{MessageHeader, Worker};
+use crate::worker::{MessageHeader, Worker, MessageMetadata};
 use crate::{MeshSimError, MeshSimErrorKind};
 use lora_wifi_beacon::LoraWifiBeacon;
 use naive_routing::NaiveRouting;
@@ -29,6 +29,8 @@ pub mod reactive_gossip_routing_II;
 pub mod reactive_gossip_routing_III;
 pub mod aodv;
 
+type Outcome<'a> = (Option<MessageHeader>, Option<MessageMetadata<'a>>);
+
 /// Trait that all protocols need to implement.
 /// The function handle_message should
 pub trait Protocol: std::fmt::Debug + Send + Sync {
@@ -38,7 +40,7 @@ pub trait Protocol: std::fmt::Debug + Send + Sync {
         &self,
         msg: MessageHeader,
         r_type: RadioTypes,
-    ) -> Result<Option<MessageHeader>, MeshSimError>;
+    ) -> Result<Outcome, MeshSimError>;
 
     /// Function to initialize the protocol.
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError>;
