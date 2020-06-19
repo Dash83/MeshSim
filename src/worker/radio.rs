@@ -183,7 +183,7 @@ impl Radio for SimulatedRadio {
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
         let start_ts = Utc::now();
-        let msg_id = &hdr.get_hdr_hash();
+        let msg_id = &hdr.get_msg_id();
 
         //Register this node as an active transmitter if the medium is free
         self.register_transmitter(&conn)?;
@@ -611,7 +611,7 @@ impl Radio for WifiRadio {
         let start_ts = Utc::now();
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
-        let msg_id = &hdr.get_hdr_hash();
+        let msg_id = &hdr.get_msg_id();
         let sock_addr = SocketAddr::new(IpAddr::V6(*SERVICE_ADDRESS), DNS_SERVICE_PORT);
         let socket = new_socket()?;
 
@@ -829,10 +829,13 @@ pub fn log_rx<T: KV>(
     info!(
         logger,
         "Received message";
-        "source"=>&hdr.sender.name,
-        "destination"=>&hdr.destination.name,
-        "msg_id"=>&hdr.get_hdr_hash(),
+        "source"=>&hdr.sender,
+        "destination"=>&hdr.destination,
+        "msg_id"=>&hdr.get_msg_id(),
+        "hops"=>hdr.hops,
         "status"=>status,
+        "reason"=>reason.unwrap_or(""),
+        "action"=>action.unwrap_or(""),
         msg
     );
 }

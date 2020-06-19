@@ -101,16 +101,16 @@ impl fmt::Display for WorkerError {
 }
 
 impl error::Error for WorkerError {
-    fn description(&self) -> &str {
-        match *self {
-            WorkerError::Serialization(ref err) => err.description(),
-            WorkerError::IO(ref err) => err.description(),
-            WorkerError::Configuration(ref err) => err.as_str(),
-            WorkerError::Sync(ref err) => err.as_str(),
-            WorkerError::Command(ref err) => err.as_str(),
-            WorkerError::DB(ref err) => err.description(),
-        }
-    }
+    // fn description(&self) -> &str {
+    //     match *self {
+    //         WorkerError::Serialization(ref err) => err.description(),
+    //         WorkerError::IO(ref err) => err.description(),
+    //         WorkerError::Configuration(ref err) => err.as_str(),
+    //         WorkerError::Sync(ref err) => err.as_str(),
+    //         WorkerError::Command(ref err) => err.as_str(),
+    //         WorkerError::DB(ref err) => err.description(),
+    //     }
+    // }
 
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
@@ -247,9 +247,9 @@ impl Peer {
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct MessageHeader {
     ///Sender of the message
-    pub sender: Peer,
+    pub sender: String,
     ///Destination of the message
-    pub destination: Peer,
+    pub destination: String,
     ///Number of hops this message has taken
     pub hops: u16,
     ///Indication for the simulated radio of how long to delay the reception of a message for
@@ -259,7 +259,9 @@ pub struct MessageHeader {
     ///Optional, serialized payload of the message.
     /// It's the responsibility of the underlying protocol to know how to deserialize this payload
     /// into a protocol-specific message.
-    pub payload: Option<Vec<u8>>,
+    payload: Vec<u8>,
+    ///A hash value that (semi)uniquely identifies this message
+    msg_id: String,
 }
 
 impl MessageHeader {
@@ -270,14 +272,21 @@ impl MessageHeader {
     }
 
     ///Create new, empty MessageHeader.
-    pub fn new() -> MessageHeader {
+    pub fn new(
+        sender: String,
+        destination: String,
+        payload: Vec<u8>,
+        hops: u16,
+    ) -> MessageHeader {
+        let msg_id = MessageHeader::create_msg_id(&destination, payload.clone());
         MessageHeader {
-            sender: Peer::new(),
-            destination: Peer::new(),
-            hops: 0u16,
+            sender,
+            destination,
+            hops,
             delay: 0u64,
             ttl: std::usize::MAX,
-            payload: None,
+            payload,
+            msg_id,
         }
     }
 
@@ -286,12 +295,19 @@ impl MessageHeader {
     /// Destination name
     /// Payload
     /// This is done instead of getting the md5sum of the entire structure for testability purposes
-    pub fn get_hdr_hash(&self) -> String {
+    pub fn get_msg_id(&self) -> &str {
+        return &self.msg_id
+    }
+    
+    /// Get a reference to the payload of the message. It is primarily used to deserialize it into a protocol message.
+    pub fn get_payload(&self) -> &[u8] {
+        return self.payload.as_slice()
+    }
+
+    fn create_msg_id(destination: &String, mut payload: Vec<u8>) -> String {
         let mut data = Vec::new();
-        data.append(&mut self.destination.name.clone().into_bytes());
-        if let Some(mut p) = self.payload.clone() {
-            data.append(&mut p);
-        }
+        data.append(&mut destination.clone().into_bytes());
+        data.append(&mut payload);
 
         let d = md5::compute(&data);
         format!("{:x}", d)
@@ -548,7 +564,7 @@ impl Worker {
                                     };
 
                                     if let Some(r) = response {
-                                        let msg_id = r.get_hdr_hash();
+                                        let msg_id = r.get_msg_id().to_string();
                                         match tx_channel.broadcast(r) {
                                             Ok(tx) => { 
                                                 /* All good */
@@ -787,26 +803,25 @@ mod tests {
 
     #[test]
     fn test_message_header_hash() {
-        let mut msg = MessageHeader::new();
-        msg.sender.name = String::from("SENDER");
-        msg.destination.name = String::from("DESTINATION");
+        let sender = String::from("SENDER");
+        let destination = String::from("DESTINATION");
         let mut rng = Worker::rng_from_seed(12345);
         let mut data: Vec<u8> = iter::repeat(0u8).take(64).collect();
-
         rng.fill_bytes(&mut data[..]);
-        msg.payload = Some(data.clone());
-        let hash = msg.get_hdr_hash();
-        assert_eq!(&hash, "16c37d4dbeed437d377fc131b016cf38");
+        let msg = MessageHeader::new(sender, destination, data, 0u16);
 
-        rng.fill_bytes(&mut data[..]);
-        msg.payload = Some(data.clone());
-        let hash = msg.get_hdr_hash();
-        assert_eq!(&hash, "48b9f1d803d6829bcab59056981e6771");
+        let hash = msg.get_msg_id();
+        assert_eq!(hash, "16c37d4dbeed437d377fc131b016cf38");
 
-        rng.fill_bytes(&mut data[..]);
-        msg.payload = Some(data.clone());
-        let hash = msg.get_hdr_hash();
-        assert_eq!(&hash, "a6048051b8727b181a6c69edf820914f");
+        // rng.fill_bytes(&mut data[..]);
+        // msg.payload = data.clone();
+        // let hash = msg.get_msg_id();
+        // assert_eq!(hash, "48b9f1d803d6829bcab59056981e6771");
+
+        // rng.fill_bytes(&mut data[..]);
+        // msg.payload = data.clone();
+        // let hash = msg.get_msg_id();
+        // assert_eq!(hash, "a6048051b8727b181a6c69edf820914f");
     }
 
     //This test will me removed at some point, but it's useful at the moment for the message size calculations
@@ -816,27 +831,20 @@ mod tests {
     fn test_message_size() {
         use std::mem;
 
-        let mut self_peer = Peer::new();
-        self_peer.name = String::from("Foo");
-        self_peer.id = String::from("kajsndlkajsndaskdnlkjsadnks");
-
-        let mut dest_peer = Peer::new();
-        dest_peer.name = String::from("Bar");
-        dest_peer.id = String::from("oija450njjcdlhbaslijdblahsd");
-
-        let hdr = MessageHeader::new();
-        //        hdr.sender = self_peer.clone();
-        //        hdr.destination = dest_peer.clone();
+        let source = String::from("Foo");
+        let destination = String::from("Bar");
+        let empty_payload: Vec<u8> = vec![];
+        let hdr = MessageHeader::new(source, destination, empty_payload, 0u16);
 
         println!("Size of MessageHeader: {}", mem::size_of::<MessageHeader>());
         let serialized_hdr = to_vec(&hdr).expect("Could not serialize");
         let hdr_size = mem::size_of_val(&serialized_hdr);
         println!("Size of a serialized MessageHeader: {}", hdr_size);
 
-        println!("Size of Peer: {}", mem::size_of::<Peer>());
-        let serialized_peer = to_vec(&self_peer).expect("Could not serialize");
-        let peer_size = mem::size_of_val(&serialized_peer);
-        println!("Size of a Peer instance: {}", peer_size);
+        // println!("Size of Peer: {}", mem::size_of::<Peer>());
+        // let serialized_peer = to_vec(&self_peer).expect("Could not serialize");
+        // let peer_size = mem::size_of_val(&serialized_peer);
+        // println!("Size of a Peer instance: {}", peer_size);
 
         //        let mut msg = DataMessage{ route_id : String::from("SOME_ROUTE"),
         //            payload :  String::from("SOME DATA TO TRANSMIT").as_bytes().to_vec() };

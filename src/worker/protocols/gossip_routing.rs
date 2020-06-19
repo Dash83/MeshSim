@@ -42,7 +42,7 @@ struct DataMessage {
     payload : Vec<u8>,
 }
 
-impl slog::KV for DataMessage {
+impl KV for DataMessage {
     fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
         serializer.emit_str("msg_type", "DATA")
     }
@@ -67,25 +67,7 @@ impl Protocol for GossipRouting {
         mut hdr: MessageHeader,
         _r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
-        let msg_id = hdr.get_hdr_hash();
-
-        let data = match hdr.payload.take() {
-            Some(d) => d,
-            None => {
-                warn!(
-                    self.logger,
-                    "Received message";
-                    "msg_id" => &msg_id,
-                    "msg_type"=> "UNKNOWN",
-                    "sender"=> &hdr.sender.name,
-                    "status"=> MessageStatus::DROPPED,
-                    "reason"=> "Message has empty payload"
-                );
-                return Ok((None, None));
-            }
-        };
-
-        let msg = GossipRouting::build_protocol_message(data).map_err(|e| {
+        let msg = GossipRouting::build_protocol_message(hdr.get_payload()).map_err(|e| {
             let err_msg = String::from("Failed to deserialize payload into a message");
             MeshSimError {
                 kind: MeshSimErrorKind::Serialization(err_msg),
@@ -98,7 +80,6 @@ impl Protocol for GossipRouting {
             hdr,
             msg,
             self.get_self_peer(),
-            msg_id,
             self.k,
             self.p,
             msg_cache,
@@ -108,11 +89,8 @@ impl Protocol for GossipRouting {
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
-        let mut dest = Peer::new();
-        dest.name = destination;
-
-        let hdr = GossipRouting::create_data_message(self.get_self_peer(), dest, 1, data)?;
-        let msg_id = hdr.get_hdr_hash();
+        let hdr = GossipRouting::create_data_message(self.get_self_peer(), destination, 1, data)?;
+        let msg_id = hdr.get_msg_id().to_string();
         {
             let mut cache = self.msg_cache.lock().expect("Could not lock message cache");
             //Have not seen this message yet.
@@ -160,8 +138,8 @@ impl GossipRouting {
     }
 
     fn create_data_message(
-        sender: Peer,
-        destination: Peer,
+        sender: String,
+        destination: String,
         hops: u16,
         data: Vec<u8>,
     ) -> Result<MessageHeader, MeshSimError> {
@@ -173,27 +151,24 @@ impl GossipRouting {
                 cause: Some(Box::new(e)),
             }
         })?;
-        //info!("Built DATA message for peer: {}, id {:?}", &destination.name, destination.id);
+        //info!("Built DATA message for peer: {}, id {:?}", &destination, destination.id);
 
         //Build the message header that's ready for sending.
-        let msg = MessageHeader {
+        let msg = MessageHeader::new(
             sender,
             destination,
+            payload,
             hops,
-            delay: 0u64,
-            ttl: std::usize::MAX,
-            payload: Some(payload),
-        };
+        );
         Ok(msg)
     }
 
     fn process_data_message(
         hdr: MessageHeader,
         msg: DataMessage,
-        msg_id: String,
         k: usize,
         p: f64,
-        me: Peer,
+        me: String,
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
@@ -209,7 +184,7 @@ impl GossipRouting {
                     //     "Received message";
                     //     "msg_id" => &msg_id,
                     //     "msg_type"=> "DATA",
-                    //     "sender"=> &hdr.sender.name,
+                    //     "sender"=> &hdr.sender,
                     //     "status"=> MessageStatus::DROPPED,
                     //     "reason"=> &err_msg,
                     // );
@@ -229,16 +204,16 @@ impl GossipRouting {
             })?; 
 
             for entry in cache.iter() {
-                if entry.msg_id == msg_id {
+                if entry.msg_id == hdr.get_msg_id() {
                     // info!(
                     //     logger,
                     //     "Received message";
                     //     "msg_id" => &msg_id,
                     //     "msg_type"=>"DATA",
-                    //     "sender"=>&hdr.sender.name,
+                    //     "sender"=>&hdr.sender,
                     //     "status"=>MessageStatus::DROPPED,
                     //     "reason"=>"DUPLICATE",
-                    //     "sender"=>&hdr.sender.name,
+                    //     "sender"=>&hdr.sender,
                     // );
                     radio::log_rx(
                         logger, 
@@ -262,20 +237,20 @@ impl GossipRouting {
                 cache.remove(&e);
             }
             //Log message
-            cache.insert(CacheEntry { msg_id: msg_id.clone() });
+            cache.insert(CacheEntry { msg_id: hdr.get_msg_id().to_string() });
         } // LOCK:RELEASE:MSG_CACHE
 
         //Check if this node is the intended recipient of the message.
-        if hdr.destination.name == me.name {
-            info!(
-                logger,
-                "Received message";
-                "msg_id" => &msg_id,
-                "msg_type"=>"DATA",
-                "sender"=>&hdr.sender.name,
-                "status"=>MessageStatus::ACCEPTED,
-                "route_length" => hdr.hops
-            );
+        if hdr.destination == me {
+            // info!(
+            //     logger,
+            //     "Received message";
+            //     "msg_id" => hdr.get_msg_id(),
+            //     "msg_type"=>"DATA",
+            //     "sender"=>&hdr.sender,
+            //     "status"=>MessageStatus::ACCEPTED,
+            //     "route_length" => hdr.hops
+            // );
             radio::log_rx(
                 logger, 
                 &hdr,
@@ -294,38 +269,54 @@ impl GossipRouting {
         };
         debug!(logger, "Gossip prob {}", s);
         if hdr.hops as usize > k && s > p {
-            info!(
-                logger,
-                "Received message";
-                "msg_id" => &msg_id,
-                "msg_type"=>"DATA",
-                "sender"=>&hdr.sender.name,
-                "status"=>MessageStatus::DROPPED,
-                "reason"=>"GOSSIP",
+            // info!(
+            //     logger,
+            //     "Received message";
+            //     "msg_id" => hdr.get_msg_id(),
+            //     "msg_type"=>"DATA",
+            //     "sender"=>&hdr.sender,
+            //     "status"=>MessageStatus::DROPPED,
+            //     "reason"=>"GOSSIP",
+            // );
+            radio::log_rx(
+                logger, 
+                &hdr,
+                MessageStatus::DROPPED,
+                Some("Gossip failed"),
+                None,
+                &msg
             );
             //Not gossiping this message.
             return Ok((None, None));
         }
 
-        let response = GossipRouting::create_data_message(me, hdr.destination, hdr.hops + 1, msg.payload)?;
-        let mut md = MessageMetadata::new(msg_id, "DATA", MessageStatus::FORWARDING);
-        // let sender = hdr.sender.name.clone();
+        radio::log_rx(
+            logger, 
+            &hdr,
+            MessageStatus::FORWARDING,
+            Some("Gossip succeeded"),
+            None,
+            &msg
+        );
+        let response = GossipRouting::create_data_message(me, hdr.destination.clone(), hdr.hops + 1, msg.payload)?;
+        let mut md = MessageMetadata::new(response.get_msg_id().to_string(), "DATA", MessageStatus::FORWARDING);
+        // let sender = hdr.sender.clone();
         // md.source = Some(&sender);
         // info!(
         //     logger,
         //     "Received message {:x}", &msg_hash;
         //     "msg_type"=>"DATA",
-        //     "sender"=>&hdr.sender.name,
+        //     "sender"=>&hdr.sender,
         //     "status"=>MessageStatus::FORWARDED,
         // );
+
         Ok((Some(response), Some(md)))
     }
 
     fn handle_message_internal(
         hdr: MessageHeader,
         msg: Messages,
-        me: Peer,
-        msg_hash: String,
+        me: String,
         k: usize,
         p: f64,
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
@@ -337,7 +328,6 @@ impl GossipRouting {
                 GossipRouting::process_data_message(
                     hdr,
                     data,
-                    msg_hash,
                     k,
                     p,
                     me,
@@ -349,17 +339,12 @@ impl GossipRouting {
         }
     }
 
-    fn build_protocol_message(data: Vec<u8>) -> Result<Messages, serde_cbor::Error> {
-        let res: Result<Messages, serde_cbor::Error> = from_slice(data.as_slice());
+    fn build_protocol_message(data: &[u8]) -> Result<Messages, serde_cbor::Error> {
+        let res: Result<Messages, serde_cbor::Error> = from_slice(data);
         res
     }
 
-    fn get_self_peer(&self) -> Peer {
-        Peer {
-            name: self.worker_name.clone(),
-            id: self.worker_id.clone(),
-            short_address: Some(self.short_radio.get_address().into()),
-            long_address: None,
-        }
+    fn get_self_peer(&self) -> String {
+        self.worker_name.clone()
     }
 }

@@ -199,7 +199,12 @@ fn test_broadcast_simulated() {
                                                &data.logger).expect("Could not register worker");
 
     //Test checks
-    let bcast_msg = MessageHeader::new();
+    let bcast_msg = MessageHeader::new(
+        String::new(),
+        String::new(),
+        vec![],
+        0u16,
+    );
     let _res = r2.broadcast(bcast_msg).unwrap();
 
     let rec_msg1 = l1.read_message();
@@ -386,7 +391,12 @@ fn test_broadcast_device() -> TestResult {
     // let listener1 = r1.init().unwrap();
 
     //Test checks
-    let bcast_msg = MessageHeader::new();
+    let bcast_msg = MessageHeader::new(
+        String::new(),
+        String::new(),
+        vec![],
+        0u16,
+    );
     let _res = r1.broadcast(bcast_msg.clone()).unwrap();
 
     //We only test that the broadcast was received by the broadcaster, since we can only deploy 1 device_mode worker
@@ -395,7 +405,7 @@ fn test_broadcast_device() -> TestResult {
     assert!(rec_msg1.is_some());
     let rec_msg1 = rec_msg1.unwrap();
 
-    assert_eq!(bcast_msg.payload, rec_msg1.payload);
+    assert_eq!(bcast_msg.get_payload(), rec_msg1.get_payload());
 
     //Teardown
     //If test checks fail, this section won't be reached and not cleaned up for investigation.
@@ -444,7 +454,12 @@ fn test_last_transmission() -> TestResult {
     //Time before
     let ts1 = Utc::now();
 
-    let hdr = MessageHeader::new();
+    let hdr = MessageHeader::new(
+        String::new(),
+        String::new(),
+        vec![],
+        0u16,
+    );
     tx.broadcast(hdr).expect("Could not broadcast message");
     //Broadcast time
     let bc_ts = tx.last_transmission();
