@@ -6,28 +6,28 @@ use crate::worker::listener::*;
 use crate::worker::radio::*;
 use crate::worker::{MessageHeader, Worker};
 use crate::{MeshSimError, MeshSimErrorKind};
+use aodv::AODV;
+use gossip_routing::GossipRouting;
 use lora_wifi_beacon::LoraWifiBeacon;
 use naive_routing::NaiveRouting;
 use reactive_gossip_routing::ReactiveGossipRouting;
 use reactive_gossip_routing_II::ReactiveGossipRoutingII;
 use reactive_gossip_routing_III::ReactiveGossipRoutingIII;
-use gossip_routing::GossipRouting;
-use aodv::AODV;
 use slog::{Logger, KV};
 
 use std;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
+pub mod aodv;
+pub mod gossip_routing;
 pub mod lora_wifi_beacon;
 pub mod naive_routing;
-pub mod gossip_routing;
 pub mod reactive_gossip_routing;
 #[allow(non_snake_case)]
 pub mod reactive_gossip_routing_II;
 #[allow(non_snake_case)]
 pub mod reactive_gossip_routing_III;
-pub mod aodv;
 
 type Outcome<'a> = (Option<MessageHeader>, Option<Box<dyn KV>>);
 
@@ -58,21 +58,21 @@ pub enum Protocols {
     /// Flooding protocol
     NaiveRouting,
     /// Gossip-based flooding protocol
-    GossipRouting{
+    GossipRouting {
         /// Minimum number of hops before applying probabilistic retransmission.
         k: usize,
         /// Probability of retransmission per node.
-        p: f64
+        p: f64,
     },
     ///  Adaptive, gossip-based routing protocol
-    ReactiveGossip{
+    ReactiveGossip {
         /// Minimum number of hops before applying probabilistic retransmission.
         k: usize,
         /// Probability of retransmission per node.
-        p: f64
+        p: f64,
     },
     /// Improved version of RGR
-    ReactiveGossipII{
+    ReactiveGossipII {
         /// Minimum number of hops before applying probabilistic retransmission.
         k: usize,
         /// Base-probability of retransmission per node.
@@ -81,7 +81,7 @@ pub enum Protocols {
         q: f64,
     },
     /// Improved version of RGRII that uses 2 radios
-    ReactiveGossipIII{
+    ReactiveGossipIII {
         /// Minimum number of hops before applying probabilistic retransmission.
         k: usize,
         /// Probability of retransmission per node.
@@ -114,7 +114,7 @@ impl FromStr for Protocols {
             "NAIVEROUTING" => Ok(Protocols::NaiveRouting),
             "REACTIVEGOSSIP" => {
                 // Expected format: ReactiveGossip k=1, p=0.70
-                let (k,p) = {
+                let (k, p) = {
                     let mut k = None;
                     let mut p = None;
                     for c in parts[1..].iter() {
@@ -123,26 +123,24 @@ impl FromStr for Protocols {
                             "K" => {
                                 let x: usize = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid K value");
-                                    MeshSimError{
-                                        kind : MeshSimErrorKind::Configuration(err_msg),
-                                        cause : Some(Box::new(e))
+                                    MeshSimError {
+                                        kind: MeshSimErrorKind::Configuration(err_msg),
+                                        cause: Some(Box::new(e)),
                                     }
                                 })?;
                                 k = Some(x);
-                            },
+                            }
                             "P" => {
                                 let x: f64 = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid P value");
-                                    MeshSimError{
-                                        kind : MeshSimErrorKind::Configuration(err_msg),
-                                        cause : Some(Box::new(e))
+                                    MeshSimError {
+                                        kind: MeshSimErrorKind::Configuration(err_msg),
+                                        cause: Some(Box::new(e)),
                                     }
                                 })?;
                                 p = Some(x);
-                            },
-                            _ => {
-                                /* Unrecognised option, do nothing */
-                            },
+                            }
+                            _ => { /* Unrecognised option, do nothing */ }
                         }
                     }
                     if k.is_none() {
@@ -153,13 +151,11 @@ impl FromStr for Protocols {
                     }
                     (k.unwrap(), p.unwrap()) //Guaranted to not panic
                 };
-                Ok(
-                    Protocols::ReactiveGossip{k, p}
-                )
-            },
+                Ok(Protocols::ReactiveGossip { k, p })
+            }
             "REACTIVEGOSSIPII" => {
                 // Expected format: ReactiveGossipII k=1, p=0.70
-                let (k,p,q) = {
+                let (k, p, q) = {
                     let mut k = None;
                     let mut p = None;
                     let mut q = None;
@@ -169,36 +165,34 @@ impl FromStr for Protocols {
                             "K" => {
                                 let x: usize = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid K value");
-                                    MeshSimError{
-                                        kind : MeshSimErrorKind::Configuration(err_msg),
-                                        cause : Some(Box::new(e))
+                                    MeshSimError {
+                                        kind: MeshSimErrorKind::Configuration(err_msg),
+                                        cause: Some(Box::new(e)),
                                     }
                                 })?;
                                 k = Some(x);
-                            },
+                            }
                             "P" => {
                                 let x: f64 = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid P value");
-                                    MeshSimError{
-                                        kind : MeshSimErrorKind::Configuration(err_msg),
-                                        cause : Some(Box::new(e))
+                                    MeshSimError {
+                                        kind: MeshSimErrorKind::Configuration(err_msg),
+                                        cause: Some(Box::new(e)),
                                     }
                                 })?;
                                 p = Some(x);
-                            },
+                            }
                             "Q" => {
                                 let x: f64 = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid Q value");
-                                    MeshSimError{
-                                        kind : MeshSimErrorKind::Configuration(err_msg),
-                                        cause : Some(Box::new(e))
+                                    MeshSimError {
+                                        kind: MeshSimErrorKind::Configuration(err_msg),
+                                        cause: Some(Box::new(e)),
                                     }
                                 })?;
                                 q = Some(x);
-                            },                            
-                            _ => {
-                                /* Unrecognised option, do nothing */
-                            },
+                            }
+                            _ => { /* Unrecognised option, do nothing */ }
                         }
                     }
                     if k.is_none() {
@@ -212,13 +206,11 @@ impl FromStr for Protocols {
                     }
                     (k.unwrap(), p.unwrap(), q.unwrap()) //Guaranted to not panic
                 };
-                Ok(
-                    Protocols::ReactiveGossipII{k, p, q}
-                )
-            },
+                Ok(Protocols::ReactiveGossipII { k, p, q })
+            }
             "REACTIVEGOSSIPIII" => {
                 // Expected format: ReactiveGossipIII k=1, p=0.70
-                let (k,p,q) = {
+                let (k, p, q) = {
                     let mut k = None;
                     let mut p = None;
                     let mut q = None;
@@ -229,36 +221,34 @@ impl FromStr for Protocols {
                             "K" => {
                                 let x: usize = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid K value");
-                                    MeshSimError{
-                                        kind : MeshSimErrorKind::Configuration(err_msg),
-                                        cause : Some(Box::new(e))
+                                    MeshSimError {
+                                        kind: MeshSimErrorKind::Configuration(err_msg),
+                                        cause: Some(Box::new(e)),
                                     }
                                 })?;
                                 k = Some(x);
-                            },
+                            }
                             "P" => {
                                 let x: f64 = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid P value");
-                                    MeshSimError{
-                                        kind : MeshSimErrorKind::Configuration(err_msg),
-                                        cause : Some(Box::new(e))
+                                    MeshSimError {
+                                        kind: MeshSimErrorKind::Configuration(err_msg),
+                                        cause: Some(Box::new(e)),
                                     }
                                 })?;
                                 p = Some(x);
-                            },
+                            }
                             "Q" => {
                                 let x: f64 = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid Q value");
-                                    MeshSimError{
-                                        kind : MeshSimErrorKind::Configuration(err_msg),
-                                        cause : Some(Box::new(e))
+                                    MeshSimError {
+                                        kind: MeshSimErrorKind::Configuration(err_msg),
+                                        cause: Some(Box::new(e)),
                                     }
                                 })?;
                                 q = Some(x);
-                            },                             
-                            _ => {
-                                /* Unrecognised option, do nothing */
-                            },
+                            }
+                            _ => { /* Unrecognised option, do nothing */ }
                         }
                     }
                     if k.is_none() {
@@ -272,14 +262,12 @@ impl FromStr for Protocols {
                     }
                     (k.unwrap(), p.unwrap(), q.unwrap()) //Guaranted to not panic
                 };
-                Ok(
-                    Protocols::ReactiveGossipIII{k, p, q}
-                )
-            },
+                Ok(Protocols::ReactiveGossipIII { k, p, q })
+            }
             "LORAWIFIBEACON" => Ok(Protocols::LoraWifiBeacon),
             "GOSSIPROUTING" => {
                 // Expected format: GossipRouting k=1, p=0.70
-                let (k,p) = {
+                let (k, p) = {
                     let mut k = None;
                     let mut p = None;
                     for c in parts[1..].iter() {
@@ -289,26 +277,24 @@ impl FromStr for Protocols {
                             "K" => {
                                 let x: usize = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid K value");
-                                    MeshSimError{
-                                        kind : MeshSimErrorKind::Configuration(err_msg),
-                                        cause : Some(Box::new(e))
+                                    MeshSimError {
+                                        kind: MeshSimErrorKind::Configuration(err_msg),
+                                        cause: Some(Box::new(e)),
                                     }
                                 })?;
                                 k = Some(x);
-                            },
+                            }
                             "P" => {
                                 let x: f64 = c[1].parse().map_err(|e| {
                                     let err_msg = String::from("Invalid P value");
-                                    MeshSimError{
-                                        kind : MeshSimErrorKind::Configuration(err_msg),
-                                        cause : Some(Box::new(e))
+                                    MeshSimError {
+                                        kind: MeshSimErrorKind::Configuration(err_msg),
+                                        cause: Some(Box::new(e)),
                                     }
                                 })?;
                                 p = Some(x);
-                            },
-                            _ => {
-                                /* Unrecognised option, do nothing */
-                            },
+                            }
+                            _ => { /* Unrecognised option, do nothing */ }
                         }
                     }
                     if k.is_none() {
@@ -319,10 +305,8 @@ impl FromStr for Protocols {
                     }
                     (k.unwrap(), p.unwrap()) //Guaranted to not panic
                 };
-                Ok(
-                    Protocols::GossipRouting{k, p}
-                )
-            },
+                Ok(Protocols::GossipRouting { k, p })
+            }
             "AODV" => Ok(Protocols::AODV),
             _ => {
                 let err_msg = String::from("The specified protocol is not supported.");
@@ -381,19 +365,19 @@ pub fn build_protocol_resources(
                 radio_channels,
             };
             Ok(resources)
-        },
+        }
         Protocols::NaiveRouting => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The NaiveRouting protocol requires a short_radio to be provided.");
             let rng = Worker::rng_from_seed(seed);
-            let handler: Arc<dyn Protocol> =
-                Arc::new(NaiveRouting::new(
-                    name, 
-                    id, 
-                    Arc::clone(&sr), 
-                    Arc::new(Mutex::new(rng)), 
-                    logger));
+            let handler: Arc<dyn Protocol> = Arc::new(NaiveRouting::new(
+                name,
+                id,
+                Arc::clone(&sr),
+                Arc::new(Mutex::new(rng)),
+                logger,
+            ));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
             let resources = ProtocolResources {
@@ -401,21 +385,21 @@ pub fn build_protocol_resources(
                 radio_channels,
             };
             Ok(resources)
-        },
-        Protocols::GossipRouting{k, p} => {
+        }
+        Protocols::GossipRouting { k, p } => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The GossipRouting protocol requires a short_radio to be provided.");
             let rng = Worker::rng_from_seed(seed);
-            let handler: Arc<dyn Protocol> =
-                Arc::new(GossipRouting::new(
-                    name,
-                    id,
-                    k,
-                    p,
-                    Arc::clone(&sr),
-                    Arc::new(Mutex::new(rng)),
-                    logger));
+            let handler: Arc<dyn Protocol> = Arc::new(GossipRouting::new(
+                name,
+                id,
+                k,
+                p,
+                Arc::clone(&sr),
+                Arc::new(Mutex::new(rng)),
+                logger,
+            ));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
             let resources = ProtocolResources {
@@ -423,8 +407,8 @@ pub fn build_protocol_resources(
                 radio_channels,
             };
             Ok(resources)
-        },
-        Protocols::ReactiveGossip{k, p} => {
+        }
+        Protocols::ReactiveGossip { k, p } => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");
@@ -445,8 +429,8 @@ pub fn build_protocol_resources(
                 radio_channels,
             };
             Ok(resources)
-        },
-        Protocols::ReactiveGossipII{k, p, q} => {
+        }
+        Protocols::ReactiveGossipII { k, p, q } => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");
@@ -468,8 +452,8 @@ pub fn build_protocol_resources(
                 radio_channels,
             };
             Ok(resources)
-        },
-        Protocols::ReactiveGossipIII{k, p, q} => {
+        }
+        Protocols::ReactiveGossipIII { k, p, q } => {
             //Obtain both radios
             let (sr, sr_listener) = short_radio
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");
@@ -495,19 +479,18 @@ pub fn build_protocol_resources(
                 radio_channels,
             };
             Ok(resources)
-        },
+        }
         Protocols::AODV => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
-            let (sr, listener) = short_radio
-                .expect("The AODV protocol requires a short_radio to be provided.");
+            let (sr, listener) =
+                short_radio.expect("The AODV protocol requires a short_radio to be provided.");
             let rng = Worker::rng_from_seed(seed);
-            let handler: Arc<dyn Protocol> =
-                Arc::new(AODV::new(
-                    name, 
-                    id, 
-                    Arc::clone(&sr), 
-                    Arc::new(Mutex::new(rng)),
-                    logger
+            let handler: Arc<dyn Protocol> = Arc::new(AODV::new(
+                name,
+                id,
+                Arc::clone(&sr),
+                Arc::new(Mutex::new(rng)),
+                logger,
             ));
             let mut radio_channels = Vec::new();
             radio_channels.push((listener, sr));
@@ -516,6 +499,6 @@ pub fn build_protocol_resources(
                 radio_channels,
             };
             Ok(resources)
-        },
+        }
     }
 }

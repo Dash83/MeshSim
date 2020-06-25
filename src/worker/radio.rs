@@ -1,23 +1,23 @@
 //! This module defines the abstraction and functionality for what a Radio is in MeshSim
 
-use crate::worker::listener::*;
 use crate::mobility2::*;
+use crate::worker::listener::*;
 use crate::worker::*;
 use crate::{MeshSimError, MeshSimErrorKind};
+use chrono::Utc;
+use diesel::pg::PgConnection;
 use pnet_datalink as datalink;
+use rand::RngCore;
+use rusqlite::Connection;
 use slog::{Logger, KV};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
-use std::net::{IpAddr, Ipv6Addr, SocketAddr};
-use std::sync::Arc;
-use std::time::Duration;
-use rand::RngCore;
-use std::str::FromStr;
-use rusqlite::Connection;
-use std::thread;
-use std::sync::atomic::{AtomicU8, Ordering, AtomicI64};
-use chrono::Utc;
 use std::convert::TryFrom;
-use diesel::pg::PgConnection;
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::str::FromStr;
+use std::sync::atomic::{AtomicI64, AtomicU8, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 #[cfg(target_os = "linux")]
 use self::sx1276::socket::{Link, LoRa};
@@ -49,11 +49,11 @@ lazy_static! {
 #[derive(Default)]
 pub struct TxMetadata {
     /// Radio type (short/long)
-    pub radio_type : String,
+    pub radio_type: String,
     /// Id of the thread that made the transmission
-    pub thread_id : String,
+    pub thread_id: String,
     /// Duration of the broadcast operation
-    pub duration : u128,
+    pub duration: u128,
 }
 
 ///Types of radio supported by the system. Used by Protocols that need to
@@ -98,7 +98,7 @@ pub trait Radio: std::fmt::Debug + Send + Sync {
     ///Gets the current address at which the radio is listening.
     fn get_address(&self) -> &str;
     ///Used to broadcast a message using the radio
-    fn broadcast(&self, hdr: MessageHeader, md : Box<dyn KV>) -> Result<(), MeshSimError>;
+    fn broadcast(&self, hdr: MessageHeader, md: Box<dyn KV>) -> Result<(), MeshSimError>;
     ///Get the time of the last transmission made by this readio
     fn last_transmission(&self) -> i64;
 }
@@ -115,7 +115,7 @@ pub struct SimulatedRadio {
     ///Address that this radio listens on
     address: String,
     ///Name of the node that owns this radio
-    worker_name : String,
+    worker_name: String,
     ///The unique id of the worker that uses this radio. The id is shared across radios belonging to the same worker.
     id: String,
     ///Short or long range. What's the range-role of this radio.
@@ -141,7 +141,7 @@ impl Radio for SimulatedRadio {
         self.last_transmission.load(Ordering::SeqCst)
     }
 
-    fn broadcast(&self, mut hdr: MessageHeader, md : Box<dyn KV>) -> Result<(), MeshSimError> {
+    fn broadcast(&self, mut hdr: MessageHeader, md: Box<dyn KV>) -> Result<(), MeshSimError> {
         let env_file = format!("{}{}.env", &self.work_dir, std::path::MAIN_SEPARATOR);
         let conn = get_db_connection(&env_file, &self.logger)?;
         let radio_range: String = self.r_type.into();
@@ -158,8 +158,8 @@ impl Radio for SimulatedRadio {
         //Get the list of peers in radio-range
         let peers = get_workers_in_range(&conn, &self.worker_name, self.range, &self.logger)?;
         info!(
-            self.logger, 
-            "Starting transmission"; 
+            self.logger,
+            "Starting transmission";
             "thread"=>&thread_id,
             "peers_in_range"=>peers.len(),
             "radio"=>&radio_range,
@@ -167,10 +167,7 @@ impl Radio for SimulatedRadio {
 
         let socket = new_socket()?;
         let mut acc_delay: u64 = 0;
-        let max_delay = std::cmp::min(
-            MAX_DELAY,
-            peers.len() as u64 * DELAY_PER_NODE
-        );
+        let max_delay = std::cmp::min(MAX_DELAY, peers.len() as u64 * DELAY_PER_NODE);
         let delay_per_node = max_delay / std::cmp::max(1, peers.len()) as u64;
         for p in peers.into_iter() {
             let mut msg = hdr.clone();
@@ -223,37 +220,50 @@ impl Radio for SimulatedRadio {
         }
 
         //Update last transmission time
-        self.last_transmission.store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
-        debug!(&self.logger, "last_transmission:{}", self.last_transmission());
+        self.last_transmission
+            .store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
+        debug!(
+            &self.logger,
+            "last_transmission:{}",
+            self.last_transmission()
+        );
 
         self.deregister_transmitter(&conn)?;
         let duration = Utc::now() - start_ts;
         let dur = match duration.num_nanoseconds() {
-            Some(n) => { 
-                u128::try_from(n).map_err(|e| { 
-                    let err_msg = String::from("Failed to convert duration to u128");
-                    MeshSimError {
-                        kind: MeshSimErrorKind::Serialization(err_msg),
-                        cause: Some(Box::new(e)),
-                    }
-                })?
-            },
-            None => { 
+            Some(n) => u128::try_from(n).map_err(|e| {
+                let err_msg = String::from("Failed to convert duration to u128");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?,
+            None => {
                 // This should NEVER happen, as it would require the duration to be
                 // over 9_223_372_036.854_775_808 seconds. Still, let's cover the case.
                 let secs = duration.num_seconds();
-                let nanos = duration.num_nanoseconds().expect("Could not extract nanoseconds from Duration");
+                let nanos = duration
+                    .num_nanoseconds()
+                    .expect("Could not extract nanoseconds from Duration");
                 //Extrat seconds, convert to nanos, add subsecond-nanos
-                ((secs * 1000_000_000) + nanos ) as u128
-            },
+                ((secs * 1000_000_000) + nanos) as u128
+            }
         };
-        let tx = TxMetadata { 
-            radio_type : radio_range,
-            thread_id : thread_id,
-            duration : dur,
+        let tx = TxMetadata {
+            radio_type: radio_range,
+            thread_id: thread_id,
+            duration: dur,
         };
 
-        radio::log_tx(&self.logger, tx, &hdr.msg_id, MessageStatus::SENT, &hdr.sender, &hdr.destination, md);
+        radio::log_tx(
+            &self.logger,
+            tx,
+            &hdr.msg_id,
+            MessageStatus::SENT,
+            &hdr.sender,
+            &hdr.destination,
+            md,
+        );
         // info!(
         //     self.logger,
         //     "Message {:x} sent",
@@ -345,7 +355,7 @@ impl SimulatedRadio {
     ///the respective listen addresses.
     pub fn extract_radio_addresses(
         mut input: String,
-        logger : &Logger
+        logger: &Logger,
     ) -> Result<(Option<String>, Option<String>), MeshSimError> {
         let mut sr_address = None;
         let mut lr_address = None;
@@ -375,16 +385,16 @@ impl SimulatedRadio {
                         kind: MeshSimErrorKind::Configuration(err_msg),
                         cause: None,
                     };
-                    return Err(err)
+                    return Err(err);
                 }
             };
-//            let r_type: RadioTypes = parts[0].parse().map_err(|e| {
-//                let err_msg = format!("Could not parse radio-address {}", &input);
-//                MeshSimError {
-//                    kind: MeshSimErrorKind::Configuration(err_msg),
-//                    cause: Some(Box::new(e)),
-//                }
-//            })?;
+            //            let r_type: RadioTypes = parts[0].parse().map_err(|e| {
+            //                let err_msg = format!("Could not parse radio-address {}", &input);
+            //                MeshSimError {
+            //                    kind: MeshSimErrorKind::Configuration(err_msg),
+            //                    cause: Some(Box::new(e)),
+            //                }
+            //            })?;
             debug!(logger, "RadioType {:?}", &r_type);
             match r_type {
                 RadioTypes::ShortRange => {
@@ -400,7 +410,7 @@ impl SimulatedRadio {
         Ok((sr_address, lr_address))
     }
 
-    fn register_transmitter(&self, conn : &PgConnection) -> Result<(), MeshSimError> {
+    fn register_transmitter(&self, conn: &PgConnection) -> Result<(), MeshSimError> {
         // let tx = start_tx(&mut conn)?;
         let mut i = 0;
         // let wait_base = self.get_wait_base();
@@ -413,47 +423,47 @@ impl SimulatedRadio {
             if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
                 //Another thread is attempting to register this node or has already done it.
                 debug!(
-                    self.logger, 
-                    "Node already registered as an active-transmitter"; 
+                    self.logger,
+                    "Node already registered as an active-transmitter";
                     "ThreadID"=>thread_id
                 );
                 //No need to perform DB operation
-                return Ok(())
+                return Ok(());
             }
 
             match register_active_transmitter_if_free(
-                conn, 
+                conn,
                 &self.worker_name,
                 self.r_type,
                 self.range,
-                &self.logger
+                &self.logger,
             ) {
-                Ok(rows) => { 
+                Ok(rows) => {
                     if rows > 0 {
                         debug!(
                             &self.logger,
                             "{} registered as an active transmitter for radio {}",
                             &self.worker_name,
-                            &radio_range; 
+                            &radio_range;
                             "thread"=>&thread_id
                         );
-                        return Ok(())
-                    } 
-                },
-                Err(e) => { 
+                        return Ok(());
+                    }
+                }
+                Err(e) => {
                     warn!(self.logger, "{}", &e; "Thread"=> &thread_id);
                     if let Some(cause) = e.cause {
                         warn!(self.logger, "Cause: {}", &cause);
-                    }                    
-                },
+                    }
+                }
             }
 
             //Wait and retry.
             let sleep_time = self.get_wait_time(i as u32);
             let st = format!("{:?}", &sleep_time);
             info!(
-                &self.logger, 
-                "Medium is busy"; 
+                &self.logger,
+                "Medium is busy";
                 "thread"=>&thread_id,
                 "retry"=>i,
                 "wait_time"=>st,
@@ -463,31 +473,31 @@ impl SimulatedRadio {
             i += 1;
         }
         // rollback_tx(tx)?;
-        
+
         self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
         info!(
-            &self.logger, 
-            "Aborting transmission"; 
+            &self.logger,
+            "Aborting transmission";
             "thread"=>&thread_id,
             "radio"=>&radio_range,
             "reason"=>"TRANSMISSION_MAX_RETRY reached",
         );
 
         let err_cause = String::from("Gave up registering worker in active_transmitter_list");
-        let cause = MeshSimError{
-            kind : MeshSimErrorKind::SQLExecutionFailure(err_cause),
-            cause : None
+        let cause = MeshSimError {
+            kind: MeshSimErrorKind::SQLExecutionFailure(err_cause),
+            cause: None,
         };
         let err_msg = String::from("Aborting transmission");
-        let err = MeshSimError{
-            kind : MeshSimErrorKind::Networking(err_msg),
-            cause : Some(Box::new(cause)),
+        let err = MeshSimError {
+            kind: MeshSimErrorKind::Networking(err_msg),
+            cause: Some(Box::new(cause)),
         };
 
         Err(err)
     }
 
-    fn deregister_transmitter(&self, mut conn : &PgConnection) -> Result<(), MeshSimError> {
+    fn deregister_transmitter(&self, mut conn: &PgConnection) -> Result<(), MeshSimError> {
         // let tx = start_tx(&mut conn)?;
         let mut i = 0;
         // let wait_base = self.get_wait_base();
@@ -498,23 +508,20 @@ impl SimulatedRadio {
                 //More threads transmitting, so we shouldn't de-register the worker. Leave that to
                 //the last thread. Just descrease the count of active threads.
                 self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
-                return Ok(())
+                return Ok(());
             }
-            match remove_active_transmitter(conn,
-                                            &self.worker_name,
-                                            self.r_type,
-                                            &self.logger) {
+            match remove_active_transmitter(conn, &self.worker_name, self.r_type, &self.logger) {
                 Ok(_) => {
                     // commit_tx(tx)?;
                     self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
-                    return Ok(())
-                },
+                    return Ok(());
+                }
                 Err(e) => {
                     warn!(self.logger, "{}", &e; "Thread"=> &thread_id);
                     if let Some(cause) = e.cause {
                         warn!(self.logger, "Cause: {}", &cause);
                     }
-                },
+                }
             }
             let sleep_time = self.get_wait_time(i as u32);
             warn!(self.logger, "Will Retry in {:?}", &sleep_time);
@@ -523,9 +530,9 @@ impl SimulatedRadio {
         }
         // rollback_tx(tx)?;
         let err_msg = String::from("Gave up removing worker from active_transmitter_list");
-        let err = MeshSimError{
-            kind : MeshSimErrorKind::SQLExecutionFailure(err_msg),
-            cause : None
+        let err = MeshSimError {
+            kind: MeshSimErrorKind::SQLExecutionFailure(err_msg),
+            cause: None,
         };
         Err(err)
     }
@@ -576,7 +583,7 @@ impl Radio for WifiRadio {
         self.last_transmission.load(Ordering::SeqCst)
     }
 
-    fn broadcast(&self, mut hdr: MessageHeader, md : Box<dyn KV>) -> Result<(), MeshSimError> {
+    fn broadcast(&self, mut hdr: MessageHeader, md: Box<dyn KV>) -> Result<(), MeshSimError> {
         let start_ts = Utc::now();
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
@@ -616,36 +623,45 @@ impl Radio for WifiRadio {
                     cause: Some(Box::new(e)),
                 }
             })?;
-        self.last_transmission.store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
+        self.last_transmission
+            .store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
 
         let duration = Utc::now() - start_ts;
         let dur = match duration.num_nanoseconds() {
-            Some(n) => { 
-                u128::try_from(n).map_err(|e| { 
-                    let err_msg = String::from("Failed to convert duration to u128");
-                    MeshSimError {
-                        kind: MeshSimErrorKind::Serialization(err_msg),
-                        cause: Some(Box::new(e)),
-                    }
-                })?
-            },
-            None => { 
+            Some(n) => u128::try_from(n).map_err(|e| {
+                let err_msg = String::from("Failed to convert duration to u128");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?,
+            None => {
                 // This should NEVER happen, as it would require the duration to be
                 // over 9_223_372_036.854_775_808 seconds. Still, let's cover the case.
                 let secs = duration.num_seconds();
-                let nanos = duration.num_nanoseconds().expect("Could not extract nanoseconds from Duration");
+                let nanos = duration
+                    .num_nanoseconds()
+                    .expect("Could not extract nanoseconds from Duration");
                 //Extrat seconds, convert to nanos, add subsecond-nanos
-                ((secs * 1000_000_000) + nanos ) as u128
-            },
+                ((secs * 1000_000_000) + nanos) as u128
+            }
         };
 
-        let tx = TxMetadata { 
-            radio_type : radio_range,
-            thread_id : thread_id,
-            duration : dur,
+        let tx = TxMetadata {
+            radio_type: radio_range,
+            thread_id: thread_id,
+            duration: dur,
         };
 
-        radio::log_tx(&self.logger, tx, &hdr.msg_id, MessageStatus::SENT, &hdr.sender, &hdr.destination, md);
+        radio::log_tx(
+            &self.logger,
+            tx,
+            &hdr.msg_id,
+            MessageStatus::SENT,
+            &hdr.sender,
+            &hdr.destination,
+            md,
+        );
 
         Ok(())
     }
@@ -775,13 +791,13 @@ fn new_socket() -> Result<socket2::Socket, MeshSimError> {
 
 /// Logs outgoing packets in a standard format
 pub fn log_tx(
-    logger: &Logger, 
+    logger: &Logger,
     tx: TxMetadata,
-    msg_id : &str,
+    msg_id: &str,
     status: MessageStatus,
     source: &str,
     destination: &str,
-    md : Box<dyn KV>
+    md: Box<dyn KV>,
 ) {
     // let status = md.status.to_string();
     info!(
@@ -800,12 +816,13 @@ pub fn log_tx(
 
 /// Logs an incoming message
 pub fn log_rx<T: KV>(
-    logger: &Logger, 
-    hdr : &MessageHeader,
-    status : MessageStatus, 
+    logger: &Logger,
+    hdr: &MessageHeader,
+    status: MessageStatus,
     reason: Option<&str>,
     action: Option<&str>,
-    msg : &T) {
+    msg: &T,
+) {
     info!(
         logger,
         "Received message";
@@ -819,7 +836,7 @@ pub fn log_rx<T: KV>(
         msg
     );
 }
-    
+
 #[allow(dead_code)]
 const NSS_PIN: u64 = 25;
 #[allow(dead_code)]
@@ -850,7 +867,7 @@ where
         "LoraRadio"
     }
 
-    fn broadcast(&self, hdr: MessageHeader, md : Box<dyn KV>) -> Result<(), MeshSimError> {
+    fn broadcast(&self, hdr: MessageHeader, md: Box<dyn KV>) -> Result<(), MeshSimError> {
         let data = to_vec(&hdr).map_err(|e| {
             let err_msg = String::from("Failed to serialize message");
             MeshSimError {

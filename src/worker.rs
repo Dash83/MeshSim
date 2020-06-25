@@ -34,7 +34,7 @@ use md5::Digest;
 use rand::{rngs::StdRng, SeedableRng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
-use slog::{Logger, Key, Value, Record, Serializer};
+use slog::{Key, Logger, Record, Serializer, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::process::Child;
@@ -43,7 +43,6 @@ use std::sync::{Arc, Mutex};
 use std::sync::{MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::{self, error, fmt, io};
-
 
 //Sub-modules declaration
 pub mod commands;
@@ -272,11 +271,7 @@ impl MessageHeader {
     }
 
     ///Create new, empty MessageHeader.
-    pub fn new(
-        sender: String,
-        destination: String,
-        payload: Vec<u8>,
-    ) -> MessageHeader {
+    pub fn new(sender: String, destination: String, payload: Vec<u8>) -> MessageHeader {
         let msg_id = MessageHeader::create_msg_id(&destination, payload.clone());
         MessageHeader {
             sender,
@@ -294,9 +289,9 @@ impl MessageHeader {
     ///are updated automatically.
     pub fn create_forward_header(self, new_sender: String) -> MessageHeaderBuilder {
         MessageHeaderBuilder {
-            old_data : self,
-            sender : new_sender,
-            destination : None,
+            old_data: self,
+            sender: new_sender,
+            destination: None,
             hops: None,
             ttl: None,
             payload: None,
@@ -309,12 +304,12 @@ impl MessageHeader {
     /// Payload
     /// This is done instead of getting the md5sum of the entire structure for testability purposes
     pub fn get_msg_id(&self) -> &str {
-        return &self.msg_id
+        return &self.msg_id;
     }
-    
+
     /// Get a reference to the payload of the message. It is primarily used to deserialize it into a protocol message.
     pub fn get_payload(&self) -> &[u8] {
-        return self.payload.as_slice()
+        return self.payload.as_slice();
     }
 
     fn create_msg_id(destination: &String, mut payload: Vec<u8>) -> String {
@@ -330,7 +325,7 @@ impl MessageHeader {
 ///Used to create a new MessageHeader from another MessageHeader.
 ///Created with the method create_forward_header from MessageHeader.
 pub struct MessageHeaderBuilder {
-    old_data : MessageHeader,
+    old_data: MessageHeader,
     /// The new sender of the message
     sender: String,
     ///Destination of the message
@@ -376,8 +371,8 @@ impl MessageHeaderBuilder {
         let payload = self.payload.unwrap_or(self.old_data.payload);
         let msg_id = MessageHeader::create_msg_id(&destination, payload.clone());
         MessageHeader {
-            sender : self.sender,
-            destination:destination ,
+            sender: self.sender,
+            destination: destination,
             hops: self.hops.unwrap_or(self.old_data.hops),
             delay: 0u64,
             ttl: self.ttl.unwrap_or(self.old_data.ttl),
@@ -410,7 +405,7 @@ impl fmt::Display for MessageStatus {
 }
 
 impl Value for MessageStatus {
-    fn serialize(&self, _rec: &Record, key: Key, serializer: &mut Serializer) -> slog::Result { 
+    fn serialize(&self, _rec: &Record, key: Key, serializer: &mut Serializer) -> slog::Result {
         serializer.emit_str(key, &self.to_string())
     }
 }
@@ -597,7 +592,7 @@ impl Worker {
                     .num_threads(WORKER_POOL_SIZE)
                     .build();
                 let max_queued_jobs = self.packet_queue_size;
-                
+
                 thread::spawn(move || {
                     let radio_label: String = match rx.get_radio_range() {
                         RadioTypes::LongRange => String::from("LoraRadio"),
@@ -614,7 +609,7 @@ impl Worker {
 
                                 if thread_pool.queued_count() >= max_queued_jobs {
                                     info!(
-                                        logger, 
+                                        logger,
                                         "Message received";
                                         "status"=>MessageStatus::DROPPED,
                                         "reason"=>"packet_queue is full"
@@ -623,25 +618,24 @@ impl Worker {
                                 }
 
                                 thread_pool.execute(move || {
-                                    let (response , log_data)= match prot.handle_message(hdr, r_type) {
-                                        Ok(resp) => resp,
-                                        Err(e) => {
-                                            error!(log, "Error handling message:");
-                                            error!(log, "{}", &e);
-                                            if let Some(cause) = e.cause {
-                                                error!(log, "Cause: {}", cause);
+                                    let (response, log_data) =
+                                        match prot.handle_message(hdr, r_type) {
+                                            Ok(resp) => resp,
+                                            Err(e) => {
+                                                error!(log, "Error handling message:");
+                                                error!(log, "{}", &e);
+                                                if let Some(cause) = e.cause {
+                                                    error!(log, "Cause: {}", cause);
+                                                }
+                                                (None, None)
                                             }
-                                            (None, None)
-                                        }
-                                    };
+                                        };
 
                                     if let Some(r) = response {
                                         let log_data = log_data.expect("ERROR: Log_Data was empty");
                                         let msg_id = r.get_msg_id().to_string();
                                         match tx_channel.broadcast(r, log_data) {
-                                            Ok(_) => { 
-                                                /* All good */
-                                            }
+                                            Ok(_) => { /* All good */ }
                                             Err(e) => {
                                                 error!(log, "Error sending response: {}", e);
                                                 if let Some(cause) = e.cause {
@@ -652,11 +646,11 @@ impl Worker {
                                     }
                                 });
                                 // info!(logger, "Jobs: {}", thread_pool.queued_count());
-//                                debug!(
-//                                    logger,
-//                                    "Jobs that have paniced: {}",
-//                                    thread_pool.panic_count()
-//                                );
+                                //                                debug!(
+                                //                                    logger,
+                                //                                    "Jobs that have paniced: {}",
+                                //                                    thread_pool.panic_count()
+                                //                                );
                             }
                             None => {
                                 warn!(logger, "Failed to read incoming message.");
@@ -794,9 +788,9 @@ impl Worker {
                 }
                 Err(e) => {
                     error!(logger, "{}", &e);
-//                    if let Some(cause) = e.cause {
-//                        error!(logger, "Cause: {}", &cause);
-//                    }
+                    //                    if let Some(cause) = e.cause {
+                    //                        error!(logger, "Cause: {}", &cause);
+                    //                    }
                 }
             }
             input.clear();
@@ -831,8 +825,8 @@ impl Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::iter;
     use rand::RngCore;
+    use std::iter;
 
     //use worker::worker_config::*;
 

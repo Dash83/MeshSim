@@ -12,7 +12,6 @@
 )]
 
 use crate::worker::WorkerError;
-use serde_json::Value;
 use slog::{Drain, Logger};
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -36,7 +35,7 @@ pub struct LogEntry {
     /// Timestamp of the event
     pub ts: String,
     /// Packet status
-    pub status : Option<String>,
+    pub status: Option<String>,
     /// Reason for status
     pub reason: Option<String>,
     /// Length of the route that delivered the packet
@@ -51,7 +50,7 @@ pub struct LogEntry {
 
 ///Struct to hold a log record of an incoming message
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct IncomingMsgLog{
+pub struct IncomingMsgLog {
     ///The type of message
     pub msg_type: String,
     ///The node that transmitted this message
@@ -72,7 +71,7 @@ pub struct IncomingMsgLog{
 
 ///Struct to hold a log record of an outgoing message
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct OutgoingMsgLog{
+pub struct OutgoingMsgLog {
     ///The type of message
     pub msg_type: String,
     ///The node that transmitted this message
@@ -89,7 +88,6 @@ pub struct OutgoingMsgLog{
     pub radio: String,
     ///The time it took to make the transmission (in nanoseconds)
     pub duration: String, //TODO: This is a bug. It should be u128, but for some reason radio::log_tx logs it as a string.
-
 }
 
 ///Loads a log file and produces an array of log records for processing.
@@ -108,7 +106,9 @@ pub fn get_log_records_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<LogEntry
 }
 
 ///Creates a Vector that holds all the incoming message logs
-pub fn get_incoming_message_records<P: AsRef<Path>>(path: P) -> Result<Vec<IncomingMsgLog>, io::Error> {
+pub fn get_incoming_message_records<P: AsRef<Path>>(
+    path: P,
+) -> Result<Vec<IncomingMsgLog>, io::Error> {
     let file = File::open(path)?;
     let mut records = Vec::new();
     let reader = io::BufReader::new(file);
@@ -125,7 +125,9 @@ pub fn get_incoming_message_records<P: AsRef<Path>>(path: P) -> Result<Vec<Incom
 }
 
 ///Creates a Vector that holds all the outgoing message logs
-pub fn get_outgoing_message_records<P: AsRef<Path>>(path: P) -> Result<Vec<OutgoingMsgLog>, io::Error> {
+pub fn get_outgoing_message_records<P: AsRef<Path>>(
+    path: P,
+) -> Result<Vec<OutgoingMsgLog>, io::Error> {
     let file = File::open(path)?;
     let mut records = Vec::new();
     let reader = io::BufReader::new(file);
@@ -141,12 +143,8 @@ pub fn get_outgoing_message_records<P: AsRef<Path>>(path: P) -> Result<Vec<Outgo
     Ok(records)
 }
 
-
 ///Given a log key (such as ts) will return the first log record that matches the log_value passed.
-pub fn find_record_by_msg<'a>(
-    msg: &str,
-    records: &'a [LogEntry],
-) -> Option<&'a LogEntry> {
+pub fn find_record_by_msg<'a>(msg: &str, records: &'a [LogEntry]) -> Option<&'a LogEntry> {
     for rec in records {
         if &rec.msg == &msg {
             return Some(rec);

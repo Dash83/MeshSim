@@ -1,17 +1,17 @@
 //! Protocol that naively routes data by relaying all messages it receives.
 
-use crate::worker::protocols::{Protocol, Outcome};
+use crate::worker::protocols::{Outcome, Protocol};
 use crate::worker::radio::{self, *};
-use crate::worker::{MessageHeader, Peer, MessageStatus};
+use crate::worker::{MessageHeader, MessageStatus, Peer};
 use crate::{MeshSimError, MeshSimErrorKind};
 use md5::Digest;
+use rand::{rngs::StdRng, RngCore};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
-use slog::{Logger,KV, Record, Serializer};
-use std::sync::{Arc, Mutex};
+use slog::{Logger, Record, Serializer, KV};
 use std::collections::HashSet;
-use rand::{rngs::StdRng, RngCore};
 use std::iter::Iterator;
+use std::sync::{Arc, Mutex};
 
 const MSG_CACHE_SIZE: usize = 10000;
 
@@ -32,7 +32,7 @@ pub struct NaiveRouting {
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct DataMessage {
-    payload : Vec<u8>,
+    payload: Vec<u8>,
 }
 
 impl KV for DataMessage {
@@ -80,11 +80,11 @@ impl Protocol for NaiveRouting {
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
-        let msg = DataMessage{ payload: data};
-        let log_data= Box::new(msg.clone());
+        let msg = DataMessage { payload: data };
+        let log_data = Box::new(msg.clone());
         let hdr = MessageHeader::new(
-            self.get_self_peer(), 
-            destination, 
+            self.get_self_peer(),
+            destination,
             serialize_message(Messages::Data(msg))?,
         );
         let msg_id = hdr.get_msg_id().to_string();
@@ -99,7 +99,9 @@ impl Protocol for NaiveRouting {
                 cache.remove(&e);
             }
             //Log message
-            cache.insert(CacheEntry { msg_id: msg_id.clone() });
+            cache.insert(CacheEntry {
+                msg_id: msg_id.clone(),
+            });
         }
 
         self.short_radio.broadcast(hdr, log_data)?;
@@ -168,29 +170,31 @@ impl NaiveRouting {
             let mut cache = msg_cache.lock().map_err(|e| {
                 let err_msg = String::from("Failed to lock message cache");
                 radio::log_rx(
-                    logger, 
+                    logger,
                     &hdr,
-                    MessageStatus::DROPPED, 
+                    MessageStatus::DROPPED,
                     Some(&err_msg),
                     None,
-                    &msg
+                    &msg,
                 );
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(err_msg),
                     // cause: Some(Box::new(e)),
                     cause: None,
                 }
-            })?; 
+            })?;
 
-            let entry = CacheEntry{ msg_id : msg_id.clone() };
+            let entry = CacheEntry {
+                msg_id: msg_id.clone(),
+            };
             if cache.contains(&entry) {
                 radio::log_rx(
-                    logger, 
+                    logger,
                     &hdr,
-                    MessageStatus::DROPPED, 
+                    MessageStatus::DROPPED,
                     Some("DUPLICATE"),
                     None,
-                    &msg
+                    &msg,
                 );
                 return Ok((None, None));
             }
@@ -205,31 +209,19 @@ impl NaiveRouting {
                 cache.remove(&e);
             }
             //Log message
-            cache.insert(CacheEntry { msg_id: msg_id.clone() });
+            cache.insert(CacheEntry {
+                msg_id: msg_id.clone(),
+            });
         } // LOCK:RELEASE:MSG_CACHE
 
         //Check if this node is the intended recipient of the message.
         if hdr.destination == me {
-            radio::log_rx(
-                logger, 
-                &hdr,
-                MessageStatus::ACCEPTED, 
-                None,
-                None,
-                &msg
-            );
+            radio::log_rx(logger, &hdr, MessageStatus::ACCEPTED, None, None, &msg);
             return Ok((None, None));
         }
 
         //Message is not meant for this node
-        radio::log_rx(
-            logger, 
-            &hdr,
-            MessageStatus::FORWARDING, 
-            None,
-            None,
-            &msg
-        );
+        radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
         //The payload of the incoming header is still valid, so just build a new header with this node as the sender
         //and leave the rest the same.
         let fwd_hdr = hdr.create_forward_header(me.clone()).build();

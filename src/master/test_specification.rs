@@ -2,14 +2,14 @@ extern crate toml;
 
 use super::workloads::*;
 use crate::master::MobilityModels;
+use crate::worker::protocols::Protocols;
 use crate::worker::worker_config::WorkerConfig;
 use crate::{MeshSimError, MeshSimErrorKind};
 use std::collections::HashMap;
+use std::default::Default;
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
-use crate::worker::protocols::Protocols;
-use std::default::Default;
 
 /// Struct to keep the area of the simulation
 #[derive(Debug, Deserialize, Serialize, PartialEq, Default)]
@@ -93,7 +93,7 @@ impl TestSpec {
             mobility: None,
             packet_queue_size: Default::default(),
             actions: vec![],
-            protocol : Default::default(),
+            protocol: Default::default(),
             initial_nodes: HashMap::new(),
             available_nodes: HashMap::new(),
         }

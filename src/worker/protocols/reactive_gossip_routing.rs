@@ -1,20 +1,20 @@
 //! This module implements the Reactive Gossip routing protocol
 
-use crate::worker::protocols::{Protocol, Outcome};
+use crate::worker::protocols::{Outcome, Protocol};
 use crate::worker::radio::{self, *};
-use crate::worker::{MessageHeader, Peer, MessageStatus};
+use crate::worker::{MessageHeader, MessageStatus, Peer};
 use crate::{MeshSimError, MeshSimErrorKind};
 use md5::Digest;
 use rand::{rngs::StdRng, Rng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
-use slog::{Logger,KV, Record, Serializer};
+use slog::{Logger, Record, Serializer, KV};
 
+use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use chrono::{Utc, DateTime};
 
 /// The default number of hops messages are guaranteed to be propagated
 pub const DEFAULT_MIN_HOPS: usize = 2;
@@ -65,8 +65,8 @@ pub struct ReactiveGossipRouting {
 /// two nodes and if one or more exist, establish said routes.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct RouteMessage {
-    pub route_source : String,
-    pub route_destination : String,
+    pub route_source: String,
+    pub route_destination: String,
     pub route_id: String,
     pub route: Vec<String>,
 }
@@ -84,8 +84,8 @@ impl RouteMessage {
         let route_id = format!("{:x}", dig);
 
         RouteMessage {
-            route_source : source,
-            route_destination : destination,
+            route_source: source,
+            route_destination: destination,
             route_id,
             route: vec![],
         }
@@ -154,28 +154,28 @@ enum Messages {
 impl KV for Messages {
     fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
         match *self {
-            Messages::Data(ref m) => { 
+            Messages::Data(ref m) => {
                 let _ = serializer.emit_str("msg_type", "DATA")?;
                 serializer.emit_str("route_id", &m.route_id)
-            },
-            Messages::RouteDiscovery(ref m) => { 
+            }
+            Messages::RouteDiscovery(ref m) => {
                 let _ = serializer.emit_str("msg_type", "ROUTE_DISCOVERY")?;
                 let _ = serializer.emit_str("route_id", &m.route_id)?;
                 let _ = serializer.emit_str("msg_source", &m.route_source)?;
                 let _ = serializer.emit_str("msg_destination", &m.route_destination)?;
                 serializer.emit_usize("route_length", m.route.len())
-            },
-            Messages::RouteEstablish(ref m) => { 
+            }
+            Messages::RouteEstablish(ref m) => {
                 let _ = serializer.emit_str("msg_type", "ROUTE_ESTABLISH")?;
                 let _ = serializer.emit_str("route_id", &m.route_id)?;
                 let _ = serializer.emit_str("msg_source", &m.route_source)?;
                 let _ = serializer.emit_str("msg_destination", &m.route_destination)?;
                 serializer.emit_usize("route_length", m.route.len())
-            },
-            Messages::RouteTeardown(ref m) => { 
+            }
+            Messages::RouteTeardown(ref m) => {
                 let _ = serializer.emit_str("msg_type", "ROUTE_TEARDOWN")?;
                 serializer.emit_str("route_id", &m.route_id)
-            },
+            }
         }
     }
 }
@@ -263,7 +263,8 @@ impl Protocol for ReactiveGossipRouting {
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
-        let routes = self.destination_routes
+        let routes = self
+            .destination_routes
             .lock()
             .expect("Failed to lock destination_routes table");
         let me = self.get_self_peer();
@@ -282,7 +283,8 @@ impl Protocol for ReactiveGossipRouting {
             )?;
             info!(self.logger, "Data has been transmitted");
         } else {
-            let mut pending_destinations = self.pending_destinations
+            let mut pending_destinations = self
+                .pending_destinations
                 .lock()
                 .expect("Failed to lock pending_destinations table");
 
@@ -293,25 +295,27 @@ impl Protocol for ReactiveGossipRouting {
                         "Route discovery process already started for {}", &destination
                     );
                     (route_id, ts, tries)
-                },
+                }
                 None => {
                     info!(
                         self.logger,
                         "No known route to {}. Starting discovery process.", &destination
                     );
                     let route_id = ReactiveGossipRouting::start_route_discovery(
-                        &me, 
-                        destination.clone(), 
+                        &me,
+                        destination.clone(),
                         Arc::clone(&self.short_radio),
                         Arc::clone(&self.route_msg_cache),
-                        &self.logger
+                        &self.logger,
                     )?;
-                    let expiration = Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);
-                    let entry = pending_destinations.entry(destination.clone())
-                    .or_insert_with(|| (route_id, expiration, 0) );
+                    let expiration =
+                        Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);
+                    let entry = pending_destinations
+                        .entry(destination.clone())
+                        .or_insert_with(|| (route_id, expiration, 0));
 
                     (&entry.0, &entry.1, &entry.2)
-                },
+                }
             };
 
             //...and then queue the data transmission for when the route is established
@@ -327,8 +331,8 @@ impl ReactiveGossipRouting {
     pub fn new(
         worker_name: String,
         worker_id: String,
-        k : usize,
-        p : f64,
+        k: usize,
+        p: f64,
         short_radio: Arc<dyn Radio>,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
@@ -358,22 +362,18 @@ impl ReactiveGossipRouting {
     }
 
     fn start_route_discovery(
-        me: &String, 
-        destination: String, 
+        me: &String,
+        destination: String,
         short_radio: Arc<dyn Radio>,
         route_msg_cache: Arc<Mutex<HashSet<String>>>,
-        logger: &Logger
+        logger: &Logger,
     ) -> Result<String, MeshSimError> {
         let mut msg = RouteMessage::new(me.clone(), destination.clone());
         msg.route.push(me.clone());
         let route_id = msg.route_id.clone();
         let msg = Messages::RouteDiscovery(msg);
         let log_data = Box::new(msg.clone());
-        let hdr = MessageHeader::new(
-            me.clone(),
-            destination.clone(),
-            serialize_message(msg)?,
-        );
+        let hdr = MessageHeader::new(me.clone(), destination.clone(), serialize_message(msg)?);
         let msg_id = hdr.get_msg_id().to_string();
 
         //Add the route to the route cache so that this node does not relay it again
@@ -404,11 +404,7 @@ impl ReactiveGossipRouting {
             payload: data,
         });
         let log_data = Box::new(msg.clone());
-        let mut hdr = MessageHeader::new(
-            self_peer,
-            dest,
-            serialize_message(msg)?,
-        );
+        let mut hdr = MessageHeader::new(self_peer, dest, serialize_message(msg)?);
 
         //Log this message in the data_msg_cache so that we can monitor if the neighbors relay it
         //properly, retransmit if necessary, and don't relay it again when we hear it from others.
@@ -554,7 +550,7 @@ impl ReactiveGossipRouting {
                 //     "reason"=>"Not part of route",
                 // );
                 radio::log_rx(
-                    logger, 
+                    logger,
                     &hdr,
                     MessageStatus::DROPPED,
                     Some("Not part of route"),
@@ -589,7 +585,7 @@ impl ReactiveGossipRouting {
                         //     "reason"=>"CONFIRMED",
                         // );
                         radio::log_rx(
-                            logger, 
+                            logger,
                             &hdr,
                             MessageStatus::DROPPED,
                             Some("CONFIRMED"),
@@ -608,7 +604,7 @@ impl ReactiveGossipRouting {
                         //     "reason"=>"DUPLICATE",
                         // );
                         radio::log_rx(
-                            logger, 
+                            logger,
                             &hdr,
                             MessageStatus::DROPPED,
                             Some("DUPLICATE"),
@@ -663,23 +659,23 @@ impl ReactiveGossipRouting {
             //     "route_length" => hdr.hops
             // );
             radio::log_rx(
-                logger, 
+                logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
                 None,
                 None,
                 &Messages::Data(msg),
-            );            
+            );
             Ok((None, None))
         } else {
             radio::log_rx(
-                logger, 
+                logger,
                 &hdr,
                 MessageStatus::FORWARDING,
                 None,
                 None,
                 &Messages::Data(msg.clone()),
-            );   
+            );
 
             //...and re-package the message.
             // hdr.payload = serialize_message(Messages::Data(msg))?;
@@ -716,7 +712,7 @@ impl ReactiveGossipRouting {
             //     "action"=>"Start RouteEstablish process"
             // );
             radio::log_rx(
-                logger, 
+                logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
                 Some("Route discovery succeeded"),
@@ -745,7 +741,8 @@ impl ReactiveGossipRouting {
             let log_data = Box::new(msg.clone());
 
             //Create response header
-            let response_hdr = hdr.create_forward_header(self_peer)
+            let response_hdr = hdr
+                .create_forward_header(self_peer)
                 .set_destination(dest)
                 .set_payload(serialize_message(msg)?)
                 .build();
@@ -760,7 +757,7 @@ impl ReactiveGossipRouting {
                 .expect("Failed to lock route_message cache");
             if !p_routes.insert(msg.route_id.clone()) {
                 radio::log_rx(
-                    logger, 
+                    logger,
                     &hdr,
                     MessageStatus::DROPPED,
                     Some("DUPLICATE"),
@@ -789,7 +786,7 @@ impl ReactiveGossipRouting {
             //     "reason"=>"Gossip failed",
             // );
             radio::log_rx(
-                logger, 
+                logger,
                 &hdr,
                 MessageStatus::DROPPED,
                 Some("Gossip failed"),
@@ -805,18 +802,12 @@ impl ReactiveGossipRouting {
         //Re-tag the message
         let msg = Messages::RouteDiscovery(msg);
 
-        radio::log_rx(
-            logger, 
-            &hdr,
-            MessageStatus::FORWARDING,
-            None,
-            None,
-            &msg,
-        );
+        radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
         // Build log data
         let log_data = Box::new(msg.clone());
         //Build message and forward it
-        let fwd_hdr = hdr.create_forward_header(self_peer)
+        let fwd_hdr = hdr
+            .create_forward_header(self_peer)
             .set_payload(serialize_message(msg)?)
             .build();
 
@@ -851,7 +842,7 @@ impl ReactiveGossipRouting {
                 //     "reason"=>"Empty payload",
                 // );
                 radio::log_rx(
-                    logger, 
+                    logger,
                     &hdr,
                     MessageStatus::DROPPED,
                     Some("Empty payload"),
@@ -874,7 +865,7 @@ impl ReactiveGossipRouting {
             //     "reason"=>"Not meant for this node",
             // );
             radio::log_rx(
-                logger, 
+                logger,
                 &hdr,
                 MessageStatus::DROPPED,
                 Some("Not meant for this node"),
@@ -924,7 +915,7 @@ impl ReactiveGossipRouting {
             //     "route"=>route,
             // );
             radio::log_rx(
-                logger, 
+                logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
                 None,
@@ -958,20 +949,14 @@ impl ReactiveGossipRouting {
         //Re-tag the message
         let msg = Messages::RouteEstablish(msg);
 
-        radio::log_rx(
-            logger, 
-            &hdr,
-            MessageStatus::FORWARDING,
-            None,
-            None,
-            &msg,
-        );
+        radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
 
         //Build log data
         let log_data = Box::new(msg.clone());
 
         //Build message and forward it
-        let fwd_hdr = hdr.create_forward_header(self_peer)
+        let fwd_hdr = hdr
+            .create_forward_header(self_peer)
             .set_payload(serialize_message(msg)?)
             .build();
 
@@ -1002,7 +987,7 @@ impl ReactiveGossipRouting {
             if subscribed {
                 //Log incoming packet
                 radio::log_rx(
-                    logger, 
+                    logger,
                     &hdr,
                     MessageStatus::FORWARDING,
                     None,
@@ -1020,13 +1005,14 @@ impl ReactiveGossipRouting {
                 //Create log data
                 let msg = Messages::RouteTeardown(msg);
                 let log_data = Box::new(msg.clone());
-                let fwd_hdr = hdr.create_forward_header(self_peer)
+                let fwd_hdr = hdr
+                    .create_forward_header(self_peer)
                     .set_payload(serialize_message(msg)?)
                     .build();
                 (Some(fwd_hdr), Some(log_data))
             } else {
                 radio::log_rx(
-                    logger, 
+                    logger,
                     &hdr,
                     MessageStatus::DROPPED,
                     Some("Not subscribed to route"),
@@ -1048,10 +1034,7 @@ impl ReactiveGossipRouting {
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
-        info!(
-            logger,
-            "Looking for queued flows for {}", &destination
-        );
+        info!(logger, "Looking for queued flows for {}", &destination);
 
         let entry: Option<(String, Vec<Vec<u8>>)> = {
             let mut qt = queued_transmissions
@@ -1080,13 +1063,14 @@ impl ReactiveGossipRouting {
                         data,
                         radio,
                         dmc,
-                        &l) {
-                            Ok(_) => {
-                                // All good!
-                            }
-                            Err(e) => {
-                                error!(l, "Failed to start transmission for route {} - {}", r_id, e);
-                            }
+                        &l,
+                    ) {
+                        Ok(_) => {
+                            // All good!
+                        }
+                        Err(e) => {
+                            error!(l, "Failed to start transmission for route {} - {}", r_id, e);
+                        }
                     }
                 });
             }
@@ -1096,7 +1080,6 @@ impl ReactiveGossipRouting {
         thread_pool.join();
         Ok(())
     }
-
 
     fn build_protocol_message(data: Vec<u8>) -> Result<Messages, serde_cbor::Error> {
         let res: Result<Messages, serde_cbor::Error> = from_slice(data.as_slice());
@@ -1139,21 +1122,18 @@ impl ReactiveGossipRouting {
                         entry.retries += 1;
                         let log_data = Box::new(());
                         info!(
-                            logger, 
+                            logger,
                             "Retransmitting message {}", &hdr.get_msg_id();
                             "retries"=>entry.retries,
                         );
 
                         //The message is still cached, so re-transmit it.
                         match short_radio.broadcast(hdr, log_data) {
-                            Ok(_) => {
-                                /* All good! */
-                            },
-                            Err(e) => { 
+                            Ok(_) => { /* All good! */ }
+                            Err(e) => {
                                 error!(logger, "Failed to re-transmit message. {}", e);
-                            },
+                            }
                         }
-
                     } else {
                         // The message is no longer cached.
                         // At this point, we assume the route is broken.
@@ -1179,7 +1159,7 @@ impl ReactiveGossipRouting {
                             let hdr = MessageHeader::new(
                                 me.clone(),
                                 String::new(),
-                                serialize_message(msg)?
+                                serialize_message(msg)?,
                             );
                             //Send message
                             match short_radio.broadcast(hdr, log_data) {
@@ -1190,10 +1170,10 @@ impl ReactiveGossipRouting {
                                         "route_id"=>&route_id,
                                         "reason"=>"Unable to confirm previously sent DATA message"
                                     );
-                                },
-                                Err(e) => { 
+                                }
+                                Err(e) => {
                                     error!(logger, "Failed to send route-teardown message. {}", e);
-                                },
+                                }
                             }
                         } else {
                             error!(logger, "Inconsistent state reached");
@@ -1208,46 +1188,46 @@ impl ReactiveGossipRouting {
             {
                 let mut pd = pending_destinations
                     .lock()
-                    .expect("Failed to lock pending_destinations table");    
-                for (dest, (route_id, ts, retries)) in pd
-                    .iter_mut()
-                    .filter(|(_dest, entry)| entry.1 < Utc::now()) {
+                    .expect("Failed to lock pending_destinations table");
+                for (dest, (route_id, ts, retries)) in
+                    pd.iter_mut().filter(|(_dest, entry)| entry.1 < Utc::now())
+                {
                     //Should we retry?
                     if *retries < ROUTE_DISCOVERY_MAX_RETRY {
                         info!(
-                            logger, 
+                            logger,
                             "Re-trying ROUTE_DISCOVERY for {}", &dest;
                             "reason"=>"Time limit for discover exceeded"
                         );
                         //Transmit new route discovery
                         let new_route_id = ReactiveGossipRouting::start_route_discovery(
-                            &me, 
-                            dest.clone(), 
+                            &me,
+                            dest.clone(),
                             Arc::clone(&short_radio),
                             Arc::clone(&route_msg_cache),
-                            &logger
+                            &logger,
                         )?;
 
                         //Increase retries for route-discovery
                         *retries += 1;
                         *route_id = new_route_id;
-                        *ts = Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);                        
+                        *ts =
+                            Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);
                     } else {
                         //Retries exhausted. Add to list.
                         expired_discoveries.push(dest.clone());
                         warn!(
-                            logger, 
+                            logger,
                             "Dropping queued packets for {}", &dest;
                             "reason"=>"ROUTE_DISCOVERY retries exceeded",
                             "route"=>&(*route_id),
                         );
-
                     }
                 }
                 //Remove the expired entries from the pending_destinations list.
                 pd.retain(|k, _| !expired_discoveries.contains(&k));
             }
-            
+
             //Purge queued packets of expired routes
             {
                 let mut qt = queued_transmissions
@@ -1350,5 +1330,4 @@ mod tests {
     fn test_simple_three_hop_route_discovery() {
         unimplemented!();
     }
-
 }

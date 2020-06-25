@@ -16,7 +16,7 @@ fn count_data_packets(log_recors: &Vec<LogEntry>) -> usize {
             if status == "ACCEPTED" && msg_type == "DATA" {
                 packet_count += 1;
             }
-        } 
+        }
     }
     packet_count
 }
@@ -24,26 +24,40 @@ fn count_data_packets(log_recors: &Vec<LogEntry>) -> usize {
 #[test]
 fn test_basic() {
     let test_name = String::from("rgrII_basic");
-    let data= setup(&test_name, false, false);
+    let data = setup(&test_name, false, false);
 
-    println!("Running command: {} -t {} -w {} -d {}", &data.master, &data.test_file, &data.worker, &data.work_dir);
+    println!(
+        "Running command: {} -t {} -w {} -d {}",
+        &data.master, &data.test_file, &data.worker, &data.work_dir
+    );
 
     //Assert the test finished succesfully
     assert_cli::Assert::command(&[&data.master])
-    .with_args(&["-t",  &data.test_file, "-w", &data.worker, "-d", &data.work_dir])
-    .succeeds()
-    .unwrap();
+        .with_args(&[
+            "-t",
+            &data.test_file,
+            "-w",
+            &data.worker,
+            "-d",
+            &data.work_dir,
+        ])
+        .succeeds()
+        .unwrap();
 
     //Check the test ended with the correct number of processes.
-    let master_log_file = format!("{}{}{}{}{}", &data.work_dir,
-                                                std::path::MAIN_SEPARATOR,
-                                                LOG_DIR_NAME,
-                                                std::path::MAIN_SEPARATOR,
-                                                DEFAULT_MASTER_LOG);
+    let master_log_file = format!(
+        "{}{}{}{}{}",
+        &data.work_dir,
+        std::path::MAIN_SEPARATOR,
+        LOG_DIR_NAME,
+        std::path::MAIN_SEPARATOR,
+        DEFAULT_MASTER_LOG
+    );
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
     let master_node_num = logging::find_record_by_msg(
-                                                   "End_Test action: Finished. 25 processes terminated.", 
-                                                   &master_log_records);
+        "End_Test action: Finished. 25 processes terminated.",
+        &master_log_records,
+    );
     assert!(master_node_num.is_some());
 
     //Check the handshake between the nodes
@@ -56,30 +70,43 @@ fn test_basic() {
     teardown(data, true);
 }
 
-
 #[test]
 fn test_route_discovery_optimization() {
     let test_name = String::from("rgrII_route_discovery_optimization");
-    let data= setup(&test_name, false, false);
+    let data = setup(&test_name, false, false);
 
-    println!("Running command: {} -t {} -w {} -d {}", &data.master, &data.test_file, &data.worker, &data.work_dir);
+    println!(
+        "Running command: {} -t {} -w {} -d {}",
+        &data.master, &data.test_file, &data.worker, &data.work_dir
+    );
 
     //Assert the test finished succesfully
     assert_cli::Assert::command(&[&data.master])
-    .with_args(&["-t",  &data.test_file, "-w", &data.worker, "-d", &data.work_dir])
-    .succeeds()
-    .unwrap();
+        .with_args(&[
+            "-t",
+            &data.test_file,
+            "-w",
+            &data.worker,
+            "-d",
+            &data.work_dir,
+        ])
+        .succeeds()
+        .unwrap();
 
     //Check the test ended with the correct number of processes.
-    let master_log_file = format!("{}{}{}{}{}", &data.work_dir,
-                                                std::path::MAIN_SEPARATOR,
-                                                LOG_DIR_NAME,
-                                                std::path::MAIN_SEPARATOR,
-                                                DEFAULT_MASTER_LOG);
+    let master_log_file = format!(
+        "{}{}{}{}{}",
+        &data.work_dir,
+        std::path::MAIN_SEPARATOR,
+        LOG_DIR_NAME,
+        std::path::MAIN_SEPARATOR,
+        DEFAULT_MASTER_LOG
+    );
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
     let master_node_num = logging::find_record_by_msg(
-                                                   "End_Test action: Finished. 81 processes terminated.",
-                                                   &master_log_records);
+        "End_Test action: Finished. 81 processes terminated.",
+        &master_log_records,
+    );
     assert!(master_node_num.is_some());
 
     //Node 43 should received 16 packets

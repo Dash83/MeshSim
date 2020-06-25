@@ -1,19 +1,19 @@
 //! Module for the test protocol that uses Lora and Wifi radios
 
-use crate::worker::protocols::{Protocol, Outcome};
+use crate::worker::protocols::{Outcome, Protocol};
 use crate::worker::radio::{self, Radio, RadioTypes};
-use crate::worker::{MessageHeader, Peer, MessageStatus};
+use crate::worker::{MessageHeader, MessageStatus, Peer};
 use crate::{MeshSimError, MeshSimErrorKind};
 use md5::Digest;
 use rand::thread_rng;
 use rand::RngCore;
+use rand::{rngs::StdRng, Rng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
-use slog::{Logger,KV, Record, Serializer};
+use slog::{Logger, Record, Serializer, KV};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use rand::{rngs::StdRng, Rng};
 
 const WIFI_BEACON_TIMEOUT: u64 = 2_000;
 const LORA_BEACON_TIMEOUT: u64 = 2_000;
@@ -25,7 +25,7 @@ pub struct LoraWifiBeacon {
     worker_id: String,
     wifi_radio: Arc<dyn Radio>,
     lora_radio: Arc<dyn Radio>,
-    rng : StdRng,
+    rng: StdRng,
     logger: Logger,
 }
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -41,14 +41,14 @@ enum Messages {
 impl KV for Messages {
     fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
         match *self {
-            Messages::Beacon(msg) => { 
-                let _= serializer.emit_str("msg_type", "BEACON")?;
+            Messages::Beacon(msg) => {
+                let _ = serializer.emit_str("msg_type", "BEACON")?;
                 serializer.emit_u64("id", msg.0)
-            },
-            Messages::BeaconResponse(msg) => { 
-                let _= serializer.emit_str("msg_type", "BEACON_RESPONSE")?;
+            }
+            Messages::BeaconResponse(msg) => {
+                let _ = serializer.emit_str("msg_type", "BEACON_RESPONSE")?;
                 serializer.emit_u64("id", msg.0)
-            },
+            }
         }
     }
 }
@@ -74,7 +74,13 @@ impl Protocol for LoraWifiBeacon {
             RadioTypes::LongRange => String::from("lora"),
         };
         LoraWifiBeacon::handle_message_internal(
-            hdr, msg, link, self_peer, wifi_radio, lora_radio, &self.logger,
+            hdr,
+            msg,
+            link,
+            self_peer,
+            wifi_radio,
+            lora_radio,
+            &self.logger,
         )
     }
 
@@ -130,7 +136,7 @@ impl LoraWifiBeacon {
         worker_id: String,
         wifi_radio: Arc<dyn Radio>,
         lora_radio: Arc<dyn Radio>,
-        rng : StdRng,
+        rng: StdRng,
         logger: Logger,
     ) -> LoraWifiBeacon {
         LoraWifiBeacon {
@@ -138,7 +144,7 @@ impl LoraWifiBeacon {
             worker_id,
             wifi_radio,
             lora_radio,
-            rng : rng,
+            rng: rng,
             logger,
         }
     }
@@ -158,11 +164,7 @@ impl LoraWifiBeacon {
             counter += 1;
             let msg = Messages::Beacon(BeaconMessage(counter));
             let log_data = Box::new(msg.clone());
-            let hdr = MessageHeader::new(
-                self_peer.clone(),
-                String::new(),
-                serialize_message(msg)?,
-            );
+            let hdr = MessageHeader::new(self_peer.clone(), String::new(), serialize_message(msg)?);
 
             radio.broadcast(hdr, log_data)?;
             // info!(logger, "Beacon sent over {}:{}", &link, counter);
@@ -196,7 +198,7 @@ impl LoraWifiBeacon {
         mut hdr: MessageHeader,
         msg: BeaconMessage,
         link: String,
-        me : String,
+        me: String,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
         radio::log_rx(
@@ -205,13 +207,14 @@ impl LoraWifiBeacon {
             MessageStatus::ACCEPTED,
             None,
             Some("Replying to message"),
-            &Messages::Beacon(msg.clone())
+            &Messages::Beacon(msg.clone()),
         );
 
         let sender = hdr.sender.clone();
         let resp_msg = Messages::BeaconResponse(msg);
         let log_data = Box::new(resp_msg.clone());
-        let response_hdr = hdr.create_forward_header(me)
+        let response_hdr = hdr
+            .create_forward_header(me)
             .set_payload(serialize_message(resp_msg)?)
             .set_destination(sender)
             .build();
@@ -226,7 +229,6 @@ impl LoraWifiBeacon {
         me: String,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
-
         if hdr.destination == me {
             // info!(
             //     logger,
@@ -238,7 +240,7 @@ impl LoraWifiBeacon {
                 MessageStatus::ACCEPTED,
                 None,
                 None,
-                &Messages::BeaconResponse(msg)
+                &Messages::BeaconResponse(msg),
             );
         }
 

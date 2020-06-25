@@ -6,32 +6,46 @@ use mesh_simulator::tests::common::*;
 #[test]
 fn aodv_basic() {
     let test_name = String::from("aodv_basic");
-    let data= setup(&test_name, false, false);
+    let data = setup(&test_name, false, false);
 
-    println!("Running command: {} -t {} -w {} -d {}", &data.master, &data.test_file, &data.worker, &data.work_dir);
+    println!(
+        "Running command: {} -t {} -w {} -d {}",
+        &data.master, &data.test_file, &data.worker, &data.work_dir
+    );
 
     //Assert the test finished succesfully
     assert_cli::Assert::command(&[&data.master])
-    .with_args(&["-t",  &data.test_file, "-w", &data.worker, "-d", &data.work_dir])
-    .succeeds()
-    .unwrap();
+        .with_args(&[
+            "-t",
+            &data.test_file,
+            "-w",
+            &data.worker,
+            "-d",
+            &data.work_dir,
+        ])
+        .succeeds()
+        .unwrap();
 
     //Check the test ended with the correct number of processes.
-    let master_log_file = format!("{}{}{}{}{}", &data.work_dir,
-                                                std::path::MAIN_SEPARATOR,
-                                                LOG_DIR_NAME,
-                                                std::path::MAIN_SEPARATOR,
-                                                DEFAULT_MASTER_LOG);
+    let master_log_file = format!(
+        "{}{}{}{}{}",
+        &data.work_dir,
+        std::path::MAIN_SEPARATOR,
+        LOG_DIR_NAME,
+        std::path::MAIN_SEPARATOR,
+        DEFAULT_MASTER_LOG
+    );
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
     let master_node_num = logging::find_record_by_msg(
-                                                   "End_Test action: Finished. 25 processes terminated.", 
-                                                   &master_log_records);
+        "End_Test action: Finished. 25 processes terminated.",
+        &master_log_records,
+    );
     assert!(master_node_num.is_some());
 
     let node25_log_file = format!("{}/log/node25.log", &data.work_dir);
     let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
 
-    let mut received_packets = 0 ;
+    let mut received_packets = 0;
     for record in node25_log_records.iter() {
         if record.status.is_some() && record.msg_type.is_some() {
             let status = &record.status.clone().unwrap();
@@ -39,12 +53,12 @@ fn aodv_basic() {
             if status == "ACCEPTED" && msg_type == "DATA" {
                 received_packets += 1;
             }
-        } 
+        }
     }
     assert_eq!(received_packets, 2);
 
     //Test passed. Results are not needed.
-    teardown(data,  true);
+    teardown(data, true);
 }
 
 /// This test is designed to evaluate the route error detecting capabilities of AODV.
@@ -63,26 +77,40 @@ fn aodv_basic() {
 #[test]
 fn aodv_rerr() {
     let test_name = String::from("aodv_rerr");
-    let data= setup(&test_name, false, false);
+    let data = setup(&test_name, false, false);
 
-    println!("Running command: {} -t {} -w {} -d {}", &data.master, &data.test_file, &data.worker, &data.work_dir);
+    println!(
+        "Running command: {} -t {} -w {} -d {}",
+        &data.master, &data.test_file, &data.worker, &data.work_dir
+    );
 
     //Assert the test finished succesfully
     assert_cli::Assert::command(&[&data.master])
-    .with_args(&["-t",  &data.test_file, "-w", &data.worker, "-d", &data.work_dir])
-    .succeeds()
-    .unwrap();
+        .with_args(&[
+            "-t",
+            &data.test_file,
+            "-w",
+            &data.worker,
+            "-d",
+            &data.work_dir,
+        ])
+        .succeeds()
+        .unwrap();
 
     //Check the test ended with the correct number of processes.
-    let master_log_file = format!("{}{}{}{}{}", &data.work_dir,
-                                                std::path::MAIN_SEPARATOR,
-                                                LOG_DIR_NAME,
-                                                std::path::MAIN_SEPARATOR,
-                                                DEFAULT_MASTER_LOG);
+    let master_log_file = format!(
+        "{}{}{}{}{}",
+        &data.work_dir,
+        std::path::MAIN_SEPARATOR,
+        LOG_DIR_NAME,
+        std::path::MAIN_SEPARATOR,
+        DEFAULT_MASTER_LOG
+    );
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
     let master_node_num = logging::find_record_by_msg(
-                                                   "End_Test action: Finished. 23 processes terminated.", 
-                                                   &master_log_records);
+        "End_Test action: Finished. 23 processes terminated.",
+        &master_log_records,
+    );
     assert!(master_node_num.is_some());
 
     // Evaluate the behaviour of Node5
@@ -99,7 +127,7 @@ fn aodv_rerr() {
         .len();
 
     assert_eq!(data_packets, 1);
-    assert_eq!(rerr_msgs_sent, 1);     
+    assert_eq!(rerr_msgs_sent, 1);
 
     //Evaluate the behaviour of Node3
     // Node3 is part of the route that was established between Node1 and Node5 and thus
@@ -126,8 +154,8 @@ fn aodv_rerr() {
         .filter(|&m| m.msg_type == "RERR" && m.status == "SENT")
         .collect::<Vec<_>>()
         .len();
-    assert_eq!(rerr_msgs_sent, 1);   
-    
+    assert_eq!(rerr_msgs_sent, 1);
+
     // //Evaluate the behaviour of Node15
     // let node15_log_file = format!("{}/log/node15.log", &data.work_dir);
     // let outgoing_messages = logging::get_outgoing_message_records(node15_log_file).unwrap();
@@ -136,8 +164,8 @@ fn aodv_rerr() {
     //     .filter(|&m| m.msg_type == "RERR" && m.status == "SENT")
     //     .collect::<Vec<_>>()
     //     .len();
-    // assert_eq!(rerr_msgs_sent, 1);  
+    // assert_eq!(rerr_msgs_sent, 1);
 
     // //Test passed. Results are not needed.
-    teardown(data,  true);
+    teardown(data, true);
 }
