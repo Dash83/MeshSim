@@ -30,30 +30,54 @@ fn naive_basic() {
     );
     assert!(master_node_num.is_some());
 
-    //Check the handshake between the nodes
     let node1_log_file = format!("{}/log/node1.log", &data.work_dir);
-    let node1_log_records = logging::get_log_records_from_file(&node1_log_file).unwrap();
     let node2_log_file = &format!("{}/log/node2.log", &data.work_dir);
-    let node2_log_records = logging::get_log_records_from_file(&node2_log_file).unwrap();
     let node3_log_file = &format!("{}/log/node3.log", &data.work_dir);
-    let node3_log_records = logging::get_log_records_from_file(&node3_log_file).unwrap();
+    let node1_log_records = logging::get_log_records_from_file(&node1_log_file).unwrap();
+    let incoming_node1 = get_incoming_message_records(&node1_log_file).expect("Could not read incoming packets");
+    let outgoing_node1 = get_outgoing_message_records(&node1_log_file).expect("Could not read outgoing packets");
+    let incoming_node2 = get_incoming_message_records(&node2_log_file).expect("Could not read incoming packets");
+    let incoming_node3 = get_incoming_message_records(&node3_log_file).expect("Could not read incoming packets");
 
     //node1 receives the command to start transmission
     let node_1_cmd_recv = logging::find_record_by_msg("Send command received", &node1_log_records);
     //node1 sends the message. node2 is the only node in range.
-    let node_1_msg_sent = logging::find_record_by_msg("Message 763ecd437c5bd4aa764380b63d5951ba sent", &node1_log_records);
-    //node2 receives the message. It's a new message so it relays it
-    let node_2_msg_recv = logging::find_record_by_msg("Message 763ecd437c5bd4aa764380b63d5951ba sent", &node2_log_records);   
-    //node3 receives the message. Since node3 it's the intended receiver, it does not relay it
-    let node_3_msg_recv = logging::find_record_by_msg("Received message 763ecd437c5bd4aa764380b63d5951ba", &node3_log_records);   
-    //node1 also receives the message from node2. Since it has never received the message from that node, it relays it for reliability.
-    let node_1_msg_recv = logging::find_record_by_msg("Received message 763ecd437c5bd4aa764380b63d5951ba", &node1_log_records);
+    let node_1_msg_sent = outgoing_node1
+        .iter()
+        .filter(|&m| m.msg_id ==  "e67865e1946602b9b1a5c4e89ac148f4")
+        .collect::<Vec<_>>()
+        .len();
 
+    //node2 receives the message. It's a new message so it relays it
+    let node_2_msg_recv= incoming_node2
+        .iter()
+        .filter(|&m| m.msg_id ==  "e67865e1946602b9b1a5c4e89ac148f4" && 
+                                      m.source == "node1" && 
+                                      m.status == "FORWARDING")
+        .collect::<Vec<_>>()
+        .len();
+
+    //node3 receives the message. Since node3 it's the intended receiver, it does not relay it
+    let node_3_msg_recv= incoming_node3
+        .iter()
+        .filter(|&m| m.msg_id ==  "e67865e1946602b9b1a5c4e89ac148f4" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
+
+    //node1 also receives the message from node2. Since the message originated at node1, it's considered a duplicate and dropped.
+    let node_1_msg_recv= incoming_node1
+        .iter()
+        .filter(|&m| m.msg_id ==  "e67865e1946602b9b1a5c4e89ac148f4" && 
+                                      m.status == "DROPPED" && 
+                                      m.reason == "DUPLICATE")
+        .collect::<Vec<_>>()
+        .len();
+    
     assert!(node_1_cmd_recv.is_some());
-    assert!(node_1_msg_sent.is_some() && node_1_msg_sent.cloned().unwrap().status.unwrap() == "SENT");
-    assert!(node_2_msg_recv.is_some() && node_2_msg_recv.cloned().unwrap().status.unwrap() == "FORWARDED");
-    assert!(node_3_msg_recv.is_some() && node_3_msg_recv.cloned().unwrap().status.unwrap() == "ACCEPTED");
-    assert!(node_1_msg_recv.is_some()  && node_1_msg_recv.cloned().unwrap().status.unwrap() == "DROPPED");
+    assert_eq!(node_1_msg_sent, 1);
+    assert_eq!(node_2_msg_recv, 1);
+    assert_eq!(node_3_msg_recv, 1);
+    assert_eq!(node_1_msg_recv, 1);
 
     //Test passed. Results are not needed.
     teardown(data, true);

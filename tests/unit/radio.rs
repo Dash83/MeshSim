@@ -203,9 +203,9 @@ fn test_broadcast_simulated() {
         String::new(),
         String::new(),
         vec![],
-        0u16,
     );
-    let _res = r2.broadcast(bcast_msg).unwrap();
+    let log_data = Box::new(());
+    let _res = r2.broadcast(bcast_msg, log_data).unwrap();
 
     let rec_msg1 = l1.read_message();
 
@@ -285,67 +285,67 @@ fn test_mac_layer_basic() {
     assert!(master_node_num.is_some());
 
     let node4_log_file = &format!("{}/log/node4.log", &data.work_dir);
-    let node4_log_records = logging::get_log_records_from_file(&node4_log_file).unwrap();
-    let node_4_received = logging::find_record_by_msg(
-        "Received message db805e19ab4bfaa5cef9b146993859a9", 
-        &node4_log_records
-    );
-    assert!(node_4_received.is_some() && 
-            node_4_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
+    let incoming_messages = logging::get_incoming_message_records(node4_log_file).unwrap();
+    let msg_received = incoming_messages
+        .iter()
+        .filter(|&m| m.msg_id == "fde4d48d2af405f81ffb7fd942661093" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
+    assert_eq!(msg_received, 1);
 
     let node5_log_file = &format!("{}/log/node5.log", &data.work_dir);
-    let node5_log_records = logging::get_log_records_from_file(&node5_log_file).unwrap();
-    let node_5_received = logging::find_record_by_msg(
-        "Received message 920d4c99eb3e393e47fa84268a559abb", 
-        &node5_log_records
-    );
-    assert!(node_5_received.is_some() && 
-            node_5_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
+    let incoming_messages = logging::get_incoming_message_records(node5_log_file).unwrap();
+    let msg_received = incoming_messages
+        .iter()
+        .filter(|&m| m.msg_id == "af31bcddd2076fa82a715c2cd0ea4797" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
+    assert_eq!(msg_received, 1);
 
     let node19_log_file = &format!("{}/log/node19.log", &data.work_dir);
-    let node19_log_records = logging::get_log_records_from_file(&node19_log_file).unwrap();
-    let node_19_received = logging::find_record_by_msg(
-        "Received message f57790d905cdfd41887f18c6162b99bf", 
-        &node19_log_records
-    );
-    assert!(node_19_received.is_some() && 
-            node_19_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
+    let incoming_messages = logging::get_incoming_message_records(node19_log_file).unwrap();
+    let msg_received = incoming_messages
+        .iter()
+        .filter(|&m| m.msg_id == "14254398dc1cd65acdd1c59d91c58eaf" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
+    assert_eq!(msg_received, 1);
 
     let node20_log_file = &format!("{}/log/node20.log", &data.work_dir);
-    let node20_log_records = logging::get_log_records_from_file(&node20_log_file).unwrap();
-    let node_20_received = logging::find_record_by_msg(
-        "Received message d763e55c7fd41dd1d635ca7e6602e855", 
-        &node20_log_records
-    );
-    assert!(node_20_received.is_some() && 
-            node_20_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
-    
+    let incoming_messages = logging::get_incoming_message_records(node20_log_file).unwrap();
+    let msg_received = incoming_messages
+        .iter()
+        .filter(|&m| m.msg_id == "db91176df07289b9dca1657d0435a332" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
+    assert_eq!(msg_received, 1);
+
     let node22_log_file = &format!("{}/log/node22.log", &data.work_dir);
-    let node22_log_records = logging::get_log_records_from_file(&node22_log_file).unwrap();
-    let node_22_received = logging::find_record_by_msg(
-        "Received message d9802591b0658377c3ce50e56822bfe2", 
-        &node22_log_records
-    );
-    assert!(node_22_received.is_some() && 
-            node_22_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
+    let incoming_messages = logging::get_incoming_message_records(node22_log_file).unwrap();
+    let msg_received = incoming_messages
+        .iter()
+        .filter(|&m| m.msg_id == "5db52dcc83ccaafc70e513b5a59967ff" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
+    assert_eq!(msg_received, 1);
 
     let node24_log_file = &format!("{}/log/node24.log", &data.work_dir);
-    let node24_log_records = logging::get_log_records_from_file(&node24_log_file).unwrap();
-    let node_24_received = logging::find_record_by_msg(
-        "Received message eadd0fef2df22db64ac06de822ae5c15", 
-        &node24_log_records
-    );
-    assert!(node_24_received.is_some() && 
-            node_24_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
+    let incoming_messages = logging::get_incoming_message_records(node24_log_file).unwrap();
+    let msg_received = incoming_messages
+        .iter()
+        .filter(|&m| m.msg_id == "447aa7819c99839980120f42612e2bf9" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
+    assert_eq!(msg_received, 1);
     
     let node25_log_file = &format!("{}/log/node25.log", &data.work_dir);
-    let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
-    let node_25_received = logging::find_record_by_msg(
-        "Received message fbedcdf252b06a96e4b6b7323be7d788", 
-        &node25_log_records
-    );
-    assert!(node_25_received.is_some() && 
-            node_25_received.cloned().unwrap().status.unwrap() == "ACCEPTED");
+    let incoming_messages = logging::get_incoming_message_records(node25_log_file).unwrap();
+    let msg_received = incoming_messages
+        .iter()
+        .filter(|&m| m.msg_id == "95bd74a6038b3f3137e8067e815abf5b" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
+    assert_eq!(msg_received, 1);
     
     //Teardown
     //If test checks fail, this section won't be reached and not cleaned up for investigation.
@@ -395,9 +395,9 @@ fn test_broadcast_device() -> TestResult {
         String::new(),
         String::new(),
         vec![],
-        0u16,
     );
-    let _res = r1.broadcast(bcast_msg.clone()).unwrap();
+    let log_data = Box::new(());
+    let _res = r1.broadcast(bcast_msg.clone(), log_data).unwrap();
 
     //We only test that the broadcast was received by the broadcaster, since we can only deploy 1 device_mode worker
     //per machine.
@@ -458,9 +458,9 @@ fn test_last_transmission() -> TestResult {
         String::new(),
         String::new(),
         vec![],
-        0u16,
     );
-    tx.broadcast(hdr).expect("Could not broadcast message");
+    let log_data = Box::new(());
+    tx.broadcast(hdr, log_data).expect("Could not broadcast message");
     //Broadcast time
     let bc_ts = tx.last_transmission();
 

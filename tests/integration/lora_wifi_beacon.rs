@@ -31,51 +31,53 @@ fn test_placement() {
 
     //Check the upper left corner of the grid
     let node1_log_file = format!("{}/log/node1.log", &data.work_dir);
-    let node1_log_records = logging::get_log_records_from_file(&node1_log_file).expect("Failed to get log records from node1");
-    let mut received_packets_wifi = 0;
-    let mut received_packets_lora = 0;
-    let mut received_wifi_responses = 0;
-    for record in node1_log_records.iter() {
-        if record.msg.contains("Beacon received over wifi from") {
-            received_packets_wifi += 1;
-        }
+    let incoming_messages = logging::get_incoming_message_records(node1_log_file).unwrap();
+    let beacons_received = incoming_messages
+        .iter()
+        .filter(|&m| m.msg_type == "BEACON" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
+    let responses_received = incoming_messages
+        .iter()
+        .filter(|&m| m.msg_type == "BEACON_RESPONSE" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
 
-        if record.msg.contains("Beacon received over lora from") {
-            received_packets_lora += 1;
-        }
-
-        if record.msg.contains("BeaconResponse received over wifi") {
-            received_wifi_responses += 1;
-        }
-    }
-
-    assert_eq!(received_packets_wifi, 10);
-    assert_eq!(received_wifi_responses, 10);
-//    assert_eq!(received_packets_lora, 25);
+    println!("beacons_received: {}", beacons_received);    
+    println!("responses_received: {}", responses_received);
+    // Expected beacons per node:
+    // node2:   10
+    // node3:   5
+    // node6:   10
+    // node7:   5
+    // node11:  5
+    assert_eq!(beacons_received, 35);
+    // Expected responses per node:
+    // node2:   10
+    // node3:   5
+    // node6:   10
+    // node7:   5
+    // node11:  5
+    assert_eq!(responses_received, 35);
 
     //Check a central node
     let node7_log_file = format!("{}/log/node7.log", &data.work_dir);
-    let node7_log_records = logging::get_log_records_from_file(&node7_log_file).expect("Failed to get log records from node7");
-    let mut received_packets_wifi = 0;
-    let mut received_packets_lora = 0;
-    let mut received_wifi_responses = 0;
-    for record in node7_log_records.iter() {
-        if record.msg.contains("Beacon received over wifi from") {
-            received_packets_wifi += 1;
-        }
+    let incoming_messages = logging::get_incoming_message_records(node7_log_file).unwrap();
+    let beacons_received = incoming_messages
+        .iter()
+        .filter(|&m| m.msg_type == "BEACON" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
+    let responses_received = incoming_messages
+        .iter()
+        .filter(|&m| m.msg_type == "BEACON_RESPONSE" && m.status == "ACCEPTED")
+        .collect::<Vec<_>>()
+        .len();
 
-        if record.msg.contains("Beacon received over lora from") {
-            received_packets_lora += 1;
-        }
-
-        if record.msg.contains("BeaconResponse received over wifi") {
-            received_wifi_responses += 1;
-        }
-    }
-
-    assert_eq!(received_packets_wifi, 20);
-    assert_eq!(received_wifi_responses, 20);
-//    assert_eq!(received_packets_lora, 100);
+    println!("beacons_received: {}", beacons_received);    
+    println!("responses_received: {}", responses_received);
+    assert_eq!(beacons_received, 70);
+    assert_eq!(responses_received, 70);
 
     //Test passed. Results are not needed.
     teardown(data, true);

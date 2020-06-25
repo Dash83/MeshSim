@@ -4,7 +4,7 @@
 
 use crate::worker::listener::*;
 use crate::worker::radio::*;
-use crate::worker::{MessageHeader, Worker, MessageMetadata};
+use crate::worker::{MessageHeader, Worker};
 use crate::{MeshSimError, MeshSimErrorKind};
 use lora_wifi_beacon::LoraWifiBeacon;
 use naive_routing::NaiveRouting;
@@ -13,7 +13,7 @@ use reactive_gossip_routing_II::ReactiveGossipRoutingII;
 use reactive_gossip_routing_III::ReactiveGossipRoutingIII;
 use gossip_routing::GossipRouting;
 use aodv::AODV;
-use slog::Logger;
+use slog::{Logger, KV};
 
 use std;
 use std::str::FromStr;
@@ -29,7 +29,7 @@ pub mod reactive_gossip_routing_II;
 pub mod reactive_gossip_routing_III;
 pub mod aodv;
 
-type Outcome<'a> = (Option<MessageHeader>, Option<MessageMetadata<'a>>);
+type Outcome<'a> = (Option<MessageHeader>, Option<Box<dyn KV>>);
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should

@@ -120,9 +120,10 @@ struct DataCacheEntry {
     confirmed: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct PendingRouteEntry {
     rreq_id: u32,
+    dest_seq_no: u32,
     retries: usize,
     lifetime: DateTime<Utc>,
 }
@@ -159,7 +160,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct RouteRequestMessage {
     flags: RREQFlags,
     hop_count: u8,
@@ -187,7 +188,7 @@ impl KV for RouteRequestMessage {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct RouteResponseMessage {
     flags: RREPFlags,
     //This field is not used in this implementation. Kept for completeness
@@ -216,7 +217,7 @@ impl KV for RouteResponseMessage {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct RouteErrorMessage {
     flags: RREPFlags,
     destinations: HashMap<String, u32>,
@@ -340,7 +341,8 @@ impl Protocol for AODV {
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
         let routes = Arc::clone(&self.route_table);
         let pending_routes = Arc::clone(&self.pending_routes);
-        let mut dest_seq_no = Default::default();
+        let rreq_cache =  Arc::clone(&self.rreq_cache);
+        let mut dest_seq_no = 0;
         let mut valid_route = false;
 
         //Check if an available route exists for the destination.
@@ -349,14 +351,9 @@ impl Protocol for AODV {
                 .lock()
                 .expect("Failed to lock route_table");
             if let Some(route_entry) = routes.get(&destination) {
-                //Is the route valid?
-                if  route_entry.flags.contains(RTEFlags::VALID_SEQ_NO) &&
-                    route_entry.flags.contains(RTEFlags::ACTIVE_ROUTE) {
-                    valid_route = true;
-                }
-                //Invalid route. Get the required data out of the entry and
-                //fall through to route discovery.
-                dest_seq_no = route_entry.dest_seq_no; //TODO: WHy am I not using this?
+                dest_seq_no = route_entry.dest_seq_no;
+                valid_route = route_entry.flags.contains(RTEFlags::VALID_SEQ_NO) &&
+                              route_entry.flags.contains(RTEFlags::ACTIVE_ROUTE);
             }            
         }
 
@@ -374,75 +371,45 @@ impl Protocol for AODV {
             return Ok(())
         }
         
-        let (rreq_id, hdr): (u32, Option<MessageHeader>) = {
+        //Queue the data transmission for when the route is established.
+        //We do this before starting the Route Discovery in case we get a very quick response
+        //from an immediate neighbour, in which case the the transmission might not yet be queued.
+        let qt = Arc::clone(&self.queued_transmissions);
+        AODV::queue_transmission(qt, destination.clone(), data)?;
+
+        //No valid route exists to the destination.
+        //Check if a route discovery to the destination is already underway.
+        let route_entry = {
             let pending_routes = pending_routes
                 .lock()
                 .expect("Failed to lock pending_destinations table");
-            match pending_routes.get(&destination) {
-                Some(entry) => { 
-                    info!(
-                        self.logger,
-                        "Route discovery process already started for {}", &destination
-                    );
-                    (entry.rreq_id.to_owned(), None)
-                },
-                None => { 
-                    info!(
-                        self.logger,
-                        "No known route to {}. Starting discovery process.", &destination
-                    );
-                    let (hdr, rreq_id) = AODV::prepare_route_discovery(
-                        destination.clone(), 
-                        Arc::clone(&self.rreq_seq_no), 
-                        Arc::clone(&self.sequence_number), 
-                        self.get_self_peer(), 
-                        0, 
-                        &self.logger,
-                    )?;
-                    (rreq_id, Some(hdr))
-                },
-            }
+                pending_routes.get(&destination).map(|v| *v)
         };
-
-
-        //Add rreq to the cache so that this node does not re-process it
-        {
-            let mut rr_cache = self.rreq_cache
-            .lock()
-            .expect("Error trying to acquire lock on rreq_cache");
-            let _cache_entry = rr_cache.insert((self.get_self_peer(), rreq_id), Utc::now());
+        match route_entry {
+            Some(entry) => { 
+                info!(
+                    self.logger,
+                    "Route discovery process already started for {}", &destination
+                );
+            },
+            None => { 
+                info!(
+                    self.logger,
+                    "No known route to {}. Starting discovery process.", &destination
+                );
+                AODV::start_route_discovery(
+                    destination.clone(),
+                    dest_seq_no,
+                    Arc::clone(&self.rreq_seq_no), 
+                    Arc::clone(&self.sequence_number), 
+                    self.get_self_peer(), 
+                    Arc::clone(&self.short_radio),
+                    pending_routes,
+                    rreq_cache,
+                    &self.logger,
+                )?
+            },
         }
-
-        //Broadcast RouteDiscovery
-        if let Some(h) = hdr {
-            // self.short_radio.broadcast(h)?;
-            // info!(self.logger, "RREQ for {} started", &destination);
-            let msg_id = h.get_msg_id().to_string();
-            let tx = self.short_radio.broadcast(h)?;
-            let mut md = MessageMetadata::new(msg_id, "RREQ", MessageStatus::SENT);
-            let rreq_id_s =rreq_id.to_string();
-            md.route_id = Some(&rreq_id_s);
-            md.destination = Some(&destination);
-            md.reason = Some("Route disovery initiated");
-            radio::log_tx(&self.logger, tx, md);
-        }
-        
-        //Add to the pending-routes list
-        {
-            let mut pd = self.pending_routes.lock().expect("Could not lock pending routes");
-            pd.insert(
-                destination.clone(), 
-                PendingRouteEntry{
-                    rreq_id,
-                    retries: 0,
-                    lifetime: Utc::now() + Duration::milliseconds(PATH_DISCOVERY_TIME as i64),
-                }
-            );
-        }
-
-        //...and then queue the data transmission for when the route is established
-        let qt = Arc::clone(&self.queued_transmissions);
-        AODV::queue_transmission(qt, destination.clone(), data)?;
         
         Ok(())
     }
@@ -663,21 +630,15 @@ impl AODV {
                 lifetime: MY_ROUTE_TIMEOUT,
             };
             
-            let resp_hdr = MessageHeader::new(
-                me.clone(),
-                entry.next_hop.clone(),
-                serialize_message(Messages::RREP(response))?,
-                hdr.hops,
-            );
+            //Create the log data for the packet
+            let log_data = Box::new(response.clone());
 
-            let mut md: MessageMetadata = MessageMetadata::new(
-                resp_hdr.get_msg_id().to_string(),
-                "RREP",
-                MessageStatus::SENT,
-            );
-            md.reason = Some("RREQ reached its destination");
+            let resp_hdr = hdr.create_forward_header(me)
+                .set_destination(entry.next_hop.clone())
+                .set_payload(serialize_message(Messages::RREP(response))?)
+                .build();
 
-            return Ok((Some(resp_hdr), Some(md)))
+            return Ok((Some(resp_hdr), Some(log_data)))
         }
 
         //or if it has an active route to the destination... 
@@ -728,12 +689,14 @@ impl AODV {
                         lifetime: (entry.lifetime.timestamp_millis() - 
                                    Utc::now().timestamp_millis()) as u32,
                     };
-                    let resp_hdr = MessageHeader::new(
-                        me.clone(),
-                        hdr.sender.clone(),
-                        serialize_message(Messages::RREP(response))?,
-                        0u16,
-                    );
+                    //Create the log data for the packet
+                    let log_data = Box::new(response.clone());
+                    
+                    let dest = hdr.sender.clone();
+                    let resp_hdr = hdr.create_forward_header(me)
+                    .set_destination(dest)
+                    .set_payload(serialize_message(Messages::RREP(response))?)
+                    .build();
 
                     //Before responding
                     //Save the next-hop to the RREQ destination
@@ -743,16 +706,8 @@ impl AODV {
                         //and update reverse-route entry's precursor list
                         entry.precursors.insert(next_hop);
                     }
-                    
-                    // and finally, reply with the RREP
-                    let mut md = MessageMetadata::new(
-                        resp_hdr.get_msg_id().to_string(),
-                        "RREP",
-                        MessageStatus::SENT,
-                    );
-                    md.reason = Some("Current node has a valid route to destination");
 
-                    return Ok((Some(resp_hdr), Some(md)))
+                    return Ok((Some(resp_hdr), Some(log_data)))
             }
             // Stored route is not valid. Check however, if the dest_seq_no is larger
             // than the one in the message and use it for forwarding if so.
@@ -777,23 +732,15 @@ impl AODV {
             None,
             &msg
         );
+        //Create log data
+        let log_data = Box::new(msg.clone());
+
         //NOT producing an RREP. Prepare to forward RREQ.
-        //Decreate TTL of msg by 1
-        // hdr.ttl -= 1;
-        let rreq_id_s = &msg.rreq_id.to_string();
-        hdr.payload = serialize_message(Messages::RREQ(msg))?;
+        let fwd_hdr = hdr.create_forward_header(me)
+            .set_payload(serialize_message(Messages::RREQ(msg))?)
+            .build();
         
-
-        //Forward RREQ
-        let mut md = MessageMetadata::new(hdr.get_msg_id().to_string(), "RREQ", MessageStatus::FORWARDING);
-        md.reason = Some("No route to destination");
-        // md.source = Some(&hdr.sender);
-        // md.route_id = Some(&rreq_id_s);
-
-        //Update the sender
-        hdr.sender = me.clone();
-
-        Ok((Some(hdr), Some(md)))
+        Ok((Some(fwd_hdr), Some(log_data)))
     }
 
     fn process_route_response_msg(
@@ -1020,20 +967,17 @@ impl AODV {
         //     "Hdr.sender" => &hdr.sender,
         //     "Hdr.dest" => &hdr.destination,
         // );
-        let mut md = MessageMetadata::new(hdr.get_msg_id().to_string(), "RREP", MessageStatus::FORWARDING);
-        md.reason = Some("Going to next hop in route back to originator");
-        // md.source = Some(&hdr.sender);
-        // md.destination = Some(&next_hop_originator);
 
-        // UNICAST to NEXT_HOP in the route to ORIGINATOR
-        let mut resp_hdr = MessageHeader::new(
-            me,
-            next_hop_originator,
-            serialize_message(Messages::RREP(msg))?,
-            hdr.hops,
-        );
+        //Create log data
+        let log_data = Box::new(msg.clone());
 
-        Ok((Some(resp_hdr), Some(md)))
+        //Build the forwarding header
+        let fwd_hdr = hdr.create_forward_header(me)
+            .set_destination(next_hop_originator)
+            .set_payload(serialize_message(Messages::RREP(msg))?)
+            .build();
+
+        Ok((Some(fwd_hdr), Some(log_data)))
     }
 
     fn process_route_err_msg(
@@ -1049,7 +993,6 @@ impl AODV {
     ) -> Result<Outcome, MeshSimError> {
         let mut affected_neighbours = Vec::new();
         let mut response: Option<MessageHeader> = Default::default();
-        let mut md: Option<MessageMetadata> = Default::default();
         let mut num_routes_affected: usize = Default::default();
 
         let mut rt = route_table.lock().expect("Could not lock route table");
@@ -1106,21 +1049,16 @@ impl AODV {
 
         //Deliver an appropriate RERR to such neighbours
         if affected_neighbours.len() > 0 {
-            //Build the response msg
-            let resp = MessageHeader::new(
-                me,
-                String::new(),
-                serialize_message(Messages::REER(msg))?,
-                hdr.hops,
-            );
-            let msg_id = resp.get_msg_id().to_string();
-            response = Some(resp);
+            //Build log data
+            let log_data = Box::new(msg.clone());
 
-            //Build the response metadata
-            let mut m = MessageMetadata::new(msg_id, "RERR", MessageStatus::FORWARDING);
-            m.reason = Some("Propagate RERR to neighbours");
-            // m.source = Some(&hdr.sender);
-            md = Some(m);
+            //Build the response msg
+            let rsp_hdr = hdr.create_forward_header(me)
+            .set_payload(serialize_message(Messages::REER(msg))?)
+            .build();
+
+            Ok((Some(rsp_hdr), Some(log_data)))
+
         } else {
             // info!(
             //     logger, 
@@ -1140,9 +1078,9 @@ impl AODV {
                 None,
                 &msg
             );
-        }
 
-        Ok((response, md))
+            Ok((None, None))
+        }
     }
 
     fn process_data_msg(
@@ -1268,18 +1206,16 @@ impl AODV {
                         flags: Default::default(),
                         destinations: dest,
                     };
-                    let resp = MessageHeader::new(
-                        me.clone(),
-                        String::new(),
-                        serialize_message(Messages::REER(rerr_msg))?,
-                        hdr.hops,
-                    );
 
-                    let mut md = MessageMetadata::new(resp.get_msg_id().to_string(), "RERR", MessageStatus::SENT);
-                    md.reason = Some("Route to destination is marked as invalid");
-                    // md.source = Some(&hdr.sender);
+                    //Build log data
+                    let log_data = Box::new(rerr_msg.clone());
 
-                    return Ok((Some(resp), Some(md)))
+                    //Build response message
+                    let fwd_hdr = hdr.create_forward_header(me)
+                    .set_payload(serialize_message(Messages::REER(rerr_msg))?)
+                    .build();
+
+                    return Ok((Some(fwd_hdr), Some(log_data)))
                 }
             },
             None => {
@@ -1325,10 +1261,6 @@ impl AODV {
             &msg
         );
 
-        let mut md = MessageMetadata::new(hdr.get_msg_id().to_string(), "DATA", MessageStatus::FORWARDING);
-        md.reason = Some("Not meant for this node");
-        // md.source = Some(&hdr.sender);
-
         //Record the packet in the data cache
         let mut dc = data_cache.lock().expect("Could not lock data cache");
         // let msg_hash = format!("{:x}", md5::compute(&payload));
@@ -1339,14 +1271,16 @@ impl AODV {
             confirmed,
         });
 
-        //Update header
-        hdr.sender = me.clone();
-        hdr.hops += 1;
-        hdr.destination = next_hop.clone();
-        let payload = serialize_message(Messages::DATA(msg))?;
-        hdr.payload = payload;
+        //Build log data
+        let log_data = Box::new(msg.clone());
 
-        Ok((Some(hdr), Some(md)))
+        //Build forward hdr
+        let fwd_hdr = hdr.create_forward_header(me)
+            .set_destination(next_hop)
+            .set_payload(serialize_message(Messages::DATA(msg))?)
+            .build();
+            
+        Ok((Some(fwd_hdr), Some(log_data)))
     }
 
     fn process_hello_msg(
@@ -1415,15 +1349,19 @@ impl AODV {
             (p, e.dest_seq_no)
         };
 
-        let payload = serialize_message(Messages::DATA(DataMessage {
+        let msg = DataMessage {
             destination: dest,
             payload: data,
-        }))?;
+        };
+        
+        //Create log data
+        let log_data = Box::new(msg.clone());
+
+        //Build hdr
         let hdr = MessageHeader::new(
             self_peer,
             next_hop.clone(),
-            payload,
-            0u16,
+            serialize_message(Messages::DATA(msg))?,
         );
 
         //Record the packet in the data cache
@@ -1436,26 +1374,23 @@ impl AODV {
             confirmed: false,
         });
 
-        short_radio.broadcast(hdr)?;
-        info!(
-            logger,
-            "Packet has been transmitted";
-            "msg_type"=>"DATA",
-            "status"=> MessageStatus::SENT,
-        );
+        short_radio.broadcast(hdr, log_data)?;
+
         Ok(())
     }
 
-    fn prepare_route_discovery(
+    fn start_route_discovery(
             destination: String,
+            dest_seq_no: u32,
             rreq_seq_no: Arc<AtomicU32>,
             seq_no: Arc<AtomicU32>,
             me: String,
-            dest_seq_no: u32,
-            // short_radio: Arc<dyn Radio>,
+            short_radio: Arc<dyn Radio>,
+            pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
+            rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>, 
             logger: &Logger,
-        ) -> Result<(MessageHeader, u32), MeshSimError> {
-        let route_id = rreq_seq_no.fetch_add(1, Ordering::SeqCst) + 1;
+        ) -> Result<(), MeshSimError> {
+        let rreq_id = rreq_seq_no.fetch_add(1, Ordering::SeqCst) + 1;
         // let mut flags = RREQFlags::GRATUITOUS_RREP; //Why was I doing this?
         let mut flags = Default::default();
         if dest_seq_no == 0 {
@@ -1464,21 +1399,57 @@ impl AODV {
         let msg = RouteRequestMessage{
             flags,
             hop_count: 0,
-            rreq_id: route_id,
+            rreq_id,
             destination: destination.clone(),
             dest_seq_no,
             originator: me.clone(),
             orig_seq_no: seq_no.fetch_add(1, Ordering::SeqCst) + 1,
         };
-
+        let log_data = Box::new(msg.clone());
         let hdr = MessageHeader::new(
-            me,
-            destination,
+            me.clone(),
+            destination.clone(),
             serialize_message(Messages::RREQ(msg))?,
-            0u16,
         );
 
-        Ok((hdr, route_id))
+        //Add to the pending-routes list
+        {
+            let mut pd = pending_routes.lock().expect("Could not lock pending routes");
+            pd.entry(destination.clone())
+                .and_modify(|e| { 
+                    e.rreq_id = rreq_id;
+                    e.lifetime = Utc::now() + Duration::milliseconds(PATH_DISCOVERY_TIME as i64);
+                })
+                .or_insert(PendingRouteEntry{
+                    rreq_id: rreq_id,
+                    dest_seq_no,
+                    retries: 0,
+                    lifetime: Utc::now() + Duration::milliseconds(PATH_DISCOVERY_TIME as i64),
+                });  
+            
+            // pd.insert(
+            //     destination, 
+            //     PendingRouteEntry{
+            //         rreq_id,
+            //         dest_seq_no,
+            //         retries: 0,
+            //         lifetime: Utc::now() + Duration::milliseconds(PATH_DISCOVERY_TIME as i64),
+            //     }
+            // );
+        }
+
+        //Add rreq to the cache so that this node does not re-process it
+        {
+            let mut rr_cache = rreq_cache
+            .lock()
+            .expect("Error trying to acquire lock on rreq_cache");
+            let _cache_entry = rr_cache.insert((me, rreq_id), Utc::now());
+        }
+
+        //Broadcast RouteDiscovery
+        short_radio.broadcast(hdr, log_data)?;
+        
+        Ok(())
     }
 
     fn queue_transmission(
@@ -1607,18 +1578,17 @@ impl AODV {
                         originator: String::from("N/A"),
                         lifetime: ALLOWED_HELLO_LOSS as u32 * HELLO_INTERVAL as u32,
                     };
-                    //BROADCAST it
+                    let log_data = Box::new(msg.clone());
                     let hdr = MessageHeader::new(
                         me.clone(),
                         String::new(),
                         serialize_message(Messages::HELLO(msg))?,
-                        0u16,
                     );
 
-                    match short_radio.broadcast(hdr) {
+                    match short_radio.broadcast(hdr, log_data) {
                         Ok(_) => { 
                             // All good
-                            info!(logger,  "Sending HELLO message");
+                            // info!(logger,  "Sending HELLO message");
                         },
                         Err(e) => { 
                             error!(
@@ -1657,27 +1627,26 @@ impl AODV {
 
             //Broken links to send?
             if broken_links.len() > 0 {
+                info!(
+                    logger, 
+                    "Broken links detected";
+                    "num_broken_links" => broken_links.keys().len(),
+                );
+
                 let rerr_msg = RouteErrorMessage{
                     flags: Default::default(),
                     destinations: broken_links,
                 };
+                let log_data = Box::new(rerr_msg.clone());
                 let hdr = MessageHeader::new(
                     me.clone(),
                     String::new(),
                     serialize_message(Messages::REER(rerr_msg))?,
-                    0u16,
                 );
 
-                match short_radio.broadcast(hdr) {
+                match short_radio.broadcast(hdr, log_data) {
                     Ok(_) => { 
-                        info!(
-                            logger, 
-                            "Broken links detected";
-                            "msg_type" => "RERR",
-                            "sender"=>&me,
-                            "status"=>MessageStatus::SENT,
-                            // "unreachable_dests"=>&msg.destinations,
-                        );
+                        /* All good! */
                     },
                     Err(e) => { 
                         error!(
@@ -1690,10 +1659,9 @@ impl AODV {
             }
 
             //Has any of the pending routes expired?
-            // let mut rrc = rreq_cache.lock().expect("Could not lock RREQ cache");
-            let mut new_routes = Vec::new();
-            {
+            let new_routes = {
                 let mut pd = pending_routes.lock().expect("Could not lock pending routes table");
+                let mut nr = Vec::new();
                 for (dest, entry) in pd.iter_mut() {
                     if  entry.lifetime < Utc::now() {
                         if entry.retries >= RREQ_RETRIES {
@@ -1706,54 +1674,36 @@ impl AODV {
                             continue;
                         }
                         entry.retries += 1;
-
-                        //The pending RREQ has expired. Retry route discovery
-                        let (hdr, new_rreq_id) = AODV::prepare_route_discovery(
-                            dest.clone(), 
-                            Arc::clone(&rreq_no), 
-                            seq.clone(),
-                            me.clone(), 
-                            0,
-                            &logger,
-                        )?;
-                        new_routes.push((dest.clone(), hdr, new_rreq_id));
+                        //Add to retry list
+                        nr.push((dest.clone(), entry.dest_seq_no));
                     }
                 }
-                
-                for (dest, hdr, new_rreq_id) in new_routes {
-                    //broadcast the RREQ
-                    match short_radio.broadcast(hdr) {
-                        Ok(_) => { 
-                            //Update pending destinations
-                            pd.entry(dest.clone())
-                                .and_modify(|e| { 
-                                    e.rreq_id = new_rreq_id;
-                                    e.lifetime = Utc::now() + Duration::milliseconds(PATH_DISCOVERY_TIME as i64);
-                                })
-                                .or_insert(PendingRouteEntry{
-                                    rreq_id: new_rreq_id,
-                                    retries: 0,
-                                    lifetime: Utc::now() + Duration::milliseconds(PATH_DISCOVERY_TIME as i64),
-                                });                        
-                        },
-                        Err(e) => { 
-                            error!(logger, "Failed to send RREQ message: {}", e);
-                        },
-                    }
-                }
+                nr
+            };
 
-                //Finally, prune destinations that are stale and have exceeded retries.
+            //Start a new Route discovery process for each destination with retries remaining.
+            for (dest, dest_seq_no) in new_routes {
+                AODV::start_route_discovery(
+                    dest,
+                    dest_seq_no,
+                    Arc::clone(&rreq_no), 
+                    seq.clone(),
+                    me.clone(),
+                    Arc::clone(&short_radio),
+                    Arc::clone(&pending_routes),
+                    Arc::clone(&rreq_cache),
+                    &logger,
+                )?;
+            }
+
+            //Finally, prune destinations that are stale and have exceeded retries.
+            {
+                let mut pd = pending_routes.lock().expect("Could not lock pending routes table");
                 //It's important to re-check retries here, as the broadcast above could fail
                 //for RREQs that still have retries available.
-                pd.retain(|_, v| v.retries < RREQ_RETRIES || v.lifetime > Utc::now());                  
+                pd.retain(|_, v| v.retries < RREQ_RETRIES || v.lifetime > Utc::now());    
             }
-            //TODO: Add the requests to the cache to not reprocess it
-            // {
-            //     let mut rr_cache = self.rreq_cache
-            //     .lock()
-            //     .expect("Error trying to acquire lock on rreq_cache");
-            //     let _cache_entry = rr_cache.insert((self.get_self_peer().name.clone(), rreq_id), Utc::now());
-            // }
+              
         }
         #[allow(unreachable_code)]
         Ok(())

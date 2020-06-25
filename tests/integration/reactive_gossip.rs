@@ -106,20 +106,12 @@ fn test_route_teardown() {
 
     let node7_log_file = format!("{}/log/node7.log", &data.work_dir);
     let node7_log_records = logging::get_log_records_from_file(&node7_log_file).unwrap();
-    // let node7_teardown_recv = logging::find_record_by_msg(
-    //     "Route TEARDOWN msg received for route ec3a7a8fc1f4a1c13c933cadb5f880e8", 
-    //     &node7_log_records
-    // );
-    let mut node7_teardown_recv = false;
-    for record in node7_log_records.iter() {
-        if record.msg != "Received message" {
-            continue;
-        }
-
-        let status = record.status.clone().unwrap_or_default();
-        let msg_type = record.msg_type.clone().unwrap_or_default();
-        node7_teardown_recv = msg_type == "ROUTE_TEARDOWN" && status == "FORWARDED";
-    }
+    let node7_incoming = get_incoming_message_records(node7_log_file).expect("Could not read incoming packets");
+    let node7_teardown_recv = node7_incoming
+        .iter()
+        .filter(|&m| m.msg_type == "ROUTE_TEARDOWN" && m.status == "FORWARDING")
+        .collect::<Vec<_>>()
+        .len();
 
     let node25_log_file = format!("{}/log/node25.log", &data.work_dir);
     let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
@@ -128,7 +120,7 @@ fn test_route_teardown() {
     //3 packets should arrive before the route is torn-down
     assert_eq!(received_packets, 3);
     //Confirm the route disruption was detected and the source node received it.
-    assert!(node7_teardown_recv);
+    assert_eq!(node7_teardown_recv, 1);
 
     //Test passed. Results are not needed.
     teardown(data, true);

@@ -276,17 +276,30 @@ impl MessageHeader {
         sender: String,
         destination: String,
         payload: Vec<u8>,
-        hops: u16,
     ) -> MessageHeader {
         let msg_id = MessageHeader::create_msg_id(&destination, payload.clone());
         MessageHeader {
             sender,
             destination,
-            hops,
+            hops: 0u16,
             delay: 0u64,
             ttl: std::usize::MAX,
             payload,
             msg_id,
+        }
+    }
+
+    ///Used to create another header based on the current one. This is the recommended way
+    ///to create response messages in order to preserve metadata such as TTL and hops, which
+    ///are updated automatically.
+    pub fn create_forward_header(self, new_sender: String) -> MessageHeaderBuilder {
+        MessageHeaderBuilder {
+            old_data : self,
+            sender : new_sender,
+            destination : None,
+            hops: None,
+            ttl: None,
+            payload: None,
         }
     }
 
@@ -314,6 +327,65 @@ impl MessageHeader {
     }
 }
 
+///Used to create a new MessageHeader from another MessageHeader.
+///Created with the method create_forward_header from MessageHeader.
+pub struct MessageHeaderBuilder {
+    old_data : MessageHeader,
+    /// The new sender of the message
+    sender: String,
+    ///Destination of the message
+    destination: Option<String>,
+    ///Number of hops this message has taken
+    hops: Option<u16>,
+    /// Number of hops until the message is discarded
+    ttl: Option<usize>,
+    /// It's the responsibility of the underlying protocol to know how to deserialize this payload
+    /// into a protocol-specific message.
+    payload: Option<Vec<u8>>,
+}
+
+impl MessageHeaderBuilder {
+    ///Sets a new destination for the MessageHeader. By default, the previous destination is retained.
+    pub fn set_destination(mut self, dest: String) -> MessageHeaderBuilder {
+        self.destination = Some(dest);
+        self
+    }
+
+    ///Sets a new hops count for the MessageHeader. By default, the previous count is retained.
+    pub fn set_hops(mut self, hops: u16) -> MessageHeaderBuilder {
+        self.hops = Some(hops);
+        self
+    }
+
+    ///Sets a new TTL for the MessageHeader. By default, the previous count is retained.
+    pub fn set_ttl(mut self, ttl: usize) -> MessageHeaderBuilder {
+        self.ttl = Some(ttl);
+        self
+    }
+
+    ///Sets a new payload for the MessageHeader. Should be called if the payload has changed at all.
+    ///By default, the previous payload is retained.
+    pub fn set_payload(mut self, payload: Vec<u8>) -> MessageHeaderBuilder {
+        self.payload = Some(payload);
+        self
+    }
+
+    ///Consumes the current MessageHeaderBuilder to produce a MessageHeader
+    pub fn build(self) -> MessageHeader {
+        let destination = self.destination.unwrap_or(self.old_data.destination);
+        let payload = self.payload.unwrap_or(self.old_data.payload);
+        let msg_id = MessageHeader::create_msg_id(&destination, payload.clone());
+        MessageHeader {
+            sender : self.sender,
+            destination:destination ,
+            hops: self.hops.unwrap_or(self.old_data.hops),
+            delay: 0u64,
+            ttl: self.ttl.unwrap_or(self.old_data.ttl),
+            payload,
+            msg_id,
+        }
+    }
+}
 /// Enum that represents the possible status of a Message as it moves through the network
 pub enum MessageStatus {
     /// The message has reached its destination.
@@ -551,7 +623,7 @@ impl Worker {
                                 }
 
                                 thread_pool.execute(move || {
-                                    let (response , md)= match prot.handle_message(hdr, r_type) {
+                                    let (response , log_data)= match prot.handle_message(hdr, r_type) {
                                         Ok(resp) => resp,
                                         Err(e) => {
                                             error!(log, "Error handling message:");
@@ -564,14 +636,11 @@ impl Worker {
                                     };
 
                                     if let Some(r) = response {
+                                        let log_data = log_data.expect("ERROR: Log_Data was empty");
                                         let msg_id = r.get_msg_id().to_string();
-                                        match tx_channel.broadcast(r) {
-                                            Ok(tx) => { 
+                                        match tx_channel.broadcast(r, log_data) {
+                                            Ok(_) => { 
                                                 /* All good */
-                                                let md: MessageMetadata = md.unwrap_or_else(|| {
-                                                    MessageMetadata::new(msg_id, "", MessageStatus::SENT)
-                                                });
-                                                radio::log_tx(&log, tx, md);
                                             }
                                             Err(e) => {
                                                 error!(log, "Error sending response: {}", e);
@@ -808,7 +877,7 @@ mod tests {
         let mut rng = Worker::rng_from_seed(12345);
         let mut data: Vec<u8> = iter::repeat(0u8).take(64).collect();
         rng.fill_bytes(&mut data[..]);
-        let msg = MessageHeader::new(sender, destination, data, 0u16);
+        let msg = MessageHeader::new(sender, destination, data);
 
         let hash = msg.get_msg_id();
         assert_eq!(hash, "16c37d4dbeed437d377fc131b016cf38");
@@ -834,7 +903,7 @@ mod tests {
         let source = String::from("Foo");
         let destination = String::from("Bar");
         let empty_payload: Vec<u8> = vec![];
-        let hdr = MessageHeader::new(source, destination, empty_payload, 0u16);
+        let hdr = MessageHeader::new(source, destination, empty_payload);
 
         println!("Size of MessageHeader: {}", mem::size_of::<MessageHeader>());
         let serialized_hdr = to_vec(&hdr).expect("Could not serialize");

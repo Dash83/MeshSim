@@ -89,7 +89,14 @@ impl Protocol for GossipRouting {
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
-        let hdr = GossipRouting::create_data_message(self.get_self_peer(), destination, 1, data)?;
+        // let hdr = GossipRouting::create_data_message(self.get_self_peer(), destination, 1, data)?;
+        let msg = DataMessage{ payload: data};
+        let log_data= Box::new(msg.clone());
+        let hdr = MessageHeader::new(
+            self.get_self_peer(), 
+            destination, 
+            serialize_message(Messages::Data(msg))?,
+        );
         let msg_id = hdr.get_msg_id().to_string();
         {
             let mut cache = self.msg_cache.lock().expect("Could not lock message cache");
@@ -105,9 +112,7 @@ impl Protocol for GossipRouting {
             cache.insert(CacheEntry { msg_id: msg_id.clone() });
         }
 
-        let tx = self.short_radio.broadcast(hdr)?;
-        let md = MessageMetadata::new(msg_id, "DATA", MessageStatus::SENT);
-        radio::log_tx(&self.logger, tx, md);
+        self.short_radio.broadcast(hdr, log_data)?;
 
         Ok(())
     }
@@ -137,31 +142,31 @@ impl GossipRouting {
         }
     }
 
-    fn create_data_message(
-        sender: String,
-        destination: String,
-        hops: u16,
-        data: Vec<u8>,
-    ) -> Result<MessageHeader, MeshSimError> {
-        let data_msg = Messages::Data(DataMessage{payload : data});
-        let payload = to_vec(&data_msg).map_err(|e| {
-            let err_msg = String::from("Failed to serialize message");
-            MeshSimError {
-                kind: MeshSimErrorKind::Serialization(err_msg),
-                cause: Some(Box::new(e)),
-            }
-        })?;
-        //info!("Built DATA message for peer: {}, id {:?}", &destination, destination.id);
+    // fn create_data_message(
+    //     sender: String,
+    //     destination: String,
+    //     hops: u16,
+    //     data: Vec<u8>,
+    // ) -> Result<MessageHeader, MeshSimError> {
+    //     let data_msg = Messages::Data(DataMessage{payload : data});
+    //     let payload = to_vec(&data_msg).map_err(|e| {
+    //         let err_msg = String::from("Failed to serialize message");
+    //         MeshSimError {
+    //             kind: MeshSimErrorKind::Serialization(err_msg),
+    //             cause: Some(Box::new(e)),
+    //         }
+    //     })?;
+    //     //info!("Built DATA message for peer: {}, id {:?}", &destination, destination.id);
 
-        //Build the message header that's ready for sending.
-        let msg = MessageHeader::new(
-            sender,
-            destination,
-            payload,
-            hops,
-        );
-        Ok(msg)
-    }
+    //     //Build the message header that's ready for sending.
+    //     let msg = MessageHeader::new(
+    //         sender,
+    //         destination,
+    //         payload,
+    //         hops,
+    //     );
+    //     Ok(msg)
+    // }
 
     fn process_data_message(
         hdr: MessageHeader,
@@ -298,19 +303,13 @@ impl GossipRouting {
             None,
             &msg
         );
-        let response = GossipRouting::create_data_message(me, hdr.destination.clone(), hdr.hops + 1, msg.payload)?;
-        let mut md = MessageMetadata::new(response.get_msg_id().to_string(), "DATA", MessageStatus::FORWARDING);
-        // let sender = hdr.sender.clone();
-        // md.source = Some(&sender);
-        // info!(
-        //     logger,
-        //     "Received message {:x}", &msg_hash;
-        //     "msg_type"=>"DATA",
-        //     "sender"=>&hdr.sender,
-        //     "status"=>MessageStatus::FORWARDED,
-        // );
+        //The payload of the incoming header is still valid, so just build a new header with this node as the sender
+        //and leave the rest the same.
+        let fwd_hdr = hdr.create_forward_header(me.clone()).build();
+        //Box the message to log it
+        let log_data = Box::new(msg);
 
-        Ok((Some(response), Some(md)))
+        Ok((Some(fwd_hdr), Some(log_data)))
     }
 
     fn handle_message_internal(
@@ -347,4 +346,24 @@ impl GossipRouting {
     fn get_self_peer(&self) -> String {
         self.worker_name.clone()
     }
+}
+
+fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
+    from_slice(data).map_err(|e| {
+        let err_msg = String::from("Error deserializing data into message");
+        MeshSimError {
+            kind: MeshSimErrorKind::Serialization(err_msg),
+            cause: Some(Box::new(e)),
+        }
+    })
+}
+
+fn serialize_message(msg: Messages) -> Result<Vec<u8>, MeshSimError> {
+    to_vec(&msg).map_err(|e| {
+        let err_msg = String::from("Error serializing message");
+        MeshSimError {
+            kind: MeshSimErrorKind::Serialization(err_msg),
+            cause: Some(Box::new(e)),
+        }
+    })
 }

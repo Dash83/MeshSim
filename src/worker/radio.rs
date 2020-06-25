@@ -53,43 +53,7 @@ pub struct TxMetadata {
     /// Id of the thread that made the transmission
     pub thread_id : String,
     /// Duration of the broadcast operation
-    pub duration : u128, 
-}
-
-/// Metadata of a packet. Used for unified logging.
-pub struct MessageMetadata<'a> {
-    /// ID of the message sent
-    msg_id : String,
-    /// The type of message, defined by the current protocol.
-    msg_type: &'a str, 
-    /// Status of the message
-    status: MessageStatus,
-    /// Reason for the status
-    pub reason: Option<&'a str>,
-    /// Action derived from this message
-    pub action: Option<&'a str>,
-    /// The route (if any) associated with this message
-    pub route_id : Option<&'a str>,
-    /// The node (if any) from which this message was received
-    pub source: Option<&'a str>,
-    /// The intended destination (if any) for this message
-    pub destination: Option<&'a str>,
-}
-
-impl<'a> MessageMetadata<'a> {
-    /// Creates a new instance
-    pub fn new(msg_id : String, msg_type: &'a str, status: MessageStatus) -> Self {
-        MessageMetadata {
-            msg_id: msg_id,
-            msg_type: msg_type,
-            status: status,
-            reason: None,
-            action: None,
-            route_id: None,
-            source: None,
-            destination: None,
-        }
-    }
+    pub duration : u128,
 }
 
 ///Types of radio supported by the system. Used by Protocols that need to
@@ -134,7 +98,7 @@ pub trait Radio: std::fmt::Debug + Send + Sync {
     ///Gets the current address at which the radio is listening.
     fn get_address(&self) -> &str;
     ///Used to broadcast a message using the radio
-    fn broadcast(&self, hdr: MessageHeader) -> Result<TxMetadata, MeshSimError>;
+    fn broadcast(&self, hdr: MessageHeader, md : Box<dyn KV>) -> Result<(), MeshSimError>;
     ///Get the time of the last transmission made by this readio
     fn last_transmission(&self) -> i64;
 }
@@ -177,16 +141,19 @@ impl Radio for SimulatedRadio {
         self.last_transmission.load(Ordering::SeqCst)
     }
 
-    fn broadcast(&self, hdr: MessageHeader) -> Result<TxMetadata, MeshSimError> {
+    fn broadcast(&self, mut hdr: MessageHeader, md : Box<dyn KV>) -> Result<(), MeshSimError> {
         let env_file = format!("{}{}.env", &self.work_dir, std::path::MAIN_SEPARATOR);
         let conn = get_db_connection(&env_file, &self.logger)?;
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
         let start_ts = Utc::now();
-        let msg_id = &hdr.get_msg_id();
+        // let msg_id = hdr.get_msg_id().to_string();
 
         //Register this node as an active transmitter if the medium is free
         self.register_transmitter(&conn)?;
+
+        //Increase the hop count of the message
+        hdr.hops += 1;
 
         //Get the list of peers in radio-range
         let peers = get_workers_in_range(&conn, &self.worker_name, self.range, &self.logger)?;
@@ -285,6 +252,8 @@ impl Radio for SimulatedRadio {
             thread_id : thread_id,
             duration : dur,
         };
+
+        radio::log_tx(&self.logger, tx, &hdr.msg_id, MessageStatus::SENT, &hdr.sender, &hdr.destination, md);
         // info!(
         //     self.logger,
         //     "Message {:x} sent",
@@ -293,7 +262,7 @@ impl Radio for SimulatedRadio {
         //     "thread"=>&thread_id,
         //     "duration"=>dur,
         // );
-        Ok(tx)
+        Ok(())
     }
 }
 
@@ -607,13 +576,16 @@ impl Radio for WifiRadio {
         self.last_transmission.load(Ordering::SeqCst)
     }
 
-    fn broadcast(&self, hdr: MessageHeader) -> Result<TxMetadata, MeshSimError> {
+    fn broadcast(&self, mut hdr: MessageHeader, md : Box<dyn KV>) -> Result<(), MeshSimError> {
         let start_ts = Utc::now();
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
-        let msg_id = &hdr.get_msg_id();
+        let msg_id = hdr.get_msg_id().to_string();
         let sock_addr = SocketAddr::new(IpAddr::V6(*SERVICE_ADDRESS), DNS_SERVICE_PORT);
         let socket = new_socket()?;
+
+        //Update the hop count for the header
+        hdr.hops += 1;
 
         socket
             .set_multicast_if_v6(self.interface_index)
@@ -673,7 +645,9 @@ impl Radio for WifiRadio {
             duration : dur,
         };
 
-        Ok(tx)
+        radio::log_tx(&self.logger, tx, &hdr.msg_id, MessageStatus::SENT, &hdr.sender, &hdr.destination, md);
+
+        Ok(())
     }
 }
 
@@ -800,21 +774,27 @@ fn new_socket() -> Result<socket2::Socket, MeshSimError> {
 }
 
 /// Logs outgoing packets in a standard format
-pub fn log_tx(logger: &Logger, tx: TxMetadata, md : MessageMetadata) {
-    let status = md.status.to_string();
+pub fn log_tx(
+    logger: &Logger, 
+    tx: TxMetadata,
+    msg_id : &str,
+    status: MessageStatus,
+    source: &str,
+    destination: &str,
+    md : Box<dyn KV>
+) {
+    // let status = md.status.to_string();
     info!(
         logger,
-        "Message {} sent", md.msg_id;
+        "Message sent";
+        "msg_id"=>msg_id,
         "radio" => tx.radio_type,
         "thread" => tx.thread_id,
         "duration" => tx.duration,
-        "msg_type" => md.msg_type,
         "status" => &status,
-        "reason" => md.reason.unwrap_or(""),
-        "action" => md.action.unwrap_or(""),
-        "route_id" => md.route_id.unwrap_or(""),
-        "source" => md.source.unwrap_or(""),
-        "destination" => md.destination.unwrap_or(""),
+        "source" => source,
+        "destination" => destination,
+        md,
     );
 }
 
@@ -870,7 +850,7 @@ where
         "LoraRadio"
     }
 
-    fn broadcast(&self, hdr: MessageHeader) -> Result<(), MeshSimError> {
+    fn broadcast(&self, hdr: MessageHeader, md : Box<dyn KV>) -> Result<(), MeshSimError> {
         let data = to_vec(&hdr).map_err(|e| {
             let err_msg = String::from("Failed to serialize message");
             MeshSimError {

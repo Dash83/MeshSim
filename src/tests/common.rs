@@ -168,9 +168,9 @@ pub fn count_data_packets(log_recors: &Vec<LogEntry>) -> usize {
 }
 
 // fn count_all_packets<P: AsRef<Path>>(pattern: &str, dir: &str) -> usize {
-pub fn count_all_packets(pattern: &str, dir: &str) -> usize {
+pub fn count_all_packets(pattern: &str, dir: &str) {
     let mut targets = PathBuf::from(dir);
-    targets.push("*.log");
+    targets.push("node5.log");
     let targets = targets.to_str().expect("Could not encode DIR argument to UTF-8");
     let ls_child = Command::new("ls")
         .arg(targets)
@@ -178,16 +178,17 @@ pub fn count_all_packets(pattern: &str, dir: &str) -> usize {
         .spawn()
         .expect("Failed to get list of files");
     let files = ls_child.stdout.expect("Failed to get output from ls");
-    
+    println!("Files: {:?}", &files);
+
     let grep_child = Command::new("grep")
-        .arg("-ci")
+        .arg("-i")
         .arg(pattern)
-        .stdin(Stdio::from(files))
+        .arg(targets)
+        // .stdin(Stdio::from(files))
         .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to run grep process");
     let output = grep_child.wait_with_output().expect("Failed to get grep output");
-    println!("{:?}", output);
-
-    unimplemented!("Not yet!")
+    let out_s = String::from_utf8(output.stdout).expect("Could not parse output into valid utf8");
+    println!("Incoming messages:\n{}", out_s);
 }
