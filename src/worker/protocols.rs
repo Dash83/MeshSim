@@ -15,7 +15,7 @@ use reactive_gossip_routing_II::ReactiveGossipRoutingII;
 use reactive_gossip_routing_III::ReactiveGossipRoutingIII;
 use slog::{Logger, KV};
 
-use std;
+
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 

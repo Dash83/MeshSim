@@ -844,8 +844,8 @@ mod tests {
         // let _rows: Vec<String>  = q.get_results(&conn).expect("Could not execute select database from catalog");
 
         //Set an environment variable with the .env file that will be used in this test module
-        env::set_var(TEST_DB_ENV_FILE, &env_file.clone());
-        env::set_var(TEST_DB_NAME, &data.db_name.clone());
+        env::set_var(TEST_DB_ENV_FILE, &env_file);
+        env::set_var(TEST_DB_NAME, &data.db_name);
 
         //No teardown performed, as all other tests in this module depend on this test.
 

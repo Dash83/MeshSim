@@ -151,8 +151,7 @@ fn test_route_teardown() {
     let node7_teardown_recv = node7_incoming
         .iter()
         .filter(|&m| m.msg_type == "ROUTE_TEARDOWN" && m.status == "FORWARDING")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
 
     let node25_log_file = format!("{}/log/node25.log", &data.work_dir);
     let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();

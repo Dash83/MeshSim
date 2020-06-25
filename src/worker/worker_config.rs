@@ -184,7 +184,7 @@ impl WorkerConfig {
         let gen = Worker::rng_from_seed(self.random_seed);
         //Check if a worker_id is present
         let id = match self.worker_id {
-            Some(id) => id.clone(),
+            Some(id) => id,
             None => WorkerConfig::gen_id(self.random_seed),
         };
         //Wrap the rng in the shared-mutable-state smart pointers
@@ -293,7 +293,7 @@ impl WorkerConfig {
         let mut key: Vec<u8> = iter::repeat(0u8).take(16).collect();
         //Fill the vector with 16 random bytes.
         gen.fill_bytes(&mut key[..]);
-        key.to_hex().to_string()
+        key.to_hex()
     }
 }
 

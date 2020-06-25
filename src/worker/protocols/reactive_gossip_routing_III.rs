@@ -947,7 +947,7 @@ impl ReactiveGossipRoutingIII {
             let _ = ReactiveGossipRoutingIII::start_queued_flows(
                 queued_transmissions,
                 msg.route_id.clone(),
-                msg.route_destination.clone(),
+                msg.route_destination,
                 self_peer,
                 short_radio,
                 data_msg_cache,
@@ -1054,7 +1054,7 @@ impl ReactiveGossipRoutingIII {
         let mut vc = vicinity_cache
             .lock()
             .expect("Could not lock vicinity cache");
-        vc.insert(hdr.sender.clone(), Utc::now());
+        vc.insert(hdr.sender, Utc::now());
 
         Ok((None, None))
     }

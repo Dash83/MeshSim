@@ -304,12 +304,12 @@ impl MessageHeader {
     /// Payload
     /// This is done instead of getting the md5sum of the entire structure for testability purposes
     pub fn get_msg_id(&self) -> &str {
-        return &self.msg_id;
+        &self.msg_id
     }
 
     /// Get a reference to the payload of the message. It is primarily used to deserialize it into a protocol message.
     pub fn get_payload(&self) -> &[u8] {
-        return self.payload.as_slice();
+        self.payload.as_slice()
     }
 
     fn create_msg_id(destination: &str, mut payload: Vec<u8>) -> String {
@@ -372,7 +372,7 @@ impl MessageHeaderBuilder {
         let msg_id = MessageHeader::create_msg_id(&destination, payload.clone());
         MessageHeader {
             sender: self.sender,
-            destination: destination,
+            destination,
             hops: self.hops.unwrap_or(self.old_data.hops),
             delay: 0u64,
             ttl: self.ttl.unwrap_or(self.old_data.ttl),
@@ -935,7 +935,6 @@ mod tests {
         //        println!("sample data sizeof: {}", mem::size_of_val(&sample_data));
         //        let ser_sample_data = to_vec(&sample_data.to_vec()).expect("Could not serialize");
         //        println!("ser_sample_data len: {}", ser_sample_data.len());
-        assert!(false);
     }
 }
 

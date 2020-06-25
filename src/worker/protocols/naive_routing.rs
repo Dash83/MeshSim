@@ -100,7 +100,7 @@ impl Protocol for NaiveRouting {
             }
             //Log message
             cache.insert(CacheEntry {
-                msg_id: msg_id.clone(),
+                msg_id,
             });
         }
 
@@ -184,7 +184,7 @@ impl NaiveRouting {
             }
             //Log message
             cache.insert(CacheEntry {
-                msg_id: msg_id.clone(),
+                msg_id,
             });
         } // LOCK:RELEASE:MSG_CACHE
 
@@ -198,7 +198,7 @@ impl NaiveRouting {
         radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
         //The payload of the incoming header is still valid, so just build a new header with this node as the sender
         //and leave the rest the same.
-        let fwd_hdr = hdr.create_forward_header(me.clone()).build();
+        let fwd_hdr = hdr.create_forward_header(me).build();
         //Box the message to log it
         let log_data = Box::new(msg);
 

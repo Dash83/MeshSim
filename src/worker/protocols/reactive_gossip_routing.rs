@@ -373,7 +373,7 @@ impl ReactiveGossipRouting {
         let route_id = msg.route_id.clone();
         let msg = Messages::RouteDiscovery(msg);
         let log_data = Box::new(msg.clone());
-        let hdr = MessageHeader::new(me.clone(), destination.clone(), serialize_message(msg)?);
+        let hdr = MessageHeader::new(me.clone(), destination, serialize_message(msg)?);
         let _msg_id = hdr.get_msg_id().to_string();
 
         //Add the route to the route cache so that this node does not relay it again
@@ -413,9 +413,9 @@ impl ReactiveGossipRouting {
             .expect("Failed to lock data_message cache");
         let msg_id = hdr.get_msg_id().to_string();
         dc.insert(
-            msg_id.clone(),
+            msg_id,
             DataCacheEntry {
-                state: DataMessageStates::Pending(route_id.clone()),
+                state: DataMessageStates::Pending(route_id),
                 retries: 0,
                 payload: hdr.clone(),
             },
@@ -937,7 +937,7 @@ impl ReactiveGossipRouting {
             let _ = ReactiveGossipRouting::start_queued_flows(
                 queued_transmissions,
                 msg.route_id.clone(),
-                msg.route_destination.clone(),
+                msg.route_destination,
                 self_peer,
                 short_radio,
                 data_msg_cache,

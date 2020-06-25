@@ -398,9 +398,9 @@ impl ReactiveGossipRoutingII {
             .expect("Failed to lock data_message cache");
         let msg_id = hdr.get_msg_id().to_string();
         dc.insert(
-            msg_id.clone(),
+            msg_id,
             DataCacheEntry {
-                state: DataMessageStates::Pending(route_id.clone()),
+                state: DataMessageStates::Pending(route_id),
                 retries: 0,
                 payload: hdr.clone(),
             },
@@ -928,7 +928,7 @@ impl ReactiveGossipRoutingII {
             let _ = ReactiveGossipRoutingII::start_queued_flows(
                 queued_transmissions,
                 msg.route_id.clone(),
-                msg.route_destination.clone(),
+                msg.route_destination,
                 self_peer,
                 short_radio,
                 data_msg_cache,

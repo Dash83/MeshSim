@@ -50,13 +50,11 @@ fn test_placement() {
     let beacons_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "BEACON" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
     let responses_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "BEACON_RESPONSE" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
 
     println!("beacons_received: {}", beacons_received);
     println!("responses_received: {}", responses_received);
@@ -81,13 +79,11 @@ fn test_placement() {
     let beacons_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "BEACON" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
     let responses_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "BEACON_RESPONSE" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
 
     println!("beacons_received: {}", beacons_received);
     println!("responses_received: {}", responses_received);

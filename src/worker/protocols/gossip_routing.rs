@@ -110,7 +110,7 @@ impl Protocol for GossipRouting {
             }
             //Log message
             cache.insert(CacheEntry {
-                msg_id: msg_id.clone(),
+                msg_id,
             });
         }
 
@@ -293,7 +293,7 @@ impl GossipRouting {
         );
         //The payload of the incoming header is still valid, so just build a new header with this node as the sender
         //and leave the rest the same.
-        let fwd_hdr = hdr.create_forward_header(me.clone()).build();
+        let fwd_hdr = hdr.create_forward_header(me).build();
         //Box the message to log it
         let log_data = Box::new(msg);
 

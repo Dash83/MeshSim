@@ -144,7 +144,7 @@ impl LoraWifiBeacon {
             worker_id,
             wifi_radio,
             lora_radio,
-            rng: rng,
+            rng,
             logger,
         }
     }

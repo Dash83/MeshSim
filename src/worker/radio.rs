@@ -245,12 +245,12 @@ impl Radio for SimulatedRadio {
                     .num_nanoseconds()
                     .expect("Could not extract nanoseconds from Duration");
                 //Extrat seconds, convert to nanos, add subsecond-nanos
-                ((secs * 1000_000_000) + nanos) as u128
+                ((secs * 1_000_000_000) + nanos) as u128
             }
         };
         let tx = TxMetadata {
             radio_type: radio_range,
-            thread_id: thread_id,
+            thread_id,
             duration: dur,
         };
 
@@ -642,13 +642,13 @@ impl Radio for WifiRadio {
                     .num_nanoseconds()
                     .expect("Could not extract nanoseconds from Duration");
                 //Extrat seconds, convert to nanos, add subsecond-nanos
-                ((secs * 1000_000_000) + nanos) as u128
+                ((secs * 1_000_000_000) + nanos) as u128
             }
         };
 
         let tx = TxMetadata {
             radio_type: radio_range,
-            thread_id: thread_id,
+            thread_id,
             duration: dur,
         };
 

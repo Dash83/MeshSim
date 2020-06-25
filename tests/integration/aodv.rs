@@ -123,8 +123,7 @@ fn aodv_rerr() {
     let rerr_msgs_sent = outgoing_messages
         .iter()
         .filter(|&m| m.msg_type == "RERR" && m.status == "SENT")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
 
     assert_eq!(data_packets, 1);
     assert_eq!(rerr_msgs_sent, 1);
@@ -137,8 +136,7 @@ fn aodv_rerr() {
     let rerr_msgs_sent = outgoing_messages
         .iter()
         .filter(|&m| m.msg_type == "RERR" && m.status == "SENT")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
     assert!(rerr_msgs_sent > 0);
 
     //Evaluate the behaviour of Node9
@@ -152,8 +150,7 @@ fn aodv_rerr() {
     let rerr_msgs_sent = outgoing_messages
         .iter()
         .filter(|&m| m.msg_type == "RERR" && m.status == "SENT")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
     assert_eq!(rerr_msgs_sent, 1);
 
     // //Evaluate the behaviour of Node15

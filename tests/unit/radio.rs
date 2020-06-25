@@ -157,7 +157,7 @@ fn test_broadcast_simulated() {
     let _worker_db_id = register_worker(
         &conn,
         worker_name,
-        worker_id.clone(),
+        worker_id,
         pos,
         vel,
         &None,
@@ -192,7 +192,7 @@ fn test_broadcast_simulated() {
     let _worker_db_id = register_worker(
         &conn,
         worker_name,
-        worker_id.clone(),
+        worker_id,
         pos,
         vel,
         &None,
@@ -228,7 +228,7 @@ fn test_broadcast_simulated() {
     let _worker_db_id = register_worker(
         &conn,
         worker_name,
-        worker_id.clone(),
+        worker_id,
         pos,
         vel,
         &None,
@@ -346,8 +346,7 @@ fn test_mac_layer_basic() {
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_id == "fde4d48d2af405f81ffb7fd942661093" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
     assert_eq!(msg_received, 1);
 
     let node5_log_file = &format!("{}/log/node5.log", &data.work_dir);
@@ -355,8 +354,7 @@ fn test_mac_layer_basic() {
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_id == "af31bcddd2076fa82a715c2cd0ea4797" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
     assert_eq!(msg_received, 1);
 
     let node19_log_file = &format!("{}/log/node19.log", &data.work_dir);
@@ -364,8 +362,7 @@ fn test_mac_layer_basic() {
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_id == "14254398dc1cd65acdd1c59d91c58eaf" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
     assert_eq!(msg_received, 1);
 
     let node20_log_file = &format!("{}/log/node20.log", &data.work_dir);
@@ -373,8 +370,7 @@ fn test_mac_layer_basic() {
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_id == "db91176df07289b9dca1657d0435a332" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
     assert_eq!(msg_received, 1);
 
     let node22_log_file = &format!("{}/log/node22.log", &data.work_dir);
@@ -382,8 +378,7 @@ fn test_mac_layer_basic() {
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_id == "5db52dcc83ccaafc70e513b5a59967ff" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
     assert_eq!(msg_received, 1);
 
     let node24_log_file = &format!("{}/log/node24.log", &data.work_dir);
@@ -391,8 +386,7 @@ fn test_mac_layer_basic() {
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_id == "447aa7819c99839980120f42612e2bf9" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
     assert_eq!(msg_received, 1);
 
     let node25_log_file = &format!("{}/log/node25.log", &data.work_dir);
@@ -400,8 +394,7 @@ fn test_mac_layer_basic() {
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_id == "95bd74a6038b3f3137e8067e815abf5b" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
     assert_eq!(msg_received, 1);
 
     //Teardown
@@ -500,7 +493,7 @@ fn test_last_transmission() -> TestResult {
     let _db_id = register_worker(
         &conn,
         worker_name,
-        worker_id.clone(),
+        worker_id,
         pos,
         vel,
         &dest,

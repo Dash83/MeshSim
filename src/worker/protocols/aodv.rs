@@ -90,7 +90,7 @@ impl RouteTableEntry {
         let seq = match dest_seq_no {
             Some(seq) => seq,
             None => {
-                flags = flags - RTEFlags::VALID_SEQ_NO;
+                flags -= RTEFlags::VALID_SEQ_NO;
                 0
             }
         };
@@ -376,7 +376,7 @@ impl Protocol for AODV {
             let pending_routes = pending_routes
                 .lock()
                 .expect("Failed to lock pending_destinations table");
-            pending_routes.get(&destination).map(|v| *v)
+            pending_routes.get(&destination).copied()
         };
         match route_entry {
             Some(_entry) => {
@@ -391,7 +391,7 @@ impl Protocol for AODV {
                     "No known route to {}. Starting discovery process.", &destination
                 );
                 AODV::start_route_discovery(
-                    destination.clone(),
+                    destination,
                     dest_seq_no,
                     Arc::clone(&self.rreq_seq_no),
                     Arc::clone(&self.sequence_number),
@@ -598,7 +598,7 @@ impl AODV {
                 seq_no.compare_and_swap(msg.dest_seq_no, msg.dest_seq_no + 1, Ordering::SeqCst);
             let flags: RREPFlags = Default::default();
             let response = RouteResponseMessage {
-                flags: flags,
+                flags,
                 prefix_size: 0,
                 hop_count: 0,
                 destination: me.clone(),
@@ -657,7 +657,7 @@ impl AODV {
                 //Use the rest of the values from the route-entry
                 let flags: RREPFlags = Default::default();
                 let response = RouteResponseMessage {
-                    flags: flags,
+                    flags,
                     prefix_size: 0,
                     hop_count: entry.hop_count,
                     destination: msg.destination.clone(),
@@ -834,7 +834,7 @@ impl AODV {
                 queued_transmissions,
                 Arc::clone(&route_table),
                 data_cache,
-                msg.destination.clone(),
+                msg.destination,
                 me,
                 short_radio,
                 logger,
@@ -992,7 +992,7 @@ impl AODV {
                         .remove(RTEFlags::VALID_ROUTE | RTEFlags::ACTIVE_ROUTE);
                     entry.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
                     let mut precursors: Vec<_> =
-                        entry.precursors.iter().map(|v| v.clone()).collect();
+                        entry.precursors.iter().cloned().collect();
                     affected_neighbours.append(&mut precursors);
                     debug!(logger, "Invalidating route to {}", destination);
                 }
@@ -1016,13 +1016,13 @@ impl AODV {
                     logger,
                     "Dest:{} - Precursors: {:?}", dest, &entry.precursors
                 );
-                let mut precursors: Vec<_> = entry.precursors.iter().map(|v| v.clone()).collect();
+                let mut precursors: Vec<_> = entry.precursors.iter().cloned().collect();
                 affected_neighbours.append(&mut precursors);
             }
         }
 
         //Deliver an appropriate RERR to such neighbours
-        if affected_neighbours.len() > 0 {
+        if !affected_neighbours.is_empty() {
             //Build log data
             let log_data = Box::new(msg.clone());
 
@@ -1126,11 +1126,7 @@ impl AODV {
                     && entry.flags.contains(RTEFlags::ACTIVE_ROUTE)
                 {
                     //We have an active and valid route to the destination
-                    let confirmed = if entry.next_hop == msg.destination {
-                        true
-                    } else {
-                        false
-                    };
+                    let confirmed = entry.next_hop == msg.destination;
                     (entry.next_hop.clone(), entry.dest_seq_no, confirmed)
                 } else {
                     // let err_msg = format!("This node does not have a valid route to {}", &msg.destination);
@@ -1354,7 +1350,7 @@ impl AODV {
         // let mut flags = RREQFlags::GRATUITOUS_RREP; //Why was I doing this?
         let mut flags = Default::default();
         if dest_seq_no == 0 {
-            flags = flags | RREQFlags::UNKNOWN_SEQUENCE_NUMBER;
+            flags |= RREQFlags::UNKNOWN_SEQUENCE_NUMBER;
         }
         let msg = RouteRequestMessage {
             flags,
@@ -1377,13 +1373,13 @@ impl AODV {
             let mut pd = pending_routes
                 .lock()
                 .expect("Could not lock pending routes");
-            pd.entry(destination.clone())
+            pd.entry(destination)
                 .and_modify(|e| {
                     e.rreq_id = rreq_id;
                     e.lifetime = Utc::now() + Duration::milliseconds(PATH_DISCOVERY_TIME as i64);
                 })
                 .or_insert(PendingRouteEntry {
-                    rreq_id: rreq_id,
+                    rreq_id,
                     dest_seq_no,
                     retries: 0,
                     lifetime: Utc::now() + Duration::milliseconds(PATH_DISCOVERY_TIME as i64),
@@ -1529,7 +1525,7 @@ impl AODV {
                     .iter()
                     .filter(|(_, v)| v.flags.contains(RTEFlags::ACTIVE_ROUTE))
                     .collect();
-                if active_routes.len() > 0
+                if !active_routes.is_empty()
                     && (short_radio.last_transmission() + (HELLO_INTERVAL * 1000) as i64)
                         < Utc::now().timestamp_nanos()
                 {
@@ -1594,7 +1590,7 @@ impl AODV {
             }
 
             //Broken links to send?
-            if broken_links.len() > 0 {
+            if !broken_links.is_empty() {
                 info!(
                     logger,
                     "Broken links detected";

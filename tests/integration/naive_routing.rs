@@ -62,8 +62,7 @@ fn naive_basic() {
     let node_1_msg_sent = outgoing_node1
         .iter()
         .filter(|&m| m.msg_id == "e67865e1946602b9b1a5c4e89ac148f4")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
 
     //node2 receives the message. It's a new message so it relays it
     let node_2_msg_recv = incoming_node2
@@ -73,15 +72,13 @@ fn naive_basic() {
                 && m.source == "node1"
                 && m.status == "FORWARDING"
         })
-        .collect::<Vec<_>>()
-        .len();
+        .count();
 
     //node3 receives the message. Since node3 it's the intended receiver, it does not relay it
     let node_3_msg_recv = incoming_node3
         .iter()
         .filter(|&m| m.msg_id == "e67865e1946602b9b1a5c4e89ac148f4" && m.status == "ACCEPTED")
-        .collect::<Vec<_>>()
-        .len();
+        .count();
 
     //node1 also receives the message from node2. Since the message originated at node1, it's considered a duplicate and dropped.
     let node_1_msg_recv = incoming_node1
@@ -91,8 +88,7 @@ fn naive_basic() {
                 && m.status == "DROPPED"
                 && m.reason == "DUPLICATE"
         })
-        .collect::<Vec<_>>()
-        .len();
+        .count();
 
     assert!(node_1_cmd_recv.is_some());
     assert_eq!(node_1_msg_sent, 1);

@@ -630,7 +630,7 @@ impl Master {
                             let id = register_worker(
                                 &conn,
                                 config.worker_name.clone(),
-                                worker_id.clone(),
+                                worker_id,
                                 config.position,
                                 config.velocity,
                                 &config.destination,
@@ -1096,7 +1096,7 @@ impl Master {
                 rows.len()
             );
             //Stop workers that have reached their destination
-            let stoppable: Vec<i32> = rows.keys().map(|v| *v).collect();
+            let stoppable: Vec<i32> = rows.keys().copied().collect();
             match stop_workers(&conn, &stoppable, logger) {
                 Ok(r) => {
                     info!(logger, "{} workers have been stopped", r);
