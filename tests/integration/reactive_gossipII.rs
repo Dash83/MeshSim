@@ -1,7 +1,7 @@
 extern crate mesh_simulator;
 
 use super::super::*;
-use mesh_simulator::logging::*;
+
 use mesh_simulator::tests::common::*;
 
 //********************************

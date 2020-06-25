@@ -7,7 +7,7 @@ use std::env;
 
 use super::super::*;
 use mesh_simulator::logging;
-use mesh_simulator::logging::*;
+
 use mesh_simulator::mobility2::*;
 use mesh_simulator::tests::common::*;
 use mesh_simulator::worker::radio::*;

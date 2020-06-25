@@ -30,7 +30,7 @@ use crate::worker::radio::*;
 use crate::{MeshSimError, MeshSimErrorKind};
 use byteorder::{NativeEndian, WriteBytesExt};
 use libc::{c_int, nice};
-use md5::Digest;
+
 use rand::{rngs::StdRng, SeedableRng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -312,9 +312,9 @@ impl MessageHeader {
         return self.payload.as_slice();
     }
 
-    fn create_msg_id(destination: &String, mut payload: Vec<u8>) -> String {
+    fn create_msg_id(destination: &str, mut payload: Vec<u8>) -> String {
         let mut data = Vec::new();
-        data.append(&mut destination.clone().into_bytes());
+        data.append(&mut destination.to_string().into_bytes());
         data.append(&mut payload);
 
         let d = md5::compute(&data);
@@ -405,7 +405,7 @@ impl fmt::Display for MessageStatus {
 }
 
 impl Value for MessageStatus {
-    fn serialize(&self, _rec: &Record, key: Key, serializer: &mut Serializer) -> slog::Result {
+    fn serialize(&self, _rec: &Record, key: Key, serializer: &mut dyn Serializer) -> slog::Result {
         serializer.emit_str(key, &self.to_string())
     }
 }
@@ -633,7 +633,7 @@ impl Worker {
 
                                     if let Some(r) = response {
                                         let log_data = log_data.expect("ERROR: Log_Data was empty");
-                                        let msg_id = r.get_msg_id().to_string();
+                                        let _msg_id = r.get_msg_id().to_string();
                                         match tx_channel.broadcast(r, log_data) {
                                             Ok(_) => { /* All good */ }
                                             Err(e) => {

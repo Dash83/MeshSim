@@ -165,16 +165,16 @@ enum Errors {
 }
 
 impl error::Error for Errors {
-    fn description(&self) -> &str {
-        match *self {
-            // CLIError::SetLogger(ref err) => err.description(),
-            // CLIError::IO(ref err) => err.description(),
-            // CLIError::Master(ref err) => err.description(),
-            Errors::TestParsing(ref err_str) => err_str,
-            Errors::IO(ref err) => err.description(),
-            Errors::Serialization(ref err) => err.description(),
-        }
-    }
+    // fn description(&self) -> &str {
+    //     match *self {
+    //         // CLIError::SetLogger(ref err) => err.description(),
+    //         // CLIError::IO(ref err) => err.description(),
+    //         // CLIError::Master(ref err) => err.description(),
+    //         Errors::TestParsing(ref err_str) => err_str,
+    //         Errors::IO(ref err) => err.description(),
+    //         Errors::Serialization(ref err) => err.description(),
+    //     }
+    // }
 
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {

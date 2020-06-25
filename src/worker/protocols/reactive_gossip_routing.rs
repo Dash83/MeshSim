@@ -2,9 +2,9 @@
 
 use crate::worker::protocols::{Outcome, Protocol};
 use crate::worker::radio::{self, *};
-use crate::worker::{MessageHeader, MessageStatus, Peer};
+use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
-use md5::Digest;
+
 use rand::{rngs::StdRng, Rng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -183,7 +183,7 @@ impl KV for Messages {
 impl Protocol for ReactiveGossipRouting {
     fn handle_message(
         &self,
-        mut hdr: MessageHeader,
+        hdr: MessageHeader,
         _r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
         let msg_id = hdr.get_msg_id().to_string();
@@ -288,7 +288,7 @@ impl Protocol for ReactiveGossipRouting {
                 .lock()
                 .expect("Failed to lock pending_destinations table");
 
-            let (route_id, _ts, _tries) = match pending_destinations.get(&destination) {
+            let (_route_id, _ts, _tries) = match pending_destinations.get(&destination) {
                 Some((route_id, ts, tries)) => {
                     info!(
                         self.logger,
@@ -374,7 +374,7 @@ impl ReactiveGossipRouting {
         let msg = Messages::RouteDiscovery(msg);
         let log_data = Box::new(msg.clone());
         let hdr = MessageHeader::new(me.clone(), destination.clone(), serialize_message(msg)?);
-        let msg_id = hdr.get_msg_id().to_string();
+        let _msg_id = hdr.get_msg_id().to_string();
 
         //Add the route to the route cache so that this node does not relay it again
         {
@@ -397,14 +397,14 @@ impl ReactiveGossipRouting {
         data: Vec<u8>,
         short_radio: Arc<dyn Radio>,
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-        logger: &Logger,
+        _logger: &Logger,
     ) -> Result<(), MeshSimError> {
         let msg = Messages::Data(DataMessage {
             route_id: route_id.clone(),
             payload: data,
         });
         let log_data = Box::new(msg.clone());
-        let mut hdr = MessageHeader::new(self_peer, dest, serialize_message(msg)?);
+        let hdr = MessageHeader::new(self_peer, dest, serialize_message(msg)?);
 
         //Log this message in the data_msg_cache so that we can monitor if the neighbors relay it
         //properly, retransmit if necessary, and don't relay it again when we hear it from others.
@@ -695,7 +695,7 @@ impl ReactiveGossipRouting {
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         route_msg_cache: Arc<Mutex<HashSet<String>>>,
         self_peer: String,
-        msg_id: String,
+        _msg_id: String,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
@@ -815,7 +815,7 @@ impl ReactiveGossipRouting {
     }
 
     fn process_route_established_msg(
-        mut hdr: MessageHeader,
+        hdr: MessageHeader,
         mut msg: RouteMessage,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
@@ -823,7 +823,7 @@ impl ReactiveGossipRouting {
         queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         self_peer: String,
-        msg_id: String,
+        _msg_id: String,
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
@@ -972,7 +972,7 @@ impl ReactiveGossipRouting {
         _queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         _data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         self_peer: String,
-        msg_id: String,
+        _msg_id: String,
         _short_radio: Arc<dyn Radio>,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
@@ -1079,11 +1079,6 @@ impl ReactiveGossipRouting {
         //Wait for all threads to finish
         thread_pool.join();
         Ok(())
-    }
-
-    fn build_protocol_message(data: Vec<u8>) -> Result<Messages, serde_cbor::Error> {
-        let res: Result<Messages, serde_cbor::Error> = from_slice(data.as_slice());
-        res
     }
 
     fn get_self_peer(&self) -> String {
@@ -1242,7 +1237,7 @@ impl ReactiveGossipRouting {
 
     fn route_teardown(
         route_id: &str,
-        self_peer: &String,
+        _self_peer: &String,
         destination_routes: Arc<Mutex<HashMap<String, String>>>,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         logger: &Logger,

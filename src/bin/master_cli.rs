@@ -34,14 +34,14 @@ enum CLIError {
 }
 
 impl error::Error for CLIError {
-    fn description(&self) -> &str {
-        match *self {
-            CLIError::SetLogger(ref desc) => &desc,
-            CLIError::IO(ref err) => err.description(),
-            CLIError::Master(ref err) => err.description(),
-            CLIError::TestParsing(ref err_str) => err_str,
-        }
-    }
+    // fn description(&self) -> &str {
+    //     match *self {
+    //         CLIError::SetLogger(ref desc) => &desc,
+    //         CLIError::IO(ref err) => err.description(),
+    //         CLIError::Master(ref err) => err.description(),
+    //         CLIError::TestParsing(ref err_str) => err_str,
+    //     }
+    // }
 
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {

@@ -4,12 +4,11 @@
 use crate::logging::{self, *};
 use crate::mobility2::*;
 use chrono::prelude::*;
-use diesel::pg::PgConnection;
+
 use diesel::prelude::*;
 use diesel::sql_query;
-use diesel::sql_types::{Double, Text};
-use diesel::Connection;
-use slog::{Drain, Logger};
+
+use slog::Logger;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -28,7 +27,7 @@ embed_migrations!("migrations");
 /***********************************************/
 /***************  Test Data Types  *************/
 /***********************************************/
-pub type TestResult<T = ()> = std::result::Result<T, Box<std::error::Error>>;
+pub type TestResult<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub struct TestSetup {
     pub test_name: String,

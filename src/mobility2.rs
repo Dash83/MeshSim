@@ -33,13 +33,13 @@ pub mod schema;
 pub const HUMAN_SPEED_MEAN: f64 = 1.462; //meters per second.
 /// Standard deviation of human walking speeds
 pub const HUMAN_SPEED_STD_DEV: f64 = 0.164;
-const MAX_DBOPEN_RETRY: i32 = 25;
-const MAX_WAIT_MULTIPLIER: i32 = 8;
-const BASE_WAIT_TIME: u64 = 250; //µs
+// const MAX_DBOPEN_RETRY: i32 = 25;
+// const MAX_WAIT_MULTIPLIER: i32 = 8;
+// const BASE_WAIT_TIME: u64 = 250; //µs
 ///Postgres connection file for root DB
 pub const ROOT_ENV_FILE: &str = ".env_root";
 const EXP_ENV_FILE: &str = ".env";
-const DB_BASE_NAME: &str = "meshsim";
+// const DB_BASE_NAME: &str = "meshsim";
 const DB_CONN_PREAMBLE: &str = "DATABASE_URL=postgres://";
 const DB_CONN_ENV_VAR: &str = "DATABASE_URL";
 const DB_DEFAULT_COLLATION: &str = "en_GB.UTF-8";
@@ -123,7 +123,7 @@ pub fn create_database(
     conn: &PgConnection,
     db_name: &String,
     owner: &String,
-    logger: &Logger,
+    _logger: &Logger,
 ) -> Result<(), MeshSimError> {
     //Insert the DB name into the CREATE_DB query
     let mut vars = HashMap::new();
@@ -222,13 +222,13 @@ pub fn register_worker(
     let wr = insert_worker(conn, w_name, w_id, sr_address, lr_address, logger)?;
 
     //Add its position
-    let rows = update_worker_position(conn, pos, wr.id, logger)?;
+    let _rows = update_worker_position(conn, pos, wr.id, logger)?;
 
     //Add its velocity
-    let rows = update_worker_vel(conn, vel, wr.id, logger)?;
+    let _rows = update_worker_vel(conn, vel, wr.id, logger)?;
     //Optionally: add it's destination
     if let Some(d) = dest {
-        let rows = update_worker_target(conn, *d, wr.id, logger)?;
+        let _rows = update_worker_target(conn, *d, wr.id, logger)?;
     }
 
     Ok(wr.id)
@@ -243,7 +243,7 @@ pub fn update_worker_vel(
 ) -> Result<usize, MeshSimError> {
     use schema::worker_velocities::{self, *};
 
-    let new_vel = new_vel {
+    let new_vel = NewVel {
         worker_id: id,
         x: vel.x,
         y: vel.y,
@@ -269,11 +269,11 @@ pub fn update_worker_target(
     conn: &PgConnection,
     dest: Position,
     id: i32,
-    logger: &Logger,
+    _logger: &Logger,
 ) -> Result<usize, MeshSimError> {
     use schema::worker_destinations::{self, *};
 
-    let new_dest = new_dest {
+    let new_dest = NewDest {
         worker_id: id,
         x: dest.x,
         y: dest.y,
@@ -365,10 +365,10 @@ pub fn stop_workers(
 /// respective velocity vector. Update happens every 1 second.
 pub fn update_worker_positions(conn: &PgConnection) -> Result<usize, MeshSimError> {
     use diesel::pg::upsert::excluded;
-    use schema::worker_positions::{self, *};
-    use schema::worker_velocities::{self, *};
+    use schema::worker_positions::{self};
+    use schema::worker_velocities::{self};
 
-    let new_positions: Vec<new_pos> = worker_positions::table
+    let new_positions: Vec<NewPos> = worker_positions::table
         .inner_join(worker_velocities::table)
         .select((
             worker_positions::worker_id,
@@ -417,8 +417,8 @@ pub fn get_workers_in_range(
     conn: &PgConnection,
     worker_name: &str,
     range: f64,
-    logger: &Logger,
-) -> Result<Vec<worker_record>, MeshSimError> {
+    _logger: &Logger,
+) -> Result<Vec<WorkerRecord>, MeshSimError> {
     let query_str = String::from(
         "
         SELECT
@@ -441,7 +441,7 @@ pub fn get_workers_in_range(
     // let debug_q = diesel::debug_query::<diesel::pg::Pg, _>(&q);
     // debug!(logger, "Query: {}", &debug_q);
 
-    let rows: Vec<worker_record> = q.get_results(conn).map_err(|e| {
+    let rows: Vec<WorkerRecord> = q.get_results(conn).map_err(|e| {
         let error_msg = String::from("Failed to get workers in range");
         MeshSimError {
             kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
@@ -525,7 +525,7 @@ pub fn remove_active_transmitter(
     conn: &PgConnection,
     w_name: &str,
     range: RadioTypes,
-    logger: &Logger,
+    _logger: &Logger,
 ) -> Result<usize, MeshSimError> {
     use diesel::delete;
     use schema::workers;
@@ -593,7 +593,7 @@ pub fn register_active_transmitter_if_free(
     worker_name: &String,
     r_type: RadioTypes,
     range: f64,
-    logger: &Logger,
+    _logger: &Logger,
 ) -> Result<usize, MeshSimError> {
     let query_str = match r_type {
         RadioTypes::ShortRange => String::from(
@@ -724,18 +724,18 @@ fn insert_worker(
     sr_address: Option<String>,
     lr_address: Option<String>,
     _logger: &Logger,
-) -> Result<worker_record, MeshSimError> {
+) -> Result<WorkerRecord, MeshSimError> {
     use schema::workers;
     // use schema::workers::dsl::*;
 
-    let new_worker = new_worker {
+    let new_worker = NewWorker {
         worker_name: &w_name,
         worker_id: &w_id,
         short_range_address: sr_address,
         long_range_address: lr_address,
     };
 
-    let record: worker_record = diesel::insert_into(workers::table)
+    let record: WorkerRecord = diesel::insert_into(workers::table)
         .values(&new_worker)
         .get_result(conn)
         // .expect("Failed to insert new worker");
@@ -757,7 +757,7 @@ fn update_worker_position(
 ) -> Result<usize, MeshSimError> {
     use schema::worker_positions::{self, *};
 
-    let new_pos = new_pos {
+    let new_pos = NewPos {
         worker_id: id,
         x: pos.x,
         y: pos.y,
@@ -783,7 +783,7 @@ mod tests {
     // extern crate tests;
     use crate::mobility2::*;
     use crate::tests::common::*;
-    use std::fs;
+    
     use std::sync::Mutex;
     use std::thread;
     use std::time::Duration;
@@ -830,7 +830,7 @@ mod tests {
         //Connect to experiment DB
         //If nothing failed, the test was succesful.
         let env_file = data.db_env_file.take().unwrap();
-        let conn =
+        let _conn =
             get_db_connection(&env_file, &data.logger).expect("Failed to connect to experiment DB");
 
         //TODO: Select db name and check it matches de DB_NAME pattern: SELECT current_database();
@@ -1141,7 +1141,7 @@ mod tests {
             .expect("Failed to connect to experiment DB");
         let rows = get_workers_in_range(&conn, "Worker2", 50.0, &data.logger)
             .expect("get_workers_in_range Failed");
-        let names: Vec<&String> = rows.iter().map(|v| &v.worker_name).collect();
+        let _names: Vec<&String> = rows.iter().map(|v| &v.worker_name).collect();
         assert_eq!(rows.len(), 4);
 
         //Test passed. Results are not needed.

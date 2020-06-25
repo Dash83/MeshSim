@@ -39,16 +39,16 @@ enum CLIError {
 }
 
 impl error::Error for CLIError {
-    fn description(&self) -> &str {
-        match *self {
-            CLIError::SetLogger(ref desc) => &desc,
-            CLIError::IO(ref err) => err.description(),
-            CLIError::Worker(ref err) => err.description(),
-            CLIError::Serialization(ref err) => err.description(),
-            CLIError::TOML(ref err) => err.description(),
-            CLIError::Configuration(ref err) => err.as_str(),
-        }
-    }
+    // fn description(&self) -> &str {
+    //     match *self {
+    //         CLIError::SetLogger(ref desc) => &desc,
+    //         CLIError::IO(ref err) => err.description(),
+    //         CLIError::Worker(ref err) => err.description(),
+    //         CLIError::Serialization(ref err) => err.description(),
+    //         CLIError::TOML(ref err) => err.description(),
+    //         CLIError::Configuration(ref err) => err.as_str(),
+    //     }
+    // }
 
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {

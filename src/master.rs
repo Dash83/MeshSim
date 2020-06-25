@@ -36,7 +36,7 @@ use std::io;
 use std::io::{BufRead, BufReader, Write};
 use std::iter;
 use std::ops::DerefMut;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -192,16 +192,16 @@ impl fmt::Display for MasterError {
 }
 
 impl error::Error for MasterError {
-    fn description(&self) -> &str {
-        match *self {
-            MasterError::Serialization(ref err) => err.description(),
-            MasterError::IO(ref err) => err.description(),
-            MasterError::Worker(ref err) => err.description(),
-            MasterError::TOML(ref err) => err.description(),
-            MasterError::TestParsing(ref err) => err.as_str(),
-            MasterError::Sync(ref err) => err.as_str(),
-        }
-    }
+    // fn description(&self) -> &str {
+    //     match *self {
+    //         MasterError::Serialization(ref err) => err.description(),
+    //         MasterError::IO(ref err) => err.description(),
+    //         MasterError::Worker(ref err) => err.description(),
+    //         MasterError::TOML(ref err) => err.description(),
+    //         MasterError::TestParsing(ref err) => err.as_str(),
+    //         MasterError::Sync(ref err) => err.as_str(),
+    //     }
+    // }
 
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {

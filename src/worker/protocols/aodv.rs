@@ -1,12 +1,12 @@
 //! Implemention of the AODV protocol, per its RFC https://www.rfc-editor.org/info/rfc3561
 use crate::worker::protocols::{Outcome, Protocol};
 use crate::worker::radio::{self, *};
-use crate::worker::{MessageHeader, MessageStatus, Peer};
+use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 
 use chrono::offset::TimeZone;
 use chrono::{DateTime, Duration, Utc};
-use md5::Digest;
+
 use rand::{rngs::StdRng, Rng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -14,7 +14,7 @@ use slog::{Logger, Record, Serializer, KV};
 use std::collections::{HashMap, HashSet};
 use std::default::Default;
 use std::ops::Add;
-use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -259,7 +259,7 @@ impl Protocol for AODV {
         hdr: MessageHeader,
         _r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
-        let msg_id = hdr.get_msg_id();
+        let _msg_id = hdr.get_msg_id();
         // let data = match hdr.payload.take() {
         //     Some(d) => d,
         //     None => {
@@ -379,7 +379,7 @@ impl Protocol for AODV {
             pending_routes.get(&destination).map(|v| *v)
         };
         match route_entry {
-            Some(entry) => {
+            Some(_entry) => {
                 info!(
                     self.logger,
                     "Route discovery process already started for {}", &destination
@@ -421,7 +421,7 @@ impl AODV {
             let mut rng = rng.lock().expect("Could not lock RNG");
             rng.gen_range(0, std::u32::MAX)
         };
-        let ts = Utc::now().timestamp_millis();
+        let _ts = Utc::now().timestamp_millis();
         AODV {
             worker_name,
             worker_id,
@@ -497,7 +497,7 @@ impl AODV {
     }
 
     fn process_route_request_msg(
-        mut hdr: MessageHeader,
+        hdr: MessageHeader,
         mut msg: RouteRequestMessage,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
@@ -733,7 +733,7 @@ impl AODV {
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         me: String,
         short_radio: Arc<dyn Radio>,
-        rng: Arc<Mutex<StdRng>>,
+        _rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
         //RREPs are UNICASTED. Is this the destination in the header? It not, exit.
@@ -969,9 +969,7 @@ impl AODV {
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
         let mut affected_neighbours = Vec::new();
-        let mut response: Option<MessageHeader> = Default::default();
-        let mut num_routes_affected: usize = Default::default();
-
+        let _response: Option<MessageHeader> = Default::default();
         let mut rt = route_table.lock().expect("Could not lock route table");
 
         {
@@ -996,7 +994,6 @@ impl AODV {
                     let mut precursors: Vec<_> =
                         entry.precursors.iter().map(|v| v.clone()).collect();
                     affected_neighbours.append(&mut precursors);
-                    num_routes_affected += 1;
                     debug!(logger, "Invalidating route to {}", destination);
                 }
                 debug!(logger, "Current route for {} is fresher", &destination);
@@ -1037,16 +1034,6 @@ impl AODV {
 
             Ok((Some(rsp_hdr), Some(log_data)))
         } else {
-            // info!(
-            //     logger,
-            //     "Message received";
-            //     "msg_type" => "RERR",
-            //     "sender"=>&hdr.sender,
-            //     // "unreachable_dests"=>&msg.destinations,
-            //     "status"=>MessageStatus::DROPPED,
-            //     "invalidated_routes"=>num_routes_affected,
-            //     "affected_neighbours"=>affected_neighbours.len(),
-            // );
             radio::log_rx(
                 logger,
                 &hdr,
@@ -1061,7 +1048,7 @@ impl AODV {
     }
 
     fn process_data_msg(
-        mut hdr: MessageHeader,
+        hdr: MessageHeader,
         msg: DataMessage,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
@@ -1069,7 +1056,7 @@ impl AODV {
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
         //Mark the packet in the cache as confirmed
-        let confirmed = {
+        let _confirmed = {
             let mut dc = data_cache.lock().expect("Could not lock data cache");
             let payload = serialize_message(Messages::DATA(msg.clone()))?;
             let msg_hash = format!("{:x}", md5::compute(&payload));
@@ -1361,7 +1348,7 @@ impl AODV {
         short_radio: Arc<dyn Radio>,
         pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
         rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
-        logger: &Logger,
+        _logger: &Logger,
     ) -> Result<(), MeshSimError> {
         let rreq_id = rreq_seq_no.fetch_add(1, Ordering::SeqCst) + 1;
         // let mut flags = RREQFlags::GRATUITOUS_RREP; //Why was I doing this?

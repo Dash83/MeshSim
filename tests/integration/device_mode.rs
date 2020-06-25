@@ -10,8 +10,8 @@ use super::super::*;
 use mesh_simulator::tests::common::*;
 use mesh_simulator::worker::worker_config;
 use mesh_simulator::worker::OperationMode;
-use std::fs::File;
-use std::io::Read;
+
+
 use std::thread;
 use std::time::Duration;
 
@@ -79,7 +79,7 @@ fn integration_device_mode_basic() -> TestResult {
     // let mut output = String::new();
     // log_file.read_to_string(&mut output).ok().expect("Failed to read log file.");
     let worker1_log_file = &format!("{}/log/worker1.log", &data.work_dir);
-    let worker1_log_records = logging::get_log_records_from_file(&worker1_log_file).unwrap();
+    let _worker1_log_records = logging::get_log_records_from_file(&worker1_log_file).unwrap();
 
     //TODO: Review that this is the right criteria for an integration test of the device mode
     // println!("Process output: {}", &output);

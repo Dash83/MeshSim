@@ -2,9 +2,9 @@
 
 use crate::worker::protocols::{Outcome, Protocol};
 use crate::worker::radio::{self, *};
-use crate::worker::{MessageHeader, MessageStatus, Peer};
+use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
-use md5::Digest;
+
 use rand::{rngs::StdRng, Rng, RngCore};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -64,10 +64,10 @@ impl Protocol for GossipRouting {
 
     fn handle_message(
         &self,
-        mut hdr: MessageHeader,
+        hdr: MessageHeader,
         _r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
-        let msg = GossipRouting::build_protocol_message(hdr.get_payload()).map_err(|e| {
+        let msg = deserialize_message(hdr.get_payload()).map_err(|e| {
             let err_msg = String::from("Failed to deserialize payload into a message");
             MeshSimError {
                 kind: MeshSimErrorKind::Serialization(err_msg),
@@ -182,7 +182,7 @@ impl GossipRouting {
     ) -> Result<Outcome, MeshSimError> {
         {
             // LOCK:ACQUIRE:MSG_CACHE
-            let mut cache = msg_cache.lock().map_err(|e| {
+            let mut cache = msg_cache.lock().map_err(|_e| {
                 let err_msg = String::from("Failed to lock message cache");
                 // error!(
                 //     logger,
@@ -315,11 +315,6 @@ impl GossipRouting {
                 GossipRouting::process_data_message(hdr, data, k, p, me, msg_cache, rng, logger)
             }
         }
-    }
-
-    fn build_protocol_message(data: &[u8]) -> Result<Messages, serde_cbor::Error> {
-        let res: Result<Messages, serde_cbor::Error> = from_slice(data);
-        res
     }
 
     fn get_self_peer(&self) -> String {

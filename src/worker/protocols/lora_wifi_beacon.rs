@@ -2,11 +2,11 @@
 
 use crate::worker::protocols::{Outcome, Protocol};
 use crate::worker::radio::{self, Radio, RadioTypes};
-use crate::worker::{MessageHeader, MessageStatus, Peer};
+use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
-use md5::Digest;
+
 use rand::thread_rng;
-use rand::RngCore;
+
 use rand::{rngs::StdRng, Rng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -56,7 +56,7 @@ impl KV for Messages {
 impl Protocol for LoraWifiBeacon {
     fn handle_message(
         &self,
-        mut hdr: MessageHeader,
+        hdr: MessageHeader,
         r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
         //Filter out packets coming from this node, as we get many from the multicast.
@@ -153,8 +153,8 @@ impl LoraWifiBeacon {
         radio: Arc<dyn Radio>,
         timeout: u64,
         self_peer: String,
-        link: String,
-        logger: Logger,
+        _link: String,
+        _logger: Logger,
     ) -> Result<(), MeshSimError> {
         let mut counter: u64 = 0;
         let sleep_time = Duration::from_millis(timeout);
@@ -195,9 +195,9 @@ impl LoraWifiBeacon {
     }
 
     fn process_beacon_msg(
-        mut hdr: MessageHeader,
+        hdr: MessageHeader,
         msg: BeaconMessage,
-        link: String,
+        _link: String,
         me: String,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
@@ -225,7 +225,7 @@ impl LoraWifiBeacon {
     fn process_beacon_response_msg(
         hdr: MessageHeader,
         msg: BeaconMessage,
-        link: String,
+        _link: String,
         me: String,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {

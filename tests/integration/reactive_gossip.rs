@@ -145,7 +145,7 @@ fn test_route_teardown() {
     );
 
     let node7_log_file = format!("{}/log/node7.log", &data.work_dir);
-    let node7_log_records = logging::get_log_records_from_file(&node7_log_file).unwrap();
+    let _node7_log_records = logging::get_log_records_from_file(&node7_log_file).unwrap();
     let node7_incoming =
         get_incoming_message_records(node7_log_file).expect("Could not read incoming packets");
     let node7_teardown_recv = node7_incoming
@@ -232,5 +232,5 @@ fn test_route_discovery() {
 #[test]
 fn test_packet_counting() {
     let path = String::from("/tmp/rgrII_route_discovery_optimization_1575207368/log/");
-    let num = count_all_packets("RouteDiscovery", &path);
+    let _num = count_all_packets("RouteDiscovery", &path);
 }

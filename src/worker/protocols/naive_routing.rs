@@ -2,9 +2,9 @@
 
 use crate::worker::protocols::{Outcome, Protocol};
 use crate::worker::radio::{self, *};
-use crate::worker::{MessageHeader, MessageStatus, Peer};
+use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
-use md5::Digest;
+
 use rand::{rngs::StdRng, RngCore};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -57,10 +57,10 @@ impl Protocol for NaiveRouting {
 
     fn handle_message(
         &self,
-        mut hdr: MessageHeader,
+        hdr: MessageHeader,
         _r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
-        let msg = NaiveRouting::build_protocol_message(hdr.get_payload()).map_err(|e| {
+        let msg = deserialize_message(hdr.get_payload()).map_err(|e| {
             let err_msg = String::from("Failed to deserialize payload into a message");
             MeshSimError {
                 kind: MeshSimErrorKind::Serialization(err_msg),
@@ -130,32 +130,6 @@ impl NaiveRouting {
         }
     }
 
-    // fn create_data_message(
-    //     sender: String,
-    //     destination: String,
-    //     hops: u16,
-    //     data: Vec<u8>,
-    // ) -> Result<MessageHeader, MeshSimError> {
-    //     let data_msg = Messages::Data(DataMessage{ payload : data});
-    //     let payload = to_vec(&data_msg).map_err(|e| {
-    //         let err_msg = String::from("Failed to serialize message");
-    //         MeshSimError {
-    //             kind: MeshSimErrorKind::Serialization(err_msg),
-    //             cause: Some(Box::new(e)),
-    //         }
-    //     })?;
-    //     //info!("Built DATA message for peer: {}, id {:?}", &destination, destination.id);
-
-    //     //Build the message header that's ready for sending.
-    //     let msg = MessageHeader::new(
-    //         sender,
-    //         destination,
-    //         payload,
-    //         hops,
-    //     );
-    //     Ok(msg)
-    // }
-
     fn process_data_message(
         hdr: MessageHeader,
         msg: DataMessage,
@@ -167,7 +141,7 @@ impl NaiveRouting {
         let msg_id = hdr.get_msg_id().to_string();
         {
             // LOCK:ACQUIRE:MSG_CACHE
-            let mut cache = msg_cache.lock().map_err(|e| {
+            let mut cache = msg_cache.lock().map_err(|_e| {
                 let err_msg = String::from("Failed to lock message cache");
                 radio::log_rx(
                     logger,
@@ -244,11 +218,6 @@ impl NaiveRouting {
                 NaiveRouting::process_data_message(hdr, data, me, msg_cache, rng, logger)
             }
         }
-    }
-
-    fn build_protocol_message(data: &[u8]) -> Result<Messages, serde_cbor::Error> {
-        let res: Result<Messages, serde_cbor::Error> = from_slice(data);
-        res
     }
 
     fn get_self_peer(&self) -> String {
