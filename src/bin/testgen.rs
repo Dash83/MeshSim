@@ -2,8 +2,8 @@ extern crate mesh_simulator;
 
 use mesh_simulator::master::test_specification::*;
 use mesh_simulator::master::MobilityModels;
-use mesh_simulator::worker;
 use mesh_simulator::mobility2::*;
+use mesh_simulator::worker;
 use mesh_simulator::worker::protocols::Protocols;
 use mesh_simulator::worker::worker_config::*;
 
@@ -165,16 +165,16 @@ enum Errors {
 }
 
 impl error::Error for Errors {
-    fn description(&self) -> &str {
-        match *self {
-            // CLIError::SetLogger(ref err) => err.description(),
-            // CLIError::IO(ref err) => err.description(),
-            // CLIError::Master(ref err) => err.description(),
-            Errors::TestParsing(ref err_str) => err_str,
-            Errors::IO(ref err) => err.description(),
-            Errors::Serialization(ref err) => err.description(),
-        }
-    }
+    // fn description(&self) -> &str {
+    //     match *self {
+    //         // CLIError::SetLogger(ref err) => err.description(),
+    //         // CLIError::IO(ref err) => err.description(),
+    //         // CLIError::Master(ref err) => err.description(),
+    //         Errors::TestParsing(ref err_str) => err_str,
+    //         Errors::IO(ref err) => err.description(),
+    //         Errors::Serialization(ref err) => err.description(),
+    //     }
+    // }
 
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
@@ -347,7 +347,7 @@ fn command_add_nodes(
         w.operation_mode = worker::OperationMode::Simulated; //All test files are for simulated mode.
         w.random_seed = rng.next_u32();
         w.work_dir = data.work_dir.clone();
-//        w.protocol = data.protocol;
+        //        w.protocol = data.protocol;
         w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
 
         //Calculate the position
@@ -357,7 +357,7 @@ fn command_add_nodes(
 
         if let Some(model) = &data.m_model {
             match model {
-                MobilityModels::RandomWaypoint{pause_time: _} => {
+                MobilityModels::RandomWaypoint { pause_time: _ } => {
                     let target_x = rng.sample(width_sample);
                     let target_y = rng.sample(height_sample);
                     w.destination = Some(Position {
@@ -445,7 +445,7 @@ fn add_cbr_sources(
     let duration: u64 = (spec.duration as f64 * 0.10) as u64;
     let sources_start_time_limit: u64 = spec.duration - cool_off_period - duration;
     let start_times_sample = Uniform::new(warm_up_period, sources_start_time_limit);
-    
+
     assert!(warm_up_period < sources_start_time_limit);
 
     let param_parts: Vec<&str> = params.split_whitespace().collect();
@@ -461,7 +461,7 @@ fn add_cbr_sources(
     };
 
     assert!(num_sources <= (spec.initial_nodes.len() / 2));
-    let mut nodes : Vec<&String> = spec.initial_nodes.keys().clone().collect();
+    let mut nodes: Vec<&String> = spec.initial_nodes.keys().clone().collect();
     for _i in 0..num_sources {
         //select source
         let source_index = rng.next_u32() as usize % nodes.len();
@@ -598,7 +598,7 @@ fn command_add_grid(
             w.operation_mode = worker::OperationMode::Simulated; //All test files are for simulated mode.
             w.random_seed = rng.next_u32();
             w.work_dir = data.work_dir.clone();
-//            w.protocol = data.protocol;
+            //            w.protocol = data.protocol;
             w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
             w.position = Position { x, y };
             w.velocity = Velocity { x: 0.0, y: 0.0 };

@@ -26,6 +26,8 @@ use libc::{c_int, nice};
 use rand::distributions::{Normal, Uniform};
 use rand::{thread_rng, Rng, RngCore};
 // use rusqlite::Connection;
+use chrono::{DateTime, Utc};
+use diesel::pg::PgConnection;
 use slog::Logger;
 use std::collections::{HashMap, HashSet};
 use std::error;
@@ -34,16 +36,14 @@ use std::io;
 use std::io::{BufRead, BufReader, Write};
 use std::iter;
 use std::ops::DerefMut;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use test_specification::{Area, TestActions};
-use chrono::{Utc, DateTime};
 use workloads::SourceProfiles;
-use diesel::pg::PgConnection;
 
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
@@ -60,9 +60,9 @@ type PendingWorker = (DateTime<Utc>, Velocity);
 #[serde(tag = "Model")]
 pub enum MobilityModels {
     /// Random waypoint model
-    RandomWaypoint{
+    RandomWaypoint {
         /// The amount of time a node will wait once it reaches its destination.
-        pause_time : u64
+        pause_time: u64,
     },
     /// No movement
     Stationary,
@@ -73,7 +73,7 @@ impl FromStr for MobilityModels {
 
     fn from_str(s: &str) -> Result<MobilityModels, MeshSimError> {
         let parts: Vec<&str> = s.split_whitespace().collect();
-        
+
         if parts.is_empty() {
             let msg = String::from("Empty mobility model");
             let err = MeshSimError {
@@ -86,8 +86,8 @@ impl FromStr for MobilityModels {
         match parts[0].to_uppercase().as_str() {
             "RANDOMWAYPOINT" => {
                 let pause_time = parts[1].parse::<u64>().unwrap_or(RANDOM_WAYPOINT_WAIT_TIME);
-                Ok(MobilityModels::RandomWaypoint{pause_time})
-            },
+                Ok(MobilityModels::RandomWaypoint { pause_time })
+            }
             "STATIONARY" => Ok(MobilityModels::Stationary),
             _ => {
                 let err_msg = String::from("Invalid mobility model");
@@ -192,16 +192,16 @@ impl fmt::Display for MasterError {
 }
 
 impl error::Error for MasterError {
-    fn description(&self) -> &str {
-        match *self {
-            MasterError::Serialization(ref err) => err.description(),
-            MasterError::IO(ref err) => err.description(),
-            MasterError::Worker(ref err) => err.description(),
-            MasterError::TOML(ref err) => err.description(),
-            MasterError::TestParsing(ref err) => err.as_str(),
-            MasterError::Sync(ref err) => err.as_str(),
-        }
-    }
+    // fn description(&self) -> &str {
+    //     match *self {
+    //         MasterError::Serialization(ref err) => err.description(),
+    //         MasterError::IO(ref err) => err.description(),
+    //         MasterError::Worker(ref err) => err.description(),
+    //         MasterError::TOML(ref err) => err.description(),
+    //         MasterError::TestParsing(ref err) => err.as_str(),
+    //         MasterError::Sync(ref err) => err.as_str(),
+    //     }
+    // }
 
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
@@ -223,7 +223,10 @@ impl Master {
         let workers = Arc::new(Mutex::new(HashMap::new()));
         let wb = String::from("./worker_cli");
         let an = HashMap::new();
-        let parts: Vec<&str> = work_dir.as_str().rsplit(std::path::MAIN_SEPARATOR).collect();
+        let parts: Vec<&str> = work_dir
+            .as_str()
+            .rsplit(std::path::MAIN_SEPARATOR)
+            .collect();
         let db_name = parts[0].to_string();
         let env_file = create_db_objects(&work_dir, &db_name, &logger)?;
 
@@ -242,7 +245,7 @@ impl Master {
             },
             mobility_model: None,
             db_name,
-            env_file, 
+            env_file,
             logger,
             log_file,
             sleep_time_override: None,
@@ -317,13 +320,12 @@ impl Master {
 
         //Check if the sleep_time needs to be overriden
         if let Some(st) = sleep_time_override {
-            let new_sleep_time = st.parse::<u64>()
-                .map_err(|e| {
-                    let err_msg = String::from("Failed to parse new worker sleep_time");
-                    MeshSimError {
-                        kind: MeshSimErrorKind::Master(err_msg),
-                        cause: Some(Box::new(e)),
-                    }
+            let new_sleep_time = st.parse::<u64>().map_err(|e| {
+                let err_msg = String::from("Failed to parse new worker sleep_time");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Master(err_msg),
+                    cause: Some(Box::new(e)),
+                }
             })?;
             self.sleep_time_override = Some(new_sleep_time);
         }
@@ -341,9 +343,7 @@ impl Master {
         //Start all workers and add save their child process handle.
         {
             let workers = Arc::clone(&self.workers);
-            let mut workers = workers
-                .lock()
-                .expect("Failed to lock workers list");
+            let mut workers = workers.lock().expect("Failed to lock workers list");
 
             for (_, val) in spec.initial_nodes.iter_mut() {
                 //Assign a protocol for the worker
@@ -388,8 +388,9 @@ impl Master {
 
                         // let sr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::ShortRange);
                         // let lr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::LongRange);
-                        let (sr_addr, lr_addr) = SimulatedRadio::extract_radio_addresses(output, &self.logger)?;
-//                        let (sr_addr, lr_addr) = (None, None);
+                        let (sr_addr, lr_addr) =
+                            SimulatedRadio::extract_radio_addresses(output, &self.logger)?;
+                        //                        let (sr_addr, lr_addr) = (None, None);
 
                         debug!(&self.logger, "Extracted radio addresses");
 
@@ -629,7 +630,7 @@ impl Master {
                             let id = register_worker(
                                 &conn,
                                 config.worker_name.clone(),
-                                worker_id.clone(),
+                                worker_id,
                                 config.position,
                                 config.velocity,
                                 &config.destination,
@@ -797,10 +798,7 @@ impl Master {
                 match profile {
                     SourceProfiles::CBR(dest, pps, size, dur) => {
                         let total_packets: f64 = (dur * pps as u64) as f64 / 1000.0;
-                        info!(
-                            logger,
-                            "[Source]: Will transmit {} packets", total_packets
-                        );
+                        info!(logger, "[Source]: Will transmit {} packets", total_packets);
                         match Master::start_cbr_source(
                             source, dest, pps, size, dur, workers, &logger,
                         ) {
@@ -973,16 +971,14 @@ impl Master {
                         "No mobility model defined. Setting Stationary model"
                     );
                     MobilityModels::Stationary
-                },
+                }
             };
 
             let sleep_time = match sleep_time_override {
                 Some(time) => time,
-                None => {
-                    match &model {
-                        MobilityModels::RandomWaypoint{pause_time} => *pause_time,
-                        MobilityModels::Stationary => duration,
-                    }
+                None => match &model {
+                    MobilityModels::RandomWaypoint { pause_time } => *pause_time,
+                    MobilityModels::Stationary => duration,
                 },
             };
 
@@ -995,7 +991,7 @@ impl Master {
                     let velocity = &val.1;
                     if *restart_time <= Utc::now() {
                         match update_worker_vel(&conn, *velocity, *worker_id, &logger) {
-                            Ok(_r) =>  restarted_workers.push(*worker_id),
+                            Ok(_r) => restarted_workers.push(*worker_id),
                             Err(e) => {
                                 error!(
                                     logger,
@@ -1005,7 +1001,7 @@ impl Master {
                                     error!(logger, "Cause: {}", cause);
                                 }
                             }
-                        } 
+                        }
                     }
                 }
 
@@ -1026,7 +1022,7 @@ impl Master {
                 // }
 
                 match model {
-                    MobilityModels::RandomWaypoint{pause_time: _} => {
+                    MobilityModels::RandomWaypoint { pause_time: _ } => {
                         Master::handle_random_waypoint(
                             &conn,
                             &width_sample,
@@ -1038,13 +1034,13 @@ impl Master {
                             &mut rng,
                             &logger,
                         );
-                    },
+                    }
                     MobilityModels::Stationary => {
                         if !initialized {
                             Master::handle_stationary(&conn, &logger);
                             initialized = true;
                         }
-                    },
+                    }
                 }
 
                 //Update worker positions
@@ -1060,10 +1056,7 @@ impl Master {
         })
     }
 
-    fn handle_stationary(
-        conn: &PgConnection,
-        logger: &Logger,
-    ) {
+    fn handle_stationary(conn: &PgConnection, logger: &Logger) {
         let _rows = match stop_all_workers(conn) {
             Ok(rows) => rows,
             Err(e) => {
@@ -1103,7 +1096,7 @@ impl Master {
                 rows.len()
             );
             //Stop workers that have reached their destination
-            let stoppable: Vec<i32> = rows.keys().map(|v| *v).collect();
+            let stoppable: Vec<i32> = rows.keys().copied().collect();
             match stop_workers(&conn, &stoppable, logger) {
                 Ok(r) => {
                     info!(logger, "{} workers have been stopped", r);
@@ -1131,7 +1124,7 @@ impl Master {
                 //Update worker target position
                 let _res = update_worker_target(
                     &conn,
-              Position {
+                    Position {
                         x: next_x,
                         y: next_y,
                     },
@@ -1148,10 +1141,7 @@ impl Master {
                 //     &logger,
                 // );
                 let restart_time = Utc::now() + chrono::Duration::milliseconds(pause_time as i64);
-                paused_workers.insert(
-                    w_id, 
-                    (restart_time, Velocity { x: x_vel, y: y_vel })
-                );
+                paused_workers.insert(w_id, (restart_time, Velocity { x: x_vel, y: y_vel }));
             }
         }
     }
@@ -1185,7 +1175,7 @@ impl Master {
     //                         }
     //                         0
     //                     }
-    //                 };                   
+    //                 };
     //             },
     //             Err(e) => {
     //                 error!(

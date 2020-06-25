@@ -1,8 +1,8 @@
 //! This module defines the worker_config struct and related functions. It allows meshsim to
 //! deserialize a configuration file into a worker_config object that eventually creates a worker object.
 
-use crate::worker::listener::Listener;
 use crate::mobility2::{Position, Velocity};
+use crate::worker::listener::Listener;
 use crate::worker::protocols::*;
 use crate::worker::radio::*;
 use crate::worker::radio::{self, LoraFrequencies, SimulatedRadio, WifiRadio};
@@ -141,7 +141,7 @@ pub struct WorkerConfig {
     /// The maximum number of queued packets a worker can have
     pub packet_queue_size: Option<usize>,
     /// Initial position of the worker
-//    #[serde(flatten)]
+    //    #[serde(flatten)]
     pub position: Position,
     /// Optional field used for mobility models.
     pub destination: Option<Position>,
@@ -184,7 +184,7 @@ impl WorkerConfig {
         let gen = Worker::rng_from_seed(self.random_seed);
         //Check if a worker_id is present
         let id = match self.worker_id {
-            Some(id) => id.clone(),
+            Some(id) => id,
             None => WorkerConfig::gen_id(self.random_seed),
         };
         //Wrap the rng in the shared-mutable-state smart pointers
@@ -293,7 +293,7 @@ impl WorkerConfig {
         let mut key: Vec<u8> = iter::repeat(0u8).take(16).collect();
         //Fill the vector with 16 random bytes.
         gen.fill_bytes(&mut key[..]);
-        key.to_hex().to_string()
+        key.to_hex()
     }
 }
 

@@ -1,7 +1,6 @@
-
-extern crate mesh_simulator;
-extern crate chrono;
 extern crate assert_cli;
+extern crate chrono;
+extern crate mesh_simulator;
 
 #[cfg(test)]
 #[macro_use]
@@ -12,21 +11,16 @@ extern crate lazy_static;
 extern crate slog;
 
 use self::chrono::prelude::*;
-use std::path::{PathBuf, Path};
-use std::env;
-use std::fs::{self};
 use self::mesh_simulator::logging::{self, *};
+use std::env;
+
+
 use std::process::{Command, Stdio};
-
-
 
 // mod experiments;
 // pub mod common;
 mod integration;
 mod unit;
-
-
-
 
 /***********************************************/
 /**************** Helper functions *************/
@@ -40,7 +34,7 @@ mod unit;
 
 // fn create_integration_test_dir<'a>(test_name : &'a str) -> String {
 //     let now : DateTime<Utc> = Utc::now();
-//     let test_dir_path = format!("{}{}_{}", &get_tests_root(), 
+//     let test_dir_path = format!("{}{}_{}", &get_tests_root(),
 //                                              test_name,
 //                                              now.timestamp());
 //     let test_dir = Path::new(&test_dir_path);
@@ -51,5 +45,3 @@ mod unit;
 
 //     test_dir_path.clone()
 // }
-
-

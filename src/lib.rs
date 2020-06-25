@@ -26,9 +26,9 @@ extern crate diesel_migrations;
 //*****************
 pub mod logging;
 pub mod master;
-pub mod worker;
 pub mod mobility2;
 pub mod tests;
+pub mod worker;
 
 //*****************
 //Errors

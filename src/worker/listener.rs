@@ -7,9 +7,9 @@ extern crate linux_embedded_hal as hal;
 use crate::worker::radio::RadioTypes;
 use crate::worker::*;
 use socket2::Socket;
+use std::time::Duration;
 #[cfg(target_os = "linux")]
 use sx1276::socket::{Link, LoRa};
-use std::time::Duration;
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it
 /// and listen for incoming connections.
@@ -46,7 +46,7 @@ impl Listener for SimulatedListener {
                 if bytes_read > 0 {
                     let data = buffer[..bytes_read].to_vec();
                     match MessageHeader::from_vec(data) {
-                        Ok(m) => {
+                        Ok(mut m) => {
                             //The counterpart of this method, SimulatedRadio::broadcast, does a fake
                             //broadcast by getting a list of nodes in range and unicasting to them
                             //one by one. This has an effect on the message propagation, as some
@@ -57,11 +57,13 @@ impl Listener for SimulatedListener {
                             //in the simulated broadcast have been delivered.
                             let delay = Duration::from_micros(m.delay);
                             std::thread::sleep(delay);
-//                            let now = Instant::now();
-//                            while now.elapsed() < delay { }
+                            //                            let now = Instant::now();
+                            //                            while now.elapsed() < delay { }
+                            //Update the ttl of the header
+                            m.ttl -= 1;
 
                             Some(m)
-                        },
+                        }
                         Err(e) => {
                             //Read bytes but could not form a MessageHeader
                             error!(self.logger, "Failed reading message: {}", e);

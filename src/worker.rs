@@ -30,11 +30,11 @@ use crate::worker::radio::*;
 use crate::{MeshSimError, MeshSimErrorKind};
 use byteorder::{NativeEndian, WriteBytesExt};
 use libc::{c_int, nice};
-use md5::Digest;
+
 use rand::{rngs::StdRng, SeedableRng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
-use slog::{Logger, Key, Value, Record, Serializer};
+use slog::{Key, Logger, Record, Serializer, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::process::Child;
@@ -43,7 +43,6 @@ use std::sync::{Arc, Mutex};
 use std::sync::{MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::{self, error, fmt, io};
-
 
 //Sub-modules declaration
 pub mod commands;
@@ -272,21 +271,30 @@ impl MessageHeader {
     }
 
     ///Create new, empty MessageHeader.
-    pub fn new(
-        sender: String,
-        destination: String,
-        payload: Vec<u8>,
-        hops: u16,
-    ) -> MessageHeader {
+    pub fn new(sender: String, destination: String, payload: Vec<u8>) -> MessageHeader {
         let msg_id = MessageHeader::create_msg_id(&destination, payload.clone());
         MessageHeader {
             sender,
             destination,
-            hops,
+            hops: 0u16,
             delay: 0u64,
             ttl: std::usize::MAX,
             payload,
             msg_id,
+        }
+    }
+
+    ///Used to create another header based on the current one. This is the recommended way
+    ///to create response messages in order to preserve metadata such as TTL and hops, which
+    ///are updated automatically.
+    pub fn create_forward_header(self, new_sender: String) -> MessageHeaderBuilder {
+        MessageHeaderBuilder {
+            old_data: self,
+            sender: new_sender,
+            destination: None,
+            hops: None,
+            ttl: None,
+            payload: None,
         }
     }
 
@@ -296,17 +304,17 @@ impl MessageHeader {
     /// Payload
     /// This is done instead of getting the md5sum of the entire structure for testability purposes
     pub fn get_msg_id(&self) -> &str {
-        return &self.msg_id
-    }
-    
-    /// Get a reference to the payload of the message. It is primarily used to deserialize it into a protocol message.
-    pub fn get_payload(&self) -> &[u8] {
-        return self.payload.as_slice()
+        &self.msg_id
     }
 
-    fn create_msg_id(destination: &String, mut payload: Vec<u8>) -> String {
+    /// Get a reference to the payload of the message. It is primarily used to deserialize it into a protocol message.
+    pub fn get_payload(&self) -> &[u8] {
+        self.payload.as_slice()
+    }
+
+    fn create_msg_id(destination: &str, mut payload: Vec<u8>) -> String {
         let mut data = Vec::new();
-        data.append(&mut destination.clone().into_bytes());
+        data.append(&mut destination.to_string().into_bytes());
         data.append(&mut payload);
 
         let d = md5::compute(&data);
@@ -314,6 +322,65 @@ impl MessageHeader {
     }
 }
 
+///Used to create a new MessageHeader from another MessageHeader.
+///Created with the method create_forward_header from MessageHeader.
+pub struct MessageHeaderBuilder {
+    old_data: MessageHeader,
+    /// The new sender of the message
+    sender: String,
+    ///Destination of the message
+    destination: Option<String>,
+    ///Number of hops this message has taken
+    hops: Option<u16>,
+    /// Number of hops until the message is discarded
+    ttl: Option<usize>,
+    /// It's the responsibility of the underlying protocol to know how to deserialize this payload
+    /// into a protocol-specific message.
+    payload: Option<Vec<u8>>,
+}
+
+impl MessageHeaderBuilder {
+    ///Sets a new destination for the MessageHeader. By default, the previous destination is retained.
+    pub fn set_destination(mut self, dest: String) -> MessageHeaderBuilder {
+        self.destination = Some(dest);
+        self
+    }
+
+    ///Sets a new hops count for the MessageHeader. By default, the previous count is retained.
+    pub fn set_hops(mut self, hops: u16) -> MessageHeaderBuilder {
+        self.hops = Some(hops);
+        self
+    }
+
+    ///Sets a new TTL for the MessageHeader. By default, the previous count is retained.
+    pub fn set_ttl(mut self, ttl: usize) -> MessageHeaderBuilder {
+        self.ttl = Some(ttl);
+        self
+    }
+
+    ///Sets a new payload for the MessageHeader. Should be called if the payload has changed at all.
+    ///By default, the previous payload is retained.
+    pub fn set_payload(mut self, payload: Vec<u8>) -> MessageHeaderBuilder {
+        self.payload = Some(payload);
+        self
+    }
+
+    ///Consumes the current MessageHeaderBuilder to produce a MessageHeader
+    pub fn build(self) -> MessageHeader {
+        let destination = self.destination.unwrap_or(self.old_data.destination);
+        let payload = self.payload.unwrap_or(self.old_data.payload);
+        let msg_id = MessageHeader::create_msg_id(&destination, payload.clone());
+        MessageHeader {
+            sender: self.sender,
+            destination,
+            hops: self.hops.unwrap_or(self.old_data.hops),
+            delay: 0u64,
+            ttl: self.ttl.unwrap_or(self.old_data.ttl),
+            payload,
+            msg_id,
+        }
+    }
+}
 /// Enum that represents the possible status of a Message as it moves through the network
 pub enum MessageStatus {
     /// The message has reached its destination.
@@ -338,7 +405,7 @@ impl fmt::Display for MessageStatus {
 }
 
 impl Value for MessageStatus {
-    fn serialize(&self, _rec: &Record, key: Key, serializer: &mut Serializer) -> slog::Result { 
+    fn serialize(&self, _rec: &Record, key: Key, serializer: &mut dyn Serializer) -> slog::Result {
         serializer.emit_str(key, &self.to_string())
     }
 }
@@ -525,7 +592,7 @@ impl Worker {
                     .num_threads(WORKER_POOL_SIZE)
                     .build();
                 let max_queued_jobs = self.packet_queue_size;
-                
+
                 thread::spawn(move || {
                     let radio_label: String = match rx.get_radio_range() {
                         RadioTypes::LongRange => String::from("LoraRadio"),
@@ -542,7 +609,7 @@ impl Worker {
 
                                 if thread_pool.queued_count() >= max_queued_jobs {
                                     info!(
-                                        logger, 
+                                        logger,
                                         "Message received";
                                         "status"=>MessageStatus::DROPPED,
                                         "reason"=>"packet_queue is full"
@@ -551,28 +618,24 @@ impl Worker {
                                 }
 
                                 thread_pool.execute(move || {
-                                    let (response , md)= match prot.handle_message(hdr, r_type) {
-                                        Ok(resp) => resp,
-                                        Err(e) => {
-                                            error!(log, "Error handling message:");
-                                            error!(log, "{}", &e);
-                                            if let Some(cause) = e.cause {
-                                                error!(log, "Cause: {}", cause);
+                                    let (response, log_data) =
+                                        match prot.handle_message(hdr, r_type) {
+                                            Ok(resp) => resp,
+                                            Err(e) => {
+                                                error!(log, "Error handling message:");
+                                                error!(log, "{}", &e);
+                                                if let Some(cause) = e.cause {
+                                                    error!(log, "Cause: {}", cause);
+                                                }
+                                                (None, None)
                                             }
-                                            (None, None)
-                                        }
-                                    };
+                                        };
 
                                     if let Some(r) = response {
-                                        let msg_id = r.get_msg_id().to_string();
-                                        match tx_channel.broadcast(r) {
-                                            Ok(tx) => { 
-                                                /* All good */
-                                                let md: MessageMetadata = md.unwrap_or_else(|| {
-                                                    MessageMetadata::new(msg_id, "", MessageStatus::SENT)
-                                                });
-                                                radio::log_tx(&log, tx, md);
-                                            }
+                                        let log_data = log_data.expect("ERROR: Log_Data was empty");
+                                        let _msg_id = r.get_msg_id().to_string();
+                                        match tx_channel.broadcast(r, log_data) {
+                                            Ok(_) => { /* All good */ }
                                             Err(e) => {
                                                 error!(log, "Error sending response: {}", e);
                                                 if let Some(cause) = e.cause {
@@ -583,11 +646,11 @@ impl Worker {
                                     }
                                 });
                                 // info!(logger, "Jobs: {}", thread_pool.queued_count());
-//                                debug!(
-//                                    logger,
-//                                    "Jobs that have paniced: {}",
-//                                    thread_pool.panic_count()
-//                                );
+                                //                                debug!(
+                                //                                    logger,
+                                //                                    "Jobs that have paniced: {}",
+                                //                                    thread_pool.panic_count()
+                                //                                );
                             }
                             None => {
                                 warn!(logger, "Failed to read incoming message.");
@@ -725,9 +788,9 @@ impl Worker {
                 }
                 Err(e) => {
                     error!(logger, "{}", &e);
-//                    if let Some(cause) = e.cause {
-//                        error!(logger, "Cause: {}", &cause);
-//                    }
+                    //                    if let Some(cause) = e.cause {
+                    //                        error!(logger, "Cause: {}", &cause);
+                    //                    }
                 }
             }
             input.clear();
@@ -762,8 +825,8 @@ impl Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::iter;
     use rand::RngCore;
+    use std::iter;
 
     //use worker::worker_config::*;
 
@@ -808,7 +871,7 @@ mod tests {
         let mut rng = Worker::rng_from_seed(12345);
         let mut data: Vec<u8> = iter::repeat(0u8).take(64).collect();
         rng.fill_bytes(&mut data[..]);
-        let msg = MessageHeader::new(sender, destination, data, 0u16);
+        let msg = MessageHeader::new(sender, destination, data);
 
         let hash = msg.get_msg_id();
         assert_eq!(hash, "16c37d4dbeed437d377fc131b016cf38");
@@ -834,7 +897,7 @@ mod tests {
         let source = String::from("Foo");
         let destination = String::from("Bar");
         let empty_payload: Vec<u8> = vec![];
-        let hdr = MessageHeader::new(source, destination, empty_payload, 0u16);
+        let hdr = MessageHeader::new(source, destination, empty_payload);
 
         println!("Size of MessageHeader: {}", mem::size_of::<MessageHeader>());
         let serialized_hdr = to_vec(&hdr).expect("Could not serialize");
@@ -872,7 +935,6 @@ mod tests {
         //        println!("sample data sizeof: {}", mem::size_of_val(&sample_data));
         //        let ser_sample_data = to_vec(&sample_data.to_vec()).expect("Could not serialize");
         //        println!("ser_sample_data len: {}", ser_sample_data.len());
-        assert!(false);
     }
 }
 

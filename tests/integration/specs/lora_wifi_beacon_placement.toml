@@ -1,5 +1,5 @@
 name = "lora_wifi_beacon_placement"
-duration = 12000
+duration = 11000
 actions = []
 width = 200.0
 height = 200.0
