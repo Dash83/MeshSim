@@ -802,14 +802,14 @@ pub fn log_tx(
     info!(
         logger,
         "Message sent";
-        "msg_id"=>msg_id,
-        "radio" => tx.radio_type,
-        "thread" => tx.thread_id,
-        "duration" => tx.duration,
-        "status" => &status,
-        "source" => source,
-        "destination" => destination,
         md,
+        "thread" => tx.thread_id,
+        "radio" => tx.radio_type,
+        "duration" => tx.duration,
+        "destination" => destination,
+        "source" => source,
+        "status" => &status,
+        "msg_id"=>msg_id,
     );
 }
 
@@ -825,14 +825,14 @@ pub fn log_rx<T: KV>(
     info!(
         logger,
         "Received message";
-        "source"=>&hdr.sender,
-        "destination"=>&hdr.destination,
-        "msg_id"=>&hdr.get_msg_id(),
+        msg,
         "hops"=>hdr.hops,
-        "status"=>status,
+        "destination"=>&hdr.destination,
+        "source"=>&hdr.sender,
+        "action"=>action.unwrap_or(""), 
         "reason"=>reason.unwrap_or(""),
-        "action"=>action.unwrap_or(""),
-        msg
+        "status"=>status,
+        "msg_id"=>&hdr.get_msg_id(),
     );
 }
 

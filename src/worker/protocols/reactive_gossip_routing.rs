@@ -92,29 +92,12 @@ impl RouteMessage {
     }
 }
 
-// impl KV for RouteMessage {
-//     fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
-//         let _ = serializer.emit_str("msg_type", "ROUTE_DISCOVERY")?;
-//         let _ = serializer.emit_str("route_id", &self.route_id)?;
-//         let _ = serializer.emit_str("msg_source", &self.route_source)?;
-//         let _ = serializer.emit_str("msg_destination", &self.route_destination)?;
-//         serializer.emit_usize("route_length", self.route.len())
-//     }
-// }
-
 ///This message uses an already established route to send data to the destination
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct DataMessage {
     pub payload: Vec<u8>,
     pub route_id: String,
 }
-
-// impl KV for DataMessage {
-//     fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
-//         let _ = serializer.emit_str("msg_type", "DATA")?;
-//         serializer.emit_str("route_id", &self.route_id)
-//     }
-// }
 
 /// Used in the data message cache to manage retransmissions
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]

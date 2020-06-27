@@ -608,11 +608,14 @@ impl Worker {
                                 let log = logger.clone();
 
                                 if thread_pool.queued_count() >= max_queued_jobs {
-                                    info!(
-                                        logger,
-                                        "Message received";
-                                        "status"=>MessageStatus::DROPPED,
-                                        "reason"=>"packet_queue is full"
+                                    let log_data = ();
+                                    log_rx(
+                                        &log,
+                                        &hdr,
+                                        MessageStatus::DROPPED,
+                                        Some("packet_queue is full"),
+                                        None,
+                                        &log_data,
                                     );
                                     continue;
                                 }
@@ -736,23 +739,6 @@ impl Worker {
             Worker::command_loop(&logger, protocol_handler);
         })
     }
-
-    // Debug function, only used to make sure the worker is alive and getting scheduled.
-    //    fn start_second_counter_thread(&self) -> io::Result<JoinHandle<Result<(), MeshSimError>>> {
-    //        let tb = thread::Builder::new();
-    //        let logger = self.logger.clone();
-    //        let mut i = 0;
-    //
-    //        tb.name(String::from("AliveThread"))
-    //        .spawn(move || {
-    //            loop{
-    //                thread::sleep(Duration::from_millis(1000));
-    //                info!(logger, "{}", i);
-    //                i += 1;
-    //            }
-    //            Ok(())
-    //        })
-    //    }
 
     fn command_loop(logger: &Logger, protocol_handler: Arc<dyn Protocol>) {
         let mut input = String::new();

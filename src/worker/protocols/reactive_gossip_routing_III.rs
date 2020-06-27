@@ -173,7 +173,7 @@ impl KV for Messages {
                 let _ = serializer.emit_str("msg_type", "ROUTE_TEARDOWN")?;
                 serializer.emit_str("route_id", &m.route_id)
             }
-            Messages::Beacon(ref _m) => serializer.emit_str("msg_type", "HELLO"),
+            Messages::Beacon(ref _m) => serializer.emit_str("msg_type", "BEACON"),
         }
     }
 }
