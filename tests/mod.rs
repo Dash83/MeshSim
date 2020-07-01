@@ -14,7 +14,6 @@ use self::chrono::prelude::*;
 use self::mesh_simulator::logging::{self, *};
 use std::env;
 
-
 use std::process::{Command, Stdio};
 
 // mod experiments;

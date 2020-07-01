@@ -46,6 +46,8 @@ pub struct LogEntry {
     pub route_id: Option<String>,
     /// Type of message
     pub msg_type: Option<String>,
+    /// ID of message
+    pub msg_id: Option<String>,
 }
 
 ///Struct to hold a log record of an incoming message

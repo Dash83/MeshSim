@@ -62,7 +62,7 @@ pub struct ReactiveGossipRoutingII {
     destination_routes: Arc<Mutex<HashMap<String, String>>>,
     /// Map to keep track of pending transmissions that are waiting for their associated route_id to be
     /// established.
-    queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+    queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
     /// RNG used for routing calculations
     rng: Arc<Mutex<StdRng>>,
     /// The logger to use in this protocol
@@ -242,64 +242,85 @@ impl Protocol for ReactiveGossipRoutingII {
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
-        let routes = self
-            .destination_routes
-            .lock()
-            .expect("Failed to lock destination_routes table");
         let me = self.get_self_peer();
+        let route_id = {
+            let routes = self
+                .destination_routes
+                .lock()
+                .expect("Failed to lock destination_routes table");
+            routes.get(&destination).map(|v| v.to_owned())
+        };
 
         //Check if an available route exists for the destination.
-        if let Some(route_id) = routes.get(&destination) {
-            //If one exists, start a new flow with the route
+        if let Some(r_id) = route_id {
+            let msg = Messages::Data(DataMessage {
+                route_id: r_id.clone(),
+                payload: data,
+            });
+            let log_data = Box::new(msg.clone());
+            let hdr = MessageHeader::new(me, destination, serialize_message(msg)?);
+
+            info!(&self.logger, "New message"; "msg_id" => hdr.get_msg_id());
+
             ReactiveGossipRoutingII::start_flow(
-                route_id.to_string(),
-                destination,
-                me,
-                data,
+                r_id,
+                log_data,
+                hdr,
                 Arc::clone(&self.short_radio),
                 Arc::clone(&self.data_msg_cache),
                 &self.logger,
             )?;
-            info!(self.logger, "Data has been transmitted");
         } else {
-            let mut pending_destinations = self
-                .pending_destinations
-                .lock()
-                .expect("Failed to lock pending_destinations table");
+            let route_id = {
+                let mut pending_destinations = self
+                    .pending_destinations
+                    .lock()
+                    .expect("Failed to lock pending_destinations table");
 
-            let (_route_id, _ts, _tries) = match pending_destinations.get(&destination) {
-                Some((route_id, ts, tries)) => {
-                    info!(
-                        self.logger,
-                        "Route discovery process already started for {}", &destination
-                    );
-                    (route_id, ts, tries)
-                }
-                None => {
-                    info!(
-                        self.logger,
-                        "No known route to {}. Starting discovery process.", &destination
-                    );
-                    let route_id = ReactiveGossipRoutingII::start_route_discovery(
-                        &me,
-                        destination.clone(),
-                        Arc::clone(&self.short_radio),
-                        Arc::clone(&self.route_msg_cache),
-                        &self.logger,
-                    )?;
-                    let expiration =
-                        Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);
-                    let entry = pending_destinations
-                        .entry(destination.clone())
-                        .or_insert_with(|| (route_id, expiration, 0));
+                match pending_destinations.get(&destination) {
+                    Some((route_id, ts, tries)) => {
+                        info!(
+                            self.logger,
+                            "Route discovery process already started for {}", &destination
+                        );
+                        route_id.to_owned()
+                    }
+                    None => {
+                        info!(
+                            self.logger,
+                            "No known route to {}. Starting discovery process.", &destination
+                        );
+                        let route_id = ReactiveGossipRoutingII::start_route_discovery(
+                            &me,
+                            destination.clone(),
+                            Arc::clone(&self.short_radio),
+                            Arc::clone(&self.route_msg_cache),
+                            Arc::clone(&self.queued_transmissions),
+                            &self.logger,
+                        )?;
+                        let expiration =
+                            Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);
+                        let entry = pending_destinations
+                            .entry(destination.clone())
+                            .or_insert_with(|| (route_id, expiration, 0));
 
-                    (&entry.0, &entry.1, &entry.2)
+                        entry.0.to_owned()
+                    }
                 }
             };
 
+            //Now that we have a route_id, build a data message.
+            let msg = Messages::Data(DataMessage {
+                route_id,
+                payload: data,
+            });
+            let hdr = MessageHeader::new(me, destination.clone(), serialize_message(msg)?);
+
+            info!(&self.logger, "New message"; "msg_id" => hdr.get_msg_id());
+
             //...and then queue the data transmission for when the route is established
             let qt = Arc::clone(&self.queued_transmissions);
-            ReactiveGossipRoutingII::queue_transmission(qt, destination.clone(), data)?;
+            ReactiveGossipRoutingII::queue_transmission(qt, destination, hdr)?;
         }
         Ok(())
     }
@@ -348,16 +369,23 @@ impl ReactiveGossipRoutingII {
         destination: String,
         short_radio: Arc<dyn Radio>,
         route_msg_cache: Arc<Mutex<HashSet<String>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         logger: &Logger,
     ) -> Result<String, MeshSimError> {
         let mut msg = RouteMessage::new(me.clone(), destination.clone());
         msg.route.push(me.clone());
         let route_id = msg.route_id.clone();
-        //Tag the message
         let msg = Messages::RouteDiscovery(msg);
         let log_data = Box::new(msg.clone());
-        let hdr = MessageHeader::new(me.clone(), destination, serialize_message(msg)?);
-        let _msg_id = hdr.get_msg_id().to_string();
+        let hdr = MessageHeader::new(me.clone(), destination.clone(), serialize_message(msg)?);
+
+        //For the case when the route_discovery is triggered because the previous one failed, we may have cached messages
+        //for which the payload holds the old RouteID. If so, this funciton will update those messages. Otherwise, it's a noop.
+        ReactiveGossipRoutingII::update_queued_transmissions(
+            queued_transmissions,
+            &destination,
+            route_id.clone(),
+        )?;
 
         //Add the route to the route cache so that this node does not relay it again
         {
@@ -375,22 +403,12 @@ impl ReactiveGossipRoutingII {
 
     fn start_flow(
         route_id: String,
-        dest: String,
-        self_peer: String,
-        data: Vec<u8>,
+        log_data: Box<dyn KV>,
+        hdr: MessageHeader,
         short_radio: Arc<dyn Radio>,
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         _logger: &Logger,
     ) -> Result<(), MeshSimError> {
-        let msg = DataMessage {
-            route_id: route_id.clone(),
-            payload: data,
-        };
-        //Tag the message
-        let msg = Messages::Data(msg);
-        let log_data = Box::new(msg.clone());
-        let hdr = MessageHeader::new(self_peer, dest, serialize_message(msg)?);
-
         //Log this message in the data_msg_cache so that we can monitor if the neighbors relay it
         //properly, retransmit if necessary, and don't relay it again when we hear it from others.
         let mut dc = data_msg_cache
@@ -413,9 +431,9 @@ impl ReactiveGossipRoutingII {
     }
 
     fn queue_transmission(
-        trans_q: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+        trans_q: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         destination: String,
-        data: Vec<u8>,
+        data: MessageHeader,
     ) -> Result<(), MeshSimError> {
         let mut tq = trans_q
             .lock()
@@ -433,7 +451,7 @@ impl ReactiveGossipRoutingII {
         k: usize,
         p: f64,
         q: f64,
-        queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
         pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
@@ -465,7 +483,6 @@ impl ReactiveGossipRoutingII {
                 )
             }
             Messages::RouteDiscovery(route_msg) => {
-                //                        debug!(logger, "Received ROUTE_DISCOVERY message");
                 ReactiveGossipRoutingII::process_route_discovery_msg(
                     hdr,
                     route_msg,
@@ -482,7 +499,6 @@ impl ReactiveGossipRoutingII {
                 )
             }
             Messages::RouteEstablish(route_msg) => {
-                //                        debug!(logger, "Received ROUTE_ESTABLISH message");
                 ReactiveGossipRoutingII::process_route_established_msg(
                     hdr,
                     route_msg,
@@ -707,12 +723,7 @@ impl ReactiveGossipRoutingII {
             let log_data = Box::new(msg.clone());
 
             //Create response header
-            let response_hdr = hdr
-                .create_forward_header(self_peer)
-                .set_destination(dest)
-                .set_payload(serialize_message(msg)?)
-                .build();
-
+            let response_hdr = MessageHeader::new(self_peer, dest, serialize_message(msg)?);
             return Ok((Some(response_hdr), Some(log_data)));
         }
 
@@ -813,7 +824,7 @@ impl ReactiveGossipRoutingII {
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
         pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
-        queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         self_peer: String,
@@ -961,7 +972,7 @@ impl ReactiveGossipRoutingII {
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
         _pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
-        _queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         _data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         _vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         self_peer: String,
@@ -1020,7 +1031,7 @@ impl ReactiveGossipRoutingII {
     }
 
     fn start_queued_flows(
-        queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         route_id: String,
         destination: String,
         self_peer: String,
@@ -1030,7 +1041,7 @@ impl ReactiveGossipRoutingII {
     ) -> Result<(), MeshSimError> {
         info!(logger, "Looking for queued flows for {}", &destination);
 
-        let entry: Option<(String, Vec<Vec<u8>>)> = {
+        let entry: Option<(String, Vec<MessageHeader>)> = {
             let mut qt = queued_transmissions
                 .lock()
                 .expect("Error trying to acquire lock to transmissions queue");
@@ -1042,19 +1053,17 @@ impl ReactiveGossipRoutingII {
             .build();
         if let Some((_key, flows)) = entry {
             info!(logger, "Processing {} queued transmissions.", &flows.len());
-            for data in flows {
+            for hdr in flows {
                 let r_id = route_id.clone();
-                let dest = destination.clone();
-                let s = self_peer.clone();
+                let log_data = Box::new(deserialize_message(hdr.get_payload())?);
                 let radio = Arc::clone(&short_radio);
                 let l = logger.clone();
                 let dmc = Arc::clone(&data_msg_cache);
                 thread_pool.execute(move || {
                     match ReactiveGossipRoutingII::start_flow(
                         r_id.clone(),
-                        dest,
-                        s,
-                        data,
+                        log_data,
+                        hdr,
                         radio,
                         dmc,
                         &l,
@@ -1090,7 +1099,7 @@ impl ReactiveGossipRoutingII {
         destination_routes: Arc<Mutex<HashMap<String, String>>>,
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
-        queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         route_msg_cache: Arc<Mutex<HashSet<String>>>,
         me: String,
         short_radio: Arc<dyn Radio>,
@@ -1202,6 +1211,7 @@ impl ReactiveGossipRoutingII {
                             dest.clone(),
                             Arc::clone(&short_radio),
                             Arc::clone(&route_msg_cache),
+                            Arc::clone(&queued_transmissions),
                             &logger,
                         )?;
 
@@ -1314,6 +1324,31 @@ impl ReactiveGossipRoutingII {
             .lock()
             .expect("Could not lock vicinity cache");
         let _ = vc.insert(hdr.sender.clone(), Utc::now());
+        Ok(())
+    }
+
+    fn update_queued_transmissions(
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
+        destination: &str,
+        route_id: String,
+    ) -> Result<(), MeshSimError> {
+        let mut qt = queued_transmissions
+            .lock()
+            .expect("Failed to lock queued_transmissions");
+        let mut new_flows = Vec::new();
+        if qt.contains_key(destination) {
+            let entry = qt.entry(destination.to_owned()).or_insert(vec![]);
+            for h in entry.iter_mut() {
+                if let Messages::Data(mut msg) = deserialize_message(h.get_payload())? {
+                    msg.route_id = route_id.clone();
+                    h.payload = serialize_message(Messages::Data(msg))?;
+                    new_flows.push(h.clone());
+                }
+            }
+            entry.clear();
+            entry.append(&mut new_flows);
+        }
+
         Ok(())
     }
 }

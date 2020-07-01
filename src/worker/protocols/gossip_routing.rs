@@ -98,6 +98,7 @@ impl Protocol for GossipRouting {
             serialize_message(Messages::Data(msg))?,
         );
         let msg_id = hdr.get_msg_id().to_string();
+        info!(&self.logger, "New message"; "msg_id" => &msg_id);
         {
             let mut cache = self.msg_cache.lock().expect("Could not lock message cache");
             //Have not seen this message yet.
@@ -109,9 +110,7 @@ impl Protocol for GossipRouting {
                 cache.remove(&e);
             }
             //Log message
-            cache.insert(CacheEntry {
-                msg_id,
-            });
+            cache.insert(CacheEntry { msg_id });
         }
 
         self.short_radio.broadcast(hdr, log_data)?;

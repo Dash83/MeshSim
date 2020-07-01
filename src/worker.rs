@@ -31,6 +31,7 @@ use crate::{MeshSimError, MeshSimErrorKind};
 use byteorder::{NativeEndian, WriteBytesExt};
 use libc::{c_int, nice};
 
+use chrono::Utc;
 use rand::{rngs::StdRng, SeedableRng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -272,7 +273,7 @@ impl MessageHeader {
 
     ///Create new, empty MessageHeader.
     pub fn new(sender: String, destination: String, payload: Vec<u8>) -> MessageHeader {
-        let msg_id = MessageHeader::create_msg_id(&destination, payload.clone());
+        let msg_id = MessageHeader::create_msg_id(payload.clone());
         MessageHeader {
             sender,
             destination,
@@ -312,9 +313,11 @@ impl MessageHeader {
         self.payload.as_slice()
     }
 
-    fn create_msg_id(destination: &str, mut payload: Vec<u8>) -> String {
+    fn create_msg_id(mut payload: Vec<u8>) -> String {
         let mut data = Vec::new();
-        data.append(&mut destination.to_string().into_bytes());
+        // data.append(&mut destination.to_string().into_bytes());
+        let mut ts = Utc::now().timestamp_nanos().to_le_bytes().to_vec();
+        data.append(&mut ts);
         data.append(&mut payload);
 
         let d = md5::compute(&data);
@@ -367,9 +370,13 @@ impl MessageHeaderBuilder {
 
     ///Consumes the current MessageHeaderBuilder to produce a MessageHeader
     pub fn build(self) -> MessageHeader {
-        let destination = self.destination.unwrap_or(self.old_data.destination);
+        let destination = self
+            .destination
+            .unwrap_or(self.old_data.destination.clone());
+        let msg_id = self.old_data.get_msg_id().to_string();
         let payload = self.payload.unwrap_or(self.old_data.payload);
-        let msg_id = MessageHeader::create_msg_id(&destination, payload.clone());
+        // let msg_id = MessageHeader::create_msg_id(payload.clone());
+
         MessageHeader {
             sender: self.sender,
             destination,
@@ -851,6 +858,9 @@ mod tests {
     // }
 
     #[test]
+    #[ignore]
+    //This test is not valid at the moment as the hash is now changing everytime
+    // with the current timestamp
     fn test_message_header_hash() {
         let sender = String::from("SENDER");
         let destination = String::from("DESTINATION");
@@ -860,7 +870,7 @@ mod tests {
         let msg = MessageHeader::new(sender, destination, data);
 
         let hash = msg.get_msg_id();
-        assert_eq!(hash, "16c37d4dbeed437d377fc131b016cf38");
+        assert_eq!(hash, "fd8559921846fd7e962ae3e1c3bc6e2d");
 
         // rng.fill_bytes(&mut data[..]);
         // msg.payload = data.clone();
