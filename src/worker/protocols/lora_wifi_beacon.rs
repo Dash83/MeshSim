@@ -210,7 +210,7 @@ impl LoraWifiBeacon {
             &Messages::Beacon(msg.clone()),
         );
 
-        let sender = hdr.sender.clone();
+        let sender = hdr.sender;
         let resp_msg = Messages::BeaconResponse(msg);
         let log_data = Box::new(resp_msg.clone());
         let response_hdr = MessageHeader::new(me, sender, serialize_message(resp_msg)?);
