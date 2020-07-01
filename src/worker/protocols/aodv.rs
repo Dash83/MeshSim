@@ -1299,7 +1299,7 @@ impl AODV {
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         destination: String,
-        me: String,
+        _me: String,
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {

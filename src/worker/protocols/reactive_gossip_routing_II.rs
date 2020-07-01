@@ -278,7 +278,7 @@ impl Protocol for ReactiveGossipRoutingII {
                     .expect("Failed to lock pending_destinations table");
 
                 match pending_destinations.get(&destination) {
-                    Some((route_id, ts, tries)) => {
+                    Some((route_id, _ts, _tries)) => {
                         info!(
                             self.logger,
                             "Route discovery process already started for {}", &destination
@@ -972,7 +972,7 @@ impl ReactiveGossipRoutingII {
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
         _pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
-        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
+        _queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         _data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         _vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         self_peer: String,
@@ -1034,7 +1034,7 @@ impl ReactiveGossipRoutingII {
         queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         route_id: String,
         destination: String,
-        self_peer: String,
+        _self_peer: String,
         short_radio: Arc<dyn Radio>,
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         logger: &Logger,
