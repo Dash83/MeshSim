@@ -345,7 +345,7 @@ fn test_mac_layer_basic() {
     let incoming_messages = logging::get_incoming_message_records(node4_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
-        .filter(|&m| m.msg_id == "fde4d48d2af405f81ffb7fd942661093" && m.status == "ACCEPTED")
+        .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
         .count();
     assert_eq!(msg_received, 1);
 
@@ -353,7 +353,7 @@ fn test_mac_layer_basic() {
     let incoming_messages = logging::get_incoming_message_records(node5_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
-        .filter(|&m| m.msg_id == "af31bcddd2076fa82a715c2cd0ea4797" && m.status == "ACCEPTED")
+        .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
         .count();
     assert_eq!(msg_received, 1);
 
@@ -361,7 +361,7 @@ fn test_mac_layer_basic() {
     let incoming_messages = logging::get_incoming_message_records(node19_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
-        .filter(|&m| m.msg_id == "14254398dc1cd65acdd1c59d91c58eaf" && m.status == "ACCEPTED")
+        .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
         .count();
     assert_eq!(msg_received, 1);
 
@@ -369,7 +369,7 @@ fn test_mac_layer_basic() {
     let incoming_messages = logging::get_incoming_message_records(node20_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
-        .filter(|&m| m.msg_id == "db91176df07289b9dca1657d0435a332" && m.status == "ACCEPTED")
+        .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
         .count();
     assert_eq!(msg_received, 1);
 
@@ -377,7 +377,7 @@ fn test_mac_layer_basic() {
     let incoming_messages = logging::get_incoming_message_records(node22_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
-        .filter(|&m| m.msg_id == "5db52dcc83ccaafc70e513b5a59967ff" && m.status == "ACCEPTED")
+        .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
         .count();
     assert_eq!(msg_received, 1);
 
@@ -385,7 +385,7 @@ fn test_mac_layer_basic() {
     let incoming_messages = logging::get_incoming_message_records(node24_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
-        .filter(|&m| m.msg_id == "447aa7819c99839980120f42612e2bf9" && m.status == "ACCEPTED")
+        .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
         .count();
     assert_eq!(msg_received, 1);
 
@@ -393,7 +393,7 @@ fn test_mac_layer_basic() {
     let incoming_messages = logging::get_incoming_message_records(node25_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
-        .filter(|&m| m.msg_id == "95bd74a6038b3f3137e8067e815abf5b" && m.status == "ACCEPTED")
+        .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
         .count();
     assert_eq!(msg_received, 1);
 

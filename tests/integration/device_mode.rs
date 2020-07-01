@@ -11,7 +11,6 @@ use mesh_simulator::tests::common::*;
 use mesh_simulator::worker::worker_config;
 use mesh_simulator::worker::OperationMode;
 
-
 use std::thread;
 use std::time::Duration;
 

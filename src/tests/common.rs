@@ -56,7 +56,9 @@ pub fn create_test_dir<'a>(test_name: &'a str) -> String {
     let test_dir = Path::new(&test_dir_path);
 
     if !test_dir.exists() {
-        fs::create_dir(&test_dir_path).unwrap_or_else(|_| panic!("Unable to create test results directory {}", test_dir_path));
+        fs::create_dir(&test_dir_path).unwrap_or_else(|_| {
+            panic!("Unable to create test results directory {}", test_dir_path)
+        });
     }
 
     test_dir_path.clone()
