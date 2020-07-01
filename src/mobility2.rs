@@ -142,7 +142,7 @@ pub fn create_database(
 
     //Create the experiment DB
     let _ = sql_query(qry).execute(conn).map_err(|e| {
-        let error_msg = String::from("Could not create experiment DB");
+        let error_msg = format!("Could not create experiment DB {}.{}", owner, db_name);
         MeshSimError {
             kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
             cause: Some(Box::new(e)),

@@ -215,6 +215,9 @@ fn main() {
     let matches = get_cli_parameters();
     let master = init(&matches).unwrap_or_else(|e| {
         eprintln!("master_cli failed with the following error: {}", e);
+        if let Some(cause) = e.cause {
+            eprintln!("cause: {}", cause);
+        }
         ::std::process::exit(ERROR_LOG_INITIALIZATION);
     });
 
