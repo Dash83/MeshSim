@@ -783,7 +783,7 @@ mod tests {
     // extern crate tests;
     use crate::mobility2::*;
     use crate::tests::common::*;
-    
+
     use std::sync::Mutex;
     use std::thread;
     use std::time::Duration;

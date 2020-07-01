@@ -8,7 +8,6 @@ use chrono::Utc;
 use diesel::pg::PgConnection;
 use pnet_datalink as datalink;
 
-
 use slog::{Logger, KV};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::convert::TryFrom;
@@ -34,7 +33,7 @@ const TRANSMISSION_MAX_RETRY: usize = 16;
 const TRANSMISSION_EXP_CAP: u32 = 9; //no more than 128ms
 const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
 const RETRANSMISSION_WAIT_BASE: u64 = 250; //µs
-// const DB_CONTENTION_SLEEP: u64 = 100; //ms What was this for?
+                                           // const DB_CONTENTION_SLEEP: u64 = 100; //ms What was this for?
 
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE: usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
@@ -829,7 +828,7 @@ pub fn log_rx<T: KV>(
         "hops"=>hdr.hops,
         "destination"=>&hdr.destination,
         "source"=>&hdr.sender,
-        "action"=>action.unwrap_or(""), 
+        "action"=>action.unwrap_or(""),
         "reason"=>reason.unwrap_or(""),
         "status"=>status,
         "msg_id"=>&hdr.get_msg_id(),

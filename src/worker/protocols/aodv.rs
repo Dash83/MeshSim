@@ -133,7 +133,7 @@ pub struct AODV {
     rreq_seq_no: Arc<AtomicU32>,
     route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
     pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
-    queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+    queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
     /// Used exclusively to control when RREQ messages are processed or marked as duplicates.
     rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
     data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
@@ -241,7 +241,7 @@ impl KV for Messages {
                 serializer.emit_usize("msg.num_affected_destinations", m.destinations.len())
             }
             Messages::HELLO(ref _m) => serializer.emit_str("msg_type", "BEACON"),
-            Messages::RREP_ACK => serializer.emit_str("msg_type", "RREP_ACK")
+            Messages::RREP_ACK => serializer.emit_str("msg_type", "RREP_ACK"),
         }
     }
 }
@@ -321,6 +321,19 @@ impl Protocol for AODV {
         let mut dest_seq_no = 0;
         let mut valid_route = false;
 
+        let msg = Messages::DATA(DataMessage {
+            destination: destination.clone(),
+            payload: data,
+        });
+        //Create log data
+        let log_data = Box::new(msg.clone());
+        let hdr = MessageHeader::new(
+            self.get_self_peer(),
+            destination.clone(),
+            serialize_message(msg)?,
+        );
+        info!(&self.logger, "New message"; "msg_id" => hdr.get_msg_id());
+
         //Check if an available route exists for the destination.
         {
             let routes = routes.lock().expect("Failed to lock route_table");
@@ -337,8 +350,8 @@ impl Protocol for AODV {
                 destination,
                 Arc::clone(&self.route_table),
                 Arc::clone(&self.data_cache),
-                self.get_self_peer(),
-                data,
+                hdr,
+                log_data,
                 Arc::clone(&self.short_radio),
                 self.logger.clone(),
             )?;
@@ -349,7 +362,7 @@ impl Protocol for AODV {
         //We do this before starting the Route Discovery in case we get a very quick response
         //from an immediate neighbour, in which case the the transmission might not yet be queued.
         let qt = Arc::clone(&self.queued_transmissions);
-        AODV::queue_transmission(qt, destination.clone(), data)?;
+        AODV::queue_transmission(qt, destination.clone(), hdr)?;
 
         //No valid route exists to the destination.
         //Check if a route discovery to the destination is already underway.
@@ -427,7 +440,7 @@ impl AODV {
         rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
-        queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         seq_no: Arc<AtomicU32>,
         short_radio: Arc<dyn Radio>,
         rng: Arc<Mutex<StdRng>>,
@@ -571,11 +584,8 @@ impl AODV {
             //Create the log data for the packet
             let log_data = Box::new(response.clone());
 
-            let resp_hdr = hdr
-                .create_forward_header(me)
-                .set_destination(entry.next_hop.clone())
-                .set_payload(serialize_message(response)?)
-                .build();
+            let resp_hdr =
+                MessageHeader::new(me, entry.next_hop.clone(), serialize_message(response)?);
 
             return Ok((Some(resp_hdr), Some(log_data)));
         }
@@ -618,19 +628,19 @@ impl AODV {
                     lifetime: (entry.lifetime.timestamp_millis() - Utc::now().timestamp_millis())
                         as u32,
                 };
-                
+
                 //Tag the response
                 let response = Messages::RREP(response);
                 //Create the log data for the packet
                 let log_data = Box::new(response.clone());
 
                 let dest = hdr.sender.clone();
-                let resp_hdr = hdr
-                    .create_forward_header(me)
-                    .set_destination(dest)
-                    .set_payload(serialize_message(response)?)
-                    .build();
-
+                // let resp_hdr = hdr
+                //     .create_forward_header(me)
+                //     .set_destination(dest)
+                //     .set_payload(serialize_message(response)?)
+                //     .build();
+                let resp_hdr = MessageHeader::new(me, dest, serialize_message(response)?);
                 //Before responding
                 //Save the next-hop to the RREQ destination
                 let next_hop = entry.next_hop.clone();
@@ -674,7 +684,7 @@ impl AODV {
         mut msg: RouteResponseMessage,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
-        queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         me: String,
         short_radio: Arc<dyn Radio>,
@@ -740,12 +750,12 @@ impl AODV {
         //Is this node the ORIGINATOR?
         if msg.originator == me {
             radio::log_rx(
-                logger, 
-                &hdr, 
-                MessageStatus::ACCEPTED, 
-                None, 
-                None, 
-                &Messages::RREP(msg.clone())
+                logger,
+                &hdr,
+                MessageStatus::ACCEPTED,
+                None,
+                None,
+                &Messages::RREP(msg.clone()),
             );
 
             // Remove this node from the pending destinations
@@ -852,14 +862,7 @@ impl AODV {
         //Re-tag message
         let msg = Messages::RREP(msg);
 
-        radio::log_rx(
-            logger,
-            &hdr,
-            MessageStatus::FORWARDING,
-            None,
-            None,
-            &msg,
-        );
+        radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
 
         //Create log data
         let log_data = Box::new(msg.clone());
@@ -908,8 +911,7 @@ impl AODV {
                         .flags
                         .remove(RTEFlags::VALID_ROUTE | RTEFlags::ACTIVE_ROUTE);
                     entry.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
-                    let mut precursors: Vec<_> =
-                        entry.precursors.iter().cloned().collect();
+                    let mut precursors: Vec<_> = entry.precursors.iter().cloned().collect();
                     affected_neighbours.append(&mut precursors);
                     debug!(logger, "Invalidating route to {}", destination);
                 }
@@ -922,7 +924,7 @@ impl AODV {
         for (dest, entry) in rt.iter_mut() {
             if msg.destinations.contains_key(&entry.next_hop) {
                 affected_destinations.push(dest.clone());
-                msg.destinations.insert(dest.clone(), entry.dest_seq_no);
+                msg.destinations.insert(dest.clone(), entry.dest_seq_no); //TODO: Make sure this insert is not iffy, as we are modifying a collection we check on each iteration.
             }
         }
 
@@ -977,18 +979,18 @@ impl AODV {
         //Mark the packet in the cache as confirmed
         let _confirmed = {
             let mut dc = data_cache.lock().expect("Could not lock data cache");
-            let payload = serialize_message(Messages::DATA(msg.clone()))?;
-            let msg_hash = format!("{:x}", md5::compute(&payload));
-            if let Some(entry) = dc.get_mut(&msg_hash) {
+            // let payload = serialize_message(Messages::DATA(msg.clone()))?;
+            // let msg_hash = format!("{:x}", md5::compute(&payload)); //TODO: use the msg_id
+            if let Some(entry) = dc.get_mut(hdr.get_msg_id()) {
                 entry.confirmed = true;
                 true
             } else {
                 false
             }
         };
+        //TODO: if confirmed is true, this function should end. shouldn't it?
 
         let mut rt = route_table.lock().expect("Coult not lock route table");
-
         {
             //Update the lifetime of the sender of this packet
             let entry = rt
@@ -1015,7 +1017,14 @@ impl AODV {
 
         //Is this the destination of the data?
         if msg.destination == me {
-            radio::log_rx(logger, &hdr, MessageStatus::ACCEPTED, None, None, &Messages::DATA(msg));
+            radio::log_rx(
+                logger,
+                &hdr,
+                MessageStatus::ACCEPTED,
+                None,
+                None,
+                &Messages::DATA(msg),
+            );
             return Ok((None, None));
         }
 
@@ -1090,6 +1099,7 @@ impl AODV {
                     &Messages::DATA(msg),
                 );
                 return Err(err);
+                //TODO: I should grep for this event. This might be where many of the packets are lost.
             }
         };
 
@@ -1111,14 +1121,7 @@ impl AODV {
         //Build log data
         let log_data = Box::new(msg.clone());
 
-        radio::log_rx(
-            logger, 
-            &hdr, 
-            MessageStatus::FORWARDING, 
-            None, 
-            None, 
-            &msg
-        );
+        radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
 
         //Build forward hdr
         let fwd_hdr = hdr
@@ -1137,7 +1140,6 @@ impl AODV {
         me: String,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
-
         radio::log_rx(
             logger,
             &hdr,
@@ -1176,8 +1178,8 @@ impl AODV {
         dest: String,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-        self_peer: String,
-        data: Vec<u8>,
+        mut hdr: MessageHeader,
+        log_data: Box<dyn KV>,
         short_radio: Arc<dyn Radio>,
         logger: Logger,
     ) -> Result<(), MeshSimError> {
@@ -1191,23 +1193,8 @@ impl AODV {
             let p = e.next_hop.clone();
             (p, e.dest_seq_no)
         };
-
-        let msg = DataMessage {
-            destination: dest,
-            payload: data,
-        };
-        //Tag the message
-        let msg = Messages::DATA(msg);
-
-        //Create log data
-        let log_data = Box::new(msg.clone());
-
-        //Build hdr
-        let hdr = MessageHeader::new(
-            self_peer,
-            next_hop.clone(),
-            serialize_message(msg)?,
-        );
+        //Update header with the next hop
+        hdr.destination = next_hop.clone();
 
         //Record the packet in the data cache
         let mut dc = data_cache.lock().expect("Could not lock data cache");
@@ -1256,11 +1243,7 @@ impl AODV {
         //Tag the message
         let msg = Messages::RREQ(msg);
         let log_data = Box::new(msg.clone());
-        let hdr = MessageHeader::new(
-            me.clone(),
-            destination.clone(),
-            serialize_message(msg)?,
-        );
+        let hdr = MessageHeader::new(me.clone(), destination.clone(), serialize_message(msg)?);
 
         //Add to the pending-routes list
         {
@@ -1299,9 +1282,9 @@ impl AODV {
     }
 
     fn queue_transmission(
-        trans_q: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+        trans_q: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         destination: String,
-        data: Vec<u8>,
+        data: MessageHeader,
     ) -> Result<(), MeshSimError> {
         let mut tq = trans_q
             .lock()
@@ -1312,17 +1295,17 @@ impl AODV {
     }
 
     fn start_queued_flows(
-        queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         destination: String,
-        me: String,
+        _me: String,
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
         info!(logger, "Looking for queued flows for {}", &destination);
 
-        let entry: Option<(String, Vec<Vec<u8>>)> = {
+        let entry: Option<(String, Vec<MessageHeader>)> = {
             let mut qt = queued_transmissions
                 .lock()
                 .expect("Error trying to acquire lock to transmissions queue");
@@ -1334,15 +1317,15 @@ impl AODV {
             .build();
         if let Some((_key, flows)) = entry {
             info!(logger, "Processing {} queued transmissions.", &flows.len());
-            for data in flows {
+            for hdr in flows {
                 let dest = destination.clone();
-                let s = me.clone();
+                let log_data = Box::new(deserialize_message(hdr.get_payload())?);
                 let radio = Arc::clone(&short_radio);
                 let l = logger.clone();
                 let rt = Arc::clone(&route_table);
                 let dc = Arc::clone(&data_cache);
                 thread_pool.execute(move || {
-                    match AODV::start_flow(dest, rt, dc, s, data, radio, l.clone()) {
+                    match AODV::start_flow(dest, rt, dc, hdr, log_data, radio, l.clone()) {
                         Ok(_) => {
                             // All good!
                         }
@@ -1431,11 +1414,8 @@ impl AODV {
                     //Tag the message
                     let msg = Messages::HELLO(msg);
                     let log_data = Box::new(msg.clone());
-                    let hdr = MessageHeader::new(
-                        me.clone(),
-                        String::new(),
-                        serialize_message(msg)?,
-                    );
+                    let hdr =
+                        MessageHeader::new(me.clone(), String::new(), serialize_message(msg)?);
 
                     match short_radio.broadcast(hdr, log_data) {
                         Ok(_) => {
@@ -1494,11 +1474,8 @@ impl AODV {
                 //Tag the message
                 let rerr_msg = Messages::RERR(rerr_msg);
                 let log_data = Box::new(rerr_msg.clone());
-                let hdr = MessageHeader::new(
-                    me.clone(),
-                    String::new(),
-                    serialize_message(rerr_msg)?,
-                );
+                let hdr =
+                    MessageHeader::new(me.clone(), String::new(), serialize_message(rerr_msg)?);
 
                 match short_radio.broadcast(hdr, log_data) {
                     Ok(_) => { /* All good! */ }
