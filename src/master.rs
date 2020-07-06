@@ -428,7 +428,8 @@ impl Master {
                 }
             }
         } // LOCK : RELEASE : WORKERS
-
+        info!(&self.logger, "All initial nodes started");
+        
         //Start mobility thread
         match self.start_mobility_thread() {
             Ok(_h) => {
