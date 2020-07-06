@@ -19,6 +19,7 @@ use std::str::FromStr;
 
 const DEFAULT_FILE_NAME: &str = "untitled";
 const DEFAULT_NODE_NAME: &str = "node";
+const STARTUP_TIME_PER_NODE: u64 = 15; //ms
 
 #[derive(Debug)]
 struct TestBasics {
@@ -439,27 +440,40 @@ fn add_cbr_sources(
     spec: &mut TestSpec,
 ) -> Result<bool, Errors> {
     let mut rng = thread_rng();
-    //Warm-up time estimated at 10 ms per node.
-    let warm_up_period: u64 = (spec.initial_nodes.len() * 10) as u64;
-    let cool_off_period: u64 = (spec.duration as f64 * 0.05) as u64;
-    let duration: u64 = (spec.duration as f64 * 0.10) as u64;
-    let sources_start_time_limit: u64 = spec.duration - cool_off_period - duration;
-    let start_times_sample = Uniform::new(warm_up_period, sources_start_time_limit);
+    let param_parts: Vec<&str> = params.trim().split_whitespace().collect();
 
-    assert!(warm_up_period < sources_start_time_limit);
+    assert!(param_parts.len() >= 2);
 
-    let param_parts: Vec<&str> = params.split_whitespace().collect();
     //get packet-rate
     let packet_rate: usize = match param_parts[0].parse() {
         Ok(n) => n,
-        Err(e) => return Err(Errors::TestParsing(format!("{}", e))),
+        Err(e) => return Err(Errors::TestParsing(format!("Failed to parse packet_rate: {}", e))),
     };
     //select packet-size
     let packet_size: usize = match param_parts[1].parse() {
         Ok(n) => n,
-        Err(e) => return Err(Errors::TestParsing(format!("{}", e))),
+        Err(e) => return Err(Errors::TestParsing(format!("Failed to parse packet_size: {}", e))),
+    };
+    //Get a duration for each source
+    let duration = if param_parts.len() > 2 {
+        let d: u64 = match param_parts[2].parse() {
+            Ok(n) => n,
+            Err(e) => return Err(Errors::TestParsing(format!("Failed to parse source duration: {}", e))),
+        };
+        d
+    } else {
+        (spec.duration as f64 * 0.10).floor() as u64
     };
 
+    //Warm-up time estimated at STARTUP_TIME_PER_NODE ms per node.
+    let warm_up_period: u64 = spec.initial_nodes.len() as u64 * STARTUP_TIME_PER_NODE;
+    let cool_off_period: u64 = (spec.duration as f64 * 0.10).floor() as u64;
+    //The cutoff time at which a source can start, execute for the specified duration
+    //and finish transmitting its packets before the cool-off period starts.
+    let sources_start_time_limit: u64 = spec.duration - cool_off_period - duration;
+    assert!(warm_up_period < sources_start_time_limit);
+    let start_times_sample = Uniform::new(warm_up_period, sources_start_time_limit);
+    
     assert!(num_sources <= (spec.initial_nodes.len() / 2));
     let mut nodes: Vec<&String> = spec.initial_nodes.keys().clone().collect();
     for _i in 0..num_sources {
