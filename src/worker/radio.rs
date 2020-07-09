@@ -417,6 +417,8 @@ impl SimulatedRadio {
 
         //Increase the count of transmitting threads
         self.transmitting_threads.fetch_add(1, Ordering::SeqCst);
+        //TODO: BUG. If a second thread starts transmission while the first one is trying to register (but has not been able to)
+        // it will automatically skip the validation and transmit. Need to add a second flag to mark it as actively transmitting
         while i < TRANSMISSION_MAX_RETRY {
             if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
                 //Another thread is attempting to register this node or has already done it.
@@ -457,6 +459,7 @@ impl SimulatedRadio {
             }
 
             //Wait and retry.
+            i += 1;
             let sleep_time = self.get_wait_time(i as u32);
             let st = format!("{:?}", &sleep_time);
             info!(
@@ -468,7 +471,6 @@ impl SimulatedRadio {
                 "radio"=>&radio_range,
             );
             std::thread::sleep(sleep_time);
-            i += 1;
         }
         // rollback_tx(tx)?;
 
