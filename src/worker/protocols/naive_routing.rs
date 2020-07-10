@@ -35,18 +35,22 @@ struct DataMessage {
     payload: Vec<u8>,
 }
 
-impl KV for DataMessage {
-    fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
-        serializer.emit_str("msg_type", "DATA")
-    }
-}
-
 /// This enum represents the types of network messages supported in the protocol as well as the
 /// data associated with them.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 enum Messages {
     ///Data messages for this protocol.
     Data(DataMessage),
+}
+
+impl KV for Messages {
+    fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
+        match *self {
+            Messages::Data(ref m) => {
+                serializer.emit_str("msg_type", "DATA")
+            }
+        }
+    }
 }
 
 impl Protocol for NaiveRouting {
@@ -80,12 +84,12 @@ impl Protocol for NaiveRouting {
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
-        let msg = DataMessage { payload: data };
+        let msg = Messages::Data(DataMessage { payload: data });
         let log_data = Box::new(msg.clone());
         let hdr = MessageHeader::new(
             self.get_self_peer(),
             destination,
-            serialize_message(Messages::Data(msg))?,
+            serialize_message(msg)?,
         );
         let msg_id = hdr.get_msg_id().to_string();
         info!(&self.logger, "New message"; "msg_id" => &msg_id);
@@ -131,7 +135,7 @@ impl NaiveRouting {
 
     fn process_data_message(
         hdr: MessageHeader,
-        msg: DataMessage,
+        mut msg: DataMessage,
         me: String,
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
@@ -148,7 +152,7 @@ impl NaiveRouting {
                     MessageStatus::DROPPED,
                     Some(&err_msg),
                     None,
-                    &msg,
+                    &Messages::Data(msg.clone()),
                 );
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(err_msg),
@@ -167,7 +171,7 @@ impl NaiveRouting {
                     MessageStatus::DROPPED,
                     Some("DUPLICATE"),
                     None,
-                    &msg,
+                    &Messages::Data(msg),
                 );
                 return Ok((None, None));
             }
@@ -187,10 +191,12 @@ impl NaiveRouting {
 
         //Check if this node is the intended recipient of the message.
         if hdr.destination == me {
-            radio::log_rx(logger, &hdr, MessageStatus::ACCEPTED, None, None, &msg);
+            radio::log_rx(logger, &hdr, MessageStatus::ACCEPTED, None, None, &Messages::Data(msg));
             return Ok((None, None));
         }
 
+        let msg = Messages::Data(msg);
+        
         //Message is not meant for this node
         radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
         //The payload of the incoming header is still valid, so just build a new header with this node as the sender
