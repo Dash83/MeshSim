@@ -12,6 +12,7 @@ use slog::{Logger, Record, Serializer, KV};
 use std::collections::HashSet;
 use std::iter::Iterator;
 use std::sync::{Arc, Mutex};
+use chrono::{DateTime, Duration, Utc};
 
 const MSG_CACHE_SIZE: usize = 10000;
 /// The default number of hops messages are guaranteed to be propagated
@@ -89,14 +90,15 @@ impl Protocol for GossipRouting {
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
-        // let hdr = GossipRouting::create_data_message(self.get_self_peer(), destination, 1, data)?;
+        let perf_out_queued_start = Utc::now();
         let msg = DataMessage { payload: data };
         let log_data = Box::new(msg.clone());
-        let hdr = MessageHeader::new(
+        let mut hdr = MessageHeader::new(
             self.get_self_peer(),
             destination,
             serialize_message(Messages::Data(msg))?,
         );
+        hdr.delay = perf_out_queued_start.timestamp_nanos();
         let msg_id = hdr.get_msg_id().to_string();
         info!(&self.logger, "New message"; "msg_id" => &msg_id);
         {
@@ -192,7 +194,7 @@ impl GossipRouting {
                 //     "status"=> MessageStatus::DROPPED,
                 //     "reason"=> &err_msg,
                 // );
-                radio::log_rx(logger, &hdr, MessageStatus::DROPPED, None, None, &msg);
+                radio::log_handle_message(logger, &hdr, MessageStatus::DROPPED, None, None, &msg);
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(err_msg),
                     // cause: Some(Box::new(e.clone())),
@@ -212,7 +214,7 @@ impl GossipRouting {
                     //     "reason"=>"DUPLICATE",
                     //     "sender"=>&hdr.sender,
                     // );
-                    radio::log_rx(
+                    radio::log_handle_message(
                         logger,
                         &hdr,
                         MessageStatus::DROPPED,
@@ -250,7 +252,7 @@ impl GossipRouting {
             //     "status"=>MessageStatus::ACCEPTED,
             //     "route_length" => hdr.hops
             // );
-            radio::log_rx(logger, &hdr, MessageStatus::ACCEPTED, None, None, &msg);
+            radio::log_handle_message(logger, &hdr, MessageStatus::ACCEPTED, None, None, &msg);
             return Ok((None, None));
         }
 
@@ -270,7 +272,7 @@ impl GossipRouting {
             //     "status"=>MessageStatus::DROPPED,
             //     "reason"=>"GOSSIP",
             // );
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::DROPPED,
@@ -282,7 +284,7 @@ impl GossipRouting {
             return Ok((None, None));
         }
 
-        radio::log_rx(
+        radio::log_handle_message(
             logger,
             &hdr,
             MessageStatus::FORWARDING,

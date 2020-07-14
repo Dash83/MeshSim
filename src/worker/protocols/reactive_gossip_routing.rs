@@ -229,6 +229,7 @@ impl Protocol for ReactiveGossipRouting {
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
+        let perf_out_queued_start = Utc::now();
         let me = self.get_self_peer();
         let route_id = {
             let routes = self
@@ -245,7 +246,8 @@ impl Protocol for ReactiveGossipRouting {
                 payload: data,
             });
             let log_data = Box::new(msg.clone());
-            let hdr = MessageHeader::new(me, destination, serialize_message(msg)?);
+            let mut hdr = MessageHeader::new(me, destination, serialize_message(msg)?);
+            hdr.delay = perf_out_queued_start.timestamp_nanos();
 
             info!(&self.logger, "New message"; "msg_id" => hdr.get_msg_id());
 
@@ -301,8 +303,8 @@ impl Protocol for ReactiveGossipRouting {
                 route_id,
                 payload: data,
             });
-            let hdr = MessageHeader::new(me, destination.clone(), serialize_message(msg)?);
-
+            let mut hdr = MessageHeader::new(me, destination.clone(), serialize_message(msg)?);
+            hdr.delay = perf_out_queued_start.timestamp_nanos();
             info!(&self.logger, "New message"; "msg_id" => hdr.get_msg_id());
 
             //...and then queue the data transmission for when the route is established
@@ -363,6 +365,7 @@ impl ReactiveGossipRouting {
         let log_data = Box::new(msg.clone());
         let hdr = MessageHeader::new(me.clone(), destination.clone(), serialize_message(msg)?);
 
+        //TODO: Investigate if this is the reason RGR variations are underperforming
         //For the case when the route_discovery is triggered because the previous one failed, we may have cached messages
         //for which the payload holds the old RouteID. If so, this funciton will update those messages. Otherwise, it's a noop.
         ReactiveGossipRouting::update_queued_transmissions(
@@ -531,7 +534,7 @@ impl ReactiveGossipRouting {
                 //     "status"=>MessageStatus::DROPPED,
                 //     "reason"=>"Not part of route",
                 // );
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
@@ -566,7 +569,7 @@ impl ReactiveGossipRouting {
                         //     "status"=>MessageStatus::DROPPED,
                         //     "reason"=>"CONFIRMED",
                         // );
-                        radio::log_rx(
+                        radio::log_handle_message(
                             logger,
                             &hdr,
                             MessageStatus::DROPPED,
@@ -585,7 +588,7 @@ impl ReactiveGossipRouting {
                         //     "status"=>MessageStatus::DROPPED,
                         //     "reason"=>"DUPLICATE",
                         // );
-                        radio::log_rx(
+                        radio::log_handle_message(
                             logger,
                             &hdr,
                             MessageStatus::DROPPED,
@@ -640,7 +643,7 @@ impl ReactiveGossipRouting {
             //     "status"=>MessageStatus::ACCEPTED,
             //     "route_length" => hdr.hops
             // );
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
@@ -650,7 +653,7 @@ impl ReactiveGossipRouting {
             );
             Ok((None, None))
         } else {
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::FORWARDING,
@@ -693,7 +696,7 @@ impl ReactiveGossipRouting {
             //     "status"=>MessageStatus::ACCEPTED,
             //     "action"=>"Start RouteEstablish process"
             // );
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
@@ -734,7 +737,7 @@ impl ReactiveGossipRouting {
                 .lock()
                 .expect("Failed to lock route_message cache");
             if !p_routes.insert(msg.route_id.clone()) {
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
@@ -763,7 +766,7 @@ impl ReactiveGossipRouting {
             //     "status"=>MessageStatus::DROPPED,
             //     "reason"=>"Gossip failed",
             // );
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::DROPPED,
@@ -780,7 +783,7 @@ impl ReactiveGossipRouting {
         //Re-tag the message
         let msg = Messages::RouteDiscovery(msg);
 
-        radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
         // Build log data
         let log_data = Box::new(msg.clone());
         //Build message and forward it
@@ -809,7 +812,7 @@ impl ReactiveGossipRouting {
         let next_hop = match msg.route.pop() {
             Some(h) => h,
             None => {
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
@@ -822,7 +825,7 @@ impl ReactiveGossipRouting {
         };
         //Is the message meant for this node?
         if next_hop != self_peer {
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::DROPPED,
@@ -863,7 +866,7 @@ impl ReactiveGossipRouting {
         debug!(logger, "Route_Source:{}", &msg.route_source);
         if msg.route_source == self_peer {
             let route = format!("Route: {:?}", &msg.route);
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
@@ -898,7 +901,7 @@ impl ReactiveGossipRouting {
         //Re-tag the message
         let msg = Messages::RouteEstablish(msg);
 
-        radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
 
         //Build log data
         let log_data = Box::new(msg.clone());
@@ -930,7 +933,7 @@ impl ReactiveGossipRouting {
         let resp: Outcome = {
             if subscribed {
                 //Log incoming packet
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::FORWARDING,
@@ -955,7 +958,7 @@ impl ReactiveGossipRouting {
                     .build();
                 (Some(fwd_hdr), Some(log_data))
             } else {
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,

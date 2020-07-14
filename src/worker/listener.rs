@@ -7,9 +7,9 @@ extern crate linux_embedded_hal as hal;
 use crate::worker::radio::RadioTypes;
 use crate::worker::*;
 use socket2::Socket;
-use std::time::Duration;
 #[cfg(target_os = "linux")]
 use sx1276::socket::{Link, LoRa};
+use chrono::{Duration, Utc};
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it
 /// and listen for incoming connections.
@@ -47,6 +47,7 @@ impl Listener for SimulatedListener {
                     let data = buffer[..bytes_read].to_vec();
                     match MessageHeader::from_vec(data) {
                         Ok(mut m) => {
+                            let ts0 = Utc::now();
                             //The counterpart of this method, SimulatedRadio::broadcast, does a fake
                             //broadcast by getting a list of nodes in range and unicasting to them
                             //one by one. This has an effect on the message propagation, as some
@@ -55,12 +56,21 @@ impl Listener for SimulatedListener {
                             //source. Thus, we try to amortize this by having all read_message sleep
                             //for 10ms. This should be enough time to ensure that *most* messages
                             //in the simulated broadcast have been delivered.
-                            let delay = Duration::from_micros(m.delay);
-                            std::thread::sleep(delay);
-                            //                            let now = Instant::now();
-                            //                            while now.elapsed() < delay { }
+                            let delay = Duration::microseconds(m.delay);
+                            std::thread::sleep(delay.to_std().expect("Delay was less than 0"));
                             //Update the ttl of the header
                             m.ttl -= 1;
+
+                            //Record in the header the amount of time it took to read the message (including the delay)
+                            //Useful for measuring where do the threads spend their time.
+                            let dur = Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
+
+                            info!(
+                                &self.logger, 
+                                "read_from_network";
+                                "msg_id" => m.get_msg_id(),
+                                "duration" => dur,
+                            );
 
                             Some(m)
                         }

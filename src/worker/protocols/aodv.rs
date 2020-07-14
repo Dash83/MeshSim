@@ -315,6 +315,7 @@ impl Protocol for AODV {
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
+        let ts0 = Utc::now();
         let routes = Arc::clone(&self.route_table);
         let pending_routes = Arc::clone(&self.pending_routes);
         let rreq_cache = Arc::clone(&self.rreq_cache);
@@ -327,11 +328,13 @@ impl Protocol for AODV {
         });
         //Create log data
         let log_data = Box::new(msg.clone());
-        let hdr = MessageHeader::new(
+        let mut hdr = MessageHeader::new(
             self.get_self_peer(),
             destination.clone(),
             serialize_message(msg)?,
         );
+        //Perf_Out_Queued_Start
+        hdr.delay = ts0.timestamp_nanos();
         info!(&self.logger, "New message"; "msg_id" => hdr.get_msg_id());
 
         //Check if an available route exists for the destination.
@@ -522,7 +525,7 @@ impl AODV {
             debug!(logger, "Threshold time: {:?}", &threshold_time);
             if threshold_time > Utc::now() {
                 //Duplicate RREQ. Drop.
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
@@ -556,7 +559,7 @@ impl AODV {
         //This node generates an RREP if it is itself the destination
         if msg.destination == me {
             //RREQ succeeded.
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
@@ -602,7 +605,7 @@ impl AODV {
                 // entry.flags.contains(RTEFlags::ACTIVE_ROUTE) {
                 entry.lifetime >= Utc::now()
             {
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::ACCEPTED,
@@ -660,7 +663,7 @@ impl AODV {
         //Re-tag the message
         let msg = Messages::RREQ(msg);
 
-        radio::log_rx(
+        radio::log_handle_message(
             logger,
             &hdr,
             MessageStatus::FORWARDING,
@@ -693,7 +696,7 @@ impl AODV {
     ) -> Result<Outcome, MeshSimError> {
         //RREPs are UNICASTED. Is this the destination in the header? It not, exit.
         if hdr.destination != me {
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::DROPPED,
@@ -749,7 +752,7 @@ impl AODV {
 
         //Is this node the ORIGINATOR?
         if msg.originator == me {
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
@@ -788,7 +791,7 @@ impl AODV {
             Some(entry) => entry,
             None => {
                 //TODO: This should not happen. Drop the packet.
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
@@ -862,7 +865,7 @@ impl AODV {
         //Re-tag message
         let msg = Messages::RREP(msg);
 
-        radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
 
         //Create log data
         let log_data = Box::new(msg.clone());
@@ -955,7 +958,7 @@ impl AODV {
 
             Ok((Some(rsp_hdr), Some(log_data)))
         } else {
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::DROPPED,
@@ -1003,7 +1006,7 @@ impl AODV {
         }
 
         if hdr.destination != me {
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::DROPPED,
@@ -1017,7 +1020,7 @@ impl AODV {
 
         //Is this the destination of the data?
         if msg.destination == me {
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
@@ -1045,7 +1048,7 @@ impl AODV {
                     // };
 
                     //TODO: This might be what's causing the protocol to perform so poorly.
-                    radio::log_rx(
+                    radio::log_handle_message(
                         logger,
                         &hdr,
                         MessageStatus::DROPPED,
@@ -1090,7 +1093,7 @@ impl AODV {
                 //     "status"=> MessageStatus::DROPPED,
                 //     "reason"=> "No route to destination",
                 // );
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
@@ -1121,7 +1124,7 @@ impl AODV {
         //Build log data
         let log_data = Box::new(msg.clone());
 
-        radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
 
         //Build forward hdr
         let fwd_hdr = hdr
@@ -1140,7 +1143,7 @@ impl AODV {
         me: String,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
-        radio::log_rx(
+        radio::log_handle_message(
             logger,
             &hdr,
             MessageStatus::ACCEPTED,

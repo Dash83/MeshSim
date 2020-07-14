@@ -32,6 +32,7 @@ use byteorder::{NativeEndian, WriteBytesExt};
 use libc::{c_int, nice};
 
 use chrono::Utc;
+use chrono::TimeZone;
 use rand::{rngs::StdRng, SeedableRng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -253,7 +254,7 @@ pub struct MessageHeader {
     ///Number of hops this message has taken
     pub hops: u16,
     ///Indication for the simulated radio of how long to delay the reception of a message for
-    pub delay: u64,
+    pub delay: i64,
     /// Number of hops until the message is discarded
     pub ttl: usize,
     ///Optional, serialized payload of the message.
@@ -278,7 +279,7 @@ impl MessageHeader {
             sender,
             destination,
             hops: 0u16,
-            delay: 0u64,
+            delay: 0i64,
             ttl: std::usize::MAX,
             payload,
             msg_id,
@@ -381,7 +382,7 @@ impl MessageHeaderBuilder {
             sender: self.sender,
             destination,
             hops: self.hops.unwrap_or(self.old_data.hops),
-            delay: 0u64,
+            delay: 0i64,
             ttl: self.ttl.unwrap_or(self.old_data.ttl),
             payload,
             msg_id,
@@ -416,75 +417,6 @@ impl Value for MessageStatus {
         serializer.emit_str(key, &self.to_string())
     }
 }
-
-/////Struct to represent DNS TXT records for advertising the meshsim service and obtain records from peers.
-//#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-//pub struct ServiceRecord {
-//    ///The service name.
-//    service_name : String,
-//    ///The service type.
-//    service_type : String,
-//    ///Name of the host advertising the service.
-//    host_name : String,
-//    ///Address of the host.
-//    address : String,
-//    ///What kind of address? (IPv4/IPv6)
-//    address_type : String,
-//    ///Port in which the service is listening.
-//    port : u16,
-//    ///Associated TXT records with this record.
-//    txt_records : Vec<String>,
-//}
-//
-//impl ServiceRecord {
-//    ///Creates a new empty record
-//    pub fn new() -> ServiceRecord {
-//        ServiceRecord{  service_name : String::from(""),
-//                        service_type: String::from(""),
-//                        host_name : String::from(""),
-//                        address : String::from(""),
-//                        address_type : String::from(""),
-//                        port : 0,
-//                        txt_records : Vec::new() }
-//    }
-//
-//    ///Return the TXT record value that matches the provided key. The key and values are separated by the '=' symbol on
-//    ///service registration.
-//    pub fn get_txt_record<'a>(&self, key : &'a str) -> Option<String> {
-//        for t in &self.txt_records {
-//            //Check record is in KEY=VALUE form.
-//            let tokens = t.split('=').collect::<Vec<&str>>();
-//            if tokens.len() == 2 && tokens[0] == key {
-//                //Found the request record
-//                return Some(String::from(tokens[1]))
-//            }
-//        }
-//
-//        None
-//    }
-//
-//    ///Publishes the service using the mDNS protocol so other devices can discover it.
-//    pub fn publish_service(service : ServiceRecord) -> Result<Child, WorkerError> {
-//        //Constructing the external process call
-//        let mut command = Command::new("avahi-publish");
-//        command.arg("-s");
-//        command.arg(service.service_name);
-//        command.arg(service.service_type);
-//        command.arg(service.port.to_string());
-//
-//        for r in service.txt_records {
-//            command.arg(r.to_string());
-//        }
-//
-//        // debug!("Registering service with command: {:?}", command);
-//
-//        //Starting the worker process
-//        let child = command.spawn()?;
-//        // info!("Process {} started.", child.id());
-//
-//        Ok(child)
-//    }
-//}
 
 /// Operation modes for the worker.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy)]
@@ -608,7 +540,9 @@ impl Worker {
                     info!(logger, "[{}] Listening for messages", &radio_label);
                     loop {
                         match rx.read_message() {
-                            Some(hdr) => {
+                            Some(mut hdr) => {
+                                //Store the timestamp when this message was queued
+                                hdr.delay = Utc::now().timestamp_nanos();
                                 let prot = Arc::clone(&prot_handler);
                                 let r_type = rx.get_radio_range();
                                 let tx_channel = Arc::clone(&tx);
@@ -616,7 +550,7 @@ impl Worker {
 
                                 if thread_pool.queued_count() >= max_queued_jobs {
                                     let log_data = ();
-                                    log_rx(
+                                    log_handle_message(
                                         &log,
                                         &hdr,
                                         MessageStatus::DROPPED,
@@ -628,6 +562,17 @@ impl Worker {
                                 }
 
                                 thread_pool.execute(move || {
+                                    let ts0 = Utc.timestamp_nanos(hdr.delay);
+                                    let perf_in_queued_duration = Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
+                                    info!(
+                                        &log,
+                                        "Worker::start";
+                                        "event" => "in_queued",
+                                        "msg_id" => hdr.get_msg_id(),
+                                        "duration" => perf_in_queued_duration,
+                                    );
+                                    //Perf_Recv_Msg_Start
+                                    hdr.delay = Utc::now().timestamp_nanos();
                                     let (response, log_data) =
                                         match prot.handle_message(hdr, r_type) {
                                             Ok(resp) => resp,
@@ -641,9 +586,11 @@ impl Worker {
                                             }
                                         };
 
-                                    if let Some(r) = response {
+                                    if let Some(mut r) = response {
+                                        //perf_out_queued_start
+                                        r.delay = Utc::now().timestamp_nanos();
                                         let log_data = log_data.expect("ERROR: Log_Data was empty");
-                                        let _msg_id = r.get_msg_id().to_string();
+                                        // let _msg_id = r.get_msg_id().to_string();
                                         match tx_channel.broadcast(r, log_data) {
                                             Ok(_) => { /* All good */ }
                                             Err(e) => {

@@ -270,6 +270,7 @@ impl Protocol for ReactiveGossipRoutingIII {
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
+        let perf_out_queued_start = Utc::now();
         let me = self.get_self_peer();
         let route_id = {
             let routes = self
@@ -286,8 +287,8 @@ impl Protocol for ReactiveGossipRoutingIII {
                 payload: data,
             });
             let log_data = Box::new(msg.clone());
-            let hdr = MessageHeader::new(me, destination, serialize_message(msg)?);
-
+            let mut hdr = MessageHeader::new(me, destination, serialize_message(msg)?);
+            hdr.delay = perf_out_queued_start.timestamp_nanos();
             info!(&self.logger, "New message"; "msg_id" => hdr.get_msg_id());
 
             ReactiveGossipRoutingIII::start_flow(
@@ -342,8 +343,8 @@ impl Protocol for ReactiveGossipRoutingIII {
                 route_id,
                 payload: data,
             });
-            let hdr = MessageHeader::new(me, destination.clone(), serialize_message(msg)?);
-
+            let mut hdr = MessageHeader::new(me, destination.clone(), serialize_message(msg)?);
+            hdr.delay = perf_out_queued_start.timestamp_nanos();
             info!(&self.logger, "New message"; "msg_id" => hdr.get_msg_id());
 
             //...and then queue the data transmission for when the route is established
@@ -595,7 +596,7 @@ impl ReactiveGossipRoutingIII {
                 //     "status"=>MessageStatus::DROPPED,
                 //     "reason"=>"Not part of route",
                 // );
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
@@ -628,7 +629,7 @@ impl ReactiveGossipRoutingIII {
                         //     "status"=>MessageStatus::DROPPED,
                         //     "reason"=>"CONFIRMED",
                         // );
-                        radio::log_rx(
+                        radio::log_handle_message(
                             logger,
                             &hdr,
                             MessageStatus::DROPPED,
@@ -647,7 +648,7 @@ impl ReactiveGossipRoutingIII {
                         //     "status"=>MessageStatus::DROPPED,
                         //     "reason"=>"DUPLICATE",
                         // );
-                        radio::log_rx(
+                        radio::log_handle_message(
                             logger,
                             &hdr,
                             MessageStatus::DROPPED,
@@ -693,7 +694,7 @@ impl ReactiveGossipRoutingIII {
 
         //Are the intended recipient?
         if hdr.destination == self_peer {
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
@@ -705,7 +706,7 @@ impl ReactiveGossipRoutingIII {
         } else {
             //Re-tag msg
             let msg = Messages::Data(msg);
-            radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+            radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
             //Since the payload remains unchanged, just create new header with this node as the sender.
             let fwd_hdr = hdr.create_forward_header(self_peer).build();
             let log_data = Box::new(msg);
@@ -742,7 +743,7 @@ impl ReactiveGossipRoutingIII {
 
         //Is this node the intended destination of the route?
         if msg.route_destination == self_peer {
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
@@ -783,7 +784,7 @@ impl ReactiveGossipRoutingIII {
                 .expect("Failed to lock route_message cache");
             if !p_routes.insert(msg.route_id.clone()) {
                 //We have processed this route before. Discard message
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
@@ -816,7 +817,7 @@ impl ReactiveGossipRoutingIII {
 
         let prob = p + (in_vicinity as f64 * q);
         if msg.route.len() > k && s > prob {
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::DROPPED,
@@ -834,7 +835,7 @@ impl ReactiveGossipRoutingIII {
         let msg = Messages::RouteDiscovery(msg);
 
         //Log the reception of the message
-        radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
 
         // Build log data
         let log_data = Box::new(msg.clone());
@@ -865,7 +866,7 @@ impl ReactiveGossipRoutingIII {
             Some(h) => h,
             None => {
                 //The route in this message is empty. Discard the message.
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
@@ -894,7 +895,7 @@ impl ReactiveGossipRoutingIII {
         //Is the message meant for this node?
         if next_hop != self_peer {
             //Not us. Discard message
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::DROPPED,
@@ -935,7 +936,7 @@ impl ReactiveGossipRoutingIII {
         debug!(logger, "Route_Source:{}", &msg.route_source);
         if msg.route_source == self_peer {
             let route = format!("Route: {:?}", &msg.route);
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
@@ -970,7 +971,7 @@ impl ReactiveGossipRoutingIII {
         let msg = Messages::RouteEstablish(msg);
 
         //Log the reception of this message
-        radio::log_rx(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
 
         //Build log data
         let log_data = Box::new(msg.clone());
@@ -1003,7 +1004,7 @@ impl ReactiveGossipRoutingIII {
         let response: Outcome = {
             if subscribed {
                 //Log incoming packet
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::FORWARDING,
@@ -1029,7 +1030,7 @@ impl ReactiveGossipRoutingIII {
                     .build();
                 (Some(fwd_hdr), Some(log_data))
             } else {
-                radio::log_rx(
+                radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
@@ -1049,7 +1050,7 @@ impl ReactiveGossipRoutingIII {
         vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
-        radio::log_rx(
+        radio::log_handle_message(
             logger,
             &hdr,
             MessageStatus::ACCEPTED,

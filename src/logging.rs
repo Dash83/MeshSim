@@ -88,8 +88,17 @@ pub struct OutgoingMsgLog {
     pub status: String,
     ///The radio used for the transmission
     pub radio: String,
-    ///The time it took to make the transmission (in nanoseconds)
-    pub duration: String, //TODO: This is a bug. It should be u128, but for some reason radio::log_tx logs it as a string.
+    // ///The time it took to make the transmission (in nanoseconds)
+    // pub duration: String, //TODO: This is a bug. It should be u128, but for some reason radio::log_tx logs it as a string.
+    /// Duration (in nanoseconds) the packet spent in the out_queue
+    pub out_queued_duration: u64,
+    /// Duration (in nanoseconds) the packet spent waiting on medium contention.
+    pub contention_duration: u64,
+    /// Duration (in nanoseconds) the radio took to transmit the packet to all recipients
+    pub tx_duration: u64,
+    /// Duration (in nanoseconds) the radio took in the whole broadcast process.
+    /// Should be roughly equal to contention_duration + tx_duration
+    pub broadcast_duration: u64,
 }
 
 ///Loads a log file and produces an array of log records for processing.

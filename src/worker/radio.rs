@@ -27,8 +27,8 @@ use sx1276;
 
 const SHORT_RANGE_DIR: &str = "SHORT";
 const LONG_RANGE_DIR: &str = "LONG";
-const DELAY_PER_NODE: u64 = 50; //µs
-const MAX_DELAY: u64 = DELAY_PER_NODE * 10; //µs
+const DELAY_PER_NODE: i64 = 50; //µs
+const MAX_DELAY: i64 = DELAY_PER_NODE * 10; //µs
 const TRANSMISSION_MAX_RETRY: usize = 16;
 const TRANSMISSION_EXP_CAP: u32 = 9; //no more than 128ms
 const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
@@ -50,8 +50,15 @@ pub struct TxMetadata {
     pub radio_type: String,
     /// Id of the thread that made the transmission
     pub thread_id: String,
-    /// Duration of the broadcast operation
-    pub duration: u128,
+    /// Duration (in nanoseconds) the packet spent in the out_queue
+    pub out_queued_duration: i64,
+    /// Duration (in nanoseconds) the packet spent waiting on medium contention.
+    pub contention_duration: i64,
+    /// Duration (in nanoseconds) the radio took to transmit the packet to all recipients
+    pub tx_duration: i64,
+    /// Duration (in nanoseconds) the radio took in the whole broadcast process.
+    /// Should be roughly equal to contention_duration + tx_duration
+    pub broadcast_duration: i64,
 }
 
 ///Types of radio supported by the system. Used by Protocols that need to
@@ -140,16 +147,22 @@ impl Radio for SimulatedRadio {
     }
 
     fn broadcast(&self, mut hdr: MessageHeader, md: Box<dyn KV>) -> Result<(), MeshSimError> {
+        //Perf measurement. How long was the message in the out queue?
+        let start_ts = Utc::now();
+        debug!(&self.logger, "out_queued_start: {}",  hdr.delay);
+        let perf_out_queued_duration = start_ts.timestamp_nanos() - hdr.delay; 
         let env_file = format!("{}{}.env", &self.work_dir, std::path::MAIN_SEPARATOR);
         let conn = get_db_connection(&env_file, &self.logger)?;
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
-        let start_ts = Utc::now();
+        
         // let msg_id = hdr.get_msg_id().to_string();
 
         //Register this node as an active transmitter if the medium is free
         self.register_transmitter(&conn)?;
-
+        //Perf measurement. How long the process stuck in medium-contention?
+        let perf_start_tx = Utc::now();
+        let perf_contention_duration = perf_start_tx.timestamp_nanos() - start_ts.timestamp_nanos();
         //Increase the hop count of the message
         hdr.hops += 1;
 
@@ -164,9 +177,9 @@ impl Radio for SimulatedRadio {
         );
 
         let socket = new_socket()?;
-        let mut acc_delay: u64 = 0;
-        let max_delay = std::cmp::min(MAX_DELAY, peers.len() as u64 * DELAY_PER_NODE);
-        let delay_per_node = max_delay / std::cmp::max(1, peers.len()) as u64;
+        let mut acc_delay: i64 = 0;
+        let max_delay = std::cmp::min(MAX_DELAY, peers.len() as i64 * DELAY_PER_NODE);
+        let delay_per_node = max_delay / std::cmp::max(1, peers.len()) as i64;
         for p in peers.into_iter() {
             let mut msg = hdr.clone();
             msg.delay = max_delay - acc_delay;
@@ -227,30 +240,17 @@ impl Radio for SimulatedRadio {
         );
 
         self.deregister_transmitter(&conn)?;
-        let duration = Utc::now() - start_ts;
-        let dur = match duration.num_nanoseconds() {
-            Some(n) => u128::try_from(n).map_err(|e| {
-                let err_msg = String::from("Failed to convert duration to u128");
-                MeshSimError {
-                    kind: MeshSimErrorKind::Serialization(err_msg),
-                    cause: Some(Box::new(e)),
-                }
-            })?,
-            None => {
-                // This should NEVER happen, as it would require the duration to be
-                // over 9_223_372_036.854_775_808 seconds. Still, let's cover the case.
-                let secs = duration.num_seconds();
-                let nanos = duration
-                    .num_nanoseconds()
-                    .expect("Could not extract nanoseconds from Duration");
-                //Extrat seconds, convert to nanos, add subsecond-nanos
-                ((secs * 1_000_000_000) + nanos) as u128
-            }
-        };
+        let perf_end_tx = Utc::now();
+        let perf_tx_duration = perf_end_tx.timestamp_nanos() - perf_start_tx.timestamp_nanos();
+        let broadcast_duration = perf_end_tx.timestamp_nanos() - start_ts.timestamp_nanos();
+
         let tx = TxMetadata {
             radio_type: radio_range,
             thread_id,
-            duration: dur,
+            out_queued_duration: perf_out_queued_duration,
+            contention_duration: perf_contention_duration,
+            tx_duration: perf_tx_duration,
+            broadcast_duration: broadcast_duration,
         };
 
         radio::log_tx(
@@ -262,14 +262,6 @@ impl Radio for SimulatedRadio {
             &hdr.destination,
             md,
         );
-        // info!(
-        //     self.logger,
-        //     "Message {:x} sent",
-        //     &hdr.get_hdr_hash();
-        //     "radio" => &radio_range,
-        //     "thread"=>&thread_id,
-        //     "duration"=>dur,
-        // );
         Ok(())
     }
 }
@@ -304,17 +296,6 @@ impl SimulatedRadio {
         };
         Ok((sr, listener))
     }
-
-    // ///Function used to form the listening point of a SimulatedRadio
-    // pub fn format_address(work_dir : &str,
-    //                       id : &str,
-    //                       r_type : RadioTypes) -> String {
-    //     let range_dir : String = r_type.clone().into();
-    //     //$WORK_DIR/SIMULATED_SCAN_DIR/ID_RANGE.sock
-    //     format!("{}{}{}{}{}_{}.sock", work_dir, std::path::MAIN_SEPARATOR,
-    //                                                 SIMULATED_SCAN_DIR, std::path::MAIN_SEPARATOR,
-    //                                                 id, range_dir)
-    // }
 
     fn init(
         reliability: f64,
@@ -585,6 +566,7 @@ impl Radio for WifiRadio {
 
     fn broadcast(&self, mut hdr: MessageHeader, md: Box<dyn KV>) -> Result<(), MeshSimError> {
         let start_ts = Utc::now();
+        let perf_out_queued_duration = start_ts.timestamp_nanos() - hdr.delay; 
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
         let msg_id = hdr.get_msg_id().to_string();
@@ -626,31 +608,20 @@ impl Radio for WifiRadio {
         self.last_transmission
             .store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
 
-        let duration = Utc::now() - start_ts;
-        let dur = match duration.num_nanoseconds() {
-            Some(n) => u128::try_from(n).map_err(|e| {
-                let err_msg = String::from("Failed to convert duration to u128");
-                MeshSimError {
-                    kind: MeshSimErrorKind::Serialization(err_msg),
-                    cause: Some(Box::new(e)),
-                }
-            })?,
-            None => {
-                // This should NEVER happen, as it would require the duration to be
-                // over 9_223_372_036.854_775_808 seconds. Still, let's cover the case.
-                let secs = duration.num_seconds();
-                let nanos = duration
-                    .num_nanoseconds()
-                    .expect("Could not extract nanoseconds from Duration");
-                //Extrat seconds, convert to nanos, add subsecond-nanos
-                ((secs * 1_000_000_000) + nanos) as u128
-            }
-        };
+        let perf_end_tx = Utc::now();
+        //Can't measure the tx_time only in device mode
+        let perf_tx_duration = 0i64;
+        //Can't measure the contention only in device mode
+        let perf_contention_duration = 0i64;
+        let broadcast_duration = perf_end_tx.timestamp_nanos() - start_ts.timestamp_nanos();
 
         let tx = TxMetadata {
             radio_type: radio_range,
             thread_id,
-            duration: dur,
+            out_queued_duration: perf_out_queued_duration,
+            contention_duration: perf_contention_duration,
+            tx_duration: perf_tx_duration,
+            broadcast_duration: broadcast_duration,
         };
 
         radio::log_tx(
@@ -797,16 +768,20 @@ pub fn log_tx(
     status: MessageStatus,
     source: &str,
     destination: &str,
-    md: Box<dyn KV>,
+    msg_metadata: Box<dyn KV>,
 ) {
-    // let status = md.status.to_string();
+    // let debug_ts = Utc::now().to_string();
     info!(
         logger,
         "Message sent";
-        md,
+        msg_metadata,
+        // "debug_ts" => debug_ts,
         "thread" => tx.thread_id,
         "radio" => tx.radio_type,
-        "duration" => tx.duration,
+        "out_queued_duration" => tx.out_queued_duration,
+        "contention_duration" => tx.contention_duration,
+        "tx_duration" => tx.tx_duration,
+        "broadcast_duration" => tx.broadcast_duration,
         "destination" => destination,
         "source" => source,
         "status" => &status,
@@ -815,7 +790,7 @@ pub fn log_tx(
 }
 
 /// Logs an incoming message
-pub fn log_rx<T: KV>(
+pub fn log_handle_message<T: KV>(
     logger: &Logger,
     hdr: &MessageHeader,
     status: MessageStatus,
@@ -823,6 +798,7 @@ pub fn log_rx<T: KV>(
     action: Option<&str>,
     msg: &T,
 ) {
+    let perf_handle_message_duration = Utc::now().timestamp_nanos() - hdr.delay;
     info!(
         logger,
         "Received message";
@@ -832,6 +808,7 @@ pub fn log_rx<T: KV>(
         "source"=>&hdr.sender,
         "action"=>action.unwrap_or(""),
         "reason"=>reason.unwrap_or(""),
+        "duration"=> perf_handle_message_duration,
         "status"=>status,
         "msg_id"=>&hdr.get_msg_id(),
     );

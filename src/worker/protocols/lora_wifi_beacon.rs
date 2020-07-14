@@ -201,7 +201,7 @@ impl LoraWifiBeacon {
         me: String,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
-        radio::log_rx(
+        radio::log_handle_message(
             logger,
             &hdr,
             MessageStatus::ACCEPTED,
@@ -229,7 +229,7 @@ impl LoraWifiBeacon {
             //     logger,
             //     "BeaconResponse received over {} from {}:{}", link, hdr.sender, counter
             // );
-            radio::log_rx(
+            radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
