@@ -10,7 +10,7 @@ use pnet_datalink as datalink;
 
 use slog::{Logger, KV};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
-use std::convert::TryFrom;
+
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicI64, AtomicU8, Ordering};

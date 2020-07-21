@@ -52,7 +52,7 @@ pub enum Messages {
 impl KV for Messages {
     fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
         match *self {
-            Messages::Data(ref m) => serializer.emit_str("msg_type", "DATA"),
+            Messages::Data(ref _m) => serializer.emit_str("msg_type", "DATA"),
         }
     }
 }
@@ -147,7 +147,7 @@ impl NaiveRouting {
 
     fn process_data_message(
         hdr: MessageHeader,
-        mut msg: DataMessage,
+        msg: DataMessage,
         me: String,
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
