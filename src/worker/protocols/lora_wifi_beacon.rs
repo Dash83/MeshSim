@@ -1,6 +1,6 @@
 //! Module for the test protocol that uses Lora and Wifi radios
 
-use crate::worker::protocols::{Outcome, Protocol};
+use crate::worker::protocols::{Outcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, Radio, RadioTypes};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -29,11 +29,11 @@ pub struct LoraWifiBeacon {
     logger: Logger,
 }
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-struct BeaconMessage(u64);
+pub struct BeaconMessage(pub u64);
 
 ///Messages used in this protocol
 #[derive(Debug, Serialize, Deserialize, Clone)]
-enum Messages {
+pub enum Messages {
     Beacon(BeaconMessage),
     BeaconResponse(BeaconMessage),
 }
@@ -154,7 +154,7 @@ impl LoraWifiBeacon {
         timeout: u64,
         self_peer: String,
         _link: String,
-        _logger: Logger,
+        logger: Logger,
     ) -> Result<(), MeshSimError> {
         let mut counter: u64 = 0;
         let sleep_time = Duration::from_millis(timeout);
@@ -163,10 +163,19 @@ impl LoraWifiBeacon {
             thread::sleep(sleep_time);
             counter += 1;
             let msg = Messages::Beacon(BeaconMessage(counter));
-            let log_data = Box::new(msg.clone());
+            let log_data = ProtocolMessages::LoraWifi(msg.clone());
             let hdr = MessageHeader::new(self_peer.clone(), String::new(), serialize_message(msg)?);
 
-            radio.broadcast(hdr, log_data)?;
+            let tx = radio.broadcast(hdr.clone())?;
+            radio::log_tx(
+                &logger,
+                tx,
+                &hdr.msg_id,
+                MessageStatus::SENT,
+                &hdr.sender,
+                &hdr.destination,
+                log_data,
+            );
             // info!(logger, "Beacon sent over {}:{}", &link, counter);
         }
     }
@@ -212,7 +221,7 @@ impl LoraWifiBeacon {
 
         let sender = hdr.sender;
         let resp_msg = Messages::BeaconResponse(msg);
-        let log_data = Box::new(resp_msg.clone());
+        let log_data = ProtocolMessages::LoraWifi(resp_msg.clone());
         let response_hdr = MessageHeader::new(me, sender, serialize_message(resp_msg)?);
         Ok((Some(response_hdr), Some(log_data)))
     }

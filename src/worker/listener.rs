@@ -6,10 +6,10 @@ extern crate linux_embedded_hal as hal;
 
 use crate::worker::radio::RadioTypes;
 use crate::worker::*;
+use chrono::{Duration, Utc};
 use socket2::Socket;
 #[cfg(target_os = "linux")]
 use sx1276::socket::{Link, LoRa};
-use chrono::{Duration, Utc};
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it
 /// and listen for incoming connections.
@@ -66,7 +66,7 @@ impl Listener for SimulatedListener {
                             let dur = Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
 
                             info!(
-                                &self.logger, 
+                                &self.logger,
                                 "read_from_network";
                                 "msg_id" => m.get_msg_id(),
                                 "duration" => dur,
