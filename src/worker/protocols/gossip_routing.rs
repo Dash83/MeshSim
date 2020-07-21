@@ -1,10 +1,11 @@
 //! Gossip-based flooding protocol
 
-use crate::worker::protocols::{Outcome, Protocol};
+use crate::worker::protocols::{Outcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 
+use chrono::{DateTime, Duration, Utc};
 use rand::{rngs::StdRng, Rng, RngCore};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -12,7 +13,6 @@ use slog::{Logger, Record, Serializer, KV};
 use std::collections::HashSet;
 use std::iter::Iterator;
 use std::sync::{Arc, Mutex};
-use chrono::{DateTime, Duration, Utc};
 
 const MSG_CACHE_SIZE: usize = 10000;
 /// The default number of hops messages are guaranteed to be propagated
@@ -39,22 +39,22 @@ pub struct GossipRouting {
     logger: Logger,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct DataMessage {
+pub struct DataMessage {
     payload: Vec<u8>,
-}
-
-impl KV for DataMessage {
-    fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
-        serializer.emit_str("msg_type", "DATA")
-    }
 }
 
 /// This enum represents the types of network messages supported in the protocol as well as the
 /// data associated with them.
-#[derive(Debug, Serialize, Deserialize)]
-enum Messages {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum Messages {
     ///Data messages for this protocol.
     Data(DataMessage),
+}
+
+impl KV for Messages {
+    fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
+        serializer.emit_str("msg_type", "DATA")
+    }
 }
 
 impl Protocol for GossipRouting {
@@ -91,13 +91,10 @@ impl Protocol for GossipRouting {
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
         let perf_out_queued_start = Utc::now();
-        let msg = DataMessage { payload: data };
-        let log_data = Box::new(msg.clone());
-        let mut hdr = MessageHeader::new(
-            self.get_self_peer(),
-            destination,
-            serialize_message(Messages::Data(msg))?,
-        );
+        let msg = Messages::Data(DataMessage { payload: data });
+        let log_data = ProtocolMessages::Gossip(msg.clone());
+        let mut hdr =
+            MessageHeader::new(self.get_self_peer(), destination, serialize_message(msg)?);
         hdr.delay = perf_out_queued_start.timestamp_nanos();
         let msg_id = hdr.get_msg_id().to_string();
         info!(&self.logger, "New message"; "msg_id" => &msg_id);
@@ -115,7 +112,16 @@ impl Protocol for GossipRouting {
             cache.insert(CacheEntry { msg_id });
         }
 
-        self.short_radio.broadcast(hdr, log_data)?;
+        let tx = self.short_radio.broadcast(hdr.clone())?;
+        radio::log_tx(
+            &self.logger,
+            tx,
+            &hdr.msg_id,
+            MessageStatus::SENT,
+            &hdr.sender,
+            &hdr.destination,
+            log_data,
+        );
 
         Ok(())
     }
@@ -185,16 +191,15 @@ impl GossipRouting {
             // LOCK:ACQUIRE:MSG_CACHE
             let mut cache = msg_cache.lock().map_err(|_e| {
                 let err_msg = String::from("Failed to lock message cache");
-                // error!(
-                //     logger,
-                //     "Received message";
-                //     "msg_id" => &msg_id,
-                //     "msg_type"=> "DATA",
-                //     "sender"=> &hdr.sender,
-                //     "status"=> MessageStatus::DROPPED,
-                //     "reason"=> &err_msg,
-                // );
-                radio::log_handle_message(logger, &hdr, MessageStatus::DROPPED, None, None, &msg);
+
+                radio::log_handle_message(
+                    logger,
+                    &hdr,
+                    MessageStatus::DROPPED,
+                    None,
+                    None,
+                    &Messages::Data(msg.clone()),
+                );
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(err_msg),
                     // cause: Some(Box::new(e.clone())),
@@ -204,23 +209,13 @@ impl GossipRouting {
 
             for entry in cache.iter() {
                 if entry.msg_id == hdr.get_msg_id() {
-                    // info!(
-                    //     logger,
-                    //     "Received message";
-                    //     "msg_id" => &msg_id,
-                    //     "msg_type"=>"DATA",
-                    //     "sender"=>&hdr.sender,
-                    //     "status"=>MessageStatus::DROPPED,
-                    //     "reason"=>"DUPLICATE",
-                    //     "sender"=>&hdr.sender,
-                    // );
                     radio::log_handle_message(
                         logger,
                         &hdr,
                         MessageStatus::DROPPED,
                         Some("DUPLICATE"),
                         None,
-                        &msg,
+                        &Messages::Data(msg),
                     );
                     return Ok((None, None));
                 }
@@ -243,16 +238,14 @@ impl GossipRouting {
 
         //Check if this node is the intended recipient of the message.
         if hdr.destination == me {
-            // info!(
-            //     logger,
-            //     "Received message";
-            //     "msg_id" => hdr.get_msg_id(),
-            //     "msg_type"=>"DATA",
-            //     "sender"=>&hdr.sender,
-            //     "status"=>MessageStatus::ACCEPTED,
-            //     "route_length" => hdr.hops
-            // );
-            radio::log_handle_message(logger, &hdr, MessageStatus::ACCEPTED, None, None, &msg);
+            radio::log_handle_message(
+                logger,
+                &hdr,
+                MessageStatus::ACCEPTED,
+                None,
+                None,
+                &Messages::Data(msg),
+            );
             return Ok((None, None));
         }
 
@@ -278,12 +271,13 @@ impl GossipRouting {
                 MessageStatus::DROPPED,
                 Some("Gossip failed"),
                 None,
-                &msg,
+                &Messages::Data(msg),
             );
             //Not gossiping this message.
             return Ok((None, None));
         }
 
+        let msg = Messages::Data(msg);
         radio::log_handle_message(
             logger,
             &hdr,
@@ -296,7 +290,7 @@ impl GossipRouting {
         //and leave the rest the same.
         let fwd_hdr = hdr.create_forward_header(me).build();
         //Box the message to log it
-        let log_data = Box::new(msg);
+        let log_data = ProtocolMessages::Gossip(msg);
 
         Ok((Some(fwd_hdr), Some(log_data)))
     }

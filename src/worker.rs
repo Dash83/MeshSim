@@ -18,7 +18,7 @@
 
 // Lint options for this module
 #![deny(
-    missing_docs,
+// missing_docs,
     trivial_numeric_casts,
     unstable_features,
     unused_import_braces
@@ -31,8 +31,8 @@ use crate::{MeshSimError, MeshSimErrorKind};
 use byteorder::{NativeEndian, WriteBytesExt};
 use libc::{c_int, nice};
 
-use chrono::Utc;
 use chrono::TimeZone;
+use chrono::Utc;
 use rand::{rngs::StdRng, SeedableRng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -563,7 +563,8 @@ impl Worker {
 
                                 thread_pool.execute(move || {
                                     let ts0 = Utc.timestamp_nanos(hdr.delay);
-                                    let perf_in_queued_duration = Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
+                                    let perf_in_queued_duration =
+                                        Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
                                     info!(
                                         &log,
                                         "Worker::start";
@@ -591,8 +592,19 @@ impl Worker {
                                         r.delay = Utc::now().timestamp_nanos();
                                         let log_data = log_data.expect("ERROR: Log_Data was empty");
                                         // let _msg_id = r.get_msg_id().to_string();
-                                        match tx_channel.broadcast(r, log_data) {
-                                            Ok(_) => { /* All good */ }
+                                        match tx_channel.broadcast(r.clone()) {
+                                            Ok(tx) => {
+                                                /* Log transmission */
+                                                radio::log_tx(
+                                                    &log,
+                                                    tx,
+                                                    &r.msg_id,
+                                                    MessageStatus::SENT,
+                                                    &r.sender,
+                                                    &r.destination,
+                                                    log_data,
+                                                );
+                                            }
                                             Err(e) => {
                                                 error!(log, "Error sending response: {}", e);
                                                 if let Some(cause) = e.cause {

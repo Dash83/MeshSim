@@ -103,7 +103,7 @@ pub trait Radio: std::fmt::Debug + Send + Sync {
     ///Gets the current address at which the radio is listening.
     fn get_address(&self) -> &str;
     ///Used to broadcast a message using the radio
-    fn broadcast(&self, hdr: MessageHeader, md: Box<dyn KV>) -> Result<(), MeshSimError>;
+    fn broadcast(&self, hdr: MessageHeader) -> Result<TxMetadata, MeshSimError>;
     ///Get the time of the last transmission made by this readio
     fn last_transmission(&self) -> i64;
 }
@@ -146,16 +146,16 @@ impl Radio for SimulatedRadio {
         self.last_transmission.load(Ordering::SeqCst)
     }
 
-    fn broadcast(&self, mut hdr: MessageHeader, md: Box<dyn KV>) -> Result<(), MeshSimError> {
+    fn broadcast(&self, mut hdr: MessageHeader) -> Result<TxMetadata, MeshSimError> {
         //Perf measurement. How long was the message in the out queue?
         let start_ts = Utc::now();
-        debug!(&self.logger, "out_queued_start: {}",  hdr.delay);
-        let perf_out_queued_duration = start_ts.timestamp_nanos() - hdr.delay; 
+        debug!(&self.logger, "out_queued_start: {}", hdr.delay);
+        let perf_out_queued_duration = start_ts.timestamp_nanos() - hdr.delay;
         let env_file = format!("{}{}.env", &self.work_dir, std::path::MAIN_SEPARATOR);
         let conn = get_db_connection(&env_file, &self.logger)?;
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
-        
+
         // let msg_id = hdr.get_msg_id().to_string();
 
         //Register this node as an active transmitter if the medium is free
@@ -253,16 +253,16 @@ impl Radio for SimulatedRadio {
             broadcast_duration: broadcast_duration,
         };
 
-        radio::log_tx(
-            &self.logger,
-            tx,
-            &hdr.msg_id,
-            MessageStatus::SENT,
-            &hdr.sender,
-            &hdr.destination,
-            md,
-        );
-        Ok(())
+        // radio::log_tx(
+        //     &self.logger,
+        //     tx,
+        //     &hdr.msg_id,
+        //     MessageStatus::SENT,
+        //     &hdr.sender,
+        //     &hdr.destination,
+        //     md,
+        // );
+        Ok(tx)
     }
 }
 
@@ -564,9 +564,9 @@ impl Radio for WifiRadio {
         self.last_transmission.load(Ordering::SeqCst)
     }
 
-    fn broadcast(&self, mut hdr: MessageHeader, md: Box<dyn KV>) -> Result<(), MeshSimError> {
+    fn broadcast(&self, mut hdr: MessageHeader) -> Result<TxMetadata, MeshSimError> {
         let start_ts = Utc::now();
-        let perf_out_queued_duration = start_ts.timestamp_nanos() - hdr.delay; 
+        let perf_out_queued_duration = start_ts.timestamp_nanos() - hdr.delay;
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
         let msg_id = hdr.get_msg_id().to_string();
@@ -624,17 +624,17 @@ impl Radio for WifiRadio {
             broadcast_duration: broadcast_duration,
         };
 
-        radio::log_tx(
-            &self.logger,
-            tx,
-            &hdr.msg_id,
-            MessageStatus::SENT,
-            &hdr.sender,
-            &hdr.destination,
-            md,
-        );
+        // radio::log_tx(
+        //     &self.logger,
+        //     tx,
+        //     &hdr.msg_id,
+        //     MessageStatus::SENT,
+        //     &hdr.sender,
+        //     &hdr.destination,
+        //     md,
+        // );
 
-        Ok(())
+        Ok(tx)
     }
 }
 
@@ -768,7 +768,7 @@ pub fn log_tx(
     status: MessageStatus,
     source: &str,
     destination: &str,
-    msg_metadata: Box<dyn KV>,
+    msg_metadata: ProtocolMessages,
 ) {
     // let debug_ts = Utc::now().to_string();
     info!(

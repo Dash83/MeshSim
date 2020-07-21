@@ -1,10 +1,11 @@
 //! Protocol that naively routes data by relaying all messages it receives.
 
-use crate::worker::protocols::{Outcome, Protocol};
+use crate::worker::protocols::{Outcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 
+use chrono::Utc;
 use rand::{rngs::StdRng, RngCore};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -12,7 +13,6 @@ use slog::{Logger, Record, Serializer, KV};
 use std::collections::HashSet;
 use std::iter::Iterator;
 use std::sync::{Arc, Mutex};
-use chrono::Utc;
 
 const MSG_CACHE_SIZE: usize = 10000;
 
@@ -32,14 +32,19 @@ pub struct NaiveRouting {
     logger: Logger,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct DataMessage {
+pub struct DataMessage {
     payload: Vec<u8>,
 }
 
+impl DataMessage {
+    pub fn new(payload: Vec<u8>) -> Self {
+        DataMessage { payload }
+    }
+}
 /// This enum represents the types of network messages supported in the protocol as well as the
 /// data associated with them.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-enum Messages {
+pub enum Messages {
     ///Data messages for this protocol.
     Data(DataMessage),
 }
@@ -47,9 +52,7 @@ enum Messages {
 impl KV for Messages {
     fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
         match *self {
-            Messages::Data(ref m) => {
-                serializer.emit_str("msg_type", "DATA")
-            }
+            Messages::Data(ref m) => serializer.emit_str("msg_type", "DATA"),
         }
     }
 }
@@ -87,12 +90,9 @@ impl Protocol for NaiveRouting {
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
         let perf_out_queued_start = Utc::now();
         let msg = Messages::Data(DataMessage { payload: data });
-        let log_data = Box::new(msg.clone());
-        let mut hdr = MessageHeader::new(
-            self.get_self_peer(),
-            destination,
-            serialize_message(msg)?,
-        );
+        let log_data = ProtocolMessages::Naive(msg.clone());
+        let mut hdr =
+            MessageHeader::new(self.get_self_peer(), destination, serialize_message(msg)?);
         hdr.delay = perf_out_queued_start.timestamp_nanos();
         let msg_id = hdr.get_msg_id().to_string();
         info!(&self.logger, "New message"; "msg_id" => &msg_id);
@@ -110,7 +110,16 @@ impl Protocol for NaiveRouting {
             cache.insert(CacheEntry { msg_id });
         }
 
-        self.short_radio.broadcast(hdr, log_data)?;
+        let tx = self.short_radio.broadcast(hdr.clone())?;
+        radio::log_tx(
+            &self.logger,
+            tx,
+            &hdr.msg_id,
+            MessageStatus::SENT,
+            &hdr.sender,
+            &hdr.destination,
+            log_data,
+        );
 
         Ok(())
     }
@@ -194,19 +203,26 @@ impl NaiveRouting {
 
         //Check if this node is the intended recipient of the message.
         if hdr.destination == me {
-            radio::log_handle_message(logger, &hdr, MessageStatus::ACCEPTED, None, None, &Messages::Data(msg));
+            radio::log_handle_message(
+                logger,
+                &hdr,
+                MessageStatus::ACCEPTED,
+                None,
+                None,
+                &Messages::Data(msg),
+            );
             return Ok((None, None));
         }
 
         let msg = Messages::Data(msg);
-        
+
         //Message is not meant for this node
         radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
         //The payload of the incoming header is still valid, so just build a new header with this node as the sender
         //and leave the rest the same.
         let fwd_hdr = hdr.create_forward_header(me).build();
         //Box the message to log it
-        let log_data = Box::new(msg);
+        let log_data = ProtocolMessages::Naive(msg);
 
         Ok((Some(fwd_hdr), Some(log_data)))
     }
@@ -231,7 +247,7 @@ impl NaiveRouting {
     }
 }
 
-fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
+pub fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
     from_slice(data).map_err(|e| {
         let err_msg = String::from("Error deserializing data into message");
         MeshSimError {
@@ -241,7 +257,7 @@ fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
     })
 }
 
-fn serialize_message(msg: Messages) -> Result<Vec<u8>, MeshSimError> {
+pub fn serialize_message(msg: Messages) -> Result<Vec<u8>, MeshSimError> {
     to_vec(&msg).map_err(|e| {
         let err_msg = String::from("Error serializing message");
         MeshSimError {

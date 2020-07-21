@@ -447,18 +447,33 @@ fn add_cbr_sources(
     //get packet-rate
     let packet_rate: usize = match param_parts[0].parse() {
         Ok(n) => n,
-        Err(e) => return Err(Errors::TestParsing(format!("Failed to parse packet_rate: {}", e))),
+        Err(e) => {
+            return Err(Errors::TestParsing(format!(
+                "Failed to parse packet_rate: {}",
+                e
+            )))
+        }
     };
     //select packet-size
     let packet_size: usize = match param_parts[1].parse() {
         Ok(n) => n,
-        Err(e) => return Err(Errors::TestParsing(format!("Failed to parse packet_size: {}", e))),
+        Err(e) => {
+            return Err(Errors::TestParsing(format!(
+                "Failed to parse packet_size: {}",
+                e
+            )))
+        }
     };
     //Get a duration for each source
     let duration = if param_parts.len() > 2 {
         let d: u64 = match param_parts[2].parse() {
             Ok(n) => n,
-            Err(e) => return Err(Errors::TestParsing(format!("Failed to parse source duration: {}", e))),
+            Err(e) => {
+                return Err(Errors::TestParsing(format!(
+                    "Failed to parse source duration: {}",
+                    e
+                )))
+            }
         };
         d
     } else {
@@ -473,7 +488,7 @@ fn add_cbr_sources(
     let sources_start_time_limit: u64 = spec.duration - cool_off_period - duration;
     assert!(warm_up_period < sources_start_time_limit);
     let start_times_sample = Uniform::new(warm_up_period, sources_start_time_limit);
-    
+
     assert!(num_sources <= (spec.initial_nodes.len() / 2));
     let mut nodes: Vec<&String> = spec.initial_nodes.keys().clone().collect();
     for _i in 0..num_sources {

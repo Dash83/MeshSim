@@ -13,7 +13,7 @@ use naive_routing::NaiveRouting;
 use reactive_gossip_routing::ReactiveGossipRouting;
 use reactive_gossip_routing_II::ReactiveGossipRoutingII;
 use reactive_gossip_routing_III::ReactiveGossipRoutingIII;
-use slog::{Logger, KV};
+use slog::{Logger, Record, Serializer, KV};
 
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -28,7 +28,7 @@ pub mod reactive_gossip_routing_II;
 #[allow(non_snake_case)]
 pub mod reactive_gossip_routing_III;
 
-type Outcome<'a> = (Option<MessageHeader>, Option<Box<dyn KV>>);
+type Outcome<'a> = (Option<MessageHeader>, Option<ProtocolMessages>);
 
 /// Trait that all protocols need to implement.
 /// The function handle_message should
@@ -98,6 +98,133 @@ impl Default for Protocols {
     }
 }
 
+pub enum ProtocolMessages {
+    AODV(aodv::Messages),
+    Gossip(gossip_routing::Messages),
+    LoraWifi(lora_wifi_beacon::Messages),
+    Naive(naive_routing::Messages),
+    RGRI(reactive_gossip_routing::Messages),
+    RGRII(reactive_gossip_routing_II::Messages),
+    RGRIII(reactive_gossip_routing_III::Messages),
+}
+
+impl KV for ProtocolMessages {
+    fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
+        match *self {
+            ProtocolMessages::AODV(ref msg) => match msg {
+                aodv::Messages::DATA(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "DATA")?;
+                    serializer.emit_str("msg_destination", &m.destination)
+                }
+                aodv::Messages::RREQ(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "RREQ")?;
+                    let _ = serializer.emit_str("msg_source", &m.originator)?;
+                    let _ = serializer.emit_str("msg_destination", &m.destination)?;
+                    serializer.emit_u32("rreq_id", m.rreq_id)
+                }
+                aodv::Messages::RREP(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "RREP")?;
+                    let _ = serializer.emit_str("msg.originator", &m.originator)?;
+                    let _ = serializer.emit_str("msg.destination", &m.destination)?;
+                    serializer.emit_u32("dest_seq_no", m.dest_seq_no)
+                }
+                aodv::Messages::RERR(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "RERR")?;
+                    serializer.emit_usize("msg.num_affected_destinations", m.destinations.len())
+                }
+                aodv::Messages::HELLO(ref _m) => serializer.emit_str("msg_type", "BEACON"),
+                aodv::Messages::RREP_ACK => serializer.emit_str("msg_type", "RREP_ACK"),
+            },
+            ProtocolMessages::Gossip(ref _msg) => serializer.emit_str("msg_type", "DATA"),
+            ProtocolMessages::Naive(ref _msg) => serializer.emit_str("msg_type", "DATA"),
+            ProtocolMessages::LoraWifi(ref msg) => match msg {
+                lora_wifi_beacon::Messages::Beacon(m) => {
+                    let _ = serializer.emit_str("msg_type", "BEACON")?;
+                    serializer.emit_u64("id", m.0)
+                }
+                lora_wifi_beacon::Messages::BeaconResponse(m) => {
+                    let _ = serializer.emit_str("msg_type", "BEACON_RESPONSE")?;
+                    serializer.emit_u64("id", m.0)
+                }
+            },
+            ProtocolMessages::RGRI(ref msg) => match msg {
+                reactive_gossip_routing::Messages::Data(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "DATA")?;
+                    serializer.emit_str("route_id", &m.route_id)
+                }
+                reactive_gossip_routing::Messages::RouteDiscovery(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "ROUTE_DISCOVERY")?;
+                    let _ = serializer.emit_str("route_id", &m.route_id)?;
+                    let _ = serializer.emit_str("msg_source", &m.route_source)?;
+                    let _ = serializer.emit_str("msg_destination", &m.route_destination)?;
+                    serializer.emit_usize("route_length", m.route.len())
+                }
+                reactive_gossip_routing::Messages::RouteEstablish(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "ROUTE_ESTABLISH")?;
+                    let _ = serializer.emit_str("route_id", &m.route_id)?;
+                    let _ = serializer.emit_str("msg_source", &m.route_source)?;
+                    let _ = serializer.emit_str("msg_destination", &m.route_destination)?;
+                    serializer.emit_usize("route_length", m.route.len())
+                }
+                reactive_gossip_routing::Messages::RouteTeardown(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "ROUTE_TEARDOWN")?;
+                    serializer.emit_str("route_id", &m.route_id)
+                }
+            },
+            ProtocolMessages::RGRII(ref msg) => match msg {
+                reactive_gossip_routing_II::Messages::Data(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "DATA")?;
+                    serializer.emit_str("route_id", &m.route_id)
+                }
+                reactive_gossip_routing_II::Messages::RouteDiscovery(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "ROUTE_DISCOVERY")?;
+                    let _ = serializer.emit_str("route_id", &m.route_id)?;
+                    let _ = serializer.emit_str("msg_source", &m.route_source)?;
+                    let _ = serializer.emit_str("msg_destination", &m.route_destination)?;
+                    serializer.emit_usize("route_length", m.route.len())
+                }
+                reactive_gossip_routing_II::Messages::RouteEstablish(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "ROUTE_ESTABLISH")?;
+                    let _ = serializer.emit_str("route_id", &m.route_id)?;
+                    let _ = serializer.emit_str("msg_source", &m.route_source)?;
+                    let _ = serializer.emit_str("msg_destination", &m.route_destination)?;
+                    serializer.emit_usize("route_length", m.route.len())
+                }
+                reactive_gossip_routing_II::Messages::RouteTeardown(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "ROUTE_TEARDOWN")?;
+                    serializer.emit_str("route_id", &m.route_id)
+                }
+            },
+            ProtocolMessages::RGRIII(ref msg) => match msg {
+                reactive_gossip_routing_III::Messages::Data(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "DATA")?;
+                    serializer.emit_str("route_id", &m.route_id)
+                }
+                reactive_gossip_routing_III::Messages::RouteDiscovery(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "ROUTE_DISCOVERY")?;
+                    let _ = serializer.emit_str("route_id", &m.route_id)?;
+                    let _ = serializer.emit_str("msg_source", &m.route_source)?;
+                    let _ = serializer.emit_str("msg_destination", &m.route_destination)?;
+                    serializer.emit_usize("route_length", m.route.len())
+                }
+                reactive_gossip_routing_III::Messages::RouteEstablish(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "ROUTE_ESTABLISH")?;
+                    let _ = serializer.emit_str("route_id", &m.route_id)?;
+                    let _ = serializer.emit_str("msg_source", &m.route_source)?;
+                    let _ = serializer.emit_str("msg_destination", &m.route_destination)?;
+                    serializer.emit_usize("route_length", m.route.len())
+                }
+                reactive_gossip_routing_III::Messages::RouteTeardown(ref m) => {
+                    let _ = serializer.emit_str("msg_type", "ROUTE_TEARDOWN")?;
+                    serializer.emit_str("route_id", &m.route_id)
+                }
+                reactive_gossip_routing_III::Messages::Beacon(ref _m) => {
+                    serializer.emit_str("msg_type", "BEACON")
+                }
+            },
+        }
+    }
+}
 //The FromStr implementation is used for the TestGen utility only. For other convertions, we use the
 //serialization/deserialization that serde provides.
 impl FromStr for Protocols {

@@ -1,5 +1,5 @@
 //! Implemention of the AODV protocol, per its RFC https://www.rfc-editor.org/info/rfc3561
-use crate::worker::protocols::{Outcome, Protocol};
+use crate::worker::protocols::{Outcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -156,13 +156,13 @@ bitflags! {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct RouteRequestMessage {
+pub struct RouteRequestMessage {
     flags: RREQFlags,
-    hop_count: u8,
-    rreq_id: u32,
-    destination: String,
-    dest_seq_no: u32,
-    originator: String,
+    pub hop_count: u8,
+    pub rreq_id: u32,
+    pub destination: String,
+    pub dest_seq_no: u32,
+    pub originator: String,
     orig_seq_no: u32,
 }
 
@@ -175,15 +175,15 @@ bitflags! {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct RouteResponseMessage {
+pub struct RouteResponseMessage {
     flags: RREPFlags,
     //This field is not used in this implementation. Kept for completeness
     //in accordance to the RFC.
     prefix_size: u8,
-    hop_count: u8,
-    destination: String,
-    dest_seq_no: u32,
-    originator: String,
+    pub hop_count: u8,
+    pub destination: String,
+    pub dest_seq_no: u32,
+    pub originator: String,
     lifetime: u32,
 }
 
@@ -195,19 +195,20 @@ bitflags! {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct RouteErrorMessage {
+pub struct RouteErrorMessage {
     flags: RREPFlags,
-    destinations: HashMap<String, u32>,
+    pub destinations: HashMap<String, u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct DataMessage {
-    destination: String,
+pub struct DataMessage {
+    pub destination: String,
     payload: Vec<u8>,
 }
 
+///Messages used by the AODV protocol
 #[derive(Debug, Serialize, Deserialize, Clone)]
-enum Messages {
+pub enum Messages {
     RREQ(RouteRequestMessage),
     RREP(RouteResponseMessage),
     RERR(RouteErrorMessage),
@@ -327,7 +328,7 @@ impl Protocol for AODV {
             payload: data,
         });
         //Create log data
-        let log_data = Box::new(msg.clone());
+        let log_data = ProtocolMessages::AODV(msg.clone());
         let mut hdr = MessageHeader::new(
             self.get_self_peer(),
             destination.clone(),
@@ -585,7 +586,7 @@ impl AODV {
             //Tag the response
             let response = Messages::RREP(response);
             //Create the log data for the packet
-            let log_data = Box::new(response.clone());
+            let log_data = ProtocolMessages::AODV(response.clone());
 
             let resp_hdr =
                 MessageHeader::new(me, entry.next_hop.clone(), serialize_message(response)?);
@@ -635,7 +636,7 @@ impl AODV {
                 //Tag the response
                 let response = Messages::RREP(response);
                 //Create the log data for the packet
-                let log_data = Box::new(response.clone());
+                let log_data = ProtocolMessages::AODV(response.clone());
 
                 let dest = hdr.sender.clone();
                 // let resp_hdr = hdr
@@ -672,7 +673,7 @@ impl AODV {
             &msg,
         );
         //Create log data
-        let log_data = Box::new(msg.clone());
+        let log_data = ProtocolMessages::AODV(msg.clone());
         //NOT producing an RREP. Prepare to forward RREQ.
         let fwd_hdr = hdr
             .create_forward_header(me)
@@ -868,7 +869,7 @@ impl AODV {
         radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
 
         //Create log data
-        let log_data = Box::new(msg.clone());
+        let log_data = ProtocolMessages::AODV(msg.clone());
 
         //Build the forwarding header
         let fwd_hdr = hdr
@@ -948,7 +949,7 @@ impl AODV {
             //Re-tag message
             let msg = Messages::RERR(msg);
             //Build log data
-            let log_data = Box::new(msg.clone());
+            let log_data = ProtocolMessages::AODV(msg.clone());
 
             //Build the response msg
             let rsp_hdr = hdr
@@ -1068,7 +1069,7 @@ impl AODV {
                     //Tag response
                     let rerr_msg = Messages::RERR(rerr_msg);
                     //Build log data
-                    let log_data = Box::new(rerr_msg.clone());
+                    let log_data = ProtocolMessages::AODV(rerr_msg.clone());
 
                     //Build response message
                     let fwd_hdr = hdr
@@ -1122,7 +1123,7 @@ impl AODV {
         //Re-tag the msg
         let msg = Messages::DATA(msg);
         //Build log data
-        let log_data = Box::new(msg.clone());
+        let log_data = ProtocolMessages::AODV(msg.clone());
 
         radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
 
@@ -1182,7 +1183,7 @@ impl AODV {
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         mut hdr: MessageHeader,
-        log_data: Box<dyn KV>,
+        log_data: ProtocolMessages,
         short_radio: Arc<dyn Radio>,
         logger: Logger,
     ) -> Result<(), MeshSimError> {
@@ -1212,7 +1213,16 @@ impl AODV {
             },
         );
 
-        short_radio.broadcast(hdr, log_data)?;
+        let tx = short_radio.broadcast(hdr.clone())?;
+        radio::log_tx(
+            &logger,
+            tx,
+            &hdr.msg_id,
+            MessageStatus::SENT,
+            &hdr.sender,
+            &hdr.destination,
+            log_data,
+        );
 
         Ok(())
     }
@@ -1245,7 +1255,7 @@ impl AODV {
         };
         //Tag the message
         let msg = Messages::RREQ(msg);
-        let log_data = Box::new(msg.clone());
+        let log_data = ProtocolMessages::AODV(msg.clone());
         let hdr = MessageHeader::new(me.clone(), destination.clone(), serialize_message(msg)?);
 
         //Add to the pending-routes list
@@ -1275,7 +1285,16 @@ impl AODV {
         }
 
         //Broadcast RouteDiscovery
-        short_radio.broadcast(hdr, log_data)?;
+        let tx = short_radio.broadcast(hdr.clone())?;
+        radio::log_tx(
+            &logger,
+            tx,
+            &hdr.msg_id,
+            MessageStatus::SENT,
+            &hdr.sender,
+            &hdr.destination,
+            log_data,
+        );
 
         //This log is necessary to differentiate the initial RREQ packet from all the other SENT logs in
         //the intermediate nodes.
@@ -1322,7 +1341,7 @@ impl AODV {
             info!(logger, "Processing {} queued transmissions.", &flows.len());
             for hdr in flows {
                 let dest = destination.clone();
-                let log_data = Box::new(deserialize_message(hdr.get_payload())?);
+                let log_data = ProtocolMessages::AODV(deserialize_message(hdr.get_payload())?);
                 let radio = Arc::clone(&short_radio);
                 let l = logger.clone();
                 let rt = Arc::clone(&route_table);
@@ -1416,14 +1435,22 @@ impl AODV {
                     };
                     //Tag the message
                     let msg = Messages::HELLO(msg);
-                    let log_data = Box::new(msg.clone());
+                    let log_data = ProtocolMessages::AODV(msg.clone());
                     let hdr =
                         MessageHeader::new(me.clone(), String::new(), serialize_message(msg)?);
 
-                    match short_radio.broadcast(hdr, log_data) {
-                        Ok(_) => {
+                    match short_radio.broadcast(hdr.clone()) {
+                        Ok(tx) => {
                             // All good
-                            // info!(logger,  "Sending HELLO message");
+                            radio::log_tx(
+                                &logger,
+                                tx,
+                                &hdr.msg_id,
+                                MessageStatus::SENT,
+                                &hdr.sender,
+                                &hdr.destination,
+                                log_data,
+                            );
                         }
                         Err(e) => {
                             error!(
@@ -1476,12 +1503,23 @@ impl AODV {
                 };
                 //Tag the message
                 let rerr_msg = Messages::RERR(rerr_msg);
-                let log_data = Box::new(rerr_msg.clone());
+                let log_data = ProtocolMessages::AODV(rerr_msg.clone());
                 let hdr =
                     MessageHeader::new(me.clone(), String::new(), serialize_message(rerr_msg)?);
 
-                match short_radio.broadcast(hdr, log_data) {
-                    Ok(_) => { /* All good! */ }
+                match short_radio.broadcast(hdr.clone()) {
+                    Ok(tx) => {
+                        /* All good! */
+                        radio::log_tx(
+                            &logger,
+                            tx,
+                            &hdr.msg_id,
+                            MessageStatus::SENT,
+                            &hdr.sender,
+                            &hdr.destination,
+                            log_data,
+                        );
+                    }
                     Err(e) => {
                         error!(
                             logger,

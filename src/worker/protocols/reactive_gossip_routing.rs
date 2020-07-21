@@ -1,6 +1,6 @@
 //! This module implements the Reactive Gossip routing protocol
 
-use crate::worker::protocols::{Outcome, Protocol};
+use crate::worker::protocols::{Outcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -64,7 +64,7 @@ pub struct ReactiveGossipRouting {
 /// This struct contains the state necessary for the protocol to discover routes between
 /// two nodes and if one or more exist, establish said routes.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct RouteMessage {
+pub struct RouteMessage {
     pub route_source: String,
     pub route_destination: String,
     pub route_id: String,
@@ -94,7 +94,7 @@ impl RouteMessage {
 
 ///This message uses an already established route to send data to the destination
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct DataMessage {
+pub struct DataMessage {
     pub payload: Vec<u8>,
     pub route_id: String,
 }
@@ -127,7 +127,7 @@ pub struct DataCacheEntry {
 
 /// Enum that lists all the possible messages in this protocol as well as the associated data for each one
 #[derive(Debug, Serialize, Deserialize, Clone)]
-enum Messages {
+pub enum Messages {
     RouteDiscovery(RouteMessage),
     RouteEstablish(RouteMessage),
     RouteTeardown(RouteMessage),
@@ -245,7 +245,7 @@ impl Protocol for ReactiveGossipRouting {
                 route_id: r_id.clone(),
                 payload: data,
             });
-            let log_data = Box::new(msg.clone());
+            let log_data = ProtocolMessages::RGRI(msg.clone());
             let mut hdr = MessageHeader::new(me, destination, serialize_message(msg)?);
             hdr.delay = perf_out_queued_start.timestamp_nanos();
 
@@ -362,7 +362,7 @@ impl ReactiveGossipRouting {
         msg.route.push(me.clone());
         let route_id = msg.route_id.clone();
         let msg = Messages::RouteDiscovery(msg);
-        let log_data = Box::new(msg.clone());
+        let log_data = ProtocolMessages::RGRI(msg.clone());
         let hdr = MessageHeader::new(me.clone(), destination.clone(), serialize_message(msg)?);
 
         //TODO: Investigate if this is the reason RGR variations are underperforming
@@ -382,7 +382,16 @@ impl ReactiveGossipRouting {
             rmc.insert(route_id.clone());
         }
 
-        short_radio.broadcast(hdr, log_data)?;
+        let tx = short_radio.broadcast(hdr.clone())?;
+        radio::log_tx(
+            &logger,
+            tx,
+            &hdr.msg_id,
+            MessageStatus::SENT,
+            &hdr.sender,
+            &hdr.destination,
+            log_data,
+        );
         info!(logger, "Route discovery initiated"; "route_id"=>&route_id);
 
         Ok(route_id)
@@ -390,11 +399,11 @@ impl ReactiveGossipRouting {
 
     fn start_flow(
         route_id: String,
-        log_data: Box<dyn KV>,
+        log_data: ProtocolMessages,
         hdr: MessageHeader,
         short_radio: Arc<dyn Radio>,
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-        _logger: &Logger,
+        logger: &Logger,
     ) -> Result<(), MeshSimError> {
         //Log this message in the data_msg_cache so that we can monitor if the neighbors relay it
         //properly, retransmit if necessary, and don't relay it again when we hear it from others.
@@ -412,7 +421,16 @@ impl ReactiveGossipRouting {
         );
         //Right now this assumes the data can be sent in a single broadcast message
         //This might be addressed later on.
-        short_radio.broadcast(hdr, log_data)?;
+        let tx = short_radio.broadcast(hdr.clone())?;
+        radio::log_tx(
+            &logger,
+            tx,
+            &hdr.msg_id,
+            MessageStatus::SENT,
+            &hdr.sender,
+            &hdr.destination,
+            log_data,
+        );
 
         Ok(())
     }
@@ -666,7 +684,7 @@ impl ReactiveGossipRouting {
             // hdr.payload = serialize_message(Messages::Data(msg))?;
             //Since the payload remains unchanged, just create new header with this node as the sender.
             let fwd_hdr = hdr.create_forward_header(self_peer).build();
-            let log_data = Box::new(Messages::Data(msg));
+            let log_data = ProtocolMessages::RGRI(Messages::Data(msg));
 
             Ok((Some(fwd_hdr), Some(log_data)))
         }
@@ -723,7 +741,7 @@ impl ReactiveGossipRouting {
             //Re-tag the message
             let msg = Messages::RouteEstablish(msg);
             //Create logging data
-            let log_data = Box::new(msg.clone());
+            let log_data = ProtocolMessages::RGRI(msg.clone());
 
             //Create response header
             let response_hdr = MessageHeader::new(self_peer, dest, serialize_message(msg)?);
@@ -785,7 +803,7 @@ impl ReactiveGossipRouting {
 
         radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
         // Build log data
-        let log_data = Box::new(msg.clone());
+        let log_data = ProtocolMessages::RGRI(msg.clone());
         //Build message and forward it
         let fwd_hdr = hdr
             .create_forward_header(self_peer)
@@ -904,7 +922,7 @@ impl ReactiveGossipRouting {
         radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
 
         //Build log data
-        let log_data = Box::new(msg.clone());
+        let log_data = ProtocolMessages::RGRI(msg.clone());
 
         //Build message and forward it
         let fwd_hdr = hdr
@@ -951,7 +969,7 @@ impl ReactiveGossipRouting {
                 )?;
                 //Create log data
                 let msg = Messages::RouteTeardown(msg);
-                let log_data = Box::new(msg.clone());
+                let log_data = ProtocolMessages::RGRI(msg.clone());
                 let fwd_hdr = hdr
                     .create_forward_header(self_peer)
                     .set_payload(serialize_message(msg)?)
@@ -997,7 +1015,7 @@ impl ReactiveGossipRouting {
             info!(logger, "Processing {} queued transmissions.", &flows.len());
             for hdr in flows {
                 let r_id = route_id.clone();
-                let log_data = Box::new(deserialize_message(hdr.get_payload())?);
+                let log_data = ProtocolMessages::RGRI(deserialize_message(hdr.get_payload())?);
                 let radio = Arc::clone(&short_radio);
                 let l = logger.clone();
                 let dmc = Arc::clone(&data_msg_cache);
@@ -1060,7 +1078,8 @@ impl ReactiveGossipRouting {
                     if entry.retries < MAX_PACKET_RETRANSMISSION {
                         let hdr = entry.payload.clone();
                         entry.retries += 1;
-                        let log_data = Box::new(());
+                        let log_data =
+                            ProtocolMessages::RGRI(deserialize_message(hdr.get_payload())?);
                         info!(
                             logger,
                             "Retransmitting message {}", &hdr.get_msg_id();
@@ -1068,8 +1087,19 @@ impl ReactiveGossipRouting {
                         );
 
                         //The message is still cached, so re-transmit it.
-                        match short_radio.broadcast(hdr, log_data) {
-                            Ok(_) => { /* All good! */ }
+                        match short_radio.broadcast(hdr.clone()) {
+                            Ok(tx) => {
+                                /* Log transmission! */
+                                radio::log_tx(
+                                    &logger,
+                                    tx,
+                                    &hdr.msg_id,
+                                    MessageStatus::SENT,
+                                    &hdr.sender,
+                                    &hdr.destination,
+                                    log_data,
+                                );
+                            }
                             Err(e) => {
                                 error!(logger, "Failed to re-transmit message. {}", e);
                             }
@@ -1094,7 +1124,7 @@ impl ReactiveGossipRouting {
                             )?;
                             let msg = Messages::RouteTeardown(msg);
                             //Build log data from the packet
-                            let log_data = Box::new(msg.clone());
+                            let log_data = ProtocolMessages::RGRI(msg.clone());
                             //Pack the message and build the header for transmission
                             let hdr = MessageHeader::new(
                                 me.clone(),
@@ -1102,8 +1132,17 @@ impl ReactiveGossipRouting {
                                 serialize_message(msg)?,
                             );
                             //Send message
-                            match short_radio.broadcast(hdr, log_data) {
-                                Ok(_) => {
+                            match short_radio.broadcast(hdr.clone()) {
+                                Ok(tx) => {
+                                    radio::log_tx(
+                                        &logger,
+                                        tx,
+                                        &hdr.msg_id,
+                                        MessageStatus::SENT,
+                                        &hdr.sender,
+                                        &hdr.destination,
+                                        log_data,
+                                    );
                                     info!(
                                         logger,
                                         "Route Teardown initiated";

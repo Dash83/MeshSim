@@ -119,6 +119,8 @@ use mesh_simulator::worker::*;
 
 #[test]
 fn test_broadcast_simulated() {
+    use mesh_simulator::worker::protocols::naive_routing;
+
     //Setup
     //Get general test settings
     // let test_path = create_test_dir("sim_bcast");
@@ -239,10 +241,23 @@ fn test_broadcast_simulated() {
     .expect("Could not register worker");
 
     //Test checks
-    let bcast_msg = MessageHeader::new(String::new(), String::new(), vec![]);
-    let log_data = Box::new(());
-    let _res = r2.broadcast(bcast_msg, log_data).unwrap();
-
+    let msg = naive_routing::Messages::Data(naive_routing::DataMessage::new(vec![]));
+    let log_data = protocols::ProtocolMessages::Naive(msg.clone());
+    let bcast_msg = MessageHeader::new(
+        String::new(),
+        String::new(),
+        naive_routing::serialize_message(msg).expect("Could not serialize message"),
+    );
+    let tx = r2.broadcast(bcast_msg.clone()).unwrap();
+    radio::log_tx(
+        &&data.logger,
+        tx,
+        &bcast_msg.get_msg_id(),
+        MessageStatus::SENT,
+        &bcast_msg.sender,
+        &bcast_msg.destination,
+        log_data,
+    );
     let rec_msg1 = l1.read_message();
 
     assert!(rec_msg1.is_some());
@@ -404,6 +419,8 @@ fn test_mac_layer_basic() {
 
 #[test]
 fn test_broadcast_device() -> TestResult {
+    use mesh_simulator::worker::protocols::naive_routing;
+
     //Setup
     let host = env::var("MESHSIM_HOST").unwrap_or(String::from(""));
     //This test should ONLY run on my lab development machine due to required configuration of device_mode.
@@ -443,10 +460,23 @@ fn test_broadcast_device() -> TestResult {
     // let listener1 = r1.init().unwrap();
 
     //Test checks
-    let bcast_msg = MessageHeader::new(String::new(), String::new(), vec![]);
-    let log_data = Box::new(());
-    let _res = r1.broadcast(bcast_msg.clone(), log_data).unwrap();
-
+    let msg = naive_routing::Messages::Data(naive_routing::DataMessage::new(vec![]));
+    let log_data = protocols::ProtocolMessages::Naive(msg.clone());
+    let bcast_msg = MessageHeader::new(
+        String::new(),
+        String::new(),
+        naive_routing::serialize_message(msg).expect("Could not serialize message"),
+    );
+    let tx = r1.broadcast(bcast_msg.clone()).unwrap();
+    radio::log_tx(
+        &&data.logger,
+        tx,
+        &bcast_msg.get_msg_id(),
+        MessageStatus::SENT,
+        &bcast_msg.sender,
+        &bcast_msg.destination,
+        log_data,
+    );
     //We only test that the broadcast was received by the broadcaster, since we can only deploy 1 device_mode worker
     //per machine.
     let rec_msg1 = l1.read_message();
@@ -464,6 +494,8 @@ fn test_broadcast_device() -> TestResult {
 
 #[test]
 fn test_last_transmission() -> TestResult {
+    use mesh_simulator::worker::protocols::naive_routing;
+
     let test_name = "last_transmission";
     let data = setup(test_name, false, true);
     let conn =
@@ -506,10 +538,25 @@ fn test_last_transmission() -> TestResult {
     //Time before
     let ts1 = Utc::now();
 
-    let hdr = MessageHeader::new(String::new(), String::new(), vec![]);
-    let log_data = Box::new(());
-    tx.broadcast(hdr, log_data)
+    let msg = naive_routing::Messages::Data(naive_routing::DataMessage::new(vec![]));
+    let log_data = protocols::ProtocolMessages::Naive(msg.clone());
+    let hdr = MessageHeader::new(
+        String::new(),
+        String::new(),
+        naive_routing::serialize_message(msg).expect("Could not serialize message"),
+    );
+    let tx_md = tx
+        .broadcast(hdr.clone())
         .expect("Could not broadcast message");
+    radio::log_tx(
+        &data.logger,
+        tx_md,
+        &hdr.get_msg_id(),
+        MessageStatus::SENT,
+        &hdr.sender,
+        &hdr.destination,
+        log_data,
+    );
     //Broadcast time
     let bc_ts = tx.last_transmission();
 
