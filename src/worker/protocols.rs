@@ -132,7 +132,7 @@ impl KV for ProtocolMessages {
                     let _ = serializer.emit_str("msg_type", "RERR")?;
                     serializer.emit_usize("msg.num_affected_destinations", m.destinations.len())
                 }
-                aodv::Messages::HELLO(ref _m) => serializer.emit_str("msg_type", "BEACON"),
+                aodv::Messages::HELLO(ref _m) => serializer.emit_str("msg_type", "HELLO"),
                 aodv::Messages::RREP_ACK => serializer.emit_str("msg_type", "RREP_ACK"),
             },
             ProtocolMessages::Gossip(ref _msg) => serializer.emit_str("msg_type", "DATA"),

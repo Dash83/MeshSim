@@ -483,18 +483,17 @@ impl SimulatedRadio {
         let mut i = 0;
         // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
+        self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
 
         while i < TRANSMITTER_REGISTER_MAX_RETRY {
             if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
                 //More threads transmitting, so we shouldn't de-register the worker. Leave that to
                 //the last thread. Just descrease the count of active threads.
-                self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
                 return Ok(());
             }
             match remove_active_transmitter(conn, &self.worker_name, self.r_type, &self.logger) {
                 Ok(_) => {
-                    // commit_tx(tx)?;
-                    self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
+                    debug!(self.logger, "Deregistered as a transmitter");
                     return Ok(());
                 }
                 Err(e) => {
@@ -844,7 +843,7 @@ where
         "LoraRadio"
     }
 
-    fn broadcast(&self, hdr: MessageHeader, md: Box<dyn KV>) -> Result<(), MeshSimError> {
+    fn broadcast(&self, hdr: MessageHeader) -> Result<TxMetadata, MeshSimError> {
         let data = to_vec(&hdr).map_err(|e| {
             let err_msg = String::from("Failed to serialize message");
             MeshSimError {
@@ -859,7 +858,8 @@ where
                 cause: None,
             }
         })?;
-        Ok(())
+        let tx = Default::default();
+        Ok(tx)
     }
 
     fn last_transmission(&self) -> i64 {

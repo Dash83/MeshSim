@@ -5,7 +5,7 @@ use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 
-use chrono::{Utc};
+use chrono::Utc;
 use rand::{rngs::StdRng, Rng, RngCore};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;

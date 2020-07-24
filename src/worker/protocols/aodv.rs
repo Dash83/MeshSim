@@ -241,7 +241,7 @@ impl KV for Messages {
                 let _ = serializer.emit_str("msg_type", "RERR")?;
                 serializer.emit_usize("msg.num_affected_destinations", m.destinations.len())
             }
-            Messages::HELLO(ref _m) => serializer.emit_str("msg_type", "BEACON"),
+            Messages::HELLO(ref _m) => serializer.emit_str("msg_type", "HELLO"),
             Messages::RREP_ACK => serializer.emit_str("msg_type", "RREP_ACK"),
         }
     }
