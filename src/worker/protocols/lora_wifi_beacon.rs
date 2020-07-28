@@ -127,6 +127,11 @@ impl Protocol for LoraWifiBeacon {
     fn send(&self, _destination: String, _data: Vec<u8>) -> Result<(), MeshSimError> {
         unimplemented!("LoraWifiBeacon does not support send commands");
     }
+
+    fn do_maintenance(&self) -> Result<(), MeshSimError> {
+        // Nothing to do
+        Ok(())
+    }
 }
 
 impl LoraWifiBeacon {

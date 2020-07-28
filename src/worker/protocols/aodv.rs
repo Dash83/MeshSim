@@ -14,7 +14,7 @@ use slog::{Logger, Record, Serializer, KV};
 use std::collections::{HashMap, HashSet};
 use std::default::Default;
 use std::ops::Add;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -23,6 +23,9 @@ const CONCCURENT_THREADS_PER_FLOW: usize = 1;
 // **************************************************
 // ************ Configuration parameters ************
 // **************************************************
+const MAINTENANCE_RT_MAINTENANCE: i64 = 1000;
+const MAINTENANCE_RD_RETRANSMISSION: i64 = 1000;
+const MAINTENANCE_HELLO_THRESHOLD: i64 = 1000;
 const ACTIVE_ROUTE_TIMEOUT: u64 = 3000; //milliseconds
 const ALLOWED_HELLO_LOSS: usize = 2;
 const _BLACKLIST_TIMEOUT: u64 = RREQ_RETRIES as u64 * NET_TRAVERSAL_TIME; //milliseconds
@@ -137,6 +140,12 @@ pub struct AODV {
     /// Used exclusively to control when RREQ messages are processed or marked as duplicates.
     rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
     data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
+    /// Timestamp for the next scheduled route_table maintenance operation
+    ts_rt_maintenance: AtomicI64,
+    /// Timestamp for the next scheduled route-discovery retransmission operation
+    ts_rd_retransmission: AtomicI64,
+    /// Timestamp for the next scheduled HELLO message transmission
+    ts_last_hello_msg: AtomicI64,
     rng: Arc<Mutex<StdRng>>,
     logger: Logger,
 }
@@ -295,21 +304,21 @@ impl Protocol for AODV {
         let _qt = Arc::clone(&self.queued_transmissions);
         let me = self.get_self_peer();
         let sr = Arc::clone(&self.short_radio);
-        let _handle = thread::spawn(move || {
-            info!(logger, "Maintenance thread started");
-            let _ = AODV::maintenance_loop(
-                route_table,
-                rreq_cache,
-                pr,
-                dc,
-                seq_no,
-                rreq_no,
-                sr,
-                me,
-                rng,
-                logger,
-            );
-        });
+        // let _handle = thread::spawn(move || {
+        //     info!(logger, "Maintenance thread started");
+        //     let _ = AODV::maintenance_loop(
+        //         route_table,
+        //         rreq_cache,
+        //         pr,
+        //         dc,
+        //         seq_no,
+        //         rreq_no,
+        //         sr,
+        //         me,
+        //         rng,
+        //         logger,
+        //     );
+        // });
 
         info!(self.logger, "Protocol initialized");
         Ok(None)
@@ -404,6 +413,81 @@ impl Protocol for AODV {
 
         Ok(())
     }
+
+    fn do_maintenance(&self) -> Result<(), MeshSimError> {
+        if Utc::now().timestamp_nanos() >= self.ts_rt_maintenance.load(Ordering::SeqCst) {
+            match AODV::route_table_maintenance(
+                Arc::clone(&self.route_table),
+                Arc::clone(&self.data_cache),
+                self.get_self_peer(),
+                Arc::clone(&self.short_radio),
+                &self.logger,
+            ) {
+                Ok(_) => {
+                    //Update to the new timestamp for doing this maintenance operation
+                    let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_RT_MAINTENANCE);
+                    self.ts_rt_maintenance.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
+                }
+                Err(e) => {
+                    error!(
+                        &self.logger,
+                        "Failed to perform route table maintenance";
+                        "reason"=>format!("{}",e)
+                    );
+                }
+            }
+        }
+
+        if Utc::now().timestamp_nanos() >= self.ts_rd_retransmission.load(Ordering::SeqCst) {
+            match AODV::route_discovery_maintenance(
+                Arc::clone(&self.rreq_cache),
+                Arc::clone(&self.pending_routes),
+                Arc::clone(&self.sequence_number),
+                Arc::clone(&self.rreq_seq_no),
+                Arc::clone(&self.short_radio),
+                self.get_self_peer(),
+                &self.logger,
+            ) {
+                Ok(_) => {
+                    //Update to the new timestamp for doing this maintenance operation
+                    let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_RD_RETRANSMISSION);
+                    self.ts_rd_retransmission.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
+                }
+                Err(e) => {
+                    error!(
+                        &self.logger,
+                        "Failed to perform route discovery maintenance";
+                        "reason"=>format!("{}",e)
+                    );
+                }
+            }
+        }
+
+        if Utc::now().timestamp_nanos() >= self.ts_last_hello_msg.load(Ordering::SeqCst) {
+            match AODV::hello_msg_maintenance(
+                Arc::clone(&self.route_table),
+                self.get_self_peer(),
+                Arc::clone(&self.sequence_number),
+                Arc::clone(&self.short_radio),
+                &self.logger,
+            ) {
+                Ok(_) => {
+                    //Update to the new timestamp for doing this maintenance operation
+                    let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_HELLO_THRESHOLD);
+                    self.ts_last_hello_msg.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
+                }
+                Err(e) => {
+                    error!(
+                        &self.logger,
+                        "Failed to send HELLO message";
+                        "reason"=>format!("{}",e)
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl AODV {
@@ -419,7 +503,13 @@ impl AODV {
             let mut rng = rng.lock().expect("Could not lock RNG");
             rng.gen_range(0, std::u32::MAX)
         };
-        let _ts = Utc::now().timestamp_millis();
+        let ts_rt_maintenance = Utc::now() + Duration::milliseconds(MAINTENANCE_RT_MAINTENANCE);
+        let ts_rt_maintenance = AtomicI64::new(ts_rt_maintenance.timestamp_nanos());
+        let ts_rd_retransmission = Utc::now() + Duration::milliseconds(MAINTENANCE_RD_RETRANSMISSION);
+        let ts_rd_retransmission = AtomicI64::new(ts_rd_retransmission.timestamp_nanos());
+        let ts_last_hello_msg = Utc::now() + Duration::milliseconds(MAINTENANCE_HELLO_THRESHOLD);
+        let ts_last_hello_msg = AtomicI64::new(ts_last_hello_msg.timestamp_nanos());
+
         AODV {
             worker_name,
             worker_id,
@@ -431,6 +521,9 @@ impl AODV {
             queued_transmissions: Arc::new(Mutex::new(HashMap::new())),
             rreq_cache: Arc::new(Mutex::new(HashMap::new())),
             data_cache: Arc::new(Mutex::new(HashMap::new())),
+            ts_rt_maintenance,
+            ts_rd_retransmission,
+            ts_last_hello_msg,
             rng,
             logger,
         }
@@ -1401,6 +1494,7 @@ impl AODV {
 
                 //Inactive and expired routes are marked as broken-links.
                 for (k, v) in rt.iter_mut().filter(|(k, v)| {
+                    //TODO: Review these conditions. They might be breaking too many routes.
                     !v.flags.contains(RTEFlags::ACTIVE_ROUTE)
                         && v.lifetime < Utc::now()
                         && &v.next_hop == *k
@@ -1418,6 +1512,8 @@ impl AODV {
                     .iter()
                     .filter(|(_, v)| v.flags.contains(RTEFlags::ACTIVE_ROUTE))
                     .collect();
+                //TODO: This is almost certainly wrong. That interval calculation sends a message if more than 1 microsecond
+                //has ellapsed.
                 if !active_routes.is_empty()
                     && (short_radio.last_transmission() + (HELLO_INTERVAL * 1000) as i64)
                         < Utc::now().timestamp_nanos()
@@ -1581,6 +1677,226 @@ impl AODV {
             }
         }
         #[allow(unreachable_code)]
+        Ok(())
+    }
+
+    fn route_table_maintenance(
+        route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
+        data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
+        me: String,
+        short_radio: Arc<dyn Radio>,
+        logger: &Logger,
+    ) -> Result<(), MeshSimError> {
+        let mut broken_links = HashMap::new();
+        let mut rt = route_table.lock().expect("Could not lock route table");
+        //Mark expired routes as inactive
+        for (_, v) in rt
+            .iter_mut()
+            .filter(|(_, v)| v.flags.contains(RTEFlags::ACTIVE_ROUTE) && v.lifetime < Utc::now())
+        {
+            v.flags.remove(RTEFlags::ACTIVE_ROUTE);
+            v.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
+        }
+
+        //Inactive and expired routes are marked as broken-links.
+        for (k, v) in rt.iter_mut().filter(|(k, v)| {
+            //TODO: Review these conditions. They might be breaking too many routes.
+            !v.flags.contains(RTEFlags::ACTIVE_ROUTE)
+                && v.lifetime < Utc::now()
+                && &v.next_hop == *k
+        }) {
+            broken_links.insert(k.clone(), v.dest_seq_no);
+        }
+
+        //Delete inactive routes whose lifetime (delete time) has passed
+        rt.retain(|_, v| v.flags.contains(RTEFlags::ACTIVE_ROUTE) || v.lifetime > Utc::now());
+
+        //For debugging purposes, print the RouteTable
+        debug!(logger, "RouteTable:");
+        for e in rt.iter() {
+            debug!(logger, "{:?}", e);
+        }
+        {
+            //Routes for unconfirmed, expired DATA msgs are marked as broken.
+            let mut dc = data_cache.lock().expect("Could not lock data_cache");
+            for (msg, entry) in dc
+                .iter_mut()
+                .filter(|(_, v)| !v.confirmed && v.ts < Utc::now())
+            {
+                info!(
+                    logger,
+                    "BROKEN_LINK detected";
+                    "reason"=>"Unconfirmed DATA message",
+                    "destination"=>&entry.destination,
+                );
+                broken_links.insert(msg.to_string(), entry.seq_no);
+                //Mark the msg as confirmed so that we don't process it again or
+                //send an RERR for this link due to it again.
+                entry.confirmed = true;
+            }
+        }
+
+        //Broken links to send?
+        if !broken_links.is_empty() {
+            info!(
+                logger,
+                "Broken links detected";
+                "num_broken_links" => broken_links.keys().len(),
+            );
+
+            let rerr_msg = RouteErrorMessage {
+                flags: Default::default(),
+                destinations: broken_links,
+            };
+            //Tag the message
+            let rerr_msg = Messages::RERR(rerr_msg);
+            let log_data = ProtocolMessages::AODV(rerr_msg.clone());
+            let hdr = MessageHeader::new(me.clone(), String::new(), serialize_message(rerr_msg)?);
+
+            match short_radio.broadcast(hdr.clone()) {
+                Ok(tx) => {
+                    /* All good! */
+                    radio::log_tx(
+                        &logger,
+                        tx,
+                        &hdr.msg_id,
+                        MessageStatus::SENT,
+                        &hdr.sender,
+                        &hdr.destination,
+                        log_data,
+                    );
+                }
+                Err(e) => {
+                    error!(
+                        logger,
+                        "Failed to send RERR message";
+                        "reason"=>format!("{}",e)
+                    );
+                }
+            };
+        }
+
+        Ok(())
+    }
+
+    fn route_discovery_maintenance(
+        rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
+        pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
+        seq_no: Arc<AtomicU32>,
+        rreq_no: Arc<AtomicU32>,
+        short_radio: Arc<dyn Radio>,
+        me: String,
+        logger: &Logger,
+    ) -> Result<(), MeshSimError> {
+        //Has any of the pending routes expired?
+        let new_routes = {
+            let mut pd = pending_routes
+                .lock()
+                .expect("Could not lock pending routes table");
+            let mut nr = Vec::new();
+            for (dest, entry) in pd.iter_mut() {
+                if entry.lifetime < Utc::now() {
+                    if entry.retries >= RREQ_RETRIES {
+                        //retries exceeded
+                        info!(
+                            logger,
+                            "RREQ retries exceeded";
+                            "destination"=>dest,
+                        );
+                        continue;
+                    }
+                    entry.retries += 1;
+                    //Add to retry list
+                    nr.push((dest.clone(), entry.dest_seq_no));
+                }
+            }
+            nr
+        };
+
+        //Start a new Route discovery process for each destination with retries remaining.
+        for (dest, dest_seq_no) in new_routes {
+            AODV::start_route_discovery(
+                dest,
+                dest_seq_no,
+                Arc::clone(&rreq_no),
+                seq_no.clone(),
+                me.clone(),
+                Arc::clone(&short_radio),
+                Arc::clone(&pending_routes),
+                Arc::clone(&rreq_cache),
+                &logger,
+            )?;
+        }
+
+        //Finally, prune destinations that are stale and have exceeded retries.
+        let mut pd = pending_routes
+            .lock()
+            .expect("Could not lock pending routes table");
+        //It's important to re-check retries here, as the broadcast above could fail
+        //for RREQs that still have retries available.
+        pd.retain(|_, v| v.retries < RREQ_RETRIES || v.lifetime > Utc::now());
+
+        Ok(())
+    }
+
+    fn hello_msg_maintenance(
+        route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
+        me: String,
+        seq_no: Arc<AtomicU32>,
+        short_radio: Arc<dyn Radio>,
+        logger: &Logger,
+    ) -> Result<(), MeshSimError> {
+        let mut rt = route_table.lock().expect("Could not lock route table");
+
+        let active_routes: Vec<_> = rt
+            .iter()
+            .filter(|(_, v)| v.flags.contains(RTEFlags::ACTIVE_ROUTE))
+            .collect();
+        //TODO: This is almost certainly wrong. That interval calculation sends a message if more than 1 microsecond
+        //has ellapsed.
+        if !active_routes.is_empty()
+            && (short_radio.last_transmission() + (HELLO_INTERVAL * 1000) as i64)
+                < Utc::now().timestamp_nanos()
+        {
+            //Craft HELLO MESSAGE
+            let flags: RREPFlags = Default::default();
+            let msg = RouteResponseMessage {
+                flags,
+                prefix_size: 0,
+                hop_count: 0,
+                destination: me.clone(),
+                dest_seq_no: seq_no.load(Ordering::SeqCst),
+                originator: String::from("N/A"),
+                lifetime: ALLOWED_HELLO_LOSS as u32 * HELLO_INTERVAL as u32,
+            };
+            //Tag the message
+            let msg = Messages::HELLO(msg);
+            let log_data = ProtocolMessages::AODV(msg.clone());
+            let hdr = MessageHeader::new(me.clone(), String::new(), serialize_message(msg)?);
+
+            match short_radio.broadcast(hdr.clone()) {
+                Ok(tx) => {
+                    // All good
+                    radio::log_tx(
+                        &logger,
+                        tx,
+                        &hdr.msg_id,
+                        MessageStatus::SENT,
+                        &hdr.sender,
+                        &hdr.destination,
+                        log_data,
+                    );
+                }
+                Err(e) => {
+                    error!(
+                        logger,
+                        "Failed to send HELLO message";
+                        "reason"=>format!("{}",e)
+                    );
+                }
+            };
+        }
+
         Ok(())
     }
 }

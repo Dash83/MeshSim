@@ -125,6 +125,11 @@ impl Protocol for GossipRouting {
 
         Ok(())
     }
+
+    fn do_maintenance(&self) -> Result<(), MeshSimError> {
+        // Gossip requires no maintenance
+        Ok(())
+    }
 }
 
 impl GossipRouting {

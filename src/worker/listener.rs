@@ -31,7 +31,6 @@ pub trait Listener: Send + std::fmt::Debug {
 #[derive(Debug)]
 pub struct SimulatedListener {
     socket: Socket,
-    reliability: f64,
     rng: Arc<Mutex<StdRng>>,
     r_type: RadioTypes,
     logger: Logger,
@@ -112,14 +111,15 @@ impl SimulatedListener {
     ///Creates a new instance of SimulatedListener
     pub fn new(
         socket: Socket,
-        reliability: f64,
+        timeout: u64,
         rng: Arc<Mutex<StdRng>>,
         r_type: RadioTypes,
         logger: Logger,
     ) -> SimulatedListener {
+        let read_time = std::time::Duration::from_millis(timeout);
+        socket.set_read_timeout(Some(read_time)).expect("Coult not set socket on non-blocking mode");
         SimulatedListener {
             socket,
-            reliability,
             rng,
             r_type,
             logger,

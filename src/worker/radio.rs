@@ -114,7 +114,7 @@ pub struct SimulatedRadio {
     /// Reliability parameter used by the test. Sets a number of percentage
     /// between (0 and 1] of probability that the message sent by this worker will
     /// not reach its destination.
-    pub reliability: f64,
+    pub timeout: u64,
     ///The work dir of the worker that owns this radio.
     pub work_dir: String,
     ///Address that this radio listens on
@@ -269,7 +269,7 @@ impl Radio for SimulatedRadio {
 impl SimulatedRadio {
     /// Constructor for new Radios
     pub fn new(
-        reliability: f64,
+        timeout: u64,
         work_dir: String,
         id: String,
         worker_name: String,
@@ -279,10 +279,10 @@ impl SimulatedRadio {
         logger: Logger,
     ) -> Result<(SimulatedRadio, Box<dyn Listener>), MeshSimError> {
         // let address = SimulatedRadio::format_address(&work_dir, &id, r_type);
-        let listener = SimulatedRadio::init(reliability, &rng, r_type, &logger)?;
+        let listener = SimulatedRadio::init(timeout, &rng, r_type, &logger)?;
         let listen_addres = listener.get_address();
         let sr = SimulatedRadio {
-            reliability,
+            timeout,
             work_dir,
             id,
             worker_name,
@@ -298,7 +298,7 @@ impl SimulatedRadio {
     }
 
     fn init(
-        reliability: f64,
+        timeout: u64,
         rng: &Arc<Mutex<StdRng>>,
         r_type: RadioTypes,
         logger: &Logger,
@@ -323,7 +323,7 @@ impl SimulatedRadio {
             }
         })?;
         let listener =
-            SimulatedListener::new(sock, reliability, Arc::clone(rng), r_type, logger.clone());
+            SimulatedListener::new(sock, timeout, Arc::clone(rng), r_type, logger.clone());
         let radio_type: String = r_type.into();
         print!("{}-{};", radio_type, &listener.get_address());
 
