@@ -83,8 +83,9 @@ impl RadioConfig {
                 let iname = self.interface_name.expect("An interface name for radio_short must be provided when operating in device_mode.");
                 let (radio, listener): (Arc<dyn Radio>, Box<dyn Listener>) = match r_type {
                     RadioTypes::ShortRange => {
+                        let timeout = self.timeout.unwrap_or(DEFAULT_READ_TIMEOUT);
                         let (r, l) =
-                            WifiRadio::new(iname, worker_name, worker_id, rng, r_type, logger)?;
+                            WifiRadio::new(iname, worker_name, worker_id, timeout, rng, r_type, logger)?;
                         (Arc::new(r), l)
                     }
                     RadioTypes::LongRange => {

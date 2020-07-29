@@ -111,9 +111,7 @@ pub trait Radio: std::fmt::Debug + Send + Sync {
 /// Represents a radio used by the worker to send a message to the network.
 #[derive(Debug)]
 pub struct SimulatedRadio {
-    /// Reliability parameter used by the test. Sets a number of percentage
-    /// between (0 and 1] of probability that the message sent by this worker will
-    /// not reach its destination.
+    /// Timeout for every read operation of the radio.
     pub timeout: u64,
     ///The work dir of the worker that owns this radio.
     pub work_dir: String,
@@ -552,6 +550,8 @@ pub struct WifiRadio {
     logger: Logger,
     /// The last time this radio made a transmission
     last_transmission: AtomicI64,
+    /// Timeout for every read operation of the radio.
+    timeout: u64,
 }
 
 impl Radio for WifiRadio {
@@ -679,6 +679,7 @@ impl WifiRadio {
         interface_name: String,
         worker_name: String,
         id: String,
+        timeout: u64,
         rng: Arc<Mutex<StdRng>>,
         r_type: RadioTypes,
         logger: Logger,
@@ -688,7 +689,7 @@ impl WifiRadio {
             .expect("Could not get index for specified interface.");
         debug!(logger, "Obtained address {}", &address);
         let address = format!("[{}]:{}", address, DNS_SERVICE_PORT);
-        let listener = WifiRadio::init(interface_index, r_type, &rng, &logger)?;
+        let listener = WifiRadio::init(interface_index, timeout, r_type, &rng, &logger)?;
         let radio = WifiRadio {
             interface_name,
             interface_index,
@@ -699,12 +700,14 @@ impl WifiRadio {
             r_type,
             logger,
             last_transmission: Default::default(),
+            timeout,
         };
         Ok((radio, listener))
     }
 
     fn init(
         interface_index: u32,
+        timeout: u64,
         r_type: RadioTypes,
         rng: &Arc<Mutex<StdRng>>,
         logger: &Logger,
@@ -739,7 +742,7 @@ impl WifiRadio {
                 cause: Some(Box::new(e)),
             }
         })?;
-        let listener = WifiListener::new(sock, None, Arc::clone(rng), r_type, logger.clone());
+        let listener = WifiListener::new(sock, timeout, Arc::clone(rng), r_type, logger.clone());
 
         println!("{}", &listener.get_address());
         Ok(Box::new(listener))

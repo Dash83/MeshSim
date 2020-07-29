@@ -624,9 +624,17 @@ impl Worker {
                             None => {
                                 //read_message has timed out. Check if any maintenance work needs be done.
                                 match prot_handler.do_maintenance() {
-                                    Ok(_) => { },
+                                    Ok(_) => { 
+                                        /* All good! */
+                                    },
                                     Err(e) => { 
-
+                                        error!(
+                                            logger,
+                                            "Failed to perform maintenance operations: {}", e
+                                        );
+                                        if let Some(cause) = e.cause {
+                                            error!(logger, "Cause: {}", cause);
+                                        }
                                     },
                                 }
                             }
