@@ -60,7 +60,7 @@ pub mod worker_config;
 //const DNS_SERVICE_NAME : &'static str = "meshsim";
 //const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT: u16 = 23456;
-const WORKER_POOL_SIZE: usize = 1;
+const WORKER_POOL_SIZE: usize = 2;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 
 // *****************************
@@ -622,7 +622,21 @@ impl Worker {
                                 //                                );
                             }
                             None => {
-                                warn!(logger, "Failed to read incoming message.");
+                                //read_message has timed out. Check if any maintenance work needs be done.
+                                match prot_handler.do_maintenance() {
+                                    Ok(_) => { 
+                                        /* All good! */
+                                    },
+                                    Err(e) => { 
+                                        error!(
+                                            logger,
+                                            "Failed to perform maintenance operations: {}", e
+                                        );
+                                        if let Some(cause) = e.cause {
+                                            error!(logger, "Cause: {}", cause);
+                                        }
+                                    },
+                                }
                             }
                         }
                     }

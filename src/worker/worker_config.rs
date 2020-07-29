@@ -27,13 +27,14 @@ const DEFAULT_SPREADING_FACTOR: u32 = 0;
 const DEFAULT_LORA_FREQ: LoraFrequencies = LoraFrequencies::Europe;
 const DEFAULT_LORA_TRANS_POWER: u8 = 15;
 const DEFAULT_PACKET_QUEUE_SIZE: usize = 3000; //Max number of queued packets
+const DEFAULT_READ_TIMEOUT: u64 = 100;
 
 //TODO: Cleanup this struct
 ///Configuration pertaining to a given radio of the worker.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default)]
 pub struct RadioConfig {
     ///Simulated mode only. How likely ([0-1]) are packets to reach their destination.
-    pub reliability: Option<f64>,
+    pub timeout: Option<u64>,
     ///Name of the network interface that this radio will use.
     pub interface_name: Option<String>,
     ///Range in meters of this radio.
@@ -51,7 +52,7 @@ impl RadioConfig {
     /// so users should take care to modify the appropriate values.
     pub fn new() -> RadioConfig {
         RadioConfig {
-            reliability: Some(1.0),
+            timeout: Some(DEFAULT_READ_TIMEOUT),
             interface_name: Some(format!("{}0", DEFAULT_INTERFACE_NAME)),
             range: 0.0,
             frequency: None,
@@ -82,8 +83,9 @@ impl RadioConfig {
                 let iname = self.interface_name.expect("An interface name for radio_short must be provided when operating in device_mode.");
                 let (radio, listener): (Arc<dyn Radio>, Box<dyn Listener>) = match r_type {
                     RadioTypes::ShortRange => {
+                        let timeout = self.timeout.unwrap_or(DEFAULT_READ_TIMEOUT);
                         let (r, l) =
-                            WifiRadio::new(iname, worker_name, worker_id, rng, r_type, logger)?;
+                            WifiRadio::new(iname, worker_name, worker_id, timeout, rng, r_type, logger)?;
                         (Arc::new(r), l)
                     }
                     RadioTypes::LongRange => {
@@ -98,10 +100,10 @@ impl RadioConfig {
             }
             OperationMode::Simulated => {
                 //let delay = self.delay.unwrap_or(0);
-                let reliability = self.reliability.unwrap_or(1.0);
+                let timeout = self.timeout.unwrap_or(DEFAULT_READ_TIMEOUT);
                 //let bg = self.broadcast_groups;
                 let (radio, listener) = SimulatedRadio::new(
-                    reliability,
+                    timeout,
                     work_dir,
                     worker_id,
                     worker_name,
@@ -388,12 +390,12 @@ mod tests {
         Protocol = \"NaiveRouting\"\n\
         \n\
         [radio_short]\n\
-        reliability = 1.0\n\
+        timeout = 100\n\
         interface_name = \"wlan0\"\n\
         range = 0.0\n\
         \n\
         [radio_long]\n\
-        reliability = 1.0\n\
+        timeout = 100\n\
         interface_name = \"wlan0\"\n\
         range = 0.0\n";
 

@@ -10,11 +10,12 @@ use serde_cbor::de::*;
 use serde_cbor::ser::*;
 use slog::{Logger, Record, Serializer, KV};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::thread;
-use std::time::Duration;
+// use std::time::Duration;
 
 /// The default number of hops messages are guaranteed to be propagated
 pub const DEFAULT_MIN_HOPS: usize = 2;
@@ -25,6 +26,10 @@ pub const VICINITY_GOSSIP_PROB: f64 = 0.20;
 const MSG_CACHE_SIZE: usize = 2000;
 const CONCCURENT_THREADS_PER_FLOW: usize = 2;
 const MAINTENANCE_LOOP: u64 = 1_000;
+const MAINTENANCE_DATA_RETRANSMISSION: i64 = 1_000;
+const MAINTENANCE_RD_RETRANSMISSION: i64 = 1_000;
+const MAINTENANCE_VICINITY_CACHE: i64 = 1_000;
+const MAINTENANCE_BEACON_THRESHOLD: i64 = 1_000;
 const VC_FRESHNESS_THRESHOLD: i64 = 5_000;
 const VC_WARM_THRESHOLD: usize = 3;
 const ROUTE_DISCOVERY_THRESHOLD: i64 = 5000;
@@ -64,6 +69,14 @@ pub struct ReactiveGossipRoutingIII {
     /// Map to keep track of pending transmissions that are waiting for their associated route_id to be
     /// established.
     queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
+    /// Timestamp for the next scheduled data retransmission operation
+    ts_data_retransmission: AtomicI64,
+    /// Timestamp for the next scheduled route-discovery retransmission operation
+    ts_rd_retransmission: AtomicI64,
+    /// Timestamp for the next scheduled vicinity_cache maintenance operation
+    ts_vinicity_maintenance: AtomicI64,
+    /// Timestamp for the next scheduled Beacon message
+    ts_last_beacon_msg: AtomicI64,
     /// RNG used for routing calculations
     rng: Arc<Mutex<StdRng>>,
     /// The logger to use in this protocol
@@ -248,23 +261,23 @@ impl Protocol for ReactiveGossipRoutingIII {
         let me = self.get_self_peer();
         let vicinity_cache = Arc::clone(&self.vicinity_cache);
         let route_message_cache = Arc::clone(&self.route_msg_cache);
-        let _handle = thread::spawn(move || {
-            info!(logger, "Maintenance thread started");
-            //TODO: Handle errors from loop
-            let _ = ReactiveGossipRoutingIII::maintenance_loop(
-                data_msg_cache,
-                dest_routes,
-                known_routes,
-                pending_destination,
-                queued_transmissions,
-                route_message_cache,
-                me,
-                sr_radio,
-                vicinity_cache,
-                lr_radio,
-                logger,
-            );
-        });
+        // let _handle = thread::spawn(move || {
+        //     info!(logger, "Maintenance thread started");
+        //     //TODO: Handle errors from loop
+        //     let _ = ReactiveGossipRoutingIII::maintenance_loop(
+        //         data_msg_cache,
+        //         dest_routes,
+        //         known_routes,
+        //         pending_destination,
+        //         queued_transmissions,
+        //         route_message_cache,
+        //         me,
+        //         sr_radio,
+        //         vicinity_cache,
+        //         lr_radio,
+        //         logger,
+        //     );
+        // });
 
         Ok(None)
     }
@@ -353,6 +366,98 @@ impl Protocol for ReactiveGossipRoutingIII {
         }
         Ok(())
     }
+
+    fn do_maintenance(&self) -> Result<(), MeshSimError> {
+        if Utc::now().timestamp_nanos() >= self.ts_data_retransmission.load(Ordering::SeqCst) {
+            match ReactiveGossipRoutingIII::data_retransmission(
+                Arc::clone(&self.data_msg_cache),
+                Arc::clone(&self.destination_routes),
+                Arc::clone(&self.known_routes),
+                self.get_self_peer(),
+                Arc::clone(&self.short_radio),
+                &self.logger,
+            ) {
+                Ok(_) => {
+                    //Update to the new timestamp for doing this maintenance operation
+                    let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
+                    self.ts_data_retransmission.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
+                }
+                Err(e) => {
+                    error!(
+                        &self.logger,
+                        "Failed to retransmit Data message";
+                        "reason"=>format!("{}",e)
+                    );
+                }
+            }
+        }
+
+        if Utc::now().timestamp_nanos() >= self.ts_rd_retransmission.load(Ordering::SeqCst) {
+            match ReactiveGossipRoutingIII::process_expired_route_discoveries(
+                Arc::clone(&self.pending_destinations),
+                Arc::clone(&self.queued_transmissions),
+                Arc::clone(&self.route_msg_cache),
+                self.get_self_peer(),
+                Arc::clone(&self.short_radio),
+                &self.logger,
+            ) {
+                Ok(_) => {
+                    //Update to the new timestamp for doing this maintenance operation
+                    let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_RD_RETRANSMISSION);
+                    self.ts_rd_retransmission.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
+                }
+                Err(e) => {
+                    error!(
+                        &self.logger,
+                        "Failed to re-transmit route discovery";
+                        "reason"=>format!("{}",e)
+                    );
+                }
+            }
+        }
+
+        if Utc::now().timestamp_nanos() >= self.ts_vinicity_maintenance.load(Ordering::SeqCst) {
+            match ReactiveGossipRoutingIII::vicinity_cache_maintenance(
+                Arc::clone(&self.vicinity_cache),
+                &self.logger,
+            ) {
+                Ok(_) => {
+                    //Update to the new timestamp for doing this maintenance operation
+                    let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_VICINITY_CACHE);
+                    self.ts_vinicity_maintenance.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
+                }
+                Err(e) => {
+                    error!(
+                        &self.logger,
+                        "Failed to perform vicinity_cache maintenance";
+                        "reason"=>format!("{}",e)
+                    );
+                }
+            }
+        }
+        if Utc::now().timestamp_nanos() >= self.ts_last_beacon_msg.load(Ordering::SeqCst) {
+            match ReactiveGossipRoutingIII::send_beacon_msg(
+                self.get_self_peer(),
+                Arc::clone(&self.long_radio),
+                &self.logger,
+            ) {
+                Ok(_) => {
+                    //Update to the new timestamp for doing this maintenance operation
+                    let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_BEACON_THRESHOLD);
+                    self.ts_last_beacon_msg.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
+                }
+                Err(e) => {
+                    warn!(
+                        &self.logger,
+                        "Failed to send BEACON message";
+                        "reason"=>format!("{}",e)
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl ReactiveGossipRoutingIII {
@@ -375,6 +480,15 @@ impl ReactiveGossipRoutingIII {
         let data_cache = HashMap::new();
         let pending_destinations = HashMap::new();
         let vicinity_cache = HashMap::new();
+        let ts_data_retransmission = Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
+        let ts_data_retransmission = AtomicI64::new(ts_data_retransmission.timestamp_nanos());
+        let ts_rd_retransmission = Utc::now() + Duration::milliseconds(MAINTENANCE_RD_RETRANSMISSION);
+        let ts_rd_retransmission = AtomicI64::new(ts_rd_retransmission.timestamp_nanos());
+        let ts_vinicity_maintenance = Utc::now() + Duration::milliseconds(MAINTENANCE_VICINITY_CACHE);
+        let ts_vinicity_maintenance = AtomicI64::new(ts_vinicity_maintenance.timestamp_nanos());
+        let ts_last_beacon_msg = Utc::now() + Duration::milliseconds(MAINTENANCE_BEACON_THRESHOLD);
+        let ts_last_beacon_msg = AtomicI64::new(ts_last_beacon_msg.timestamp_nanos());
+
         ReactiveGossipRoutingIII {
             k,
             p,
@@ -390,6 +504,10 @@ impl ReactiveGossipRoutingIII {
             route_msg_cache: Arc::new(Mutex::new(route_cache)),
             data_msg_cache: Arc::new(Mutex::new(data_cache)),
             vicinity_cache: Arc::new(Mutex::new(vicinity_cache)),
+            ts_data_retransmission,
+            ts_rd_retransmission,
+            ts_vinicity_maintenance,
+            ts_last_beacon_msg,
             rng,
             logger,
         }
@@ -1161,7 +1279,7 @@ impl ReactiveGossipRoutingIII {
         long_radio: Arc<dyn Radio>,
         logger: Logger,
     ) -> Result<(), MeshSimError> {
-        let sleep_time = Duration::from_millis(MAINTENANCE_LOOP);
+        let sleep_time = std::time::Duration::from_millis(MAINTENANCE_LOOP);
 
         loop {
             thread::sleep(sleep_time);
@@ -1453,6 +1571,207 @@ impl ReactiveGossipRoutingIII {
             entry.clear();
             entry.append(&mut new_flows);
         }
+
+        Ok(())
+    }
+
+    fn data_retransmission(
+        data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
+        destination_routes: Arc<Mutex<HashMap<String, String>>>,
+        known_routes: Arc<Mutex<HashMap<String, bool>>>,
+        me: String,
+        short_radio: Arc<dyn Radio>,
+        logger: &Logger,
+    ) -> Result<(), MeshSimError> {
+        let mut cache = data_msg_cache
+            .lock()
+            .expect("Error trying to acquire lock to data_messages cache");
+        for (msg_hash, entry) in cache
+            .iter_mut()
+            .filter(|(_msg_hash, entry)| entry.state.is_pending())
+        {
+            debug!(logger, "Message {} is pending confirmation", &msg_hash);
+
+            if entry.retries < MAX_PACKET_RETRANSMISSION {
+                let hdr = entry.payload.clone();
+                entry.retries += 1;
+                let log_data = ProtocolMessages::RGRIII(deserialize_message(hdr.get_payload())?);
+                info!(
+                    logger,
+                    "Retransmitting message {}", &hdr.get_msg_id();
+                    "retries"=>entry.retries,
+                );
+
+                //The message is still cached, so re-transmit it.
+                match short_radio.broadcast(hdr.clone()) {
+                    Ok(tx) => {
+                        /* Log transmission! */
+                        radio::log_tx(
+                            &logger,
+                            tx,
+                            &hdr.msg_id,
+                            MessageStatus::SENT,
+                            &hdr.sender,
+                            &hdr.destination,
+                            log_data,
+                        );
+                    }
+                    Err(e) => {
+                        error!(logger, "Failed to re-transmit message. {}", e);
+                    }
+                }
+            } else {
+                // The message is no longer cached.
+                // At this point, we assume the route is broken.
+                // Send the route teardown message.
+                if let DataMessageStates::Pending(ref route_id) = entry.state.clone() {
+                    // info!(logger, "Starting route {} teardown", route_id);
+                    //Mark this entry in the message cache as confirmed so that we don't
+                    //process it again.
+                    entry.state = DataMessageStates::Confirmed;
+
+                    //Tear down the route in the internal caches
+                    let msg = ReactiveGossipRoutingIII::route_teardown(
+                        route_id,
+                        &me,
+                        Arc::clone(&destination_routes),
+                        Arc::clone(&known_routes),
+                        &logger,
+                    )?;
+                    let msg = Messages::RouteTeardown(msg);
+                    //Build log data from the packet
+                    let log_data = ProtocolMessages::RGRIII(msg.clone());
+                    //Pack the message and build the header for transmission
+                    let hdr =
+                        MessageHeader::new(me.clone(), String::new(), serialize_message(msg)?);
+                    //Send message
+                    match short_radio.broadcast(hdr.clone()) {
+                        Ok(tx) => {
+                            radio::log_tx(
+                                &logger,
+                                tx,
+                                &hdr.msg_id,
+                                MessageStatus::SENT,
+                                &hdr.sender,
+                                &hdr.destination,
+                                log_data,
+                            );
+                            info!(
+                                logger,
+                                "Route Teardown initiated";
+                                "route_id"=>&route_id,
+                                "reason"=>"Unable to confirm previously sent DATA message"
+                            );
+                        }
+                        Err(e) => {
+                            error!(logger, "Failed to send route-teardown message. {}", e);
+                        }
+                    }
+                } else {
+                    error!(logger, "Inconsistent state reached");
+                    unreachable!();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn process_expired_route_discoveries(
+        pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
+        route_msg_cache: Arc<Mutex<HashSet<String>>>,
+        me: String,
+        short_radio: Arc<dyn Radio>,
+        logger: &Logger,
+    ) -> Result<(), MeshSimError> {
+        let mut expired_discoveries = Vec::new();
+        //Route expiration retransmission
+        {
+            let mut pd = pending_destinations
+                .lock()
+                .expect("Failed to lock pending_destinations table");
+            for (dest, (route_id, ts, retries)) in
+                pd.iter_mut().filter(|(_dest, entry)| entry.1 < Utc::now())
+            {
+                //Should we retry?
+                if *retries < ROUTE_DISCOVERY_MAX_RETRY {
+                    info!(
+                        logger,
+                        "Re-trying ROUTE_DISCOVERY for {}", &dest;
+                        "reason"=>"Time limit for discover exceeded"
+                    );
+                    //Transmit new route discovery
+                    let new_route_id = ReactiveGossipRoutingIII::start_route_discovery(
+                        &me,
+                        dest.clone(),
+                        Arc::clone(&short_radio),
+                        Arc::clone(&route_msg_cache),
+                        Arc::clone(&queued_transmissions),
+                        &logger,
+                    )?;
+
+                    //Increase retries for route-discovery
+                    *retries += 1;
+                    *route_id = new_route_id;
+                    *ts = Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);
+                } else {
+                    //Retries exhausted. Add to list.
+                    expired_discoveries.push(dest.clone());
+                    warn!(
+                        logger,
+                        "Dropping queued packets for {}", &dest;
+                        "reason"=>"ROUTE_DISCOVERY retries exceeded",
+                        "route"=>&(*route_id),
+                    );
+                }
+            }
+            //Remove the expired entries from the pending_destinations list.
+            pd.retain(|dest, _| !expired_discoveries.contains(dest));
+        }
+
+        //Purge queued packets of expired routes
+        {
+            let mut qt = queued_transmissions
+                .lock()
+                .expect("Failed to lock queued_transmissions queue");
+            qt.retain(|dest, _| !expired_discoveries.contains(dest));
+        }
+
+        Ok(())
+    }
+
+    fn vicinity_cache_maintenance(
+        vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
+        logger: &Logger,
+    ) -> Result<(), MeshSimError> {
+        let mut vc = vicinity_cache
+            .lock()
+            .expect("Failed to lock vicinity cache");
+        let mut threshold = Utc::now() - chrono::Duration::milliseconds(VC_FRESHNESS_THRESHOLD);
+        vc.retain(|_node, ts| ts >= &mut threshold);
+        debug!(logger, "Vicinity cache:{:?}", &vc);
+        Ok(())
+    }
+
+    fn send_beacon_msg(
+        me: String,
+        long_radio: Arc<dyn Radio>,
+        logger: &Logger,
+    ) -> Result<(), MeshSimError> {
+        let msg = Messages::Beacon(HelloMessage);
+        let log_data = ProtocolMessages::RGRIII(msg.clone());
+        let hdr = MessageHeader::new(me.clone(), String::new(), serialize_message(msg)?);
+
+        let tx = long_radio.broadcast(hdr.clone())?;
+        radio::log_tx(
+            &logger,
+            tx,
+            &hdr.msg_id,
+            MessageStatus::SENT,
+            &hdr.sender,
+            &hdr.destination,
+            log_data,
+        );
 
         Ok(())
     }

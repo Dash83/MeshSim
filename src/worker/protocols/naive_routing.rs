@@ -123,6 +123,11 @@ impl Protocol for NaiveRouting {
 
         Ok(())
     }
+
+    fn do_maintenance(&self) -> Result<(), MeshSimError> {
+        // No maintenance required for this protocol!
+        Ok(())
+    }
 }
 
 impl NaiveRouting {

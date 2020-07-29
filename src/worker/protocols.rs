@@ -46,6 +46,10 @@ pub trait Protocol: std::fmt::Debug + Send + Sync {
 
     /// Function to send command to another node in the network
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError>;
+
+    /// Function called to trigger maintenance operations the protoco might need, such as
+    // route maintenance or packet retransmission.
+    fn do_maintenance(&self) -> Result<(), MeshSimError>;
 }
 
 ///Current list of supported protocols by MeshSim.
