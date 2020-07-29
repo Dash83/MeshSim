@@ -1852,10 +1852,12 @@ impl AODV {
             .iter()
             .filter(|(_, v)| v.flags.contains(RTEFlags::ACTIVE_ROUTE))
             .collect();
-        //TODO: This is almost certainly wrong. That interval calculation sends a message if more than 1 microsecond
-        //has ellapsed.
+
+        let hello_threshold = Duration::milliseconds(HELLO_INTERVAL as i64)
+            .num_nanoseconds()
+            .unwrap_or(1_000_000_000);
         if !active_routes.is_empty()
-            && (short_radio.last_transmission() + (HELLO_INTERVAL * 1000) as i64)
+            && (short_radio.last_transmission() + hello_threshold)
                 < Utc::now().timestamp_nanos()
         {
             //Craft HELLO MESSAGE
