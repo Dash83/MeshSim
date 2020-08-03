@@ -626,6 +626,7 @@ impl Worker {
                                 match prot_handler.do_maintenance() {
                                     Ok(_) => { 
                                         /* All good! */
+                                        info!(logger, "Queued packets: {}", thread_pool.queued_count());
                                     },
                                     Err(e) => { 
                                         error!(

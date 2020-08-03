@@ -609,6 +609,8 @@ pub fn register_active_transmitter_if_free(
                         INNER JOIN active_wifi_transmitters c ON b.worker_id = c.worker_id
                         WHERE workers.Worker_Name = $2
                                     AND distance(b.x, b.y, a.x, a.y) <= $3) = 0
+            ON CONFLICT(worker_id)
+            DO NOTHING;
             ",
         ),
         RadioTypes::LongRange => String::from(
@@ -624,6 +626,8 @@ pub fn register_active_transmitter_if_free(
                         INNER JOIN active_lora_transmitters c ON b.worker_id = c.worker_id
                         WHERE workers.Worker_Name = $2
                                     AND distance(b.x, b.y, a.x, a.y) <= $3) = 0
+            ON CONFLICT(worker_id)
+            DO NOTHING;
             ",
         ),
     };
