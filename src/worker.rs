@@ -614,6 +614,8 @@ impl Worker {
                                         }
                                     }
                                 });
+                                //TODO: Change back to debug when the tuning is complete
+                                info!(logger, "Queued packets: {}", thread_pool.queued_count());
                                 // info!(logger, "Jobs: {}", thread_pool.queued_count());
                                 //                                debug!(
                                 //                                    logger,
@@ -626,7 +628,6 @@ impl Worker {
                                 match prot_handler.do_maintenance() {
                                     Ok(_) => { 
                                         /* All good! */
-                                        info!(logger, "Queued packets: {}", thread_pool.queued_count());
                                     },
                                     Err(e) => { 
                                         error!(

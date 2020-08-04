@@ -32,7 +32,7 @@ const MAX_DELAY: i64 = DELAY_PER_NODE * 10; //µs
 const TRANSMISSION_MAX_RETRY: usize = 8;
 const TRANSMISSION_EXP_CAP: u32 = 9; //no more than 128ms
 const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
-const RETRANSMISSION_WAIT_BASE: u64 = 64; //µs
+const RETRANSMISSION_WAIT_BASE: u64 = 32; //µs
                                            // const DB_CONTENTION_SLEEP: u64 = 100; //ms What was this for?
 
 ///Maximum size the payload of a UDP packet can have.
@@ -400,7 +400,7 @@ impl SimulatedRadio {
             if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
                 //Another thread is attempting to register this node or has already done it.
                 //No need to perform DB operation
-                debug!(
+                info!(
                     self.logger,
                     "Node already registered as an active-transmitter";
                     "ThreadID"=>thread_id
@@ -486,7 +486,7 @@ impl SimulatedRadio {
         self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
 
         while i < TRANSMITTER_REGISTER_MAX_RETRY {
-            if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
+            if self.transmitting_threads.load(Ordering::SeqCst) > 0 {
                 //More threads transmitting, so we shouldn't de-register the worker. Leave that to
                 //the last thread. Just descrease the count of active threads.
                 return Ok(());
