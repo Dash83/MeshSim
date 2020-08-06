@@ -29,10 +29,10 @@ const SHORT_RANGE_DIR: &str = "SHORT";
 const LONG_RANGE_DIR: &str = "LONG";
 const DELAY_PER_NODE: i64 = 50; //µs
 const MAX_DELAY: i64 = DELAY_PER_NODE * 10; //µs
-const TRANSMISSION_MAX_RETRY: usize = 8;
+pub const DEFAULT_TRANSMISSION_MAX_RETRY: usize = 8;
 const TRANSMISSION_EXP_CAP: u32 = 9; //no more than 128ms
 const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
-const RETRANSMISSION_WAIT_BASE: u64 = 32; //µs
+pub const DEFAULT_TRANSMISSION_WAIT_BASE: u64 = 32; //µs
                                            // const DB_CONTENTION_SLEEP: u64 = 100; //ms What was this for?
 
 ///Maximum size the payload of a UDP packet can have.
@@ -125,6 +125,10 @@ pub struct SimulatedRadio {
     r_type: RadioTypes,
     ///Range of this worker
     range: f64,
+    ///Max number of retries for the mac layer CDMA/CA algorithm
+    mac_layer_retries: usize,
+    ///The base wait-number in milliseconds for each time the mac layer has a collition
+    mac_layer_base_wait: u64,
     ///Random number generator used for all RNG operations.
     rng: Arc<Mutex<StdRng>>,
     /// Logger for this Radio to use.
@@ -273,6 +277,8 @@ impl SimulatedRadio {
         worker_name: String,
         r_type: RadioTypes,
         range: f64,
+        mac_layer_retries: usize,
+        mac_layer_base_wait: u64,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
     ) -> Result<(SimulatedRadio, Box<dyn Listener>), MeshSimError> {
@@ -287,6 +293,8 @@ impl SimulatedRadio {
             address: listen_addres,
             range,
             r_type,
+            mac_layer_retries,
+            mac_layer_base_wait,
             rng,
             logger,
             transmitting_threads: AtomicU8::new(0),
@@ -396,7 +404,7 @@ impl SimulatedRadio {
 
         //TODO: BUG. If a second thread starts transmission while the first one is trying to register (but has not been able to)
         // it will automatically skip the validation and transmit. Need to add a second flag to mark it as actively transmitting
-        while i < TRANSMISSION_MAX_RETRY {
+        while i < self.mac_layer_retries {
             if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
                 //Another thread is attempting to register this node or has already done it.
                 //No need to perform DB operation
@@ -527,7 +535,7 @@ impl SimulatedRadio {
         // let mut rng = self.rng.lock().expect("Could not lock RNG");
         // let r = rng.next_u64() % 2u64.pow(i);
         let r = 2u64.pow(std::cmp::min(i, TRANSMISSION_EXP_CAP));
-        Duration::from_micros(RETRANSMISSION_WAIT_BASE * r)
+        Duration::from_micros(self.mac_layer_base_wait * r)
     }
 }
 

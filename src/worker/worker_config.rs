@@ -33,12 +33,16 @@ const DEFAULT_READ_TIMEOUT: u64 = 100;
 ///Configuration pertaining to a given radio of the worker.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default)]
 pub struct RadioConfig {
-    ///Simulated mode only. How likely ([0-1]) are packets to reach their destination.
+    ///Timeout (in ms) for each network read.
     pub timeout: Option<u64>,
     ///Name of the network interface that this radio will use.
     pub interface_name: Option<String>,
     ///Range in meters of this radio.
     pub range: f64,
+    ///Max number of retries for the mac layer CDMA/CA algorithm
+    pub mac_layer_retries: Option<usize>,
+    ///The base wait-number in milliseconds for each time the mac layer has a collition
+    pub mac_layer_base_wait: Option<u64>,
     ///Frequency for the Lora radio. Varies by country.
     pub frequency: Option<u64>,
     ///Spreading factor for the Lora radio.
@@ -58,6 +62,8 @@ impl RadioConfig {
             frequency: None,
             spreading_factor: None,
             transmission_power: None,
+            mac_layer_retries: Some(DEFAULT_TRANSMISSION_MAX_RETRY),
+            mac_layer_base_wait:Some(DEFAULT_TRANSMISSION_WAIT_BASE),
         }
     }
 
@@ -99,9 +105,10 @@ impl RadioConfig {
                 Ok((radio, listener))
             }
             OperationMode::Simulated => {
-                //let delay = self.delay.unwrap_or(0);
                 let timeout = self.timeout.unwrap_or(DEFAULT_READ_TIMEOUT);
-                //let bg = self.broadcast_groups;
+                let mac_layer_retries = self.mac_layer_retries.unwrap_or(DEFAULT_TRANSMISSION_MAX_RETRY);
+                let mac_layer_base_wait = self.mac_layer_base_wait.unwrap_or(DEFAULT_TRANSMISSION_WAIT_BASE);
+
                 let (radio, listener) = SimulatedRadio::new(
                     timeout,
                     work_dir,
@@ -109,6 +116,8 @@ impl RadioConfig {
                     worker_name,
                     r_type,
                     self.range,
+                    mac_layer_retries,
+                    mac_layer_base_wait,
                     rng,
                     logger,
                 )?;
@@ -393,11 +402,15 @@ mod tests {
         timeout = 100\n\
         interface_name = \"wlan0\"\n\
         range = 0.0\n\
+        mac_layer_retries = 8\n\
+        mac_layer_base_wait = 32\n\
         \n\
         [radio_long]\n\
         timeout = 100\n\
         interface_name = \"wlan0\"\n\
-        range = 0.0\n";
+        range = 0.0\n\
+        mac_layer_retries = 8\n\
+        mac_layer_base_wait = 32\n";
 
         let mut file_content = String::new();
         let _res = File::open(path).unwrap().read_to_string(&mut file_content);
