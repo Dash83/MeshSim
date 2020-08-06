@@ -260,6 +260,7 @@ impl Master {
         work_dir: &'a str,
         listen_for_commands: bool,
         config: &WorkerConfig,
+        conn_str: &String,
         logger: &Logger,
     ) -> Result<Child, MeshSimError> {
         let worker_name = config.worker_name.clone();
@@ -273,27 +274,25 @@ impl Master {
         config.write_to_file(file_dir.as_path())?;
 
         //Constructing the external process call
-        let mut command = Command::new(worker_binary);
-        command.arg("--config");
-        command.arg(format!("{}", &file_dir.display()));
-        command.arg("--work_dir");
-        command.arg(work_dir.to_string());
-        command.arg("--register_worker");
-        command.arg(format!("{}", false));
-        command.arg("--accept_commands");
-        command.arg(format!("{}", listen_for_commands));
-        command.stdin(Stdio::piped());
-        command.stdout(Stdio::piped());
-
-        //Starting the worker process
-        //debug!("with command {:?}", command);
-        let child = command.spawn().map_err(|e| {
-            let err_msg = String::from("Failed to spawn worker process");
-            MeshSimError {
-                kind: MeshSimErrorKind::Master(err_msg),
-                cause: Some(Box::new(e)),
-            }
-        })?;
+        let child = Command::new(worker_binary)
+            .env(DB_CONN_ENV_VAR, conn_str)
+            .arg("--config")
+            .arg(format!("{}", &file_dir.display()))
+            .arg("--work_dir")
+            .arg(work_dir.to_string())
+            .arg("--register_worker")
+            .arg(format!("{}", false))
+            .arg("--accept_commands")
+            .arg(format!("{}", listen_for_commands))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn().map_err(|e| {
+                let err_msg = String::from("Failed to spawn worker process");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Master(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
         debug!(logger, "Worker process {} started", &worker_name);
 
         Ok(child)
@@ -338,12 +337,13 @@ impl Master {
         action_handles.push(end_test_handle);
 
         // Obtain database connection
-        let conn = get_db_connection(&self.env_file, &self.logger)?;
+        let conn = get_db_connection_by_file(&self.env_file, &self.logger)?;
 
         //Start all workers and add save their child process handle.
         {
             let workers = Arc::clone(&self.workers);
             let mut workers = workers.lock().expect("Failed to lock workers list");
+            let conn_str = get_connection_string_from_file(&self.env_file)?;
 
             for (_, val) in spec.initial_nodes.iter_mut() {
                 //Assign a protocol for the worker
@@ -357,6 +357,7 @@ impl Master {
                     &self.work_dir,
                     listen_for_commands,
                     &val,
+                    &conn_str,
                     &self.logger,
                 );
 
@@ -570,7 +571,8 @@ impl Master {
         let worker_binary = self.worker_binary.clone();
         let work_dir = self.work_dir.clone();
         let logger = self.logger.clone();
-        let conn = get_db_connection(&self.env_file, &self.logger)?;
+        let conn_str = get_connection_string_from_file(&self.env_file)?;
+        let conn = get_db_connection_by_file(&self.env_file, &self.logger)?;
 
         let handle = thread::spawn(move || {
             let test_endtime = Duration::from_millis(time);
@@ -592,6 +594,7 @@ impl Master {
                         &work_dir,
                         accept_commands,
                         config,
+                        &conn_str,
                         &logger,
                     ) {
                         Ok(mut child_handle) => {
@@ -952,7 +955,7 @@ impl Master {
         let logger = self.logger.clone();
         let mut paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
         let sleep_time_override = self.sleep_time_override.clone();
-        let conn = get_db_connection(&self.env_file, &self.logger).map_err(|_| {
+        let conn = get_db_connection_by_file(&self.env_file, &self.logger).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::Other,
                 MasterError::Sync(String::from("Could not connect to DB")),

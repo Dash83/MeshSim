@@ -150,7 +150,7 @@ impl Radio for SimulatedRadio {
         debug!(&self.logger, "out_queued_start: {}", hdr.delay);
         let perf_out_queued_duration = start_ts.timestamp_nanos() - hdr.delay;
         let env_file = format!("{}{}.env", &self.work_dir, std::path::MAIN_SEPARATOR);
-        let conn = get_db_connection(&env_file, &self.logger)?;
+        let conn = get_db_connection(&self.logger)?;
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
 

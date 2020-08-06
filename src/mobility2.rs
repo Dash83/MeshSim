@@ -41,7 +41,7 @@ pub const ROOT_ENV_FILE: &str = ".env_root";
 const EXP_ENV_FILE: &str = ".env";
 // const DB_BASE_NAME: &str = "meshsim";
 const DB_CONN_PREAMBLE: &str = "DATABASE_URL=postgres://";
-const DB_CONN_ENV_VAR: &str = "DATABASE_URL";
+pub const DB_CONN_ENV_VAR: &str = "DATABASE_URL";
 const DB_DEFAULT_COLLATION: &str = "en_GB.UTF-8";
 const CREATE_DB_SQL: &str = "
 CREATE DATABASE {db_name}
@@ -91,7 +91,34 @@ pub struct ConnectionParts {
 //********** Exported functions **********
 //****************************************
 /// Returns a connection to the database
-pub fn get_db_connection<P: AsRef<Path>>(
+pub fn get_db_connection(
+    logger: &Logger,
+) -> Result<PgConnection, MeshSimError> {
+
+    let database_url = env::var(DB_CONN_ENV_VAR).map_err(|e|{ 
+        let error_msg = String::from("Failed to read DATABASE_URL environment variable");
+        MeshSimError {
+            kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+            cause: Some(Box::new(e)),
+        }
+    })?;
+
+    debug!(logger, "DATABASE_URL={}", database_url);
+    let conn = PgConnection::establish(&database_url).map_err(|e| {
+        let error_msg = format!(
+            "Could not establish a connection to the DB: {}",
+            &database_url
+        );
+        MeshSimError {
+            kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+            cause: Some(Box::new(e)),
+        }
+    })?;
+    Ok(conn)
+}
+
+/// Returns a connection to the database
+pub fn get_db_connection_by_file<P: AsRef<Path>>(
     env_file: P,
     logger: &Logger,
 ) -> Result<PgConnection, MeshSimError> {
@@ -191,7 +218,7 @@ pub fn create_db_objects(
     //Create experiment database
     let root_conn_parts = parse_env_file(ROOT_ENV_FILE)?;
     let owner: String = root_conn_parts.user_pwd.split(':').collect::<Vec<&str>>()[0].into();
-    let root_conn = get_db_connection(ROOT_ENV_FILE, &logger)?;
+    let root_conn = get_db_connection_by_file(ROOT_ENV_FILE, &logger)?;
     let _ = create_database(&root_conn, &dbm, &owner, &logger)?;
     debug!(logger, "Experiment database created: {}", &dbm);
 
@@ -200,7 +227,7 @@ pub fn create_db_objects(
     debug!(logger, "Connection file created: {}", &fpath);
 
     //Run all the migrations on the experiment DB
-    let exp_conn = get_db_connection(&fpath, &logger)?;
+    let exp_conn = get_db_connection_by_file(&fpath, &logger)?;
     let _ = embedded_migrations::run(&exp_conn);
 
     Ok(fpath)
@@ -718,6 +745,12 @@ pub fn parse_env_file<P: AsRef<Path>>(file_path: P) -> Result<ConnectionParts, M
     Ok(cp)
 }
 
+pub fn get_connection_string_from_file<P: AsRef<Path>>(file_path: P) -> Result<String, MeshSimError> {
+    let parts = parse_env_file(file_path)?;
+    let con_str = format!("postgres://{}@{}/{}", parts.user_pwd, parts.host, parts.db_name);
+    Ok(con_str)
+}
+
 //****************************************
 //********** Internal functions **********
 //****************************************
@@ -801,12 +834,26 @@ mod tests {
     pub const TEST_DB_NAME: &str = "TEST_DB_NAME";
 
     #[test]
+    fn test_conn_get_db_connection() {
+        let test_data = setup("get_db_connection", false, false);
+
+        let conn_string = get_connection_string_from_file(ROOT_ENV_FILE)
+            .expect("Could not get connection string");
+        env::set_var(DB_CONN_ENV_VAR, conn_string.trim());
+        let _conn = get_db_connection(&test_data.logger)
+            .expect("Could not get DB connection");
+
+        //Test passed. Results are not needed.
+        teardown(test_data, false);
+    }
+
+    #[test]
     fn test_conn_get_db_connection_root() {
         let test_data = setup("get_db_connection_root", false, false);
 
         // Connect to root DB. If nothing failed, the test was succesful.
         let root_env_file = String::from(ROOT_ENV_FILE);
-        let _conn = get_db_connection(&root_env_file, &test_data.logger)
+        let _conn = get_db_connection_by_file(&root_env_file, &test_data.logger)
             .expect("Could not get DB connection");
 
         //Test passed. Results are not needed.
@@ -835,7 +882,7 @@ mod tests {
         //If nothing failed, the test was succesful.
         let env_file = data.db_env_file.take().unwrap();
         let _conn =
-            get_db_connection(&env_file, &data.logger).expect("Failed to connect to experiment DB");
+        get_db_connection_by_file(&env_file, &data.logger).expect("Failed to connect to experiment DB");
 
         //TODO: Select db name and check it matches de DB_NAME pattern: SELECT current_database();
         // let query_str = String::from("SELECT oid FROM pg_database WHERE datname = $1;");
@@ -870,7 +917,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
 
         let _ = register_worker(
@@ -959,7 +1006,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let positions = update_worker_positions(&conn).expect("Could not update all workers");
         debug!(&data.logger, "New Positions: {:?}", positions);
@@ -979,7 +1026,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = insert_active_transmitter(
             &conn,
@@ -1015,7 +1062,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = insert_active_transmitter(
             &conn,
@@ -1051,7 +1098,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = register_active_transmitter_if_free(
             &conn,
@@ -1078,7 +1125,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = remove_active_transmitter(
             &conn,
@@ -1114,7 +1161,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = register_active_transmitter_if_free(
             &conn,
@@ -1141,7 +1188,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = get_workers_in_range(&conn, "Worker2", 50.0, &data.logger)
             .expect("get_workers_in_range Failed");
@@ -1164,7 +1211,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let workers_to_stop = [1, 3];
         let rows = stop_workers(&conn, &workers_to_stop, &data.logger)
@@ -1194,7 +1241,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = select_workers_that_arrived(&conn).expect("get_workers_in_range Failed");
         assert_eq!(rows.len(), 1);
@@ -1217,7 +1264,7 @@ mod tests {
             );
             data.db_name =
                 env::var(TEST_DB_NAME).expect("Could not read TEST_DB_NAME environment variable");
-            let conn = get_db_connection(&data.db_env_file.clone().unwrap(), &data.logger)
+            let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
                 .expect("Failed to connect to experiment DB");
             let rows = stop_all_workers(&conn).expect("get_workers_in_range Failed");
             assert_eq!(rows, 5);

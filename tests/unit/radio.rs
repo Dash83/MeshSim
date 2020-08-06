@@ -129,7 +129,7 @@ fn test_broadcast_simulated() {
 
     let data = setup("sim_bcast", false, true);
     // let _res = create_db_objects(&logger).expect("Could not create database objects");
-    let conn = get_db_connection(&data.db_env_file.unwrap(), &data.logger)
+    let conn = get_db_connection_by_file(&data.db_env_file.unwrap(), &data.logger)
         .expect("Could not get DB connection");
 
     //Worker1
@@ -499,7 +499,7 @@ fn test_last_transmission() -> TestResult {
     let test_name = "last_transmission";
     let data = setup(test_name, false, true);
     let conn =
-        get_db_connection(&data.db_env_file.unwrap(), &data.logger).expect("Could not connect");
+        get_db_connection_by_file(&data.db_env_file.unwrap(), &data.logger).expect("Could not connect");
 
     let worker_name = String::from("node1");
     let worker_id = String::from("SOME_UNIQUE_ID");
