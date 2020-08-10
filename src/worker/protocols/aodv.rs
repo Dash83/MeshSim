@@ -75,7 +75,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RouteTableEntry {
     destination: String,
     dest_seq_no: u32,
@@ -269,6 +269,7 @@ impl Protocol for AODV {
         let msg = deserialize_message(&hdr.get_payload())?;
         let route_table = Arc::clone(&self.route_table);
         let seq_no = Arc::clone(&self.sequence_number);
+        let rreq_seq_no = Arc::clone(&self.rreq_seq_no);
         let rreq_cache = Arc::clone(&self.rreq_cache);
         let data_cache = Arc::clone(&self.data_cache);
         let rng = Arc::clone(&self.rng);
@@ -285,6 +286,7 @@ impl Protocol for AODV {
             pd,
             qt,
             seq_no,
+            rreq_seq_no,
             sr,
             rng,
             &self.logger,
@@ -539,13 +541,26 @@ impl AODV {
         pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
         queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         seq_no: Arc<AtomicU32>,
+        rreq_seq_no: Arc<AtomicU32>,
         short_radio: Arc<dyn Radio>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
         match msg {
             Messages::DATA(msg) => {
-                AODV::process_data_msg(hdr, msg, route_table, data_cache, me, logger)
+                AODV::process_data_msg(
+                    hdr, 
+                    msg, 
+                    route_table, 
+                    data_cache, 
+                    pending_routes,
+                    queued_transmissions,
+                    rreq_cache,
+                    seq_no,
+                    rreq_seq_no,
+                    me, 
+                    short_radio,
+                    logger)
             }
             Messages::RREQ(msg) => AODV::process_route_request_msg(
                 hdr,
@@ -885,6 +900,10 @@ impl AODV {
             Some(entry) => entry,
             None => {
                 //TODO: This should not happen. Drop the packet.
+                //Did this happen because of congestion?
+                //Could it be that the route created towards the originator during RREQ was deleted because too much time went by?
+                //I need to review the RFC to see what to do, but I think almost certainly the packet should be drop, because 
+                //the congestion in this that caused the RREP to fail is an indication that it was not possible to create a suitable route 
                 radio::log_handle_message(
                     logger,
                     &hdr,
@@ -938,6 +957,9 @@ impl AODV {
 
         if &next_hop_destination != &hdr.sender {
             //TODO: Should I not error out in this case?
+            // Why am I checking this and not doing anything with it?
+            //This could be the case if this RREP is not the first one to be processed for this route (e.g. the route it's already established)
+            //What should we do in this case?
             error!(
                 logger,
                 "MISTAKE!!!";
@@ -1015,13 +1037,14 @@ impl AODV {
                 debug!(logger, "Current route for {} is fresher", &destination);
             }
         }
-        //List affected destinations. E.g. Those that rely on any of the destinations in the
-        //RouteError message as their next hop.
+
+        // Iterate through the node's route table. If any of the entries rely on a node listed
+        // in the RERR msg as its next hop, we mark it as affected, since it can no longer be reached.
         let mut affected_destinations = Vec::new();
         for (dest, entry) in rt.iter_mut() {
             if msg.destinations.contains_key(&entry.next_hop) {
                 affected_destinations.push(dest.clone());
-                msg.destinations.insert(dest.clone(), entry.dest_seq_no); //TODO: Make sure this insert is not iffy, as we are modifying a collection we check on each iteration.
+                msg.destinations.insert(dest.clone(), entry.dest_seq_no);
             }
         }
 
@@ -1070,14 +1093,18 @@ impl AODV {
         msg: DataMessage,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
+        pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
+        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
+        rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
+        seq_no: Arc<AtomicU32>,
+        rreq_seq_no: Arc<AtomicU32>,
         me: String,
+        short_radio: Arc<dyn Radio>,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
-        //Mark the packet in the cache as confirmed
+        //Mark the packet in the cache as confirmed if applicable
         let _confirmed = {
             let mut dc = data_cache.lock().expect("Could not lock data cache");
-            // let payload = serialize_message(Messages::DATA(msg.clone()))?;
-            // let msg_hash = format!("{:x}", md5::compute(&payload)); //TODO: use the msg_id
             if let Some(entry) = dc.get_mut(hdr.get_msg_id()) {
                 entry.confirmed = true;
                 true
@@ -1085,10 +1112,10 @@ impl AODV {
                 false
             }
         };
-        //TODO: if confirmed is true, this function should end. shouldn't it?
 
-        let mut rt = route_table.lock().expect("Coult not lock route table");
-        {
+        let entry = {
+            let mut rt = route_table.lock().expect("Coult not lock route table");
+            
             //Update the lifetime of the sender of this packet
             let entry = rt
                 .entry(hdr.sender.clone())
@@ -1097,9 +1124,15 @@ impl AODV {
                 entry.lifetime,
                 Utc::now() + Duration::milliseconds(ACTIVE_ROUTE_TIMEOUT as i64),
             );
-        }
+
+            //Get the route entry (if any) for the intended destination of the message
+            let entry = rt.get(&msg.destination);
+            entry.cloned()
+        };
 
         if hdr.destination != me {
+            //Data packets are "unicasted" to the next hop in the route.
+            //If this node is not the intended destination in the header, drop it.
             radio::log_handle_message(
                 logger,
                 &hdr,
@@ -1108,7 +1141,6 @@ impl AODV {
                 None,
                 &Messages::DATA(msg),
             );
-            //TODO: Why am I dropping here? Should I not forward?
             return Ok((None, None));
         }
 
@@ -1126,22 +1158,21 @@ impl AODV {
         }
 
         //Not the destination. Forwarding message.
-        let (next_hop, dest_seq_no, confirmed) = match rt.get(&msg.destination) {
+        let (next_hop, dest_seq_no, confirmed) = match entry {
             Some(entry) => {
-                if entry.flags.contains(RTEFlags::VALID_SEQ_NO)
-                    && entry.flags.contains(RTEFlags::ACTIVE_ROUTE)
-                {
-                    //We have an active and valid route to the destination
-                    let confirmed = entry.next_hop == msg.destination;
-                    (entry.next_hop.clone(), entry.dest_seq_no, confirmed)
-                } else {
-                    // let err_msg = format!("This node does not have a valid route to {}", &msg.destination);
-                    // let err = MeshSimError{
-                    //     kind : MeshSimErrorKind::Worker(err_msg),
-                    //     cause : None,
-                    // };
-
-                    //TODO: This might be what's causing the protocol to perform so poorly.
+                if !entry.flags.contains(RTEFlags::VALID_SEQ_NO) {
+                    //This is considered a route error.
+                    //Proceed to process this route error per RFC section 6.11, case (i)
+                    // (i) if it detects a link break for the next hop of an active
+                    // route in its routing table while transmitting data (and
+                    // route repair, if attempted, was unsuccessful)
+                    // For case (i), the node first makes a list of unreachable destinations 
+                    // consisting of the unreachable neighbor and any additional destinations 
+                    // (or subnets, see section 7) in the local routing table that use the 
+                    // unreachable neighbor as the next hop.
+                    //
+                    // For this particular case, we assume having the route marked as invalid counts
+                    // as a link break.
                     radio::log_handle_message(
                         logger,
                         &hdr,
@@ -1164,13 +1195,80 @@ impl AODV {
                     //Build log data
                     let log_data = ProtocolMessages::AODV(rerr_msg.clone());
 
-                    //Build response message
-                    let fwd_hdr = hdr
-                        .create_forward_header(me)
-                        .set_payload(serialize_message(rerr_msg)?)
-                        .build();
+                    //Build header
+                    let hdr = MessageHeader::new(
+                        me.clone(), 
+                        String::from(""), //Destination should be hdr.sender, but need to check
+                        serialize_message(rerr_msg)?
+                    );
 
-                    return Ok((Some(fwd_hdr), Some(log_data)));
+                    return Ok((Some(hdr), Some(log_data)));
+                }
+                
+                if entry.flags.contains(RTEFlags::ACTIVE_ROUTE)
+                {
+                    //We have an active and valid route to the destination
+                    let confirmed = entry.next_hop == msg.destination;
+                    (entry.next_hop.clone(), entry.dest_seq_no, confirmed)
+                } else {
+                    //Route is inactive. Attempt to repair it.
+                    if AODV::route_repair(
+                        &msg.destination,
+                        Arc::clone(&route_table),
+                        entry.dest_seq_no+1, //Must be increased to avoid stale routes
+                        Arc::clone(&rreq_seq_no),
+                        Arc::clone(&seq_no),
+                        me.clone(),
+                        Arc::clone(&short_radio),
+                        Arc::clone(&pending_routes),
+                        Arc::clone(&rreq_cache), 
+                        &logger
+                    )? {
+                        AODV::queue_transmission(queued_transmissions, msg.destination.clone(), hdr.clone())?;
+                        radio::log_handle_message(
+                            logger,
+                            &hdr,
+                            MessageStatus::QUEUED,
+                            Some("Route to destination being repaired"),
+                            None,
+                            &Messages::DATA(msg.clone()),
+                        );
+                        
+                    } else {
+                        // This is considered a route error.
+                        // Proceed to process this route error per RFC section 6.11, case (ii).
+                        //
+                        // (ii) if it gets a data packet destined to a node for which it
+                        // does not have an active route and is not repairing (if
+                        // using local repair).
+                        //
+                        // In this case, failing to run route_repair counts as "is not repairing".
+                        
+                        // For case (ii), there is only one unreachable destination, which is the 
+                        // destination of the data packet that cannot be delivered.
+                        let mut dest = HashMap::new();
+                        dest.insert(msg.destination.clone(), entry.dest_seq_no);
+                        let rerr_msg = RouteErrorMessage {
+                            flags: Default::default(),
+                            destinations: dest,
+                        };
+
+                        //Tag response
+                        let rerr_msg = Messages::RERR(rerr_msg);
+                        //Build log data
+                        let log_data = ProtocolMessages::AODV(rerr_msg.clone());
+
+                        //Build header
+                        let resp_hdr = MessageHeader::new(
+                            me.clone(), 
+                            hdr.sender.clone(), //Destination should be hdr.sender, but need to check
+                            serialize_message(rerr_msg)?
+                        );
+
+                        return Ok((Some(resp_hdr), Some(log_data)));
+                    }
+
+                    return Ok((None, None));
                 }
             }
             None => {
@@ -1179,14 +1277,6 @@ impl AODV {
                     kind: MeshSimErrorKind::Worker(err_msg),
                     cause: None,
                 };
-                // info!(
-                //     logger,
-                //     "Message received";
-                //     "msg_type"=>"DATA",
-                //     "sender"=>&hdr.sender,
-                //     "status"=> MessageStatus::DROPPED,
-                //     "reason"=> "No route to destination",
-                // );
                 radio::log_handle_message(
                     logger,
                     &hdr,
@@ -1197,6 +1287,7 @@ impl AODV {
                 );
                 return Err(err);
                 //TODO: I should grep for this event. This might be where many of the packets are lost.
+                //Perhaps I could do route_healing here too.
             }
         };
 
@@ -1457,227 +1548,50 @@ impl AODV {
         Ok(())
     }
 
-    fn get_self_peer(&self) -> String {
-        self.worker_name.clone()
+    fn route_repair(
+        destination: &str,
+        route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
+        dest_seq_no: u32,
+        rreq_seq_no: Arc<AtomicU32>,
+        seq_no: Arc<AtomicU32>,
+        me: String,
+        short_radio: Arc<dyn Radio>,
+        pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
+        rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
+        logger: &Logger,
+    ) -> Result<bool, MeshSimError> {
+        let mut rt = route_table.lock().expect("Failed to lock route table");
+        if let Some(entry) = rt.get_mut(destination) {
+            if entry.hop_count as usize > *MAX_REPAIR_TTL {
+                return Ok(false)
+            }
+
+            //Increase the sequence number of the destination
+            entry.dest_seq_no += 1;
+
+            //TODO: The TTL of the RREQ should be limited to:
+            // min(MIN_REPAIR_TTL, 0.5 * num_hops_previous_route) + LOCAL_ADD_TTL
+            //Start a new route discovery to the destination
+            AODV::start_route_discovery(
+                destination.into(),
+                dest_seq_no,
+                rreq_seq_no,
+                seq_no,
+                me,
+                short_radio,
+                pending_routes,
+                rreq_cache,
+                logger,
+            )?;
+            
+            return Ok(true)
+        }
+
+        Ok(false)
     }
 
-    fn maintenance_loop(
-        route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
-        rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
-        pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
-        data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-        // queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
-        seq_no: Arc<AtomicU32>,
-        rreq_no: Arc<AtomicU32>,
-        short_radio: Arc<dyn Radio>,
-        me: String,
-        _rng: Arc<Mutex<StdRng>>,
-        logger: Logger,
-    ) -> Result<(), MeshSimError> {
-        let sleep_time = std::time::Duration::from_millis(HELLO_INTERVAL);
-
-        loop {
-            thread::sleep(sleep_time);
-            let seq = Arc::clone(&seq_no);
-            let mut broken_links = HashMap::new();
-
-            // Route Table operations
-            {
-                let mut rt = route_table.lock().expect("Could not lock route table");
-                //Mark expired routes as inactive
-                for (_, v) in rt.iter_mut().filter(|(_, v)| {
-                    v.flags.contains(RTEFlags::ACTIVE_ROUTE) && v.lifetime < Utc::now()
-                }) {
-                    v.flags.remove(RTEFlags::ACTIVE_ROUTE);
-                    v.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
-                }
-
-                //Inactive and expired routes are marked as broken-links.
-                for (k, v) in rt.iter_mut().filter(|(k, v)| {
-                    //TODO: Review these conditions. They might be breaking too many routes.
-                    !v.flags.contains(RTEFlags::ACTIVE_ROUTE)
-                        && v.lifetime < Utc::now()
-                        && &v.next_hop == *k
-                }) {
-                    broken_links.insert(k.clone(), v.dest_seq_no);
-                }
-
-                //Delete inactive routes whose lifetime (delete time) has passed
-                rt.retain(|_, v| {
-                    v.flags.contains(RTEFlags::ACTIVE_ROUTE) || v.lifetime > Utc::now()
-                });
-
-                //Broadcast HELLO message?
-                let active_routes: Vec<_> = rt
-                    .iter()
-                    .filter(|(_, v)| v.flags.contains(RTEFlags::ACTIVE_ROUTE))
-                    .collect();
-                //TODO: This is almost certainly wrong. That interval calculation sends a message if more than 1 microsecond
-                //has ellapsed.
-                if !active_routes.is_empty()
-                    && (short_radio.last_transmission() + (HELLO_INTERVAL * 1000) as i64)
-                        < Utc::now().timestamp_nanos()
-                {
-                    //Craft HELLO MESSAGE
-                    let flags: RREPFlags = Default::default();
-                    let msg = RouteResponseMessage {
-                        flags,
-                        prefix_size: 0,
-                        hop_count: 0,
-                        destination: me.clone(),
-                        dest_seq_no: seq.load(Ordering::SeqCst),
-                        originator: String::from("N/A"),
-                        lifetime: ALLOWED_HELLO_LOSS as u32 * HELLO_INTERVAL as u32,
-                    };
-                    //Tag the message
-                    let msg = Messages::HELLO(msg);
-                    let log_data = ProtocolMessages::AODV(msg.clone());
-                    let hdr =
-                        MessageHeader::new(me.clone(), String::new(), serialize_message(msg)?);
-
-                    match short_radio.broadcast(hdr.clone()) {
-                        Ok(tx) => {
-                            // All good
-                            radio::log_tx(
-                                &logger,
-                                tx,
-                                &hdr.msg_id,
-                                MessageStatus::SENT,
-                                &hdr.sender,
-                                &hdr.destination,
-                                log_data,
-                            );
-                        }
-                        Err(e) => {
-                            error!(
-                                logger,
-                                "Failed to send HELLO message";
-                                "reason"=>format!("{}",e)
-                            );
-                        }
-                    };
-                }
-
-                //For debugging purposes, print the RouteTable
-                debug!(logger, "RouteTable:");
-                for e in rt.iter() {
-                    debug!(logger, "{:?}", e);
-                }
-            }
-
-            {
-                //Routes for unconfirmed, expired DATA msgs are marked as broken.
-                let mut dc = data_cache.lock().expect("Could not lock data_cache");
-                for (msg, entry) in dc
-                    .iter_mut()
-                    .filter(|(_, v)| !v.confirmed && v.ts < Utc::now())
-                {
-                    info!(
-                        logger,
-                        "BROKEN_LINK detected";
-                        "reason"=>"Unconfirmed DATA message",
-                        "destination"=>&entry.destination,
-                    );
-                    broken_links.insert(msg.to_string(), entry.seq_no);
-                    //Mark the msg as confirmed so that we don't process it again or
-                    //send an RERR for this link due to it again.
-                    entry.confirmed = true;
-                }
-            }
-
-            //Broken links to send?
-            if !broken_links.is_empty() {
-                info!(
-                    logger,
-                    "Broken links detected";
-                    "num_broken_links" => broken_links.keys().len(),
-                );
-
-                let rerr_msg = RouteErrorMessage {
-                    flags: Default::default(),
-                    destinations: broken_links,
-                };
-                //Tag the message
-                let rerr_msg = Messages::RERR(rerr_msg);
-                let log_data = ProtocolMessages::AODV(rerr_msg.clone());
-                let hdr =
-                    MessageHeader::new(me.clone(), String::new(), serialize_message(rerr_msg)?);
-
-                match short_radio.broadcast(hdr.clone()) {
-                    Ok(tx) => {
-                        /* All good! */
-                        radio::log_tx(
-                            &logger,
-                            tx,
-                            &hdr.msg_id,
-                            MessageStatus::SENT,
-                            &hdr.sender,
-                            &hdr.destination,
-                            log_data,
-                        );
-                    }
-                    Err(e) => {
-                        error!(
-                            logger,
-                            "Failed to send RERR message";
-                            "reason"=>format!("{}",e)
-                        );
-                    }
-                };
-            }
-
-            //Has any of the pending routes expired?
-            let new_routes = {
-                let mut pd = pending_routes
-                    .lock()
-                    .expect("Could not lock pending routes table");
-                let mut nr = Vec::new();
-                for (dest, entry) in pd.iter_mut() {
-                    if entry.lifetime < Utc::now() {
-                        if entry.retries >= RREQ_RETRIES {
-                            //retries exceeded
-                            info!(
-                                logger,
-                                "RREQ retries exceeded";
-                                "destination"=>dest,
-                            );
-                            continue;
-                        }
-                        entry.retries += 1;
-                        //Add to retry list
-                        nr.push((dest.clone(), entry.dest_seq_no));
-                    }
-                }
-                nr
-            };
-
-            //Start a new Route discovery process for each destination with retries remaining.
-            for (dest, dest_seq_no) in new_routes {
-                AODV::start_route_discovery(
-                    dest,
-                    dest_seq_no,
-                    Arc::clone(&rreq_no),
-                    seq.clone(),
-                    me.clone(),
-                    Arc::clone(&short_radio),
-                    Arc::clone(&pending_routes),
-                    Arc::clone(&rreq_cache),
-                    &logger,
-                )?;
-            }
-
-            //Finally, prune destinations that are stale and have exceeded retries.
-            {
-                let mut pd = pending_routes
-                    .lock()
-                    .expect("Could not lock pending routes table");
-                //It's important to re-check retries here, as the broadcast above could fail
-                //for RREQs that still have retries available.
-                pd.retain(|_, v| v.retries < RREQ_RETRIES || v.lifetime > Utc::now());
-            }
-        }
-        #[allow(unreachable_code)]
-        Ok(())
+    fn get_self_peer(&self) -> String {
+        self.worker_name.clone()
     }
 
     fn route_table_maintenance(
@@ -1705,6 +1619,7 @@ impl AODV {
                 && v.lifetime < Utc::now()
                 && &v.next_hop == *k
         }) {
+
             broken_links.insert(k.clone(), v.dest_seq_no);
         }
 
@@ -1723,6 +1638,8 @@ impl AODV {
                 .iter_mut()
                 .filter(|(_, v)| !v.confirmed && v.ts < Utc::now())
             {
+                //TODO: if the route for this unconfirmed data packet is still marked as active, we could
+                //start a route-healing process.
                 info!(
                     logger,
                     "BROKEN_LINK detected";
@@ -1737,6 +1654,9 @@ impl AODV {
         }
 
         //Broken links to send?
+        // TODO: This list is incomplete. It should include all destinations that
+        // are now unreachable because they depended on those newly-broken nodes
+        // as their next hop.
         if !broken_links.is_empty() {
             info!(
                 logger,

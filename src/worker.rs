@@ -399,6 +399,8 @@ pub enum MessageStatus {
     FORWARDING,
     /// A new message has been transmitted
     SENT,
+    /// The message has been queued. This usually indicates a pending route operation.
+    QUEUED,
 }
 
 impl fmt::Display for MessageStatus {
@@ -408,6 +410,7 @@ impl fmt::Display for MessageStatus {
             MessageStatus::DROPPED => write!(f, "DROPPED"),
             MessageStatus::FORWARDING => write!(f, "FORWARDING"),
             MessageStatus::SENT => write!(f, "SENT"),
+            MessageStatus::QUEUED => write!(f, "QUEUED"),
         }
     }
 }
