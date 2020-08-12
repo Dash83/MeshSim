@@ -171,17 +171,17 @@ impl LoraWifiBeacon {
             let log_data = ProtocolMessages::LoraWifi(msg.clone());
             let hdr = MessageHeader::new(self_peer.clone(), String::new(), serialize_message(msg)?);
 
-            let tx = radio.broadcast(hdr.clone())?;
-            radio::log_tx(
-                &logger,
-                tx,
-                &hdr.msg_id,
-                MessageStatus::SENT,
-                &hdr.sender,
-                &hdr.destination,
-                log_data,
-            );
-            // info!(logger, "Beacon sent over {}:{}", &link, counter);
+            if let Some(tx) = radio.broadcast(hdr.clone())? {
+                radio::log_tx(
+                    &logger,
+                    tx,
+                    &hdr.msg_id,
+                    MessageStatus::SENT,
+                    &hdr.sender,
+                    &hdr.destination,
+                    log_data,
+                );
+            }
         }
     }
 

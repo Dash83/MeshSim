@@ -449,17 +449,20 @@ impl ReactiveGossipRouting {
             rmc.insert(route_id.clone());
         }
 
-        let tx = short_radio.broadcast(hdr.clone())?;
-        radio::log_tx(
-            &logger,
-            tx,
-            &hdr.msg_id,
-            MessageStatus::SENT,
-            &hdr.sender,
-            &hdr.destination,
-            log_data,
-        );
-        info!(logger, "Route discovery initiated"; "route_id"=>&route_id);
+        if let Some(tx) = short_radio.broadcast(hdr.clone())? {
+            radio::log_tx(
+                &logger,
+                tx,
+                &hdr.msg_id,
+                MessageStatus::SENT,
+                &hdr.sender,
+                &hdr.destination,
+                log_data,
+            );
+            info!(logger, "Route discovery initiated"; "route_id"=>&route_id);
+        } else {
+            warn!(logger, "Unable to broadcast RouteDiscovery message"; "route_id"=>&route_id);
+        }
 
         Ok(route_id)
     }
@@ -488,16 +491,17 @@ impl ReactiveGossipRouting {
         );
         //Right now this assumes the data can be sent in a single broadcast message
         //This might be addressed later on.
-        let tx = short_radio.broadcast(hdr.clone())?;
-        radio::log_tx(
-            &logger,
-            tx,
-            &hdr.msg_id,
-            MessageStatus::SENT,
-            &hdr.sender,
-            &hdr.destination,
-            log_data,
-        );
+        if let Some(tx) = short_radio.broadcast(hdr.clone())? {
+            radio::log_tx(
+                &logger,
+                tx,
+                &hdr.msg_id,
+                MessageStatus::SENT,
+                &hdr.sender,
+                &hdr.destination,
+                log_data,
+            );
+        }
 
         Ok(())
     }
@@ -1156,16 +1160,18 @@ impl ReactiveGossipRouting {
                         //The message is still cached, so re-transmit it.
                         match short_radio.broadcast(hdr.clone()) {
                             Ok(tx) => {
-                                /* Log transmission! */
-                                radio::log_tx(
-                                    &logger,
-                                    tx,
-                                    &hdr.msg_id,
-                                    MessageStatus::SENT,
-                                    &hdr.sender,
-                                    &hdr.destination,
-                                    log_data,
-                                );
+                                if let Some(tx) = tx {
+                                    /* Log transmission! */
+                                    radio::log_tx(
+                                        &logger,
+                                        tx,
+                                        &hdr.msg_id,
+                                        MessageStatus::SENT,
+                                        &hdr.sender,
+                                        &hdr.destination,
+                                        log_data,
+                                    );
+                                }
                             }
                             Err(e) => {
                                 error!(logger, "Failed to re-transmit message. {}", e);
@@ -1201,21 +1207,23 @@ impl ReactiveGossipRouting {
                             //Send message
                             match short_radio.broadcast(hdr.clone()) {
                                 Ok(tx) => {
-                                    radio::log_tx(
-                                        &logger,
-                                        tx,
-                                        &hdr.msg_id,
-                                        MessageStatus::SENT,
-                                        &hdr.sender,
-                                        &hdr.destination,
-                                        log_data,
-                                    );
-                                    info!(
-                                        logger,
-                                        "Route Teardown initiated";
-                                        "route_id"=>&route_id,
-                                        "reason"=>"Unable to confirm previously sent DATA message"
-                                    );
+                                    if let Some(tx) = tx {
+                                        radio::log_tx(
+                                            &logger,
+                                            tx,
+                                            &hdr.msg_id,
+                                            MessageStatus::SENT,
+                                            &hdr.sender,
+                                            &hdr.destination,
+                                            log_data,
+                                        );
+                                        info!(
+                                            logger,
+                                            "Route Teardown initiated";
+                                            "route_id"=>&route_id,
+                                            "reason"=>"Unable to confirm previously sent DATA message"
+                                        );
+                                    }
                                 }
                                 Err(e) => {
                                     error!(logger, "Failed to send route-teardown message. {}", e);
@@ -1317,16 +1325,18 @@ impl ReactiveGossipRouting {
                 //The message is still cached, so re-transmit it.
                 match short_radio.broadcast(hdr.clone()) {
                     Ok(tx) => {
-                        /* Log transmission! */
-                        radio::log_tx(
-                            &logger,
-                            tx,
-                            &hdr.msg_id,
-                            MessageStatus::SENT,
-                            &hdr.sender,
-                            &hdr.destination,
-                            log_data,
-                        );
+                        if let Some(tx) = tx {
+                            /* Log transmission! */
+                            radio::log_tx(
+                                &logger,
+                                tx,
+                                &hdr.msg_id,
+                                MessageStatus::SENT,
+                                &hdr.sender,
+                                &hdr.destination,
+                                log_data,
+                            );
+                        }
                     }
                     Err(e) => {
                         error!(logger, "Failed to re-transmit message. {}", e);
@@ -1359,21 +1369,23 @@ impl ReactiveGossipRouting {
                     //Send message
                     match short_radio.broadcast(hdr.clone()) {
                         Ok(tx) => {
-                            radio::log_tx(
-                                &logger,
-                                tx,
-                                &hdr.msg_id,
-                                MessageStatus::SENT,
-                                &hdr.sender,
-                                &hdr.destination,
-                                log_data,
-                            );
-                            info!(
-                                logger,
-                                "Route Teardown initiated";
-                                "route_id"=>&route_id,
-                                "reason"=>"Unable to confirm previously sent DATA message"
-                            );
+                            if let Some(tx) = tx {
+                                radio::log_tx(
+                                    &logger,
+                                    tx,
+                                    &hdr.msg_id,
+                                    MessageStatus::SENT,
+                                    &hdr.sender,
+                                    &hdr.destination,
+                                    log_data,
+                                );
+                                info!(
+                                    logger,
+                                    "Route Teardown initiated";
+                                    "route_id"=>&route_id,
+                                    "reason"=>"Unable to confirm previously sent DATA message"
+                                );
+                            }
                         }
                         Err(e) => {
                             error!(logger, "Failed to send route-teardown message. {}", e);

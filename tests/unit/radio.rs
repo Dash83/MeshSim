@@ -248,7 +248,7 @@ fn test_broadcast_simulated() {
         String::new(),
         naive_routing::serialize_message(msg).expect("Could not serialize message"),
     );
-    let tx = r2.broadcast(bcast_msg.clone()).unwrap();
+    let tx = r2.broadcast(bcast_msg.clone()).unwrap().unwrap();
     radio::log_tx(
         &&data.logger,
         tx,
@@ -467,7 +467,7 @@ fn test_broadcast_device() -> TestResult {
         String::new(),
         naive_routing::serialize_message(msg).expect("Could not serialize message"),
     );
-    let tx = r1.broadcast(bcast_msg.clone()).unwrap();
+    let tx = r1.broadcast(bcast_msg.clone()).unwrap().unwrap();
     radio::log_tx(
         &&data.logger,
         tx,
@@ -547,7 +547,8 @@ fn test_last_transmission() -> TestResult {
     );
     let tx_md = tx
         .broadcast(hdr.clone())
-        .expect("Could not broadcast message");
+        .expect("Could not broadcast message")
+        .unwrap();
     radio::log_tx(
         &data.logger,
         tx_md,
