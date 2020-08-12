@@ -902,8 +902,8 @@ impl AODV {
                 //TODO: This should not happen. Drop the packet.
                 //Did this happen because of congestion?
                 //Could it be that the route created towards the originator during RREQ was deleted because too much time went by?
-                //I need to review the RFC to see what to do, but I think almost certainly the packet should be drop, because 
-                //the congestion in this that caused the RREP to fail is an indication that it was not possible to create a suitable route 
+                //I need to review the RFC to see what to do, but I think almost certainly the packet should be dropped, because 
+                //the congestion in this that caused the RREP to fail is an indication that it was not possible to create a suitable route
                 radio::log_handle_message(
                     logger,
                     &hdr,
@@ -1243,7 +1243,15 @@ impl AODV {
                         // using local repair).
                         //
                         // In this case, failing to run route_repair counts as "is not repairing".
-                        
+                        radio::log_handle_message(
+                            logger,
+                            &hdr,
+                            MessageStatus::DROPPED,
+                            Some("RouteHealing was not possible"),
+                            Some("Generating RouteError"),
+                            &Messages::DATA(msg.clone()),
+                        );
+
                         // For case (ii), there is only one unreachable destination, which is the 
                         // destination of the data packet that cannot be delivered.
                         let mut dest = HashMap::new();
@@ -1708,6 +1716,7 @@ impl AODV {
         me: String,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
+        //TODO: Expired RREQs that were issued as RouteHealing trigger an RERR if unsuccesful
         //Has any of the pending routes expired?
         let new_routes = {
             let mut pd = pending_routes
