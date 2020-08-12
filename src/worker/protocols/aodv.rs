@@ -70,8 +70,8 @@ bitflags! {
     #[derive(Default)]
     struct RTEFlags : u32 {
         const VALID_SEQ_NO = 0b00000001;
-        const VALID_ROUTE = 0b00000010;
-        const ACTIVE_ROUTE = 0b00000100;
+        // const VALID_ROUTE = 0b00000010;
+        const ACTIVE_ROUTE = 0b00000010;
     }
 }
 
@@ -403,7 +403,7 @@ impl Protocol for AODV {
                     destination,
                     dest_seq_no,
                     Arc::clone(&self.rreq_seq_no),
-                    Arc::clone(&self.sequence_number),
+                    self.sequence_number.fetch_add(1, Ordering::SeqCst) + 1,
                     self.get_self_peer(),
                     Arc::clone(&self.short_radio),
                     pending_routes,
@@ -1028,7 +1028,7 @@ impl AODV {
                 if entry.dest_seq_no < *seq_no {
                     entry
                         .flags
-                        .remove(RTEFlags::VALID_ROUTE | RTEFlags::ACTIVE_ROUTE);
+                        .remove(RTEFlags::VALID_SEQ_NO | RTEFlags::ACTIVE_ROUTE);
                     entry.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
                     let mut precursors: Vec<_> = entry.precursors.iter().cloned().collect();
                     affected_neighbours.append(&mut precursors);
@@ -1424,7 +1424,7 @@ impl AODV {
         destination: String,
         dest_seq_no: u32,
         rreq_seq_no: Arc<AtomicU32>,
-        seq_no: Arc<AtomicU32>,
+        seq_no: u32, //User must determine if the seq_no needs to be updated
         me: String,
         short_radio: Arc<dyn Radio>,
         pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
@@ -1444,7 +1444,7 @@ impl AODV {
             destination: destination.clone(),
             dest_seq_no,
             originator: me.clone(),
-            orig_seq_no: seq_no.fetch_add(1, Ordering::SeqCst) + 1,
+            orig_seq_no: seq_no,
         };
         //Tag the message
         let msg = Messages::RREQ(msg);
@@ -1586,7 +1586,7 @@ impl AODV {
                 destination.into(),
                 dest_seq_no,
                 rreq_seq_no,
-                seq_no,
+                seq_no.load(Ordering::SeqCst),
                 me,
                 short_radio,
                 pending_routes,
@@ -1656,6 +1656,11 @@ impl AODV {
                     "reason"=>"Unconfirmed DATA message",
                     "destination"=>&entry.destination,
                 );
+
+                // if let Some(rt_entry) = rt.get(&entry.destination) {
+                //     HERE
+                // }
+
                 broken_links.insert(msg.to_string(), entry.seq_no);
                 //Mark the msg as confirmed so that we don't process it again or
                 //send an RERR for this link due to it again.
@@ -1667,6 +1672,8 @@ impl AODV {
         // TODO: This list is incomplete. It should include all destinations that
         // are now unreachable because they depended on those newly-broken nodes
         // as their next hop.
+        //Further, if the broken links list only contains destinations with 0 precursors 
+        //(e.g. create by HELLO messages) then they should not trigger an RERR.
         if !broken_links.is_empty() {
             info!(
                 logger,
@@ -1752,7 +1759,7 @@ impl AODV {
                 dest,
                 dest_seq_no,
                 Arc::clone(&rreq_no),
-                seq_no.clone(),
+                seq_no.fetch_add(1, Ordering::SeqCst) + 1,
                 me.clone(),
                 Arc::clone(&short_radio),
                 Arc::clone(&pending_routes),
