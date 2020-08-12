@@ -597,16 +597,18 @@ impl Worker {
                                         // let _msg_id = r.get_msg_id().to_string();
                                         match tx_channel.broadcast(r.clone()) {
                                             Ok(tx) => {
-                                                /* Log transmission */
-                                                radio::log_tx(
-                                                    &log,
-                                                    tx,
-                                                    &r.msg_id,
-                                                    MessageStatus::SENT,
-                                                    &r.sender,
-                                                    &r.destination,
-                                                    log_data,
-                                                );
+                                                if let Some(tx) = tx {
+                                                    /* Log transmission */
+                                                    radio::log_tx(
+                                                        &log,
+                                                        tx,
+                                                        &r.msg_id,
+                                                        MessageStatus::SENT,
+                                                        &r.sender,
+                                                        &r.destination,
+                                                        log_data,
+                                                    );
+                                                }
                                             }
                                             Err(e) => {
                                                 error!(log, "Error sending response: {}", e);

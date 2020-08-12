@@ -1397,16 +1397,17 @@ impl AODV {
             },
         );
 
-        let tx = short_radio.broadcast(hdr.clone())?;
-        radio::log_tx(
-            &logger,
-            tx,
-            &hdr.msg_id,
-            MessageStatus::SENT,
-            &hdr.sender,
-            &hdr.destination,
-            log_data,
-        );
+        if let Some(tx) = short_radio.broadcast(hdr.clone())? {
+            radio::log_tx(
+                &logger,
+                tx,
+                &hdr.msg_id,
+                MessageStatus::SENT,
+                &hdr.sender,
+                &hdr.destination,
+                log_data,
+            );
+        }
 
         Ok(())
     }
@@ -1469,16 +1470,17 @@ impl AODV {
         }
 
         //Broadcast RouteDiscovery
-        let tx = short_radio.broadcast(hdr.clone())?;
-        radio::log_tx(
-            &logger,
-            tx,
-            &hdr.msg_id,
-            MessageStatus::SENT,
-            &hdr.sender,
-            &hdr.destination,
-            log_data,
-        );
+        if let Some(tx) = short_radio.broadcast(hdr.clone())? {
+            radio::log_tx(
+                &logger,
+                tx,
+                &hdr.msg_id,
+                MessageStatus::SENT,
+                &hdr.sender,
+                &hdr.destination,
+                log_data,
+            );            
+        }
 
         //This log is necessary to differentiate the initial RREQ packet from all the other SENT logs in
         //the intermediate nodes.
@@ -1676,15 +1678,17 @@ impl AODV {
             match short_radio.broadcast(hdr.clone()) {
                 Ok(tx) => {
                     /* All good! */
-                    radio::log_tx(
-                        &logger,
-                        tx,
-                        &hdr.msg_id,
-                        MessageStatus::SENT,
-                        &hdr.sender,
-                        &hdr.destination,
-                        log_data,
-                    );
+                    if let Some(tx) = tx { 
+                        radio::log_tx(
+                            &logger,
+                            tx,
+                            &hdr.msg_id,
+                            MessageStatus::SENT,
+                            &hdr.sender,
+                            &hdr.destination,
+                            log_data,
+                        );
+                    }
                 }
                 Err(e) => {
                     error!(
@@ -1798,16 +1802,18 @@ impl AODV {
 
             match short_radio.broadcast(hdr.clone()) {
                 Ok(tx) => {
-                    // All good
-                    radio::log_tx(
-                        &logger,
-                        tx,
-                        &hdr.msg_id,
-                        MessageStatus::SENT,
-                        &hdr.sender,
-                        &hdr.destination,
-                        log_data,
-                    );
+                    if let Some(tx) = tx {
+                        // All good
+                        radio::log_tx(
+                            &logger,
+                            tx,
+                            &hdr.msg_id,
+                            MessageStatus::SENT,
+                            &hdr.sender,
+                            &hdr.destination,
+                            log_data,
+                        );                        
+                    }
                 }
                 Err(e) => {
                     error!(

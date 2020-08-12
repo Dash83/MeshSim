@@ -103,7 +103,7 @@ pub trait Radio: std::fmt::Debug + Send + Sync {
     ///Gets the current address at which the radio is listening.
     fn get_address(&self) -> &str;
     ///Used to broadcast a message using the radio
-    fn broadcast(&self, hdr: MessageHeader) -> Result<TxMetadata, MeshSimError>;
+    fn broadcast(&self, hdr: MessageHeader) -> Result<Option<TxMetadata>, MeshSimError>;
     ///Get the time of the last transmission made by this readio
     fn last_transmission(&self) -> i64;
 }
@@ -148,12 +148,12 @@ impl Radio for SimulatedRadio {
         self.last_transmission.load(Ordering::SeqCst)
     }
 
-    fn broadcast(&self, mut hdr: MessageHeader) -> Result<TxMetadata, MeshSimError> {
+    fn broadcast(&self, mut hdr: MessageHeader) -> Result<Option<TxMetadata>, MeshSimError> {
         //Perf measurement. How long was the message in the out queue?
         let start_ts = Utc::now();
         debug!(&self.logger, "out_queued_start: {}", hdr.delay);
         let perf_out_queued_duration = start_ts.timestamp_nanos() - hdr.delay;
-        let env_file = format!("{}{}.env", &self.work_dir, std::path::MAIN_SEPARATOR);
+        // let env_file = format!("{}{}.env", &self.work_dir, std::path::MAIN_SEPARATOR);
         let conn = get_db_connection(&self.logger)?;
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
@@ -161,7 +161,25 @@ impl Radio for SimulatedRadio {
         // let msg_id = hdr.get_msg_id().to_string();
 
         //Register this node as an active transmitter if the medium is free
-        self.register_transmitter(&conn)?;
+        match self.register_transmitter(&conn) {
+            Ok(_) => { /* All good */ },
+            Err(e) => {
+                if let MeshSimErrorKind::NetworkContention(m) = e.kind {
+                    // let cause = e.cause.unwrap_or(Box::new(String::from()));
+                    let cause = e.cause.expect("ERROR: Cause not set for  NetworkContention event");
+                    let cause_str = format!("{}", cause);
+                    info!(
+                        &self.logger,
+                        "{}", m;
+                        "thread"=>&thread_id,
+                        "radio"=>&radio_range,
+                        "reason"=>cause_str,
+                    );
+                } else {
+                    return Ok(None)
+                }
+            }
+        }
         //Perf measurement. How long the process stuck in medium-contention?
         let perf_start_tx = Utc::now();
         let perf_contention_duration = perf_start_tx.timestamp_nanos() - start_ts.timestamp_nanos();
@@ -264,7 +282,7 @@ impl Radio for SimulatedRadio {
         //     &hdr.destination,
         //     md,
         // );
-        Ok(tx)
+        Ok(Some(tx))
     }
 }
 
@@ -464,22 +482,22 @@ impl SimulatedRadio {
             std::thread::sleep(sleep_time);
         }
 
-        info!(
-            &self.logger,
-            "Aborting transmission";
-            "thread"=>&thread_id,
-            "radio"=>&radio_range,
-            "reason"=>"TRANSMISSION_MAX_RETRY reached",
-        );
+        // info!(
+        //     &self.logger,
+        //     "Aborting transmission";
+        //     "thread"=>&thread_id,
+        //     "radio"=>&radio_range,
+        //     "reason"=>"TRANSMISSION_MAX_RETRY reached",
+        // );
 
-        let err_cause = String::from("Gave up registering worker in active_transmitter_list");
+        let err_msg = String::from("Aborting transmission");
+        let err_cause = String::from("TRANSMISSION_MAX_RETRY reached");
         let cause = MeshSimError {
             kind: MeshSimErrorKind::SQLExecutionFailure(err_cause),
             cause: None,
         };
-        let err_msg = String::from("Aborting transmission");
         let err = MeshSimError {
-            kind: MeshSimErrorKind::Networking(err_msg),
+            kind: MeshSimErrorKind::NetworkContention(err_msg),
             cause: Some(Box::new(cause)),
         };
 
@@ -573,7 +591,7 @@ impl Radio for WifiRadio {
         self.last_transmission.load(Ordering::SeqCst)
     }
 
-    fn broadcast(&self, mut hdr: MessageHeader) -> Result<TxMetadata, MeshSimError> {
+    fn broadcast(&self, mut hdr: MessageHeader) -> Result<Option<TxMetadata>, MeshSimError> {
         let start_ts = Utc::now();
         let perf_out_queued_duration = start_ts.timestamp_nanos() - hdr.delay;
         let radio_range: String = self.r_type.into();
@@ -643,7 +661,7 @@ impl Radio for WifiRadio {
         //     md,
         // );
 
-        Ok(tx)
+        Ok(Some(tx))
     }
 }
 

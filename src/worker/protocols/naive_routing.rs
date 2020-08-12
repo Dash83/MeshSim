@@ -110,16 +110,17 @@ impl Protocol for NaiveRouting {
             cache.insert(CacheEntry { msg_id });
         }
 
-        let tx = self.short_radio.broadcast(hdr.clone())?;
-        radio::log_tx(
-            &self.logger,
-            tx,
-            &hdr.msg_id,
-            MessageStatus::SENT,
-            &hdr.sender,
-            &hdr.destination,
-            log_data,
-        );
+        if let Some(tx) = self.short_radio.broadcast(hdr.clone())? {
+            radio::log_tx(
+                &self.logger,
+                tx,
+                &hdr.msg_id,
+                MessageStatus::SENT,
+                &hdr.sender,
+                &hdr.destination,
+                log_data,
+            );
+        }
 
         Ok(())
     }
