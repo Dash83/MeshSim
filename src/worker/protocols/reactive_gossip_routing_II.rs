@@ -185,7 +185,7 @@ impl Protocol for ReactiveGossipRoutingII {
     fn handle_message(
         &self,
         hdr: MessageHeader,
-        ts: DateTime<Utc>,
+        _ts: DateTime<Utc>,
         _r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
         let msg_id = hdr.get_msg_id().to_string();
@@ -222,16 +222,16 @@ impl Protocol for ReactiveGossipRoutingII {
     }
 
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
-        let logger = self.logger.clone();
-        let radio = Arc::clone(&self.short_radio);
-        let data_msg_cache = Arc::clone(&self.data_msg_cache);
-        let dest_routes = Arc::clone(&self.destination_routes);
-        let known_routes = Arc::clone(&self.known_routes);
-        let pending_destination = Arc::clone(&self.pending_destinations);
-        let queued_transmissions = Arc::clone(&self.queued_transmissions);
-        let me = self.get_self_peer();
-        let vicinity_cache = Arc::clone(&self.vicinity_cache);
-        let route_message_cache = Arc::clone(&self.route_msg_cache);
+        let _logger = self.logger.clone();
+        let _radio = Arc::clone(&self.short_radio);
+        let _data_msg_cache = Arc::clone(&self.data_msg_cache);
+        let _dest_routes = Arc::clone(&self.destination_routes);
+        let _known_routes = Arc::clone(&self.known_routes);
+        let _pending_destination = Arc::clone(&self.pending_destinations);
+        let _queued_transmissions = Arc::clone(&self.queued_transmissions);
+        let _me = self.get_self_peer();
+        let _vicinity_cache = Arc::clone(&self.vicinity_cache);
+        let _route_message_cache = Arc::clone(&self.route_msg_cache);
         // let _handle = thread::spawn(move || {
         //     info!(logger, "Maintenance thread started");
         //     //TODO: Handle errors from loop

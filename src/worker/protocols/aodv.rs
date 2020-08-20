@@ -13,10 +13,10 @@ use serde_cbor::ser::*;
 use slog::{Logger, Record, Serializer, KV};
 use std::collections::{HashMap, HashSet};
 use std::default::Default;
-use std::ops::Add;
+
 use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
+
 
 const CONCCURENT_THREADS_PER_FLOW: usize = 1;
 
@@ -1909,8 +1909,8 @@ impl AODV {
             //Otherwise without the passive acknowledgement those links could be deemed broken.
             let mut dc = data_cache.lock().expect("Could not lock data cache");
             dc.iter_mut()
-                .filter(|(k, v)| v.destination == hdr.sender && v.confirmed == false)
-                .for_each(|(k, v)| {
+                .filter(|(_k, v)| v.destination == hdr.sender && v.confirmed == false)
+                .for_each(|(_k, v)| {
                     //If the current message arrived after we logged this data packet, confirm the link.
                     if v.ts - Duration::milliseconds(NEXT_HOP_WAIT as i64) < ts {
                         v.confirmed = true

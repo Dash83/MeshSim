@@ -66,7 +66,7 @@ impl Protocol for NaiveRouting {
     fn handle_message(
         &self,
         hdr: MessageHeader,
-        ts: DateTime<Utc>,
+        _ts: DateTime<Utc>,
         _r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
         let msg = deserialize_message(hdr.get_payload()).map_err(|e| {

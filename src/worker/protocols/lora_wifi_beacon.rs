@@ -57,7 +57,7 @@ impl Protocol for LoraWifiBeacon {
     fn handle_message(
         &self,
         hdr: MessageHeader,
-        ts: DateTime<Utc>,
+        _ts: DateTime<Utc>,
         r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
         //Filter out packets coming from this node, as we get many from the multicast.

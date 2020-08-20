@@ -118,7 +118,7 @@ fn aodv_rerr() {
     // Node5 must send out an RERR message in response to the broken links
     let node5_log_file = format!("{}/log/node5.log", &data.work_dir);
     let node5_log_records = logging::get_log_records_from_file(&node5_log_file).unwrap();
-    let outgoing_messages = logging::get_outgoing_message_records(node5_log_file).unwrap();
+    let _outgoing_messages = logging::get_outgoing_message_records(node5_log_file).unwrap();
     let data_packets = count_data_packets(&node5_log_records);
     // let rerr_msgs_sent = outgoing_messages
     //     .iter()

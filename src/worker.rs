@@ -39,7 +39,7 @@ use serde_cbor::ser::*;
 use slog::{Key, Logger, Record, Serializer, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::process::Child;
+
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::sync::{MutexGuard, PoisonError};
