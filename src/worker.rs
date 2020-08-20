@@ -39,7 +39,7 @@ use serde_cbor::ser::*;
 use slog::{Key, Logger, Record, Serializer, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::process::Child;
+
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::sync::{MutexGuard, PoisonError};
@@ -578,7 +578,7 @@ impl Worker {
                                     //Perf_Recv_Msg_Start
                                     hdr.delay = Utc::now().timestamp_nanos();
                                     let (response, log_data) =
-                                        match prot.handle_message(hdr, r_type) {
+                                        match prot.handle_message(hdr, ts0, r_type) {
                                             Ok(resp) => resp,
                                             Err(e) => {
                                                 error!(log, "Error handling message:");
@@ -631,10 +631,8 @@ impl Worker {
                             None => {
                                 //read_message has timed out. Check if any maintenance work needs be done.
                                 match prot_handler.do_maintenance() {
-                                    Ok(_) => { 
-                                        /* All good! */
-                                    },
-                                    Err(e) => { 
+                                    Ok(_) => { /* All good! */ }
+                                    Err(e) => {
                                         error!(
                                             logger,
                                             "Failed to perform maintenance operations: {}", e
@@ -642,7 +640,7 @@ impl Worker {
                                         if let Some(cause) = e.cause {
                                             error!(logger, "Cause: {}", cause);
                                         }
-                                    },
+                                    }
                                 }
                             }
                         }

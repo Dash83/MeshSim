@@ -5,8 +5,8 @@ use crate::worker::radio::{self, Radio, RadioTypes};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 
+use chrono::{DateTime, Utc};
 use rand::thread_rng;
-
 use rand::{rngs::StdRng, Rng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -57,6 +57,7 @@ impl Protocol for LoraWifiBeacon {
     fn handle_message(
         &self,
         hdr: MessageHeader,
+        _ts: DateTime<Utc>,
         r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
         //Filter out packets coming from this node, as we get many from the multicast.

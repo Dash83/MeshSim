@@ -63,7 +63,7 @@ impl RadioConfig {
             spreading_factor: None,
             transmission_power: None,
             mac_layer_retries: Some(DEFAULT_TRANSMISSION_MAX_RETRY),
-            mac_layer_base_wait:Some(DEFAULT_TRANSMISSION_WAIT_BASE),
+            mac_layer_base_wait: Some(DEFAULT_TRANSMISSION_WAIT_BASE),
         }
     }
 
@@ -90,8 +90,15 @@ impl RadioConfig {
                 let (radio, listener): (Arc<dyn Radio>, Box<dyn Listener>) = match r_type {
                     RadioTypes::ShortRange => {
                         let timeout = self.timeout.unwrap_or(DEFAULT_READ_TIMEOUT);
-                        let (r, l) =
-                            WifiRadio::new(iname, worker_name, worker_id, timeout, rng, r_type, logger)?;
+                        let (r, l) = WifiRadio::new(
+                            iname,
+                            worker_name,
+                            worker_id,
+                            timeout,
+                            rng,
+                            r_type,
+                            logger,
+                        )?;
                         (Arc::new(r), l)
                     }
                     RadioTypes::LongRange => {
@@ -106,8 +113,12 @@ impl RadioConfig {
             }
             OperationMode::Simulated => {
                 let timeout = self.timeout.unwrap_or(DEFAULT_READ_TIMEOUT);
-                let mac_layer_retries = self.mac_layer_retries.unwrap_or(DEFAULT_TRANSMISSION_MAX_RETRY);
-                let mac_layer_base_wait = self.mac_layer_base_wait.unwrap_or(DEFAULT_TRANSMISSION_WAIT_BASE);
+                let mac_layer_retries = self
+                    .mac_layer_retries
+                    .unwrap_or(DEFAULT_TRANSMISSION_MAX_RETRY);
+                let mac_layer_base_wait = self
+                    .mac_layer_base_wait
+                    .unwrap_or(DEFAULT_TRANSMISSION_WAIT_BASE);
 
                 let (radio, listener) = SimulatedRadio::new(
                     timeout,

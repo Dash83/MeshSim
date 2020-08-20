@@ -12,8 +12,8 @@ use slog::{Logger, Record, Serializer, KV};
 
 use chrono::{DateTime, Duration, Utc};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 // use std::time::Duration;
 
@@ -195,6 +195,7 @@ impl Protocol for ReactiveGossipRoutingIII {
     fn handle_message(
         &self,
         hdr: MessageHeader,
+        _ts: DateTime<Utc>,
         _r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
         let msg_id = hdr.get_msg_id().to_string();
@@ -250,17 +251,17 @@ impl Protocol for ReactiveGossipRoutingIII {
     }
 
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
-        let logger = self.logger.clone();
-        let sr_radio = Arc::clone(&self.short_radio);
-        let lr_radio = Arc::clone(&self.long_radio);
-        let data_msg_cache = Arc::clone(&self.data_msg_cache);
-        let dest_routes = Arc::clone(&self.destination_routes);
-        let known_routes = Arc::clone(&self.known_routes);
-        let pending_destination = Arc::clone(&self.pending_destinations);
-        let queued_transmissions = Arc::clone(&self.queued_transmissions);
-        let me = self.get_self_peer();
-        let vicinity_cache = Arc::clone(&self.vicinity_cache);
-        let route_message_cache = Arc::clone(&self.route_msg_cache);
+        let _logger = self.logger.clone();
+        let _sr_radio = Arc::clone(&self.short_radio);
+        let _lr_radio = Arc::clone(&self.long_radio);
+        let _data_msg_cache = Arc::clone(&self.data_msg_cache);
+        let _dest_routes = Arc::clone(&self.destination_routes);
+        let _known_routes = Arc::clone(&self.known_routes);
+        let _pending_destination = Arc::clone(&self.pending_destinations);
+        let _queued_transmissions = Arc::clone(&self.queued_transmissions);
+        let _me = self.get_self_peer();
+        let _vicinity_cache = Arc::clone(&self.vicinity_cache);
+        let _route_message_cache = Arc::clone(&self.route_msg_cache);
         // let _handle = thread::spawn(move || {
         //     info!(logger, "Maintenance thread started");
         //     //TODO: Handle errors from loop
@@ -379,8 +380,10 @@ impl Protocol for ReactiveGossipRoutingIII {
             ) {
                 Ok(_) => {
                     //Update to the new timestamp for doing this maintenance operation
-                    let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
-                    self.ts_data_retransmission.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
+                    let new_ts =
+                        Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
+                    self.ts_data_retransmission
+                        .store(new_ts.timestamp_nanos(), Ordering::SeqCst);
                 }
                 Err(e) => {
                     error!(
@@ -404,7 +407,8 @@ impl Protocol for ReactiveGossipRoutingIII {
                 Ok(_) => {
                     //Update to the new timestamp for doing this maintenance operation
                     let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_RD_RETRANSMISSION);
-                    self.ts_rd_retransmission.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
+                    self.ts_rd_retransmission
+                        .store(new_ts.timestamp_nanos(), Ordering::SeqCst);
                 }
                 Err(e) => {
                     error!(
@@ -424,7 +428,8 @@ impl Protocol for ReactiveGossipRoutingIII {
                 Ok(_) => {
                     //Update to the new timestamp for doing this maintenance operation
                     let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_VICINITY_CACHE);
-                    self.ts_vinicity_maintenance.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
+                    self.ts_vinicity_maintenance
+                        .store(new_ts.timestamp_nanos(), Ordering::SeqCst);
                 }
                 Err(e) => {
                     error!(
@@ -444,7 +449,8 @@ impl Protocol for ReactiveGossipRoutingIII {
                 Ok(_) => {
                     //Update to the new timestamp for doing this maintenance operation
                     let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_BEACON_THRESHOLD);
-                    self.ts_last_beacon_msg.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
+                    self.ts_last_beacon_msg
+                        .store(new_ts.timestamp_nanos(), Ordering::SeqCst);
                 }
                 Err(e) => {
                     warn!(
@@ -480,11 +486,14 @@ impl ReactiveGossipRoutingIII {
         let data_cache = HashMap::new();
         let pending_destinations = HashMap::new();
         let vicinity_cache = HashMap::new();
-        let ts_data_retransmission = Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
+        let ts_data_retransmission =
+            Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
         let ts_data_retransmission = AtomicI64::new(ts_data_retransmission.timestamp_nanos());
-        let ts_rd_retransmission = Utc::now() + Duration::milliseconds(MAINTENANCE_RD_RETRANSMISSION);
+        let ts_rd_retransmission =
+            Utc::now() + Duration::milliseconds(MAINTENANCE_RD_RETRANSMISSION);
         let ts_rd_retransmission = AtomicI64::new(ts_rd_retransmission.timestamp_nanos());
-        let ts_vinicity_maintenance = Utc::now() + Duration::milliseconds(MAINTENANCE_VICINITY_CACHE);
+        let ts_vinicity_maintenance =
+            Utc::now() + Duration::milliseconds(MAINTENANCE_VICINITY_CACHE);
         let ts_vinicity_maintenance = AtomicI64::new(ts_vinicity_maintenance.timestamp_nanos());
         let ts_last_beacon_msg = Utc::now() + Duration::milliseconds(MAINTENANCE_BEACON_THRESHOLD);
         let ts_last_beacon_msg = AtomicI64::new(ts_last_beacon_msg.timestamp_nanos());
@@ -1783,7 +1792,7 @@ impl ReactiveGossipRoutingIII {
                 &hdr.sender,
                 &hdr.destination,
                 log_data,
-            );    
+            );
         }
 
         Ok(())

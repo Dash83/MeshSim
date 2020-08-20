@@ -286,7 +286,8 @@ impl Master {
             .arg(format!("{}", listen_for_commands))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .spawn().map_err(|e| {
+            .spawn()
+            .map_err(|e| {
                 let err_msg = String::from("Failed to spawn worker process");
                 MeshSimError {
                     kind: MeshSimErrorKind::Master(err_msg),
@@ -748,8 +749,11 @@ impl Master {
             match workers {
                 Ok(mut w) => {
                     if let Some(child) = w.get_mut(&source) {
+                        let mut rng = thread_rng();
+                        let r: u64 = rng.next_u64() % 1024;
+                        let payload = format!("PING{}", r);
                         let mut c = child.1.lock().expect("Could not get lock to worker handle");
-                        let ping_data = base64::encode(b"PING");
+                        let ping_data = base64::encode(&payload);
                         let payload = format!("SEND {} {}\n", &destination, &ping_data);
                         let _res = c.stdin.as_mut().unwrap().write_all(payload.as_bytes());
                     } else {

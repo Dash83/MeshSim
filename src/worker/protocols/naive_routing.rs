@@ -5,7 +5,7 @@ use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rand::{rngs::StdRng, RngCore};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -66,6 +66,7 @@ impl Protocol for NaiveRouting {
     fn handle_message(
         &self,
         hdr: MessageHeader,
+        _ts: DateTime<Utc>,
         _r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
         let msg = deserialize_message(hdr.get_payload()).map_err(|e| {
