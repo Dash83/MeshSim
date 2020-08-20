@@ -876,7 +876,7 @@ where
         "LoraRadio"
     }
 
-    fn broadcast(&self, hdr: MessageHeader) -> Result<TxMetadata, MeshSimError> {
+    fn broadcast(&self, hdr: MessageHeader) -> Result<Option<TxMetadata>, MeshSimError> {
         let data = to_vec(&hdr).map_err(|e| {
             let err_msg = String::from("Failed to serialize message");
             MeshSimError {
@@ -892,7 +892,7 @@ where
             }
         })?;
         let tx = Default::default();
-        Ok(tx)
+        Ok(Some(tx))
     }
 
     fn last_transmission(&self) -> i64 {
