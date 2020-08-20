@@ -498,8 +498,8 @@ fn test_last_transmission() -> TestResult {
 
     let test_name = "last_transmission";
     let data = setup(test_name, false, true);
-    let conn =
-        get_db_connection_by_file(&data.db_env_file.unwrap(), &data.logger).expect("Could not connect");
+    let conn = get_db_connection_by_file(&data.db_env_file.unwrap(), &data.logger)
+        .expect("Could not connect");
 
     let worker_name = String::from("node1");
     let worker_id = String::from("SOME_UNIQUE_ID");

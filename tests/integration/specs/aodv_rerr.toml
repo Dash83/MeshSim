@@ -2,8 +2,8 @@ name = "aodv_rerr"
 duration = 11000
 actions = [ "Ping node1 node5 1000",
             "Kill_Node node4 1300",
-            "Kill_Node node10 1300",
-            # "Ping node15 node5 1500"
+            # "Kill_Node node10 1300",
+            "Ping node1 node5 3000",
         ]
 width = 200.0
 height = 200.0

@@ -91,11 +91,8 @@ pub struct ConnectionParts {
 //********** Exported functions **********
 //****************************************
 /// Returns a connection to the database
-pub fn get_db_connection(
-    logger: &Logger,
-) -> Result<PgConnection, MeshSimError> {
-
-    let database_url = env::var(DB_CONN_ENV_VAR).map_err(|e|{ 
+pub fn get_db_connection(logger: &Logger) -> Result<PgConnection, MeshSimError> {
+    let database_url = env::var(DB_CONN_ENV_VAR).map_err(|e| {
         let error_msg = String::from("Failed to read DATABASE_URL environment variable");
         MeshSimError {
             kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
@@ -745,9 +742,14 @@ pub fn parse_env_file<P: AsRef<Path>>(file_path: P) -> Result<ConnectionParts, M
     Ok(cp)
 }
 
-pub fn get_connection_string_from_file<P: AsRef<Path>>(file_path: P) -> Result<String, MeshSimError> {
+pub fn get_connection_string_from_file<P: AsRef<Path>>(
+    file_path: P,
+) -> Result<String, MeshSimError> {
     let parts = parse_env_file(file_path)?;
-    let con_str = format!("postgres://{}@{}/{}", parts.user_pwd, parts.host, parts.db_name);
+    let con_str = format!(
+        "postgres://{}@{}/{}",
+        parts.user_pwd, parts.host, parts.db_name
+    );
     Ok(con_str)
 }
 
@@ -840,8 +842,7 @@ mod tests {
         let conn_string = get_connection_string_from_file(ROOT_ENV_FILE)
             .expect("Could not get connection string");
         env::set_var(DB_CONN_ENV_VAR, conn_string.trim());
-        let _conn = get_db_connection(&test_data.logger)
-            .expect("Could not get DB connection");
+        let _conn = get_db_connection(&test_data.logger).expect("Could not get DB connection");
 
         //Test passed. Results are not needed.
         teardown(test_data, false);
@@ -881,8 +882,8 @@ mod tests {
         //Connect to experiment DB
         //If nothing failed, the test was succesful.
         let env_file = data.db_env_file.take().unwrap();
-        let _conn =
-        get_db_connection_by_file(&env_file, &data.logger).expect("Failed to connect to experiment DB");
+        let _conn = get_db_connection_by_file(&env_file, &data.logger)
+            .expect("Failed to connect to experiment DB");
 
         //TODO: Select db name and check it matches de DB_NAME pattern: SELECT current_database();
         // let query_str = String::from("SELECT oid FROM pg_database WHERE datname = $1;");

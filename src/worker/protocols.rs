@@ -7,6 +7,7 @@ use crate::worker::radio::*;
 use crate::worker::{MessageHeader, Worker};
 use crate::{MeshSimError, MeshSimErrorKind};
 use aodv::AODV;
+use chrono::{DateTime, Utc};
 use gossip_routing::GossipRouting;
 use lora_wifi_beacon::LoraWifiBeacon;
 use naive_routing::NaiveRouting;
@@ -14,7 +15,6 @@ use reactive_gossip_routing::ReactiveGossipRouting;
 use reactive_gossip_routing_II::ReactiveGossipRoutingII;
 use reactive_gossip_routing_III::ReactiveGossipRoutingIII;
 use slog::{Logger, Record, Serializer, KV};
-
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
@@ -38,6 +38,7 @@ pub trait Protocol: std::fmt::Debug + Send + Sync {
     fn handle_message(
         &self,
         msg: MessageHeader,
+        ts: DateTime<Utc>,
         r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError>;
 

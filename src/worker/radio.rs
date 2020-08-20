@@ -33,7 +33,7 @@ pub const DEFAULT_TRANSMISSION_MAX_RETRY: usize = 8;
 const TRANSMISSION_EXP_CAP: u32 = 9; //no more than 128ms
 const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
 pub const DEFAULT_TRANSMISSION_WAIT_BASE: u64 = 32; //µs
-                                           // const DB_CONTENTION_SLEEP: u64 = 100; //ms What was this for?
+                                                    // const DB_CONTENTION_SLEEP: u64 = 100; //ms What was this for?
 
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE: usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
@@ -162,11 +162,13 @@ impl Radio for SimulatedRadio {
 
         //Register this node as an active transmitter if the medium is free
         match self.register_transmitter(&conn) {
-            Ok(_) => { /* All good */ },
+            Ok(_) => { /* All good */ }
             Err(e) => {
                 if let MeshSimErrorKind::NetworkContention(m) = e.kind {
                     // let cause = e.cause.unwrap_or(Box::new(String::from()));
-                    let cause = e.cause.expect("ERROR: Cause not set for  NetworkContention event");
+                    let cause = e
+                        .cause
+                        .expect("ERROR: Cause not set for  NetworkContention event");
                     let cause_str = format!("{}", cause);
                     info!(
                         &self.logger,
@@ -176,7 +178,7 @@ impl Radio for SimulatedRadio {
                         "reason"=>cause_str,
                     );
                 } else {
-                    return Ok(None)
+                    return Ok(None);
                 }
             }
         }

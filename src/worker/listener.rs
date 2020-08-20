@@ -117,7 +117,9 @@ impl SimulatedListener {
         logger: Logger,
     ) -> SimulatedListener {
         let read_time = std::time::Duration::from_millis(timeout);
-        socket.set_read_timeout(Some(read_time)).expect("Coult not set socket on non-blocking mode");
+        socket
+            .set_read_timeout(Some(read_time))
+            .expect("Coult not set socket on non-blocking mode");
         SimulatedListener {
             socket,
             rng,
@@ -190,7 +192,9 @@ impl WifiListener {
         logger: Logger,
     ) -> WifiListener {
         let read_time = std::time::Duration::from_millis(timeout);
-        socket.set_read_timeout(Some(read_time)).expect("Coult not set socket on non-blocking mode");
+        socket
+            .set_read_timeout(Some(read_time))
+            .expect("Coult not set socket on non-blocking mode");
         WifiListener {
             socket,
             rng,

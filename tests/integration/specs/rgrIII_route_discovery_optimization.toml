@@ -5,7 +5,7 @@ name = "rgrIII_route_discovery_optimization"
 #           "Add_Source node57 node43 1 64 8000 4000"]
 
 #Extended case
-duration = 20000
+duration = 21000
 actions = ["Add_Source node21 node43 1 64 8000 1000",
            "Add_Source node57 node43 1 64 8000 3000",
            "Add_Source node15 node38 1 64 8000 5000",

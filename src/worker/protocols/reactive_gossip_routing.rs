@@ -12,8 +12,8 @@ use slog::{Logger, Record, Serializer, KV};
 
 use chrono::{DateTime, Duration, Utc};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 // use std::time::Duration;
 
@@ -174,6 +174,7 @@ impl Protocol for ReactiveGossipRouting {
     fn handle_message(
         &self,
         hdr: MessageHeader,
+        ts: DateTime<Utc>,
         _r_type: RadioTypes,
     ) -> Result<Outcome, MeshSimError> {
         let msg_id = hdr.get_msg_id().to_string();
@@ -333,9 +334,10 @@ impl Protocol for ReactiveGossipRouting {
             ) {
                 Ok(_) => {
                     //Update to the new timestamp for doing this maintenance operation
-                    let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
-                    self.ts_data_retransmission.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
-                        
+                    let new_ts =
+                        Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
+                    self.ts_data_retransmission
+                        .store(new_ts.timestamp_nanos(), Ordering::SeqCst);
                 }
                 Err(e) => {
                     error!(
@@ -359,8 +361,8 @@ impl Protocol for ReactiveGossipRouting {
                 Ok(_) => {
                     //Update to the new timestamp for doing this maintenance operation
                     let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_RD_RETRANSMISSION);
-                    self.ts_rd_retransmission.store(new_ts.timestamp_nanos(), Ordering::SeqCst);
-                        
+                    self.ts_rd_retransmission
+                        .store(new_ts.timestamp_nanos(), Ordering::SeqCst);
                 }
                 Err(e) => {
                     error!(
@@ -393,9 +395,11 @@ impl ReactiveGossipRouting {
         let route_cache = HashSet::new();
         let data_cache = HashMap::new();
         let pending_destinations = HashMap::new();
-        let ts_data_retransmission = Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
+        let ts_data_retransmission =
+            Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
         let ts_data_retransmission = AtomicI64::new(ts_data_retransmission.timestamp_nanos());
-        let ts_rd_retransmission = Utc::now() + Duration::milliseconds(MAINTENANCE_RD_RETRANSMISSION);
+        let ts_rd_retransmission =
+            Utc::now() + Duration::milliseconds(MAINTENANCE_RD_RETRANSMISSION);
         let ts_rd_retransmission = AtomicI64::new(ts_rd_retransmission.timestamp_nanos());
 
         ReactiveGossipRouting {
