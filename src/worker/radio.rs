@@ -13,7 +13,7 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicI64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -518,7 +518,7 @@ impl SimulatedRadio {
     fn deregister_transmitter(
         &self,
         conn: &PgConnection,
-        guard: MutexGuard<()>,
+        _guard: MutexGuard<()>,
     ) -> Result<(), MeshSimError> {
         // let tx = start_tx(&mut conn)?;
         let mut i = 0;

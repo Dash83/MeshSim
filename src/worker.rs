@@ -569,7 +569,7 @@ impl Worker {
                                     continue;
                                 }
 
-                                let res = in_queue_thread_pool.execute(move || {
+                                in_queue_thread_pool.execute(move || {
                                     let ts0 = Utc.timestamp_nanos(hdr.delay);
                                     let perf_in_queued_duration =
                                         Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
