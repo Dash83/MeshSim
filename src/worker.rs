@@ -41,6 +41,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
 use std::str::FromStr;
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::sync::{MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
@@ -60,7 +61,7 @@ pub mod worker_config;
 //const DNS_SERVICE_NAME : &'static str = "meshsim";
 //const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT: u16 = 23456;
-const WORKER_POOL_SIZE: usize = 2;
+const WORKER_POOL_SIZE: usize = 1;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 
 // *****************************
@@ -530,7 +531,10 @@ impl Worker {
             .map(|(rx, tx)| {
                 let prot_handler = Arc::clone(&prot_handler);
                 let logger = self.logger.clone();
-                let thread_pool = threadpool::Builder::new()
+                let in_queue_thread_pool = threadpool::Builder::new()
+                    .num_threads(WORKER_POOL_SIZE)
+                    .build();
+                let out_queue_thread_pool = threadpool::Builder::new()
                     .num_threads(WORKER_POOL_SIZE)
                     .build();
                 let max_queued_jobs = self.packet_queue_size;
@@ -540,18 +544,19 @@ impl Worker {
                         RadioTypes::LongRange => String::from("LoraRadio"),
                         RadioTypes::ShortRange => String::from("WifiRadio"),
                     };
+                    let (resp_tx, responses_pending) = mpsc::channel();
                     info!(logger, "[{}] Listening for messages", &radio_label);
                     loop {
+                        let resp_tx = resp_tx.clone();
                         match rx.read_message() {
                             Some(mut hdr) => {
                                 //Store the timestamp when this message was queued
                                 hdr.delay = Utc::now().timestamp_nanos();
                                 let prot = Arc::clone(&prot_handler);
                                 let r_type = rx.get_radio_range();
-                                let tx_channel = Arc::clone(&tx);
                                 let log = logger.clone();
 
-                                if thread_pool.queued_count() >= max_queued_jobs {
+                                if in_queue_thread_pool.queued_count() >= max_queued_jobs {
                                     let log_data = ();
                                     log_handle_message(
                                         &log,
@@ -564,7 +569,7 @@ impl Worker {
                                     continue;
                                 }
 
-                                thread_pool.execute(move || {
+                                let res = in_queue_thread_pool.execute(move || {
                                     let ts0 = Utc.timestamp_nanos(hdr.delay);
                                     let perf_in_queued_duration =
                                         Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
@@ -577,50 +582,26 @@ impl Worker {
                                     );
                                     //Perf_Recv_Msg_Start
                                     hdr.delay = Utc::now().timestamp_nanos();
-                                    let (response, log_data) =
-                                        match prot.handle_message(hdr, ts0, r_type) {
-                                            Ok(resp) => resp,
-                                            Err(e) => {
-                                                error!(log, "Error handling message:");
-                                                error!(log, "{}", &e);
-                                                if let Some(cause) = e.cause {
-                                                    error!(log, "Cause: {}", cause);
-                                                }
-                                                (None, None)
+                                    // let (response, log_data) =
+                                    let outcome = match prot.handle_message(hdr, ts0, r_type) {
+                                        Ok(resp) => resp,
+                                        Err(e) => {
+                                            error!(log, "Error handling message:");
+                                            error!(log, "{}", &e);
+                                            if let Some(cause) = e.cause {
+                                                error!(log, "Cause: {}", cause);
                                             }
-                                        };
-
-                                    if let Some(mut r) = response {
-                                        //perf_out_queued_start
-                                        r.delay = Utc::now().timestamp_nanos();
-                                        let log_data = log_data.expect("ERROR: Log_Data was empty");
-                                        // let _msg_id = r.get_msg_id().to_string();
-                                        match tx_channel.broadcast(r.clone()) {
-                                            Ok(tx) => {
-                                                if let Some(tx) = tx {
-                                                    /* Log transmission */
-                                                    radio::log_tx(
-                                                        &log,
-                                                        tx,
-                                                        &r.msg_id,
-                                                        MessageStatus::SENT,
-                                                        &r.sender,
-                                                        &r.destination,
-                                                        log_data,
-                                                    );
-                                                }
-                                            }
-                                            Err(e) => {
-                                                error!(log, "Error sending response: {}", e);
-                                                if let Some(cause) = e.cause {
-                                                    error!(log, "Cause: {}", cause);
-                                                }
-                                            }
+                                            (None, None)
                                         }
-                                    }
+                                    };
+
+                                    resp_tx.send(outcome).unwrap();
                                 });
-                                //TODO: Change back to debug when the tuning is complete
-                                info!(logger, "Queued packets: {}", thread_pool.queued_count());
+                                debug!(
+                                    logger,
+                                    "Queued packets: {}",
+                                    in_queue_thread_pool.queued_count()
+                                );
                                 // info!(logger, "Jobs: {}", thread_pool.queued_count());
                                 //                                debug!(
                                 //                                    logger,
@@ -643,6 +624,42 @@ impl Worker {
                                     }
                                 }
                             }
+                        }
+                        let resp = responses_pending.try_recv().ok();
+                        if let Some((response, log_data)) = resp {
+                            let tx_channel = Arc::clone(&tx);
+                            let log = logger.clone();
+
+                            out_queue_thread_pool.execute(move || {
+                                if let Some(mut r) = response {
+                                    //perf_out_queued_start
+                                    r.delay = Utc::now().timestamp_nanos();
+                                    let log_data = log_data.expect("ERROR: Log_Data was empty");
+                                    // let _msg_id = r.get_msg_id().to_string();
+                                    match tx_channel.broadcast(r.clone()) {
+                                        Ok(tx) => {
+                                            if let Some(tx) = tx {
+                                                /* Log transmission */
+                                                radio::log_tx(
+                                                    &log,
+                                                    tx,
+                                                    &r.msg_id,
+                                                    MessageStatus::SENT,
+                                                    &r.sender,
+                                                    &r.destination,
+                                                    log_data,
+                                                );
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!(log, "Error sending response: {}", e);
+                                            if let Some(cause) = e.cause {
+                                                error!(log, "Cause: {}", cause);
+                                            }
+                                        }
+                                    }
+                                }
+                            });
                         }
                     }
                 })

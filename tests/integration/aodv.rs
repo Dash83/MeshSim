@@ -108,7 +108,7 @@ fn aodv_rerr() {
     );
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
     let master_node_num = logging::find_record_by_msg(
-        "End_Test action: Finished. 24 processes terminated.",
+        "End_Test action: Finished. 23 processes terminated.",
         &master_log_records,
     );
     assert!(master_node_num.is_some());

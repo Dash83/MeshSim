@@ -1,4 +1,4 @@
-name = "rgrII_route_discovery_optimization"
+name = "rgrI_route_discovery_optimization"
 #Base case
 #duration = 14000
 #actions = ["Add_Source node21 node43 1 64 8000 1000",
@@ -18,7 +18,7 @@ height = 400.0
 [protocol]
 Protocol = "ReactiveGossip"
 k = 2
-p = 0.5
+p = 0.7
 
 [initial_nodes.node22]
 worker_name = "node22"
