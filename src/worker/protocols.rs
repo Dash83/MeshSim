@@ -94,7 +94,13 @@ pub enum Protocols {
         q: f64,
     },
     /// Ad-hoc On-Demand Distance Vector routing protocol.
-    AODV,
+    AODV {
+        active_route_timeout: i64,
+        net_diameter: usize,
+        node_traversal_time: i64,
+        allowed_hello_loss: usize,
+        rreq_retries: usize,
+    },
 }
 
 impl Default for Protocols {
@@ -438,7 +444,83 @@ impl FromStr for Protocols {
                 };
                 Ok(Protocols::GossipRouting { k, p })
             }
-            "AODV" => Ok(Protocols::AODV),
+            "AODV" => {
+                let mut active_route_timeout: Option<i64> = Default::default();
+                let mut net_diameter: Option<usize> = Default::default();
+                let mut node_traversal_time: Option<i64> = Default::default();
+                let mut allowed_hello_loss: Option<usize> = Default::default();
+                let mut rreq_retries: Option<usize> = Default::default();
+
+                for c in parts[1..].iter() {
+                    let c: Vec<&str> = c.split('=').collect();
+                    match c[0].to_uppercase().as_str() {
+                        "active_route_timeout" => {
+                            let x: i64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid active_route_timeout value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            active_route_timeout = Some(x);
+                        }
+                        "net_diameter" => {
+                            let x: usize = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid net_diameter value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            net_diameter = Some(x);
+                        }
+                        "node_traversal_time" => {
+                            let x: i64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid node_traversal_time value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            node_traversal_time = Some(x);
+                        }
+                        "allowed_hello_loss" => {
+                            let x: usize = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid allowed_hello_loss value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            allowed_hello_loss = Some(x);
+                        }
+                        "rreq_retries" => {
+                            let x: usize = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid rreq_retries value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            rreq_retries = Some(x);
+                        }
+                        _ => { /* Unrecognised option, do nothing */ }
+                    }
+                }
+                let active_route_timeout =
+                    active_route_timeout.unwrap_or(aodv::ACTIVE_ROUTE_TIMEOUT);
+                let net_diameter = net_diameter.unwrap_or(aodv::NET_DIAMETER);
+                let node_traversal_time = node_traversal_time.unwrap_or(aodv::NODE_TRAVERSAL_TIME);
+                let allowed_hello_loss = allowed_hello_loss.unwrap_or(aodv::ALLOWED_HELLO_LOSS);
+                let rreq_retries = rreq_retries.unwrap_or(aodv::RREQ_RETRIES);
+                Ok(Protocols::AODV {
+                    active_route_timeout,
+                    net_diameter,
+                    node_traversal_time,
+                    allowed_hello_loss,
+                    rreq_retries,
+                })
+            }
             _ => {
                 let err_msg = String::from("The specified protocol is not supported.");
                 let error = MeshSimError {
@@ -611,7 +693,13 @@ pub fn build_protocol_resources(
             };
             Ok(resources)
         }
-        Protocols::AODV => {
+        Protocols::AODV {
+            active_route_timeout,
+            net_diameter,
+            node_traversal_time,
+            allowed_hello_loss,
+            rreq_retries,
+        } => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) =
                 short_radio.expect("The AODV protocol requires a short_radio to be provided.");
@@ -619,6 +707,11 @@ pub fn build_protocol_resources(
             let handler: Arc<dyn Protocol> = Arc::new(AODV::new(
                 name,
                 id,
+                active_route_timeout,
+                net_diameter,
+                node_traversal_time,
+                allowed_hello_loss,
+                rreq_retries,
                 Arc::clone(&sr),
                 Arc::new(Mutex::new(rng)),
                 logger,

@@ -1781,7 +1781,7 @@ impl ReactiveGossipRoutingIII {
     ) -> Result<(), MeshSimError> {
         let msg = Messages::Beacon(HelloMessage);
         let log_data = ProtocolMessages::RGRIII(msg.clone());
-        let hdr = MessageHeader::new(me.clone(), String::new(), serialize_message(msg)?);
+        let hdr = MessageHeader::new(me, String::new(), serialize_message(msg)?);
 
         if let Some(tx) = long_radio.broadcast(hdr.clone())? {
             radio::log_tx(

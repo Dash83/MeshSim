@@ -17,7 +17,6 @@ use std::default::Default;
 use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-
 const CONCCURENT_THREADS_PER_FLOW: usize = 1;
 
 // **************************************************
@@ -26,21 +25,21 @@ const CONCCURENT_THREADS_PER_FLOW: usize = 1;
 const MAINTENANCE_RT_MAINTENANCE: i64 = 1000;
 const MAINTENANCE_RD_RETRANSMISSION: i64 = 1000;
 const MAINTENANCE_HELLO_THRESHOLD: i64 = 1000;
-const ACTIVE_ROUTE_TIMEOUT: u64 = 3000; //milliseconds
-const ALLOWED_HELLO_LOSS: usize = 2;
-const _BLACKLIST_TIMEOUT: u64 = RREQ_RETRIES as u64 * NET_TRAVERSAL_TIME; //milliseconds
+pub const ACTIVE_ROUTE_TIMEOUT: i64 = 3000; //milliseconds
+pub const ALLOWED_HELLO_LOSS: usize = 2;
+// const _BLACKLIST_TIMEOUT: u64 = RREQ_RETRIES as u64 * NET_TRAVERSAL_TIME; //milliseconds
 const DELETE_PERIOD: u64 = ALLOWED_HELLO_LOSS as u64 * HELLO_INTERVAL;
 const HELLO_INTERVAL: u64 = 1000; //milliseconds
 const LOCAL_ADD_TTL: usize = 2;
-const NET_DIAMETER: usize = 35;
+pub const NET_DIAMETER: usize = 35;
 // const MIN_REPAIR_TTL
-const MY_ROUTE_TIMEOUT: u32 = 2 * ACTIVE_ROUTE_TIMEOUT as u32; //WTF is this?
-const NODE_TRAVERSAL_TIME: u64 = 40; //milliseconds
-const NET_TRAVERSAL_TIME: u64 = 2 * NODE_TRAVERSAL_TIME * NET_DIAMETER as u64; //milliseconds
-const NEXT_HOP_WAIT: u64 = NODE_TRAVERSAL_TIME * 3 + 10; //milliseconds
-const PATH_DISCOVERY_TIME: u64 = 2 * NET_TRAVERSAL_TIME; //milliseconds
+// const MY_ROUTE_TIMEOUT: u32 = 2 * ACTIVE_ROUTE_TIMEOUT as u32; //Lifetime used for RREPs when responding to an RREQ to the current node
+pub const NODE_TRAVERSAL_TIME: i64 = 40; //milliseconds
+                                         // const NET_TRAVERSAL_TIME: u64 = 2 * NODE_TRAVERSAL_TIME * NET_DIAMETER as u64; //milliseconds
+                                         // const NEXT_HOP_WAIT: u64 = NODE_TRAVERSAL_TIME + 10; //milliseconds
+                                         // const PATH_DISCOVERY_TIME: u64 = 2 * NET_TRAVERSAL_TIME; //milliseconds
 const _RERR_RATELIMITE: usize = 10;
-const RREQ_RETRIES: usize = 2;
+pub const RREQ_RETRIES: usize = 2;
 const _RREQ_RATELIMIT: usize = 10;
 const TIMEOUT_BUFFER: u64 = 2; //in ??
 const _TTL_START: usize = 1;
@@ -48,20 +47,20 @@ const _TTL_INCREMENT: usize = 2;
 const _TTL_THRESHOLD: usize = 7;
 //I'm not actually sure this won't explode, given the precision of the numbers.
 //Better to log the value and monitor it on tests.
-lazy_static! {
-    static ref MAX_REPAIR_TTL: usize = {
-        let net = NET_DIAMETER as u16;
-        let net = f64::from(net);
-        let val = (0.3f64 * net).round();
-        let val = val as u32;
-        val as usize
-    };
-}
-const fn get_ring_traversal_time(ttl: u64) -> u64 {
-    // RING_TRAVERSAL_TIME: u64 = 2 * NODE_TRAVERSAL_TIME * (TTL_VALUE + TIMEOUT_BUFFER);
-    let time: u64 = 2 * NODE_TRAVERSAL_TIME * (ttl + TIMEOUT_BUFFER);
-    time
-}
+// lazy_static! {
+//     static ref MAX_REPAIR_TTL: usize = {
+//         let net = NET_DIAMETER as u16;
+//         let net = f64::from(net);
+//         let val = (0.3f64 * net).round();
+//         let val = val as u32;
+//         val as usize
+//     };
+// }
+// const fn get_ring_traversal_time(ttl: u64) -> u64 {
+//     // RING_TRAVERSAL_TIME: u64 = 2 * NODE_TRAVERSAL_TIME * (TTL_VALUE + TIMEOUT_BUFFER);
+//     let time: u64 = 2 * NODE_TRAVERSAL_TIME * (ttl + TIMEOUT_BUFFER);
+//     time
+// }
 
 // **************************************************
 // ***************** Main struct ********************
@@ -128,12 +127,26 @@ struct PendingRouteEntry {
     route_repair: bool,
     lifetime: DateTime<Utc>,
 }
+#[derive(Debug, Clone, Copy)]
+struct Config {
+    active_route_timeout: i64,
+    net_diameter: usize,
+    node_traversal_time: i64,
+    allowed_hello_loss: usize,
+    rreq_retries: usize,
+    max_repair_ttl: usize,
+    my_route_timeout: i64,
+    path_discovery_time: i64,
+    next_hop_wait: i64,
+    net_traversal_time: i64,
+}
 
 /// Implementation of the Ad-hoc On-Demand Distance Vector routing protocol
 #[derive(Debug)]
 pub struct AODV {
     worker_name: String,
     worker_id: String,
+    config: Config,
     short_radio: Arc<dyn Radio>,
     sequence_number: Arc<AtomicU32>,
     rreq_seq_no: Arc<AtomicU32>,
@@ -284,6 +297,7 @@ impl Protocol for AODV {
             hdr,
             msg,
             ts,
+            self.config,
             self.get_self_peer(),
             route_table,
             rreq_cache,
@@ -368,6 +382,7 @@ impl Protocol for AODV {
             //If one exists, start a new flow with the route
             AODV::start_flow(
                 destination,
+                self.config,
                 Arc::clone(&self.route_table),
                 Arc::clone(&self.data_cache),
                 hdr,
@@ -416,6 +431,7 @@ impl Protocol for AODV {
                     retries,
                     repair,
                     self.get_self_peer(),
+                    self.config,
                     Arc::clone(&self.short_radio),
                     pending_routes,
                     rreq_cache,
@@ -461,6 +477,7 @@ impl Protocol for AODV {
                 Arc::clone(&self.rreq_seq_no),
                 Arc::clone(&self.short_radio),
                 self.get_self_peer(),
+                self.config,
                 &self.logger,
             ) {
                 Ok(_) => {
@@ -483,6 +500,7 @@ impl Protocol for AODV {
             match AODV::hello_msg_maintenance(
                 Arc::clone(&self.route_table),
                 self.get_self_peer(),
+                self.config,
                 Arc::clone(&self.sequence_number),
                 Arc::clone(&self.short_radio),
                 &self.logger,
@@ -512,6 +530,11 @@ impl AODV {
     pub fn new(
         worker_name: String,
         worker_id: String,
+        active_route_timeout: i64,
+        net_diameter: usize,
+        node_traversal_time: i64,
+        allowed_hello_loss: usize,
+        rreq_retries: usize,
         short_radio: Arc<dyn Radio>,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
@@ -528,9 +551,31 @@ impl AODV {
         let ts_last_hello_msg = Utc::now() + Duration::milliseconds(MAINTENANCE_HELLO_THRESHOLD);
         let ts_last_hello_msg = AtomicI64::new(ts_last_hello_msg.timestamp_nanos());
 
+        let net_traversal_time = 2 * node_traversal_time * net_diameter as i64; //milliseconds
+        let max_repair_ttl = (0.3f64 * net_diameter as f64).round() as usize;
+        //Lifetime used for RREPs when responding to an RREQ to the current node
+        let my_route_timeout = 2 * active_route_timeout;
+        let path_discovery_time = 2 * net_traversal_time; //milliseconds
+        let next_hop_wait = node_traversal_time + 10; //milliseconds
+        let net_traversal_time = 2 * node_traversal_time * net_diameter as i64; //milliseconds
+
+        let config = Config {
+            active_route_timeout,
+            net_diameter,
+            node_traversal_time,
+            allowed_hello_loss,
+            rreq_retries,
+            max_repair_ttl,
+            my_route_timeout,
+            path_discovery_time,
+            next_hop_wait,
+            net_traversal_time,
+        };
+
         AODV {
             worker_name,
             worker_id,
+            config,
             short_radio,
             sequence_number: Arc::new(AtomicU32::new(0)),
             rreq_seq_no: Arc::new(AtomicU32::new(starting_rreq_id)),
@@ -551,6 +596,7 @@ impl AODV {
         hdr: MessageHeader,
         msg: Messages,
         ts: DateTime<Utc>,
+        config: Config,
         me: String,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
@@ -563,11 +609,18 @@ impl AODV {
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<Outcome, MeshSimError> {
-        AODV::connectivity_update(&hdr, ts, Arc::clone(&route_table), Arc::clone(&data_cache))?;
+        AODV::connectivity_update(
+            &hdr,
+            ts,
+            config,
+            Arc::clone(&route_table),
+            Arc::clone(&data_cache),
+        )?;
         match msg {
             Messages::DATA(msg) => AODV::process_data_msg(
                 hdr,
                 msg,
+                config,
                 route_table,
                 data_cache,
                 pending_routes,
@@ -575,6 +628,7 @@ impl AODV {
                 rreq_cache,
                 seq_no,
                 rreq_seq_no,
+                config.active_route_timeout,
                 me,
                 short_radio,
                 logger,
@@ -582,6 +636,7 @@ impl AODV {
             Messages::RREQ(msg) => AODV::process_route_request_msg(
                 hdr,
                 msg,
+                config,
                 route_table,
                 rreq_cache,
                 seq_no,
@@ -595,7 +650,9 @@ impl AODV {
                 pending_routes,
                 queued_transmissions,
                 data_cache,
+                config.active_route_timeout,
                 me,
+                config,
                 short_radio,
                 rng,
                 logger,
@@ -615,13 +672,16 @@ impl AODV {
                 // unimplemented!();
             }
             Messages::RREP_ACK => unimplemented!(),
-            Messages::HELLO(msg) => AODV::process_hello_msg(hdr, msg, route_table, me, logger),
+            Messages::HELLO(msg) => {
+                AODV::process_hello_msg(hdr, msg, config, route_table, me, logger)
+            }
         }
     }
 
     fn process_route_request_msg(
         hdr: MessageHeader,
         mut msg: RouteRequestMessage,
+        config: Config,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
         seq_no: Arc<AtomicU32>,
@@ -636,7 +696,7 @@ impl AODV {
             let cache_entry = rr_cache
                 .entry((msg.originator.clone(), msg.rreq_id))
                 .or_insert(Utc.ymd(1970, 1, 1).and_hms_nano(0, 0, 0, 0));
-            let threshold_time = *cache_entry + Duration::milliseconds(PATH_DISCOVERY_TIME as i64);
+            let threshold_time = *cache_entry + Duration::milliseconds(config.path_discovery_time);
             debug!(logger, "Threshold time: {:?}", &threshold_time);
             if threshold_time > Utc::now() {
                 //Duplicate RREQ. Drop.
@@ -668,8 +728,8 @@ impl AODV {
         entry.dest_seq_no = std::cmp::max(entry.dest_seq_no, msg.orig_seq_no);
         entry.flags.insert(RTEFlags::VALID_SEQ_NO); //Should this be done only if the seq_no is updated?
         entry.hop_count = msg.hop_count;
-        let minimal_lifetime = Utc::now() + Duration::milliseconds(2 * NET_TRAVERSAL_TIME as i64)
-            - Duration::milliseconds(2 * entry.hop_count as i64 * NODE_TRAVERSAL_TIME as i64);
+        let minimal_lifetime = Utc::now() + Duration::milliseconds(2 * config.net_traversal_time)
+            - Duration::milliseconds(2 * entry.hop_count as i64 * config.node_traversal_time);
         entry.lifetime = std::cmp::max(entry.lifetime, minimal_lifetime);
 
         // debug!(logger, "Route table entry: {:#?}", entry);
@@ -697,7 +757,7 @@ impl AODV {
                 destination: me.clone(),
                 dest_seq_no: seq_no.load(Ordering::SeqCst),
                 originator: msg.originator.clone(),
-                lifetime: MY_ROUTE_TIMEOUT,
+                lifetime: config.my_route_timeout as u32,
             };
 
             //Tag the response
@@ -807,7 +867,9 @@ impl AODV {
         pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
         queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
+        active_route_timeout: i64,
         me: String,
+        config: Config,
         short_radio: Arc<dyn Radio>,
         _rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
@@ -904,6 +966,7 @@ impl AODV {
                 data_cache,
                 msg.destination,
                 me,
+                config,
                 short_radio,
                 logger,
             );
@@ -935,7 +998,7 @@ impl AODV {
         // the maximum of (existing-lifetime, (current time + ACTIVE_ROUTE_TIMEOUT).
         entry.lifetime = std::cmp::max(
             entry.lifetime,
-            Utc::now() + Duration::milliseconds(ACTIVE_ROUTE_TIMEOUT as i64),
+            Utc::now() + Duration::milliseconds(active_route_timeout),
         );
         // Mark route to originator as active
         entry
@@ -975,7 +1038,7 @@ impl AODV {
         entry.precursors.insert(next_hop_originator.clone());
         entry.lifetime = std::cmp::max(
             entry.lifetime,
-            Utc::now() + Duration::milliseconds(ACTIVE_ROUTE_TIMEOUT as i64),
+            Utc::now() + Duration::milliseconds(active_route_timeout),
         );
 
         //Re-tag message
@@ -1080,6 +1143,7 @@ impl AODV {
     fn process_data_msg(
         hdr: MessageHeader,
         msg: DataMessage,
+        config: Config,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
@@ -1087,6 +1151,7 @@ impl AODV {
         rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
         seq_no: Arc<AtomicU32>,
         rreq_seq_no: Arc<AtomicU32>,
+        active_route_timeout: i64,
         me: String,
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
@@ -1170,7 +1235,7 @@ impl AODV {
 
                     //Build header
                     let hdr = MessageHeader::new(
-                        me.clone(),
+                        me,
                         String::from(""), //Destination should be hdr.sender, but need to check
                         serialize_message(rerr_msg)?,
                     );
@@ -1183,7 +1248,7 @@ impl AODV {
                     //Update the lifetime to the destination
                     entry.lifetime = std::cmp::max(
                         entry.lifetime,
-                        Utc::now() + Duration::milliseconds(ACTIVE_ROUTE_TIMEOUT as i64),
+                        Utc::now() + Duration::milliseconds(active_route_timeout),
                     );
                     let confirmed = entry.next_hop == msg.destination;
                     (entry.next_hop.clone(), entry.dest_seq_no, confirmed)
@@ -1197,6 +1262,7 @@ impl AODV {
                             Arc::clone(&rreq_seq_no),
                             Arc::clone(&seq_no),
                             me.clone(),
+                            config,
                             Arc::clone(&short_radio),
                             Arc::clone(&pending_routes),
                             Arc::clone(&rreq_cache),
@@ -1250,8 +1316,8 @@ impl AODV {
 
                         //Build header
                         let resp_hdr = MessageHeader::new(
-                            me.clone(),
-                            hdr.sender.clone(), //Destination should be hdr.sender, but need to check
+                            me,
+                            hdr.sender, //Destination should be hdr.sender, but need to check
                             serialize_message(rerr_msg)?,
                         );
 
@@ -1288,7 +1354,7 @@ impl AODV {
                 DataCacheEntry {
                     destination: next_hop.clone(),
                     seq_no: dest_seq_no,
-                    ts: Utc::now() + Duration::milliseconds(NEXT_HOP_WAIT as i64),
+                    ts: Utc::now() + Duration::milliseconds(config.next_hop_wait),
                     confirmed,
                 },
             );
@@ -1314,6 +1380,7 @@ impl AODV {
     fn process_hello_msg(
         hdr: MessageHeader,
         msg: RouteResponseMessage,
+        config: Config,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         me: String,
         logger: &Logger,
@@ -1344,8 +1411,8 @@ impl AODV {
         let mut entry = rt
             .entry(hdr.sender.clone())
             .or_insert_with(|| RouteTableEntry::new(&hdr.sender, &me, Some(msg.dest_seq_no)));
-        let lifetime =
-            Utc::now() + Duration::milliseconds(ALLOWED_HELLO_LOSS as i64 * HELLO_INTERVAL as i64);
+        let lifetime = Utc::now()
+            + Duration::milliseconds(config.allowed_hello_loss as i64 * HELLO_INTERVAL as i64);
         entry.flags.insert(RTEFlags::ACTIVE_ROUTE);
         entry.lifetime = std::cmp::max(entry.lifetime, lifetime);
 
@@ -1354,6 +1421,7 @@ impl AODV {
 
     fn start_flow(
         dest: String,
+        config: Config,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         mut hdr: MessageHeader,
@@ -1382,7 +1450,7 @@ impl AODV {
             DataCacheEntry {
                 destination: next_hop,
                 seq_no,
-                ts: Utc::now() + Duration::milliseconds(NEXT_HOP_WAIT as i64),
+                ts: Utc::now() + Duration::milliseconds(config.next_hop_wait),
                 confirmed: false,
             },
         );
@@ -1411,6 +1479,7 @@ impl AODV {
         retries: Option<usize>,
         repair: bool,
         me: String,
+        config: Config,
         short_radio: Arc<dyn Radio>,
         pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
         rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
@@ -1449,7 +1518,7 @@ impl AODV {
             pd.entry(destination)
                 .and_modify(|e| {
                     e.rreq_id = rreq_id;
-                    e.lifetime = Utc::now() + Duration::milliseconds(PATH_DISCOVERY_TIME as i64);
+                    e.lifetime = Utc::now() + Duration::milliseconds(config.path_discovery_time);
                     e.retries = std::cmp::max(e.retries, retries);
                 })
                 .or_insert(PendingRouteEntry {
@@ -1457,7 +1526,7 @@ impl AODV {
                     dest_seq_no,
                     retries,
                     route_repair: repair,
-                    lifetime: Utc::now() + Duration::milliseconds(PATH_DISCOVERY_TIME as i64),
+                    lifetime: Utc::now() + Duration::milliseconds(config.path_discovery_time),
                 });
         }
 
@@ -1508,6 +1577,7 @@ impl AODV {
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         destination: String,
         _me: String,
+        config: Config,
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
@@ -1533,7 +1603,7 @@ impl AODV {
                 let rt = Arc::clone(&route_table);
                 let dc = Arc::clone(&data_cache);
                 thread_pool.execute(move || {
-                    match AODV::start_flow(dest, rt, dc, hdr, log_data, radio, l.clone()) {
+                    match AODV::start_flow(dest, config, rt, dc, hdr, log_data, radio, l.clone()) {
                         Ok(_) => {
                             // All good!
                         }
@@ -1556,6 +1626,7 @@ impl AODV {
         rreq_seq_no: Arc<AtomicU32>,
         seq_no: Arc<AtomicU32>,
         me: String,
+        config: Config,
         short_radio: Arc<dyn Radio>,
         pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
         rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
@@ -1564,7 +1635,7 @@ impl AODV {
         let mut rt = route_table.lock().expect("Failed to lock route table");
         if let Some(entry) = rt.get_mut(destination) {
             let current_hop_count = entry.hop_count as usize;
-            if current_hop_count > *MAX_REPAIR_TTL {
+            if current_hop_count > config.max_repair_ttl {
                 return Ok(false);
             }
 
@@ -1580,9 +1651,10 @@ impl AODV {
                 rreq_seq_no,
                 seq_no.load(Ordering::SeqCst),
                 Some(ttl),
-                Some(RREQ_RETRIES),
+                Some(config.rreq_retries),
                 repair,
                 me,
+                config,
                 short_radio,
                 pending_routes,
                 rreq_cache,
@@ -1625,7 +1697,7 @@ impl AODV {
                 !v.flags.contains(RTEFlags::ACTIVE_ROUTE)
                     && v.lifetime < Utc::now()
                     && &v.next_hop == *k
-                    && v.repairing == false
+                    && !v.repairing
             }) {
                 broken_links.insert(k.clone(), v.dest_seq_no);
             }
@@ -1695,7 +1767,7 @@ impl AODV {
             //Tag the message
             let rerr_msg = Messages::RERR(rerr_msg);
             let log_data = ProtocolMessages::AODV(rerr_msg.clone());
-            let hdr = MessageHeader::new(me.clone(), String::new(), serialize_message(rerr_msg)?);
+            let hdr = MessageHeader::new(me, String::new(), serialize_message(rerr_msg)?);
 
             match short_radio.broadcast(hdr.clone()) {
                 Ok(tx) => {
@@ -1733,6 +1805,7 @@ impl AODV {
         rreq_no: Arc<AtomicU32>,
         short_radio: Arc<dyn Radio>,
         me: String,
+        config: Config,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
         //Has any of the pending routes expired?
@@ -1743,7 +1816,7 @@ impl AODV {
             let mut nr = Vec::new();
             for (dest, entry) in pd.iter_mut() {
                 if entry.lifetime < Utc::now() {
-                    if entry.retries >= RREQ_RETRIES {
+                    if entry.retries >= config.rreq_retries {
                         //retries exceeded
                         info!(
                             logger,
@@ -1813,6 +1886,7 @@ impl AODV {
                 None,
                 repair,
                 me.clone(),
+                config,
                 Arc::clone(&short_radio),
                 Arc::clone(&pending_routes),
                 Arc::clone(&rreq_cache),
@@ -1826,7 +1900,7 @@ impl AODV {
             .expect("Could not lock pending routes table");
         //It's important to re-check retries here, as the broadcast above could fail
         //for RREQs that still have retries available.
-        pd.retain(|_, v| v.retries < RREQ_RETRIES || v.lifetime > Utc::now());
+        pd.retain(|_, v| v.retries < config.rreq_retries || v.lifetime > Utc::now());
 
         Ok(())
     }
@@ -1834,6 +1908,7 @@ impl AODV {
     fn hello_msg_maintenance(
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         me: String,
+        config: Config,
         seq_no: Arc<AtomicU32>,
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
@@ -1859,12 +1934,12 @@ impl AODV {
                 destination: me.clone(),
                 dest_seq_no: seq_no.load(Ordering::SeqCst),
                 originator: String::from("N/A"),
-                lifetime: ALLOWED_HELLO_LOSS as u32 * HELLO_INTERVAL as u32,
+                lifetime: config.allowed_hello_loss as u32 * HELLO_INTERVAL as u32,
             };
             //Tag the message
             let msg = Messages::HELLO(msg);
             let log_data = ProtocolMessages::AODV(msg.clone());
-            let hdr = MessageHeader::new(me.clone(), String::new(), serialize_message(msg)?);
+            let hdr = MessageHeader::new(me, String::new(), serialize_message(msg)?);
 
             match short_radio.broadcast(hdr.clone()) {
                 Ok(tx) => {
@@ -1897,6 +1972,7 @@ impl AODV {
     fn connectivity_update(
         hdr: &MessageHeader,
         ts: DateTime<Utc>,
+        config: Config,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
     ) -> Result<(), MeshSimError> {
@@ -1909,10 +1985,10 @@ impl AODV {
             //Otherwise without the passive acknowledgement those links could be deemed broken.
             let mut dc = data_cache.lock().expect("Could not lock data cache");
             dc.iter_mut()
-                .filter(|(_k, v)| v.destination == hdr.sender && v.confirmed == false)
+                .filter(|(_k, v)| v.destination == hdr.sender && !v.confirmed)
                 .for_each(|(_k, v)| {
                     //If the current message arrived after we logged this data packet, confirm the link.
-                    if v.ts - Duration::milliseconds(NEXT_HOP_WAIT as i64) < ts {
+                    if v.ts - Duration::milliseconds(config.next_hop_wait) < ts {
                         v.confirmed = true
                     }
                 });
@@ -1928,7 +2004,7 @@ impl AODV {
                 .or_insert_with(|| RouteTableEntry::new(&hdr.sender, &hdr.sender, None));
             entry.lifetime = std::cmp::max(
                 entry.lifetime,
-                Utc::now() + Duration::milliseconds(ACTIVE_ROUTE_TIMEOUT as i64),
+                Utc::now() + Duration::milliseconds(config.active_route_timeout),
             );
         }
 

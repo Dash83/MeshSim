@@ -272,7 +272,7 @@ impl Radio for SimulatedRadio {
             out_queued_duration: perf_out_queued_duration,
             contention_duration: perf_contention_duration,
             tx_duration: perf_tx_duration,
-            broadcast_duration: broadcast_duration,
+            broadcast_duration,
         };
 
         // radio::log_tx(
@@ -650,7 +650,7 @@ impl Radio for WifiRadio {
             out_queued_duration: perf_out_queued_duration,
             contention_duration: perf_contention_duration,
             tx_duration: perf_tx_duration,
-            broadcast_duration: broadcast_duration,
+            broadcast_duration,
         };
 
         // radio::log_tx(
