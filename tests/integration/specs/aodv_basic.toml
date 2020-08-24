@@ -6,6 +6,11 @@ width = 200.0
 height = 200.0
 [protocol]
 Protocol = "AODV"
+active_route_timeout = 3000
+net_diameter =  15
+node_traversal_time = 40
+allowed_hello_loss = 2
+rreq_retries = 2
 
 [initial_nodes.node2]
 worker_name = "node2"
