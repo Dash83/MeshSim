@@ -1235,7 +1235,7 @@ impl AODV {
 
                     //Build header
                     let hdr = MessageHeader::new(
-                        me.clone(),
+                        me,
                         String::from(""), //Destination should be hdr.sender, but need to check
                         serialize_message(rerr_msg)?,
                     );
@@ -1316,8 +1316,8 @@ impl AODV {
 
                         //Build header
                         let resp_hdr = MessageHeader::new(
-                            me.clone(),
-                            hdr.sender.clone(), //Destination should be hdr.sender, but need to check
+                            me,
+                            hdr.sender, //Destination should be hdr.sender, but need to check
                             serialize_message(rerr_msg)?,
                         );
 
@@ -1697,7 +1697,7 @@ impl AODV {
                 !v.flags.contains(RTEFlags::ACTIVE_ROUTE)
                     && v.lifetime < Utc::now()
                     && &v.next_hop == *k
-                    && v.repairing == false
+                    && !v.repairing
             }) {
                 broken_links.insert(k.clone(), v.dest_seq_no);
             }
@@ -1767,7 +1767,7 @@ impl AODV {
             //Tag the message
             let rerr_msg = Messages::RERR(rerr_msg);
             let log_data = ProtocolMessages::AODV(rerr_msg.clone());
-            let hdr = MessageHeader::new(me.clone(), String::new(), serialize_message(rerr_msg)?);
+            let hdr = MessageHeader::new(me, String::new(), serialize_message(rerr_msg)?);
 
             match short_radio.broadcast(hdr.clone()) {
                 Ok(tx) => {
@@ -1939,7 +1939,7 @@ impl AODV {
             //Tag the message
             let msg = Messages::HELLO(msg);
             let log_data = ProtocolMessages::AODV(msg.clone());
-            let hdr = MessageHeader::new(me.clone(), String::new(), serialize_message(msg)?);
+            let hdr = MessageHeader::new(me, String::new(), serialize_message(msg)?);
 
             match short_radio.broadcast(hdr.clone()) {
                 Ok(tx) => {
@@ -1985,7 +1985,7 @@ impl AODV {
             //Otherwise without the passive acknowledgement those links could be deemed broken.
             let mut dc = data_cache.lock().expect("Could not lock data cache");
             dc.iter_mut()
-                .filter(|(_k, v)| v.destination == hdr.sender && v.confirmed == false)
+                .filter(|(_k, v)| v.destination == hdr.sender && !v.confirmed)
                 .for_each(|(_k, v)| {
                     //If the current message arrived after we logged this data packet, confirm the link.
                     if v.ts - Duration::milliseconds(config.next_hop_wait) < ts {
