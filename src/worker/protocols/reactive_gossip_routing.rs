@@ -463,7 +463,12 @@ impl ReactiveGossipRouting {
                 &hdr.destination,
                 log_data,
             );
-            info!(logger, "Route discovery initiated"; "route_id"=>&route_id);
+            info!(
+                logger,
+                "Route discovery initiated";
+                "route_id"=>&route_id,
+                "destination"=>&destination,
+            );
         } else {
             warn!(logger, "Unable to broadcast RouteDiscovery message"; "route_id"=>&route_id);
         }

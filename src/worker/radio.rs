@@ -13,7 +13,7 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicI64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -134,7 +134,7 @@ pub struct SimulatedRadio {
     /// Logger for this Radio to use.
     logger: Logger,
     /// Use for syncronising thread operations on the DB
-    transmitting_threads: AtomicU8,
+    transmitting: Arc<Mutex<()>>,
     /// The last time this radio made a transmission
     last_transmission: AtomicI64,
 }
@@ -161,8 +161,11 @@ impl Radio for SimulatedRadio {
         // let msg_id = hdr.get_msg_id().to_string();
 
         //Register this node as an active transmitter if the medium is free
-        match self.register_transmitter(&conn) {
-            Ok(_) => { /* All good */ }
+        let guard = match self.register_transmitter(&conn) {
+            Ok(g) => {
+                /* All good */
+                g
+            }
             Err(e) => {
                 if let MeshSimErrorKind::NetworkContention(m) = e.kind {
                     // let cause = e.cause.unwrap_or(Box::new(String::from()));
@@ -177,11 +180,12 @@ impl Radio for SimulatedRadio {
                         "radio"=>&radio_range,
                         "reason"=>cause_str,
                     );
-                } else {
                     return Ok(None);
+                } else {
+                    return Err(e);
                 }
             }
-        }
+        };
         //Perf measurement. How long the process stuck in medium-contention?
         let perf_start_tx = Utc::now();
         let perf_contention_duration = perf_start_tx.timestamp_nanos() - start_ts.timestamp_nanos();
@@ -261,7 +265,7 @@ impl Radio for SimulatedRadio {
             self.last_transmission()
         );
 
-        self.deregister_transmitter(&conn)?;
+        self.deregister_transmitter(&conn, guard)?;
         let perf_end_tx = Utc::now();
         let perf_tx_duration = perf_end_tx.timestamp_nanos() - perf_start_tx.timestamp_nanos();
         let broadcast_duration = perf_end_tx.timestamp_nanos() - start_ts.timestamp_nanos();
@@ -317,7 +321,7 @@ impl SimulatedRadio {
             mac_layer_base_wait,
             rng,
             logger,
-            transmitting_threads: AtomicU8::new(0),
+            transmitting: Arc::new(Mutex::new(())),
             last_transmission: Default::default(),
         };
         Ok((sr, listener))
@@ -415,29 +419,34 @@ impl SimulatedRadio {
         Ok((sr_address, lr_address))
     }
 
-    fn register_transmitter(&self, conn: &PgConnection) -> Result<(), MeshSimError> {
+    fn register_transmitter(&self, conn: &PgConnection) -> Result<MutexGuard<()>, MeshSimError> {
         // let tx = start_tx(&mut conn)?;
         let mut i = 0;
         // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
         let radio_range: String = self.r_type.into();
 
+        let guard = self
+            .transmitting
+            .lock()
+            .expect("Could not acquire transmitter lock");
+
         //TODO: BUG. If a second thread starts transmission while the first one is trying to register (but has not been able to)
         // it will automatically skip the validation and transmit. Need to add a second flag to mark it as actively transmitting
         while i < self.mac_layer_retries {
-            if self.transmitting_threads.load(Ordering::SeqCst) > 1 {
-                //Another thread is attempting to register this node or has already done it.
-                //No need to perform DB operation
-                info!(
-                    self.logger,
-                    "Node already registered as an active-transmitter";
-                    "ThreadID"=>thread_id
-                );
-                //Increase the count of transmitting threads
-                self.transmitting_threads.fetch_add(1, Ordering::SeqCst);
+            // if self.transmitting.load(Ordering::SeqCst) > 1 {
+            //     //Another thread is attempting to register this node or has already done it.
+            //     //No need to perform DB operation
+            //     info!(
+            //         self.logger,
+            //         "Node already registered as an active-transmitter";
+            //         "ThreadID"=>thread_id
+            //     );
+            //     //Increase the count of transmitting threads
+            //     self.transmitting.fetch_add(1, Ordering::SeqCst);
 
-                return Ok(());
-            }
+            //     return Ok(());
+            // }
 
             match register_active_transmitter_if_free(
                 conn,
@@ -456,9 +465,9 @@ impl SimulatedRadio {
                             "thread"=>&thread_id
                         );
                         //Increase the count of transmitting threads
-                        self.transmitting_threads.fetch_add(1, Ordering::SeqCst);
+                        // self.transmitting.fetch_add(1, Ordering::SeqCst);
 
-                        return Ok(());
+                        return Ok(guard);
                     }
                 }
                 Err(e) => {
@@ -506,22 +515,27 @@ impl SimulatedRadio {
         Err(err)
     }
 
-    fn deregister_transmitter(&self, conn: &PgConnection) -> Result<(), MeshSimError> {
+    fn deregister_transmitter(
+        &self,
+        conn: &PgConnection,
+        _guard: MutexGuard<()>,
+    ) -> Result<(), MeshSimError> {
         // let tx = start_tx(&mut conn)?;
         let mut i = 0;
         // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
-        self.transmitting_threads.fetch_sub(1, Ordering::SeqCst);
+        // self.transmitting.fetch_sub(1, Ordering::SeqCst);
 
         while i < TRANSMITTER_REGISTER_MAX_RETRY {
-            if self.transmitting_threads.load(Ordering::SeqCst) > 0 {
-                //More threads transmitting, so we shouldn't de-register the worker. Leave that to
-                //the last thread. Just descrease the count of active threads.
-                return Ok(());
-            }
+            // if self.transmitting.load(Ordering::SeqCst) > 0 {
+            //     //More threads transmitting, so we shouldn't de-register the worker. Leave that to
+            //     //the last thread. Just descrease the count of active threads.
+            //     return Ok(());
+            // }
             match remove_active_transmitter(conn, &self.worker_name, self.r_type, &self.logger) {
                 Ok(_) => {
                     debug!(self.logger, "Deregistered as a transmitter");
+                    // guard.drop();
                     return Ok(());
                 }
                 Err(e) => {

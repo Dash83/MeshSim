@@ -113,7 +113,7 @@ random_seed = 123
 operation_mode = "Simulated"
 [initial_nodes.node6.position]
 x = 50.0
-y = 200.0
+y = 210.0
 [initial_nodes.node6.destination]
 x = 100.0 #Doesn't matter for this test
 y = 100.0 #Doesn't matter for this test
