@@ -25,21 +25,21 @@ const CONCCURENT_THREADS_PER_FLOW: usize = 1;
 const MAINTENANCE_RT_MAINTENANCE: i64 = 1000;
 const MAINTENANCE_RD_RETRANSMISSION: i64 = 1000;
 const MAINTENANCE_HELLO_THRESHOLD: i64 = 1000;
-pub const ACTIVE_ROUTE_TIMEOUT: i64 = 3000; //milliseconds
-pub const ALLOWED_HELLO_LOSS: usize = 2;
+const ACTIVE_ROUTE_TIMEOUT: i64 = 3000; //milliseconds
+const ALLOWED_HELLO_LOSS: usize = 2;
 // const _BLACKLIST_TIMEOUT: u64 = RREQ_RETRIES as u64 * NET_TRAVERSAL_TIME; //milliseconds
 const DELETE_PERIOD: u64 = ALLOWED_HELLO_LOSS as u64 * HELLO_INTERVAL;
 const HELLO_INTERVAL: u64 = 1000; //milliseconds
 const LOCAL_ADD_TTL: usize = 2;
-pub const NET_DIAMETER: usize = 35;
+const NET_DIAMETER: usize = 35;
 // const MIN_REPAIR_TTL
 // const MY_ROUTE_TIMEOUT: u32 = 2 * ACTIVE_ROUTE_TIMEOUT as u32; //Lifetime used for RREPs when responding to an RREQ to the current node
-pub const NODE_TRAVERSAL_TIME: i64 = 40; //milliseconds
+const NODE_TRAVERSAL_TIME: i64 = 40; //milliseconds
                                          // const NET_TRAVERSAL_TIME: u64 = 2 * NODE_TRAVERSAL_TIME * NET_DIAMETER as u64; //milliseconds
                                          // const NEXT_HOP_WAIT: u64 = NODE_TRAVERSAL_TIME + 10; //milliseconds
                                          // const PATH_DISCOVERY_TIME: u64 = 2 * NET_TRAVERSAL_TIME; //milliseconds
 const _RERR_RATELIMITE: usize = 10;
-pub const RREQ_RETRIES: usize = 2;
+const RREQ_RETRIES: usize = 2;
 const _RREQ_RATELIMIT: usize = 10;
 const TIMEOUT_BUFFER: u64 = 2; //in ??
 const _TTL_START: usize = 1;
@@ -530,11 +530,12 @@ impl AODV {
     pub fn new(
         worker_name: String,
         worker_id: String,
-        active_route_timeout: i64,
-        net_diameter: usize,
-        node_traversal_time: i64,
-        allowed_hello_loss: usize,
-        rreq_retries: usize,
+        active_route_timeout: Option<i64>,
+        net_diameter: Option<usize>,
+        node_traversal_time: Option<i64>,
+        next_hop_wait: Option<i64>,
+        allowed_hello_loss: Option<usize>,
+        rreq_retries: Option<usize>,
         short_radio: Arc<dyn Radio>,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
@@ -551,13 +552,17 @@ impl AODV {
         let ts_last_hello_msg = Utc::now() + Duration::milliseconds(MAINTENANCE_HELLO_THRESHOLD);
         let ts_last_hello_msg = AtomicI64::new(ts_last_hello_msg.timestamp_nanos());
 
+        let active_route_timeout = active_route_timeout.unwrap_or(ACTIVE_ROUTE_TIMEOUT);
+        let net_diameter = net_diameter.unwrap_or(NET_DIAMETER);
+        let node_traversal_time = node_traversal_time.unwrap_or(NODE_TRAVERSAL_TIME);
+        let next_hop_wait = next_hop_wait.unwrap_or(node_traversal_time + 10); //milliseconds
+        let allowed_hello_loss = allowed_hello_loss.unwrap_or(ALLOWED_HELLO_LOSS);
+        let rreq_retries = rreq_retries.unwrap_or(RREQ_RETRIES);
         let net_traversal_time = 2 * node_traversal_time * net_diameter as i64; //milliseconds
         let max_repair_ttl = (0.3f64 * net_diameter as f64).round() as usize;
         //Lifetime used for RREPs when responding to an RREQ to the current node
         let my_route_timeout = 2 * active_route_timeout;
         let path_discovery_time = 2 * net_traversal_time; //milliseconds
-        let next_hop_wait = node_traversal_time + 10; //milliseconds
-        let net_traversal_time = 2 * node_traversal_time * net_diameter as i64; //milliseconds
 
         let config = Config {
             active_route_timeout,

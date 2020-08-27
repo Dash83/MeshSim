@@ -418,9 +418,9 @@ impl ReactiveGossipRoutingII {
     pub fn new(
         worker_name: String,
         worker_id: String,
-        k: usize,
-        p: f64,
-        q: f64,
+        k: Option<usize>,
+        p: Option<f64>,
+        q: Option<f64>,
         short_radio: Arc<dyn Radio>,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
@@ -432,6 +432,11 @@ impl ReactiveGossipRoutingII {
         let data_cache = HashMap::new();
         let pending_destinations = HashMap::new();
         let vicinity_cache = HashMap::new();
+
+        let k = k.unwrap_or(DEFAULT_MIN_HOPS);
+        let p = p.unwrap_or(BASE_GOSSIP_PROB);
+        let q = q.unwrap_or(VICINITY_GOSSIP_PROB);
+
         let ts_data_retransmission =
             Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
         let ts_data_retransmission = AtomicI64::new(ts_data_retransmission.timestamp_nanos());

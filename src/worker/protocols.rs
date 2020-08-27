@@ -71,35 +71,38 @@ pub enum Protocols {
     ///  Adaptive, gossip-based routing protocol
     ReactiveGossip {
         /// Minimum number of hops before applying probabilistic retransmission.
-        k: usize,
+        k: Option<usize>,
         /// Probability of retransmission per node.
-        p: f64,
+        p: Option<f64>,
     },
     /// Improved version of RGR
     ReactiveGossipII {
         /// Minimum number of hops before applying probabilistic retransmission.
-        k: usize,
+        k: Option<usize>,
         /// Base-probability of retransmission per node.
-        p: f64,
+        p: Option<f64>,
         /// Adaptive-probability of retransmission per node.
-        q: f64,
+        q: Option<f64>,
     },
     /// Improved version of RGRII that uses 2 radios
     ReactiveGossipIII {
         /// Minimum number of hops before applying probabilistic retransmission.
-        k: usize,
-        /// Probability of retransmission per node.
-        p: f64,
+        k: Option<usize>,
+        /// Base-probability of retransmission per node.
+        p: Option<f64>,
         /// Adaptive-probability of retransmission per node.
-        q: f64,
+        q: Option<f64>,
+        /// Periodicity for sending beacon messages over the long-radio. In milliseconds.
+        beacon_threshold: Option<i64>,
     },
     /// Ad-hoc On-Demand Distance Vector routing protocol.
     AODV {
-        active_route_timeout: i64,
-        net_diameter: usize,
-        node_traversal_time: i64,
-        allowed_hello_loss: usize,
-        rreq_retries: usize,
+        active_route_timeout: Option<i64>,
+        net_diameter: Option<usize>,
+        node_traversal_time: Option<i64>,
+        allowed_hello_loss: Option<usize>,
+        rreq_retries: Option<usize>,
+        next_hop_wait: Option<i64>,
     },
 }
 
@@ -250,156 +253,134 @@ impl FromStr for Protocols {
         match prot {
             "NAIVEROUTING" => Ok(Protocols::NaiveRouting),
             "REACTIVEGOSSIP" => {
-                // Expected format: ReactiveGossip k=1, p=0.70
-                let (k, p) = {
-                    let mut k = None;
-                    let mut p = None;
-                    for c in parts[1..].iter() {
-                        let c: Vec<&str> = c.split('=').collect();
-                        match c[0].to_uppercase().as_str() {
-                            "K" => {
-                                let x: usize = c[1].parse().map_err(|e| {
-                                    let err_msg = String::from("Invalid K value");
-                                    MeshSimError {
-                                        kind: MeshSimErrorKind::Configuration(err_msg),
-                                        cause: Some(Box::new(e)),
-                                    }
-                                })?;
-                                k = Some(x);
-                            }
-                            "P" => {
-                                let x: f64 = c[1].parse().map_err(|e| {
-                                    let err_msg = String::from("Invalid P value");
-                                    MeshSimError {
-                                        kind: MeshSimErrorKind::Configuration(err_msg),
-                                        cause: Some(Box::new(e)),
-                                    }
-                                })?;
-                                p = Some(x);
-                            }
-                            _ => { /* Unrecognised option, do nothing */ }
+                let mut k = None;
+                let mut p = None;
+                for c in parts[1..].iter() {
+                    let c: Vec<&str> = c.split('=').collect();
+                    match c[0].to_uppercase().as_str() {
+                        "K" => {
+                            let x: usize = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid K value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            k = Some(x);
                         }
+                        "P" => {
+                            let x: f64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid P value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            p = Some(x);
+                        }
+                        _ => { /* Unrecognised option, do nothing */ }
                     }
-                    if k.is_none() {
-                        k = Some(reactive_gossip_routing::DEFAULT_MIN_HOPS);
-                    }
-                    if p.is_none() {
-                        p = Some(reactive_gossip_routing::DEFAULT_GOSSIP_PROB);
-                    }
-                    (k.unwrap(), p.unwrap()) //Guaranted to not panic
-                };
+                }
+
                 Ok(Protocols::ReactiveGossip { k, p })
             }
             "REACTIVEGOSSIPII" => {
-                // Expected format: ReactiveGossipII k=1, p=0.70
-                let (k, p, q) = {
-                    let mut k = None;
-                    let mut p = None;
-                    let mut q = None;
-                    for c in parts[1..].iter() {
-                        let c: Vec<&str> = c.split('=').collect();
-                        match c[0].to_uppercase().as_str() {
-                            "K" => {
-                                let x: usize = c[1].parse().map_err(|e| {
-                                    let err_msg = String::from("Invalid K value");
-                                    MeshSimError {
-                                        kind: MeshSimErrorKind::Configuration(err_msg),
-                                        cause: Some(Box::new(e)),
-                                    }
-                                })?;
-                                k = Some(x);
-                            }
-                            "P" => {
-                                let x: f64 = c[1].parse().map_err(|e| {
-                                    let err_msg = String::from("Invalid P value");
-                                    MeshSimError {
-                                        kind: MeshSimErrorKind::Configuration(err_msg),
-                                        cause: Some(Box::new(e)),
-                                    }
-                                })?;
-                                p = Some(x);
-                            }
-                            "Q" => {
-                                let x: f64 = c[1].parse().map_err(|e| {
-                                    let err_msg = String::from("Invalid Q value");
-                                    MeshSimError {
-                                        kind: MeshSimErrorKind::Configuration(err_msg),
-                                        cause: Some(Box::new(e)),
-                                    }
-                                })?;
-                                q = Some(x);
-                            }
-                            _ => { /* Unrecognised option, do nothing */ }
+                let mut k = None;
+                let mut p = None;
+                let mut q = None;
+                for c in parts[1..].iter() {
+                    let c: Vec<&str> = c.split('=').collect();
+                    match c[0].to_uppercase().as_str() {
+                        "K" => {
+                            let x: usize = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid K value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            k = Some(x);
                         }
+                        "P" => {
+                            let x: f64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid P value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            p = Some(x);
+                        }
+                        "Q" => {
+                            let x: f64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid Q value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            q = Some(x);
+                        }
+                        _ => { /* Unrecognised option, do nothing */ }
                     }
-                    if k.is_none() {
-                        k = Some(reactive_gossip_routing_II::DEFAULT_MIN_HOPS);
-                    }
-                    if p.is_none() {
-                        p = Some(reactive_gossip_routing_II::BASE_GOSSIP_PROB);
-                    }
-                    if q.is_none() {
-                        q = Some(reactive_gossip_routing_II::VICINITY_GOSSIP_PROB);
-                    }
-                    (k.unwrap(), p.unwrap(), q.unwrap()) //Guaranted to not panic
-                };
+                }
+
                 Ok(Protocols::ReactiveGossipII { k, p, q })
             }
             "REACTIVEGOSSIPIII" => {
-                // Expected format: ReactiveGossipIII k=1, p=0.70
-                let (k, p, q) = {
-                    let mut k = None;
-                    let mut p = None;
-                    let mut q = None;
-                    for c in parts[1..].iter() {
-                        let c: Vec<&str> = c.split('=').collect();
+                let mut k = None;
+                let mut p = None;
+                let mut q = None;
+                let mut beacon_threshold = None;
+                for c in parts[1..].iter() {
+                    let c: Vec<&str> = c.split('=').collect();
 
-                        match c[0].to_uppercase().as_str() {
-                            "K" => {
-                                let x: usize = c[1].parse().map_err(|e| {
-                                    let err_msg = String::from("Invalid K value");
-                                    MeshSimError {
-                                        kind: MeshSimErrorKind::Configuration(err_msg),
-                                        cause: Some(Box::new(e)),
-                                    }
-                                })?;
-                                k = Some(x);
-                            }
-                            "P" => {
-                                let x: f64 = c[1].parse().map_err(|e| {
-                                    let err_msg = String::from("Invalid P value");
-                                    MeshSimError {
-                                        kind: MeshSimErrorKind::Configuration(err_msg),
-                                        cause: Some(Box::new(e)),
-                                    }
-                                })?;
-                                p = Some(x);
-                            }
-                            "Q" => {
-                                let x: f64 = c[1].parse().map_err(|e| {
-                                    let err_msg = String::from("Invalid Q value");
-                                    MeshSimError {
-                                        kind: MeshSimErrorKind::Configuration(err_msg),
-                                        cause: Some(Box::new(e)),
-                                    }
-                                })?;
-                                q = Some(x);
-                            }
-                            _ => { /* Unrecognised option, do nothing */ }
+                    match c[0].to_uppercase().as_str() {
+                        "K" => {
+                            let x: usize = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid K value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            k = Some(x);
+                        },
+                        "P" => {
+                            let x: f64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid P value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            p = Some(x);
+                        },
+                        "Q" => {
+                            let x: f64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid Q value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            q = Some(x);
+                        },
+                        "BEACON_THRESHOLD" => {
+                            let x: i64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid beacon_threshold value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            beacon_threshold = Some(x);
                         }
+                        _ => { /* Unrecognised option, do nothing */ }
                     }
-                    if k.is_none() {
-                        k = Some(reactive_gossip_routing_III::DEFAULT_MIN_HOPS);
-                    }
-                    if p.is_none() {
-                        p = Some(reactive_gossip_routing_III::BASE_GOSSIP_PROB);
-                    }
-                    if q.is_none() {
-                        q = Some(reactive_gossip_routing_III::VICINITY_GOSSIP_PROB);
-                    }
-                    (k.unwrap(), p.unwrap(), q.unwrap()) //Guaranted to not panic
-                };
-                Ok(Protocols::ReactiveGossipIII { k, p, q })
+                }
+
+                Ok(Protocols::ReactiveGossipIII { k, p, q, beacon_threshold })
             }
             "LORAWIFIBEACON" => Ok(Protocols::LoraWifiBeacon),
             "GOSSIPROUTING" => {
@@ -450,6 +431,7 @@ impl FromStr for Protocols {
                 let mut node_traversal_time: Option<i64> = Default::default();
                 let mut allowed_hello_loss: Option<usize> = Default::default();
                 let mut rreq_retries: Option<usize> = Default::default();
+                let mut next_hop_wait: Option<i64> = Default::default();
 
                 for c in parts[1..].iter() {
                     let c: Vec<&str> = c.split('=').collect();
@@ -463,7 +445,7 @@ impl FromStr for Protocols {
                                 }
                             })?;
                             active_route_timeout = Some(x);
-                        }
+                        },
                         "net_diameter" => {
                             let x: usize = c[1].parse().map_err(|e| {
                                 let err_msg = String::from("Invalid net_diameter value");
@@ -473,7 +455,7 @@ impl FromStr for Protocols {
                                 }
                             })?;
                             net_diameter = Some(x);
-                        }
+                        },
                         "node_traversal_time" => {
                             let x: i64 = c[1].parse().map_err(|e| {
                                 let err_msg = String::from("Invalid node_traversal_time value");
@@ -483,7 +465,7 @@ impl FromStr for Protocols {
                                 }
                             })?;
                             node_traversal_time = Some(x);
-                        }
+                        },
                         "allowed_hello_loss" => {
                             let x: usize = c[1].parse().map_err(|e| {
                                 let err_msg = String::from("Invalid allowed_hello_loss value");
@@ -493,7 +475,7 @@ impl FromStr for Protocols {
                                 }
                             })?;
                             allowed_hello_loss = Some(x);
-                        }
+                        },
                         "rreq_retries" => {
                             let x: usize = c[1].parse().map_err(|e| {
                                 let err_msg = String::from("Invalid rreq_retries value");
@@ -503,22 +485,28 @@ impl FromStr for Protocols {
                                 }
                             })?;
                             rreq_retries = Some(x);
+                        },
+                        "next_hop_wait" => {
+                            let x: i64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid next_hop_wait value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            next_hop_wait = Some(x);
                         }
                         _ => { /* Unrecognised option, do nothing */ }
                     }
                 }
-                let active_route_timeout =
-                    active_route_timeout.unwrap_or(aodv::ACTIVE_ROUTE_TIMEOUT);
-                let net_diameter = net_diameter.unwrap_or(aodv::NET_DIAMETER);
-                let node_traversal_time = node_traversal_time.unwrap_or(aodv::NODE_TRAVERSAL_TIME);
-                let allowed_hello_loss = allowed_hello_loss.unwrap_or(aodv::ALLOWED_HELLO_LOSS);
-                let rreq_retries = rreq_retries.unwrap_or(aodv::RREQ_RETRIES);
+
                 Ok(Protocols::AODV {
                     active_route_timeout,
                     net_diameter,
                     node_traversal_time,
                     allowed_hello_loss,
                     rreq_retries,
+                    next_hop_wait,
                 })
             }
             _ => {
@@ -666,7 +654,7 @@ pub fn build_protocol_resources(
             };
             Ok(resources)
         }
-        Protocols::ReactiveGossipIII { k, p, q } => {
+        Protocols::ReactiveGossipIII { k, p, q, beacon_threshold } => {
             //Obtain both radios
             let (sr, sr_listener) = short_radio
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");
@@ -679,6 +667,7 @@ pub fn build_protocol_resources(
                 k,
                 p,
                 q,
+                beacon_threshold,
                 Arc::clone(&sr),
                 Arc::clone(&lr),
                 Arc::new(Mutex::new(rng)),
@@ -699,6 +688,7 @@ pub fn build_protocol_resources(
             node_traversal_time,
             allowed_hello_loss,
             rreq_retries,
+            next_hop_wait,
         } => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) =
@@ -710,6 +700,7 @@ pub fn build_protocol_resources(
                 active_route_timeout,
                 net_diameter,
                 node_traversal_time,
+                next_hop_wait,
                 allowed_hello_loss,
                 rreq_retries,
                 Arc::clone(&sr),

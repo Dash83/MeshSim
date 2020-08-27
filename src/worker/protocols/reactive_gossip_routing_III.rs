@@ -23,13 +23,14 @@ pub const DEFAULT_MIN_HOPS: usize = 2;
 pub const BASE_GOSSIP_PROB: f64 = 0.50;
 /// The adaptive gossip probability value
 pub const VICINITY_GOSSIP_PROB: f64 = 0.20;
+/// Periodicity of beacon messages. In milliseconds.
+const MAINTENANCE_BEACON_THRESHOLD: i64 = 3_000;
 const MSG_CACHE_SIZE: usize = 2000;
 const CONCCURENT_THREADS_PER_FLOW: usize = 2;
 const MAINTENANCE_LOOP: u64 = 1_000;
 const MAINTENANCE_DATA_RETRANSMISSION: i64 = 1_000;
 const MAINTENANCE_RD_RETRANSMISSION: i64 = 1_000;
 const MAINTENANCE_VICINITY_CACHE: i64 = 1_000;
-const MAINTENANCE_BEACON_THRESHOLD: i64 = 1_000;
 const VC_FRESHNESS_THRESHOLD: i64 = 5_000;
 const VC_WARM_THRESHOLD: usize = 3;
 const ROUTE_DISCOVERY_THRESHOLD: i64 = 5000;
@@ -49,6 +50,8 @@ pub struct ReactiveGossipRoutingIII {
     p: f64,
     /// Gossip adaptive-probability per node
     q: f64,
+    /// Periodicity for sending beacon messages over the long-radio. In milliseconds.
+    beacon_threshold: i64,
     worker_name: String,
     worker_id: String,
     short_radio: Arc<dyn Radio>,
@@ -448,7 +451,7 @@ impl Protocol for ReactiveGossipRoutingIII {
             ) {
                 Ok(_) => {
                     //Update to the new timestamp for doing this maintenance operation
-                    let new_ts = Utc::now() + Duration::milliseconds(MAINTENANCE_BEACON_THRESHOLD);
+                    let new_ts = Utc::now() + Duration::milliseconds(self.beacon_threshold);
                     self.ts_last_beacon_msg
                         .store(new_ts.timestamp_nanos(), Ordering::SeqCst);
                 }
@@ -471,9 +474,10 @@ impl ReactiveGossipRoutingIII {
     pub fn new(
         worker_name: String,
         worker_id: String,
-        k: usize,
-        p: f64,
-        q: f64,
+        k: Option<usize>,
+        p: Option<f64>,
+        q: Option<f64>,
+        beacon_threshold: Option<i64>,
         short_radio: Arc<dyn Radio>,
         long_radio: Arc<dyn Radio>,
         rng: Arc<Mutex<StdRng>>,
@@ -486,6 +490,12 @@ impl ReactiveGossipRoutingIII {
         let data_cache = HashMap::new();
         let pending_destinations = HashMap::new();
         let vicinity_cache = HashMap::new();
+        
+        let k = k.unwrap_or(DEFAULT_MIN_HOPS);
+        let p = p.unwrap_or(BASE_GOSSIP_PROB);
+        let q = q.unwrap_or(VICINITY_GOSSIP_PROB);
+        let beacon_threshold = beacon_threshold.unwrap_or(MAINTENANCE_BEACON_THRESHOLD);
+        
         let ts_data_retransmission =
             Utc::now() + Duration::milliseconds(MAINTENANCE_DATA_RETRANSMISSION);
         let ts_data_retransmission = AtomicI64::new(ts_data_retransmission.timestamp_nanos());
@@ -495,13 +505,14 @@ impl ReactiveGossipRoutingIII {
         let ts_vinicity_maintenance =
             Utc::now() + Duration::milliseconds(MAINTENANCE_VICINITY_CACHE);
         let ts_vinicity_maintenance = AtomicI64::new(ts_vinicity_maintenance.timestamp_nanos());
-        let ts_last_beacon_msg = Utc::now() + Duration::milliseconds(MAINTENANCE_BEACON_THRESHOLD);
+        let ts_last_beacon_msg = Utc::now() + Duration::milliseconds(beacon_threshold);
         let ts_last_beacon_msg = AtomicI64::new(ts_last_beacon_msg.timestamp_nanos());
 
         ReactiveGossipRoutingIII {
             k,
             p,
             q,
+            beacon_threshold,
             worker_name,
             worker_id,
             short_radio,

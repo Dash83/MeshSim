@@ -383,8 +383,8 @@ impl ReactiveGossipRouting {
     pub fn new(
         worker_name: String,
         worker_id: String,
-        k: usize,
-        p: f64,
+        k: Option<usize>,
+        p: Option<f64>,
         short_radio: Arc<dyn Radio>,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
@@ -402,6 +402,9 @@ impl ReactiveGossipRouting {
             Utc::now() + Duration::milliseconds(MAINTENANCE_RD_RETRANSMISSION);
         let ts_rd_retransmission = AtomicI64::new(ts_rd_retransmission.timestamp_nanos());
 
+        let k = k.unwrap_or(DEFAULT_MIN_HOPS);
+        let p = p.unwrap_or(DEFAULT_GOSSIP_PROB);
+        
         ReactiveGossipRouting {
             k,
             p,
