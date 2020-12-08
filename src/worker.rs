@@ -63,6 +63,7 @@ pub mod worker_config;
 const DNS_SERVICE_PORT: u16 = 23456;
 const WORKER_POOL_SIZE: usize = 1;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
+const STALE_PACKET_THRESHOLD: i64 = 3_000_000_000; //3 seconds in nanoseconds
 
 // *****************************
 // ********** Structs **********
@@ -580,6 +581,17 @@ impl Worker {
                                         "msg_id" => hdr.get_msg_id(),
                                         "duration" => perf_in_queued_duration,
                                     );
+
+                                    if perf_in_queued_duration > STALE_PACKET_THRESHOLD {
+                                        info!(
+                                            &log,
+                                            "Packet dropped";
+                                            "reason" => "packet was stale",
+                                            "msg_id" => hdr.get_msg_id(),
+                                        );
+                                        return;
+                                    }
+                                    
                                     //Perf_Recv_Msg_Start
                                     hdr.delay = Utc::now().timestamp_nanos();
                                     // let (response, log_data) =
