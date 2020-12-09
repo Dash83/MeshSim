@@ -63,7 +63,7 @@ pub mod worker_config;
 const DNS_SERVICE_PORT: u16 = 23456;
 const WORKER_POOL_SIZE: usize = 1;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
-const STALE_PACKET_THRESHOLD: i64 = 3_000_000_000; //3 seconds in nanoseconds
+
 
 // *****************************
 // ********** Structs **********
@@ -492,6 +492,9 @@ pub struct Worker {
     pub protocol: Protocols,
     /// The maximum number of queued packets a worker can have
     packet_queue_size: usize,
+    ///Threshold after which a packet is considered stale and dropped.
+    ///Expressed in milliseconds.
+    stale_packet_threshold: i32,
     /// Logger for this Worker to use.
     logger: Logger,
 }
@@ -539,6 +542,7 @@ impl Worker {
                     .num_threads(WORKER_POOL_SIZE)
                     .build();
                 let max_queued_jobs = self.packet_queue_size;
+                let stale_packet_threshold = self.stale_packet_threshold;
 
                 thread::spawn(move || {
                     let radio_label: String = match rx.get_radio_range() {
@@ -582,12 +586,15 @@ impl Worker {
                                         "duration" => perf_in_queued_duration,
                                     );
 
-                                    if perf_in_queued_duration > STALE_PACKET_THRESHOLD {
-                                        info!(
-                                            &log,
-                                            "Packet dropped";
-                                            "reason" => "packet was stale",
-                                            "msg_id" => hdr.get_msg_id(),
+                                    if perf_in_queued_duration > (stale_packet_threshold * 1000) as i64 {
+                                        warn!(
+                                            log,
+                                            "Not transmitting";
+                                            "destination" => &hdr.destination,
+                                            "source" => &hdr.sender,
+                                            "reason" => "stale packet",
+                                            "status" => MessageStatus::DROPPED,
+                                            "msg_id" => &hdr.msg_id,
                                         );
                                         return;
                                     }
@@ -641,12 +648,43 @@ impl Worker {
                         if let Some((response, log_data)) = resp {
                             let tx_channel = Arc::clone(&tx);
                             let log = logger.clone();
+                            let now = Utc::now();
 
                             out_queue_thread_pool.execute(move || {
                                 if let Some(mut r) = response {
+                                    //Is the packet stale?
+                                    if (Utc::now().timestamp_millis() - now.timestamp_millis()) > 
+                                        stale_packet_threshold as i64 {
+                                        warn!(
+                                            log,
+                                            "Not transmitting";
+                                            "destination" => &r.destination,
+                                            "source" => &r.sender,
+                                            "reason" => "stale packet",
+                                            "status" => MessageStatus::DROPPED,
+                                            "msg_id" => &r.msg_id,
+                                        );
+                                        return;
+                                    }
+
+                                    let log_data = match log_data {
+                                        Some(l) => l,
+                                        None => { 
+                                            warn!(
+                                                log,
+                                                "Log_Data was empty";
+                                                "destination" => &r.destination,
+                                                "source" => &r.sender,
+                                                "status" => MessageStatus::DROPPED,
+                                                "msg_id" => &r.msg_id,
+                                            );
+                                            return;
+                                        },
+                                    };
+
                                     //perf_out_queued_start
                                     r.delay = Utc::now().timestamp_nanos();
-                                    let log_data = log_data.expect("ERROR: Log_Data was empty");
+                                    
                                     // let _msg_id = r.get_msg_id().to_string();
                                     match tx_channel.broadcast(r.clone()) {
                                         Ok(tx) => {

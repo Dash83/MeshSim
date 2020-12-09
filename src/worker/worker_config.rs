@@ -28,6 +28,7 @@ const DEFAULT_LORA_FREQ: LoraFrequencies = LoraFrequencies::Europe;
 const DEFAULT_LORA_TRANS_POWER: u8 = 15;
 const DEFAULT_PACKET_QUEUE_SIZE: usize = 3000; //Max number of queued packets
 const DEFAULT_READ_TIMEOUT: u64 = 100;
+const DEFAULT_STALE_PACKET_THRESHOLD: i32 = 3_000; //3 seconds in nanoseconds
 
 //TODO: Cleanup this struct
 ///Configuration pertaining to a given radio of the worker.
@@ -162,6 +163,10 @@ pub struct WorkerConfig {
     pub term_log: Option<bool>,
     /// The maximum number of queued packets a worker can have
     pub packet_queue_size: Option<usize>,
+    ///Threshold after which a packet is considered stale and dropped.
+    ///Expressed in milliseconds.
+    pub stale_packet_threshold: Option<i32>,
+    ///NOTE: Due to the way serde_toml works, the following fields must be kept last in the structure.
     /// Initial position of the worker
     //    #[serde(flatten)]
     pub position: Position,
@@ -169,7 +174,6 @@ pub struct WorkerConfig {
     pub destination: Option<Position>,
     /// Velocity vector of the worker
     pub velocity: Velocity,
-    ///NOTE: Due to the way serde_toml works, the following fields must be kept last in the structure.
     /// The protocol that this Worker should run for this configuration.
     pub protocol: Option<Protocols>,
     /// This is because they are interpreted as TOML tables, and those are always placed at the end of structures.
@@ -191,6 +195,7 @@ impl WorkerConfig {
             accept_commands: None,
             term_log: None,
             packet_queue_size: Some(DEFAULT_PACKET_QUEUE_SIZE),
+            stale_packet_threshold: Some(DEFAULT_STALE_PACKET_THRESHOLD),
             protocol: Some(Protocols::NaiveRouting),
             radio_short: None,
             radio_long: None,
@@ -279,6 +284,7 @@ impl WorkerConfig {
             id,
             protocol,
             packet_queue_size: self.packet_queue_size.unwrap_or(DEFAULT_PACKET_QUEUE_SIZE),
+            stale_packet_threshold: self.stale_packet_threshold.unwrap_or(DEFAULT_STALE_PACKET_THRESHOLD),
             logger,
         };
         Ok(w)
@@ -342,6 +348,7 @@ mod tests {
             accept_commands: None, \
             term_log: None, \
             packet_queue_size: Some(3000), \
+            stale_packet_threshold: Some(3000), \
             position: Position { x: 0.0, y: 0.0 }, \
             destination: None, \
             velocity: Velocity { x: 0.0, y: 0.0 }, \
@@ -398,6 +405,7 @@ mod tests {
         random_seed = 0\n\
         operation_mode = \"Simulated\"\n\
         packet_queue_size = 3000\n\
+        stale_packet_threshold = 3000\n\
         \n[position]\n\
         x = 0.0\n\
         y = 0.0\n\
