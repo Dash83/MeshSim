@@ -7,6 +7,7 @@ use crate::{MeshSimError, MeshSimErrorKind};
 use chrono::Utc;
 use diesel::pg::PgConnection;
 use pnet_datalink as datalink;
+use rand::prelude::*;
 
 use slog::{Logger, KV};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
@@ -27,13 +28,12 @@ use sx1276;
 
 const SHORT_RANGE_DIR: &str = "SHORT";
 const LONG_RANGE_DIR: &str = "LONG";
-const DELAY_PER_NODE: i64 = 50; //µs
-const MAX_DELAY: i64 = DELAY_PER_NODE * 10; //µs
+// const DELAY_PER_NODE: i64 = 50; //µs
+const MAX_DELAY_PEERS: i64 = 10; //Maximum number of peers considered when calculating the broadcast delay
 pub const DEFAULT_TRANSMISSION_MAX_RETRY: usize = 8;
-const TRANSMISSION_EXP_CAP: u32 = 9; //no more than 128ms
+const TRANSMISSION_EXP_CAP: u32 = 10;
 const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
-pub const DEFAULT_TRANSMISSION_WAIT_BASE: u64 = 32; //µs
-                                                    // const DB_CONTENTION_SLEEP: u64 = 100; //ms What was this for?
+pub const DEFAULT_TRANSMISSION_WAIT_BASE: u64 = 16; //µs
 
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE: usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
@@ -137,6 +137,8 @@ pub struct SimulatedRadio {
     transmitting: Arc<Mutex<()>>,
     /// The last time this radio made a transmission
     last_transmission: AtomicI64,
+    ///Maximum delay per node in a broadcast.
+    max_delay_per_node: i64,
 }
 
 impl Radio for SimulatedRadio {
@@ -153,10 +155,28 @@ impl Radio for SimulatedRadio {
         let start_ts = Utc::now();
         debug!(&self.logger, "out_queued_start: {}", hdr.delay);
         let perf_out_queued_duration = start_ts.timestamp_nanos() - hdr.delay;
-        // let env_file = format!("{}{}.env", &self.work_dir, std::path::MAIN_SEPARATOR);
-        let conn = get_db_connection(&self.logger)?;
         let radio_range: String = self.r_type.into();
         let thread_id = format!("{:?}", thread::current().id());
+
+        if hdr.ttl <= 0 {
+            //TTL expired for this packet
+            info!(
+                &self.logger,
+                "Not transmitting";
+                "thread"=>&thread_id,
+                "radio"=>&radio_range,
+                "destination" => &hdr.destination,
+                "source" => &hdr.sender,
+                "reason"=>"TTL depleted",
+                "status" => MessageStatus::DROPPED,
+                "msg_id" => &hdr.msg_id,
+            );
+            return Ok(None)
+        }
+
+        // let env_file = format!("{}{}.env", &self.work_dir, std::path::MAIN_SEPARATOR);
+        let conn = get_db_connection(&self.logger)?;
+
 
         // let msg_id = hdr.get_msg_id().to_string();
 
@@ -204,7 +224,7 @@ impl Radio for SimulatedRadio {
 
         let socket = new_socket()?;
         let mut acc_delay: i64 = 0;
-        let max_delay = std::cmp::min(MAX_DELAY, peers.len() as i64 * DELAY_PER_NODE);
+        let max_delay = std::cmp::min(MAX_DELAY_PEERS, peers.len() as i64) * self.max_delay_per_node;
         let delay_per_node = max_delay / std::cmp::max(1, peers.len()) as i64;
         for p in peers.into_iter() {
             let mut msg = hdr.clone();
@@ -303,6 +323,7 @@ impl SimulatedRadio {
         range: f64,
         mac_layer_retries: usize,
         mac_layer_base_wait: u64,
+        max_delay_per_node: i64,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
     ) -> Result<(SimulatedRadio, Box<dyn Listener>), MeshSimError> {
@@ -323,6 +344,7 @@ impl SimulatedRadio {
             logger,
             transmitting: Arc::new(Mutex::new(())),
             last_transmission: Default::default(),
+            max_delay_per_node,
         };
         Ok((sr, listener))
     }
@@ -426,27 +448,14 @@ impl SimulatedRadio {
         let thread_id = format!("{:?}", thread::current().id());
         let radio_range: String = self.r_type.into();
 
+        //Only one thread can transmit simultaneously, as in real life, the NIC can broadcast more 
+        //than one signal concurrently.
         let guard = self
             .transmitting
             .lock()
             .expect("Could not acquire transmitter lock");
 
-        //TODO: BUG. If a second thread starts transmission while the first one is trying to register (but has not been able to)
-        // it will automatically skip the validation and transmit. Need to add a second flag to mark it as actively transmitting
         while i < self.mac_layer_retries {
-            // if self.transmitting.load(Ordering::SeqCst) > 1 {
-            //     //Another thread is attempting to register this node or has already done it.
-            //     //No need to perform DB operation
-            //     info!(
-            //         self.logger,
-            //         "Node already registered as an active-transmitter";
-            //         "ThreadID"=>thread_id
-            //     );
-            //     //Increase the count of transmitting threads
-            //     self.transmitting.fetch_add(1, Ordering::SeqCst);
-
-            //     return Ok(());
-            // }
 
             match register_active_transmitter_if_free(
                 conn,
@@ -492,14 +501,6 @@ impl SimulatedRadio {
             );
             std::thread::sleep(sleep_time);
         }
-
-        // info!(
-        //     &self.logger,
-        //     "Aborting transmission";
-        //     "thread"=>&thread_id,
-        //     "radio"=>&radio_range,
-        //     "reason"=>"TRANSMISSION_MAX_RETRY reached",
-        // );
 
         let err_msg = String::from("Aborting transmission");
         let err_cause = String::from("TRANSMISSION_MAX_RETRY reached");
@@ -568,8 +569,10 @@ impl SimulatedRadio {
         //CSMA-CA algorithm
         // let mut rng = self.rng.lock().expect("Could not lock RNG");
         // let r = rng.next_u64() % 2u64.pow(i);
+        let mut rng = rand::thread_rng();
+        let x = (rng.next_u64() % 5u64) + 1;
         let r = 2u64.pow(std::cmp::min(i, TRANSMISSION_EXP_CAP));
-        Duration::from_micros(self.mac_layer_base_wait * r)
+        Duration::from_micros(self.mac_layer_base_wait * x * r)
     }
 }
 
