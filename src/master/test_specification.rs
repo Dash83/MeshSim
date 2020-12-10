@@ -43,6 +43,9 @@ pub struct TestSpec {
     /// Collection of available worker configurations that the master may start at any time during
     /// the test.
     pub available_nodes: HashMap<String, WorkerConfig>,
+    /// Table used for storing any additional key-value pairs.
+    /// Initially added to keep track of the grep patterns used for data analysis when running experiments.
+    pub metadata: HashMap<String, String>
 }
 
 impl TestSpec {
@@ -96,6 +99,7 @@ impl TestSpec {
             protocol: Default::default(),
             initial_nodes: HashMap::new(),
             available_nodes: HashMap::new(),
+            metadata: HashMap::new(),
         }
     }
 }

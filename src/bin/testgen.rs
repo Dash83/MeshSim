@@ -166,17 +166,6 @@ enum Errors {
 }
 
 impl error::Error for Errors {
-    // fn description(&self) -> &str {
-    //     match *self {
-    //         // CLIError::SetLogger(ref err) => err.description(),
-    //         // CLIError::IO(ref err) => err.description(),
-    //         // CLIError::Master(ref err) => err.description(),
-    //         Errors::TestParsing(ref err_str) => err_str,
-    //         Errors::IO(ref err) => err.description(),
-    //         Errors::Serialization(ref err) => err.description(),
-    //     }
-    // }
-
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             // CLIError::SetLogger(ref err) => Some(err),
@@ -192,9 +181,6 @@ impl error::Error for Errors {
 impl fmt::Display for Errors {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            // CLIError::SetLogger(ref err) => write!(f, "SetLogger error: {}", err),
-            // CLIError::IO(ref err) => write!(f, "IO error: {}", err),
-            // CLIError::Master(ref err) => write!(f, "Error in Master layer: {}", err),
             Errors::TestParsing(ref err_str) => {
                 write!(f, "Error creating test specification: {}", err_str)
             }
@@ -295,6 +281,8 @@ fn command_finish(spec: &mut TestSpec, data: &TestBasics) -> Result<bool, Errors
         }
     };
     spec.protocol = data.protocol;
+    //Add the data analysis patterns for this protocol to the metadata section
+    spec.metadata.extend(spec.protocol.get_data_analysis_patterns());
 
     p.push(file_name);
     //let canon = p.canonicalize().expect("Invalid file path");

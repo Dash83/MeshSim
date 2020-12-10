@@ -17,6 +17,7 @@ use reactive_gossip_routing_III::ReactiveGossipRoutingIII;
 use slog::{Logger, Record, Serializer, KV};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 
 pub mod aodv;
 pub mod gossip_routing;
@@ -109,6 +110,92 @@ pub enum Protocols {
 impl Default for Protocols {
     fn default() -> Self {
         Protocols::NaiveRouting
+    }
+}
+
+impl Protocols {
+    pub fn get_data_analysis_patterns(&self) -> HashMap<String, String> {
+        match *self {
+            Protocols::LoraWifiBeacon => { HashMap::new() },
+            Protocols::NaiveRouting => { 
+                let mut data = HashMap::new();
+                data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
+                data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
+                data.insert("RD_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("RE_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("RT_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("MAINTENANCE_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("ROUTE_BREAK_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("RD_FAIL_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data
+            },
+            Protocols::GossipRouting{p: _, k: _} => { 
+                let mut data = HashMap::new();
+                data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
+                data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
+                data.insert("RD_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("RE_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("RT_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("MAINTENANCE_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("ROUTE_BREAK_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("RD_FAIL_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data
+            },
+            Protocols::AODV { 
+                active_route_timeout: _, 
+                net_diameter: _, 
+                node_traversal_time: _, 
+                allowed_hello_loss: _, 
+                rreq_retries: _, 
+                next_hop_wait: _ } => {
+                    let mut data = HashMap::new();
+                    data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
+                    data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
+                    data.insert("RD_PATTERN".into(), "SENT.*RREQ".into());
+                    data.insert("RE_PATTERN".into(), "SENT.*RREP".into());
+                    data.insert("RT_PATTERN".into(), "SENT.*RERR".into());
+                    data.insert("MAINTENANCE_PATTERN".into(), "SENT.*HELLO".into());
+                    data.insert("ROUTE_BREAK_PATTERN".into(), "BROKEN_LINK detected".into());
+                    data.insert("RD_FAIL_PATTERN".into(), "RREQ retries exceeded".into());
+                    data                    
+            }
+            Protocols::ReactiveGossip{p: _, k: _} => { 
+                let mut data = HashMap::new();
+                data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
+                data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
+                data.insert("RD_PATTERN".into(), "SENT.*ROUTE_DISCOVERY".into());
+                data.insert("RE_PATTERN".into(), "SENT.*ROUTE_ESTABLISH".into());
+                data.insert("RT_PATTERN".into(), "SENT.*ROUTE_TEARDOWN".into());
+                data.insert("MAINTENANCE_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("ROUTE_BREAK_PATTERN".into(), "Route Teardown initiated".into());
+                data.insert("RD_FAIL_PATTERN".into(), "ROUTE_DISCOVERY retries exceeded".into());
+                data
+            },
+            Protocols::ReactiveGossipII{p: _, k: _, q: _} => { 
+                let mut data = HashMap::new();
+                data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
+                data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
+                data.insert("RD_PATTERN".into(), "SENT.*ROUTE_DISCOVERY".into());
+                data.insert("RE_PATTERN".into(), "SENT.*ROUTE_ESTABLISH".into());
+                data.insert("RT_PATTERN".into(), "SENT.*ROUTE_TEARDOWN".into());
+                data.insert("MAINTENANCE_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
+                data.insert("ROUTE_BREAK_PATTERN".into(), "Route Teardown initiated".into());
+                data.insert("RD_FAIL_PATTERN".into(), "ROUTE_DISCOVERY retries exceeded".into());
+                data
+            },
+            Protocols::ReactiveGossipIII{p: _, k: _, q: _, beacon_threshold: _} => { 
+                let mut data = HashMap::new();
+                data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
+                data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
+                data.insert("RD_PATTERN".into(), "SENT.*ROUTE_DISCOVERY".into());
+                data.insert("RE_PATTERN".into(), "SENT.*ROUTE_ESTABLISH".into());
+                data.insert("RT_PATTERN".into(), "SENT.*ROUTE_TEARDOWN".into());
+                data.insert("MAINTENANCE_PATTERN".into(), "SENT.*BEACON".into());
+                data.insert("ROUTE_BREAK_PATTERN".into(), "Route Teardown initiated".into());
+                data.insert("RD_FAIL_PATTERN".into(), "ROUTE_DISCOVERY retries exceeded".into());
+                data
+            },
+        }
     }
 }
 

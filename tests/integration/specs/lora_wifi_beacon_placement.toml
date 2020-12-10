@@ -567,3 +567,5 @@ interface_name = "wlan1"
 range = 38.0
 
 [available_nodes]
+
+[metadata]
