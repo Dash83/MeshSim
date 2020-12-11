@@ -219,15 +219,10 @@ impl error::Error for MasterError {
 
 impl Master {
     /// Constructor for the struct.
-    pub fn new(work_dir: String, log_file: String, logger: Logger) -> Result<Master, MeshSimError> {
+    pub fn new(work_dir: String, log_file: String, db_name: String, logger: Logger) -> Result<Master, MeshSimError> {
         let workers = Arc::new(Mutex::new(HashMap::new()));
         let wb = String::from("./worker_cli");
         let an = HashMap::new();
-        let parts: Vec<&str> = work_dir
-            .as_str()
-            .rsplit(std::path::MAIN_SEPARATOR)
-            .collect();
-        let db_name = parts[0].to_string();
         let env_file = create_db_objects(&work_dir, &db_name, &logger)?;
 
         debug!(&logger, "Using connection file: {}", &env_file);

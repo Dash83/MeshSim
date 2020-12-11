@@ -19,6 +19,7 @@ const ARG_TEST_FILE: &str = "test_file";
 const ARG_WORKER_PATH: &str = "worker_path";
 const ARG_TERMINAL_LOG: &str = "term_log";
 const ARG_SLEEP_TIME: &str = "sleep_time";
+const ARG_DB_NAME: &str = "database_name";
 
 const ERROR_LOG_INITIALIZATION: i32 = 1;
 const ERROR_EXECUTION_FAILURE: i32 = 2;
@@ -151,7 +152,19 @@ fn init(matches: &ArgMatches) -> Result<Master, MeshSimError> {
             cause: Some(Box::new(e)),
         }
     })?;
-    let mut master = Master::new(work_dir, log_file, logger)?;
+
+    //If no DB name is passed, take the work directory name as the db name.
+    let db_name = matches
+        .value_of(ARG_DB_NAME)
+        .map(|x| x.into())
+        .unwrap_or_else(|| { 
+            let parts: Vec<&str> = work_dir
+            .as_str()
+            .rsplit(std::path::MAIN_SEPARATOR)
+            .collect();
+            parts[0].to_string()
+        });
+    let mut master = Master::new(work_dir, log_file, db_name, logger)?;
 
     //What else was passed to the master?
     master.worker_binary = match matches.value_of(ARG_WORKER_PATH) {
@@ -204,6 +217,14 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                 .help("Override the sleep time of workers specified in the test file")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name(ARG_DB_NAME)
+                .short("name")
+                .long("db_name")
+                .value_name("NAME")
+                .help("Name for the database that will be created for running the test spec passed")
+                .takes_value(true),
+        )        
         .get_matches()
 }
 
