@@ -39,6 +39,7 @@ pub struct SimulatedListener {
 impl Listener for SimulatedListener {
     fn read_message(&self) -> Option<MessageHeader> {
         let mut buffer = [0; MAX_UDP_PAYLOAD_SIZE + 1];
+        let radio_range : String = self.r_type.into();
 
         match self.socket.recv_from(&mut buffer) {
             Ok((bytes_read, _peer_addr)) => {
@@ -69,6 +70,7 @@ impl Listener for SimulatedListener {
                                 "read_from_network";
                                 "msg_id" => m.get_msg_id(),
                                 "duration" => dur,
+                                "radio" => &radio_range,
                             );
 
                             Some(m)

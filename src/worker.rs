@@ -553,6 +553,8 @@ impl Worker {
                     info!(logger, "[{}] Listening for messages", &radio_label);
                     loop {
                         let resp_tx = resp_tx.clone();
+                        let radio_label = radio_label.clone();
+                        
                         match rx.read_message() {
                             Some(mut hdr) => {
                                 //Store the timestamp when this message was queued
@@ -584,6 +586,7 @@ impl Worker {
                                         "event" => "in_queued",
                                         "msg_id" => hdr.get_msg_id(),
                                         "duration" => perf_in_queued_duration,
+                                        "radio" => &radio_label,
                                     );
 
                                     if perf_in_queued_duration > (stale_packet_threshold * 1000) as i64 {
