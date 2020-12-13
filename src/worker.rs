@@ -545,10 +545,7 @@ impl Worker {
                 let stale_packet_threshold = self.stale_packet_threshold;
 
                 thread::spawn(move || {
-                    let radio_label: String = match rx.get_radio_range() {
-                        RadioTypes::LongRange => String::from("LoraRadio"),
-                        RadioTypes::ShortRange => String::from("WifiRadio"),
-                    };
+                    let radio_label: String = rx.get_radio_range().into();
                     let (resp_tx, responses_pending) = mpsc::channel();
                     info!(logger, "[{}] Listening for messages", &radio_label);
                     loop {
