@@ -4,7 +4,7 @@ actions = ["ping node7 node25 3000 "]
 width = 300.0
 height = 300.0
 [protocol]
-Protocol = "ReactiveGossip"
+Protocol = "RGR"
 k = 1
 p = 0.7
 

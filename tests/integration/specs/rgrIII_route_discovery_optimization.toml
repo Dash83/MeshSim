@@ -16,7 +16,7 @@ actions = ["Add_Source node21 node43 1 64 8000 1000",
 width = 400.0
 height = 400.0
 [protocol]
-Protocol = "ReactiveGossipIII"
+Protocol = "RGRIII"
 k = 2
 p = 0.5
 q = 0.2

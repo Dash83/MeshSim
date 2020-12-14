@@ -8,7 +8,7 @@ width = 400
 height = 400
 actions = ["Ping node1 node3 1500"]
 [protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node1]
     worker_name = "node1"
@@ -22,7 +22,7 @@ Protocol = "NaiveRouting"
         x = 0.0
         y = 0.0
     [initial_nodes.node1.protocol]
-            Protocol = "NaiveRouting"
+            Protocol = "Flooding"
     [initial_nodes.node1.radio_short]
         reliability = 1.0
         delay = 0
@@ -40,7 +40,7 @@ Protocol = "NaiveRouting"
         x = 0.0
         y = 0.0
     [initial_nodes.node2.protocol]
-            Protocol = "NaiveRouting"
+            Protocol = "Flooding"
     [initial_nodes.node2.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode
@@ -58,7 +58,7 @@ Protocol = "NaiveRouting"
         x = 0.0
         y = 0.0
     [initial_nodes.node3.protocol]
-            Protocol = "NaiveRouting"
+            Protocol = "Flooding"
     [initial_nodes.node3.radio_short] #Short-range radio
         reliability = 1 #Not used in device_mode
         delay = 0 #Not used in device_mode

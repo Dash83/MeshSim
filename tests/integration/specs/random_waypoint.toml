@@ -7,7 +7,7 @@ height = 200.0
 Model = "RandomWaypoint"
 pause_time = 10
 [protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node5]
 worker_name = "node5"
@@ -15,7 +15,7 @@ work_dir = "/tmp/random_waypoint_test702227155"
 random_seed = 1218975512
 operation_mode = "Simulated"
 [initial_nodes.node5.protocol]
-    Protocol = "NaiveRouting"
+    Protocol = "Flooding"
 [initial_nodes.node5.position]
     x = 23.193072053280204
     y = 167.65950690522308
@@ -40,7 +40,7 @@ work_dir = "/tmp/random_waypoint_test702227155"
 random_seed = 3056050512
 operation_mode = "Simulated"
 [initial_nodes.node4.protocol]
-        Protocol = "NaiveRouting"
+        Protocol = "Flooding"
 [initial_nodes.node4.position]
     x = 70.6135154143138
     y = 5.568666745198403
@@ -65,7 +65,7 @@ work_dir = "/tmp/random_waypoint_test702227155"
 random_seed = 1679700806
 operation_mode = "Simulated"
 [initial_nodes.node1.protocol]
-        Protocol = "NaiveRouting"
+        Protocol = "Flooding"
 [initial_nodes.node1.position]
     x = 90.25481402667567
     y = 142.35026995113373
@@ -90,7 +90,7 @@ work_dir = "/tmp/random_waypoint_test702227155"
 random_seed = 2053388715
 operation_mode = "Simulated"
 [initial_nodes.node2.protocol]
-        Protocol = "NaiveRouting"
+        Protocol = "Flooding"
 [initial_nodes.node2.position]
     x = 61.988841002229435
     y = 191.78870425578677
@@ -115,7 +115,7 @@ work_dir = "/tmp/random_waypoint_test702227155"
 random_seed = 2010235849
 operation_mode = "Simulated"
 [initial_nodes.node3.protocol]
-        Protocol = "NaiveRouting"
+        Protocol = "Flooding"
 [initial_nodes.node3.position]
     x = 35.0
     y = 150.0

@@ -61,23 +61,23 @@ pub enum Protocols {
     /// Test protocol for Lora-Wifi integration
     LoraWifiBeacon,
     /// Flooding protocol
-    NaiveRouting,
+    Flooding,
     /// Gossip-based flooding protocol
-    GossipRouting {
+    Gossip {
         /// Minimum number of hops before applying probabilistic retransmission.
         k: usize,
         /// Probability of retransmission per node.
         p: f64,
     },
     ///  Adaptive, gossip-based routing protocol
-    ReactiveGossip {
+    RGR {
         /// Minimum number of hops before applying probabilistic retransmission.
         k: Option<usize>,
         /// Probability of retransmission per node.
         p: Option<f64>,
     },
     /// Improved version of RGR
-    ReactiveGossipII {
+    RGRII {
         /// Minimum number of hops before applying probabilistic retransmission.
         k: Option<usize>,
         /// Base-probability of retransmission per node.
@@ -86,7 +86,7 @@ pub enum Protocols {
         q: Option<f64>,
     },
     /// Improved version of RGRII that uses 2 radios
-    ReactiveGossipIII {
+    RGRIII {
         /// Minimum number of hops before applying probabilistic retransmission.
         k: Option<usize>,
         /// Base-probability of retransmission per node.
@@ -109,7 +109,7 @@ pub enum Protocols {
 
 impl Default for Protocols {
     fn default() -> Self {
-        Protocols::NaiveRouting
+        Protocols::Flooding
     }
 }
 
@@ -117,7 +117,7 @@ impl Protocols {
     pub fn get_data_analysis_patterns(&self) -> HashMap<String, String> {
         match *self {
             Protocols::LoraWifiBeacon => { HashMap::new() },
-            Protocols::NaiveRouting => { 
+            Protocols::Flooding => { 
                 let mut data = HashMap::new();
                 data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
                 data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
@@ -129,7 +129,7 @@ impl Protocols {
                 data.insert("RD_FAIL_PATTERN".into(), "SOMETHINGTHATWILLNEVERMATCH".into());
                 data
             },
-            Protocols::GossipRouting{p: _, k: _} => { 
+            Protocols::Gossip{p: _, k: _} => { 
                 let mut data = HashMap::new();
                 data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
                 data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
@@ -159,7 +159,7 @@ impl Protocols {
                     data.insert("RD_FAIL_PATTERN".into(), "RREQ retries exceeded".into());
                     data                    
             }
-            Protocols::ReactiveGossip{p: _, k: _} => { 
+            Protocols::RGR{p: _, k: _} => { 
                 let mut data = HashMap::new();
                 data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
                 data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
@@ -171,7 +171,7 @@ impl Protocols {
                 data.insert("RD_FAIL_PATTERN".into(), "ROUTE_DISCOVERY retries exceeded".into());
                 data
             },
-            Protocols::ReactiveGossipII{p: _, k: _, q: _} => { 
+            Protocols::RGRII{p: _, k: _, q: _} => { 
                 let mut data = HashMap::new();
                 data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
                 data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
@@ -183,7 +183,7 @@ impl Protocols {
                 data.insert("RD_FAIL_PATTERN".into(), "ROUTE_DISCOVERY retries exceeded".into());
                 data
             },
-            Protocols::ReactiveGossipIII{p: _, k: _, q: _, beacon_threshold: _} => { 
+            Protocols::RGRIII{p: _, k: _, q: _, beacon_threshold: _} => { 
                 let mut data = HashMap::new();
                 data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
                 data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
@@ -338,8 +338,8 @@ impl FromStr for Protocols {
         assert!(!parts.is_empty());
         let prot = parts[0];
         match prot {
-            "NAIVEROUTING" => Ok(Protocols::NaiveRouting),
-            "REACTIVEGOSSIP" => {
+            "FLOODING" => Ok(Protocols::Flooding),
+            "RGR" => {
                 let mut k = None;
                 let mut p = None;
                 for c in parts[1..].iter() {
@@ -369,9 +369,9 @@ impl FromStr for Protocols {
                     }
                 }
 
-                Ok(Protocols::ReactiveGossip { k, p })
+                Ok(Protocols::RGR { k, p })
             }
-            "REACTIVEGOSSIPII" => {
+            "RGRII" => {
                 let mut k = None;
                 let mut p = None;
                 let mut q = None;
@@ -412,9 +412,9 @@ impl FromStr for Protocols {
                     }
                 }
 
-                Ok(Protocols::ReactiveGossipII { k, p, q })
+                Ok(Protocols::RGRII { k, p, q })
             }
-            "REACTIVEGOSSIPIII" => {
+            "RGRIII" => {
                 let mut k = None;
                 let mut p = None;
                 let mut q = None;
@@ -467,10 +467,10 @@ impl FromStr for Protocols {
                     }
                 }
 
-                Ok(Protocols::ReactiveGossipIII { k, p, q, beacon_threshold })
+                Ok(Protocols::RGRIII { k, p, q, beacon_threshold })
             }
             "LORAWIFIBEACON" => Ok(Protocols::LoraWifiBeacon),
-            "GOSSIPROUTING" => {
+            "GOSSIP" => {
                 // Expected format: GossipRouting k=1, p=0.70
                 let (k, p) = {
                     let mut k = None;
@@ -510,7 +510,7 @@ impl FromStr for Protocols {
                     }
                     (k.unwrap(), p.unwrap()) //Guaranted to not panic
                 };
-                Ok(Protocols::GossipRouting { k, p })
+                Ok(Protocols::Gossip { k, p })
             }
             "AODV" => {
                 let mut active_route_timeout: Option<i64> = Default::default();
@@ -654,7 +654,7 @@ pub fn build_protocol_resources(
             };
             Ok(resources)
         }
-        Protocols::NaiveRouting => {
+        Protocols::Flooding => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The NaiveRouting protocol requires a short_radio to be provided.");
@@ -674,7 +674,7 @@ pub fn build_protocol_resources(
             };
             Ok(resources)
         }
-        Protocols::GossipRouting { k, p } => {
+        Protocols::Gossip { k, p } => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The GossipRouting protocol requires a short_radio to be provided.");
@@ -696,7 +696,7 @@ pub fn build_protocol_resources(
             };
             Ok(resources)
         }
-        Protocols::ReactiveGossip { k, p } => {
+        Protocols::RGR { k, p } => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");
@@ -718,7 +718,7 @@ pub fn build_protocol_resources(
             };
             Ok(resources)
         }
-        Protocols::ReactiveGossipII { k, p, q } => {
+        Protocols::RGRII { k, p, q } => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");
@@ -741,7 +741,7 @@ pub fn build_protocol_resources(
             };
             Ok(resources)
         }
-        Protocols::ReactiveGossipIII { k, p, q, beacon_threshold } => {
+        Protocols::RGRIII { k, p, q, beacon_threshold } => {
             //Obtain both radios
             let (sr, sr_listener) = short_radio
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");

@@ -203,7 +203,7 @@ impl WorkerConfig {
             term_log: None,
             packet_queue_size: Some(DEFAULT_PACKET_QUEUE_SIZE),
             stale_packet_threshold: Some(DEFAULT_STALE_PACKET_THRESHOLD),
-            protocol: Some(Protocols::NaiveRouting),
+            protocol: Some(Protocols::Flooding),
             radio_short: None,
             radio_long: None,
             position: Position { x: 0.0, y: 0.0 },
@@ -359,7 +359,7 @@ mod tests {
             position: Position { x: 0.0, y: 0.0 }, \
             destination: None, \
             velocity: Velocity { x: 0.0, y: 0.0 }, \
-            protocol: Some(NaiveRouting), \
+            protocol: Some(Flooding), \
             radio_short: None, \
             radio_long: None }";
 
@@ -422,7 +422,7 @@ mod tests {
         y = 0.0\n\
         \n\
         [protocol]\n\
-        Protocol = \"NaiveRouting\"\n\
+        Protocol = \"Flooding\"\n\
         \n\
         [radio_short]\n\
         timeout = 100\n\

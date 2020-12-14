@@ -4,7 +4,7 @@ actions = [ "Ping node1 node25 1000"]
 width = 300.0
 height = 300.0
 [protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -24,7 +24,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node25.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -54,7 +54,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node3.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -84,7 +84,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node12.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -114,7 +114,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node2.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -144,7 +144,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node18.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -174,7 +174,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node19.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -204,7 +204,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node21.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -234,7 +234,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node14.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -264,7 +264,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node9.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -294,7 +294,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node17.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -324,7 +324,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node6.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -354,7 +354,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node7.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -384,7 +384,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node20.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -414,7 +414,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node4.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -444,7 +444,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node5.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -474,7 +474,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node13.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -504,7 +504,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node8.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -534,7 +534,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node15.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -564,7 +564,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node22.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -594,7 +594,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node11.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -624,7 +624,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node24.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -654,7 +654,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node10.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -684,7 +684,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node1.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -714,7 +714,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node23.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 
@@ -744,7 +744,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node16.protocol]
-Protocol = "GossipRouting"
+Protocol = "Gossip"
 k = 2
 p = 0.7
 

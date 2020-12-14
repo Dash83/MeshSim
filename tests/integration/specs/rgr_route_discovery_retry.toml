@@ -7,7 +7,7 @@ actions = ["ping node2 node6 1000"]
 Model = "RandomWaypoint"
 pause_time = 1
 [protocol]
-Protocol = "ReactiveGossip"
+Protocol = "RGR"
 k = 2
 p = 0.70
 
@@ -131,7 +131,7 @@ interface_name = "wlan0"
 # random_seed = 234
 # operation_mode = "Simulated"
 # [initial_nodes.node7.protocol]
-# Protocol = "ReactiveGossip"
+# Protocol = "RGR"
 # k = 2
 # p = 0.70
 # [initial_nodes.node7.position]
