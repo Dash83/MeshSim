@@ -281,7 +281,7 @@ impl MessageHeader {
             sender,
             destination,
             hops: 0u16,
-            delay: 0i64,
+            delay: Utc::now().timestamp_nanos(),
             ttl: std::usize::MAX,
             payload,
             msg_id,
@@ -384,7 +384,7 @@ impl MessageHeaderBuilder {
             sender: self.sender,
             destination,
             hops: self.hops.unwrap_or(self.old_data.hops),
-            delay: 0i64,
+            delay: Utc::now().timestamp_nanos(),
             ttl: self.ttl.unwrap_or(self.old_data.ttl),
             payload,
             msg_id,
@@ -648,12 +648,12 @@ impl Worker {
                         if let Some((response, log_data)) = resp {
                             let tx_channel = Arc::clone(&tx);
                             let log = logger.clone();
-                            let now = Utc::now();
+                            let out_queue_start = Utc::now();
 
                             out_queue_thread_pool.execute(move || {
                                 if let Some(mut r) = response {
                                     //Is the packet stale?
-                                    if (Utc::now().timestamp_millis() - now.timestamp_millis()) > 
+                                    if (Utc::now().timestamp_millis() - out_queue_start.timestamp_millis()) > 
                                         stale_packet_threshold as i64 {
                                         warn!(
                                             log,
@@ -683,7 +683,7 @@ impl Worker {
                                     };
 
                                     //perf_out_queued_start
-                                    r.delay = Utc::now().timestamp_nanos();
+                                    r.delay = out_queue_start.timestamp_nanos();
                                     
                                     // let _msg_id = r.get_msg_id().to_string();
                                     match tx_channel.broadcast(r.clone()) {
