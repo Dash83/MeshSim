@@ -561,14 +561,27 @@ impl Worker {
                                 let log = logger.clone();
 
                                 if in_queue_thread_pool.queued_count() >= max_queued_jobs {
-                                    let log_data = ();
-                                    log_handle_message(
+                                    // let log_data = ();
+                                    // log_handle_message(
+                                    //     &log,
+                                    //     &hdr,
+                                    //     MessageStatus::DROPPED,
+                                    //     Some("packet_queue is full"),
+                                    //     None,
+                                    //     &log_data,
+                                    // );
+                                    let perf_handle_message_duration = Utc::now().timestamp_nanos() - hdr.delay;
+                                    info!(
                                         &log,
-                                        &hdr,
-                                        MessageStatus::DROPPED,
-                                        Some("packet_queue is full"),
-                                        None,
-                                        &log_data,
+                                        "Received message";
+                                        "hops"=>hdr.hops,
+                                        "destination"=>&hdr.destination,
+                                        "source"=>&hdr.sender,
+                                        "reason"=>"packet_queue is full",
+                                        "duration"=> perf_handle_message_duration,
+                                        "status"=>MessageStatus::DROPPED,
+                                        "msg_id"=>&hdr.get_msg_id(),
+                                        "radio"=>&radio_label,
                                     );
                                     continue;
                                 }
@@ -595,6 +608,7 @@ impl Worker {
                                             "reason" => "stale packet",
                                             "status" => MessageStatus::DROPPED,
                                             "msg_id" => &hdr.msg_id,
+                                            "radio" => &radio_label,
                                         );
                                         return;
                                     }

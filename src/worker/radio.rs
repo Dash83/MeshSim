@@ -490,13 +490,13 @@ impl SimulatedRadio {
             //Wait and retry.
             i += 1;
             let sleep_time = self.get_wait_time(i as u32);
-            let st = format!("{:?}", &sleep_time);
+            // let st = format!("{:?}", &sleep_time);
             info!(
                 &self.logger,
                 "Medium is busy";
                 "thread"=>&thread_id,
                 "retry"=>i,
-                "wait_time"=>st,
+                "wait_time"=>sleep_time.as_nanos(),
                 "radio"=>&radio_range,
             );
             std::thread::sleep(sleep_time);
