@@ -181,7 +181,14 @@ impl Radio for SimulatedRadio {
         // let msg_id = hdr.get_msg_id().to_string();
 
         //Register this node as an active transmitter if the medium is free
-        let guard = match self.register_transmitter(&conn) {
+        let guard = self.register_transmitter(&conn);
+
+        //Perf measurement. How long the process stuck in medium-contention?
+        //Measured here since it is logged even if the transmission is aborted for profiling purposes.
+        let perf_contention_duration = Utc::now().timestamp_nanos() - start_ts.timestamp_nanos();
+
+        //Was this node able to acquire the medium?
+        let guard = match guard {
             Ok(g) => {
                 /* All good */
                 g
@@ -198,6 +205,8 @@ impl Radio for SimulatedRadio {
                         "{}", m;
                         "thread"=>&thread_id,
                         "radio"=>&radio_range,
+                        "out_queued_duration"=>perf_out_queued_duration,
+                        "contention_duration"=>perf_contention_duration,
                         "reason"=>cause_str,
                     );
                     return Ok(None);
@@ -206,9 +215,10 @@ impl Radio for SimulatedRadio {
                 }
             }
         };
-        //Perf measurement. How long the process stuck in medium-contention?
+
+        //Start measuring how long it takes to perform the actual transmission
         let perf_start_tx = Utc::now();
-        let perf_contention_duration = perf_start_tx.timestamp_nanos() - start_ts.timestamp_nanos();
+
         //Increase the hop count of the message
         hdr.hops += 1;
 
