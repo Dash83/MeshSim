@@ -297,7 +297,9 @@ impl Radio for SimulatedRadio {
 
         self.deregister_transmitter(&conn, guard)?;
         let perf_end_tx = Utc::now();
+        //Time it took for the actual transmission to execute (e.g. iteratiing through the peers and sending the messages)
         let perf_tx_duration = perf_end_tx.timestamp_nanos() - perf_start_tx.timestamp_nanos();
+        //Time it took for the whole function to execute
         let broadcast_duration = perf_end_tx.timestamp_nanos() - start_ts.timestamp_nanos();
 
         let tx = TxMetadata {
