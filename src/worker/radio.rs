@@ -467,7 +467,8 @@ impl SimulatedRadio {
             .lock()
             .expect("Could not acquire transmitter lock");
 
-        while i < self.mac_layer_retries {
+        //The config text mac_base_REtry, so it should retry up to that number (the initial attempt is not a retry.)
+        while i <= self.mac_layer_retries {
 
             match register_active_transmitter_if_free(
                 conn,
