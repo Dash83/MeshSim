@@ -1,6 +1,6 @@
 //! Module for the test protocol that uses Lora and Wifi radios
 
-use crate::worker::protocols::{Outcome, Protocol, ProtocolMessages};
+use crate::worker::protocols::{Outcome, InterOutcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, Radio, RadioTypes};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -62,7 +62,7 @@ impl Protocol for LoraWifiBeacon {
     ) -> Result<Outcome, MeshSimError> {
         //Filter out packets coming from this node, as we get many from the multicast.
         if hdr.sender == self.worker_name {
-            return Ok((None, None));
+            return Ok((None, None, Utc::now()));
         }
 
         let msg = deserialize_message(hdr.get_payload())?;
@@ -74,7 +74,7 @@ impl Protocol for LoraWifiBeacon {
             RadioTypes::ShortRange => String::from("wifi"),
             RadioTypes::LongRange => String::from("lora"),
         };
-        LoraWifiBeacon::handle_message_internal(
+        let (resp, md) = LoraWifiBeacon::handle_message_internal(
             hdr,
             msg,
             link,
@@ -82,7 +82,8 @@ impl Protocol for LoraWifiBeacon {
             wifi_radio,
             lora_radio,
             &self.logger,
-        )
+        )?;
+        Ok((resp, md, Utc::now()))
     }
 
     /// Function to initialize the protocol.
@@ -198,7 +199,7 @@ impl LoraWifiBeacon {
         _wifi_radio: Arc<dyn Radio>,
         _lora_radio: Arc<dyn Radio>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         match msg {
             Messages::Beacon(msg) => {
                 LoraWifiBeacon::process_beacon_msg(hdr, msg, link, self_peer, logger)
@@ -215,7 +216,7 @@ impl LoraWifiBeacon {
         _link: String,
         me: String,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         radio::log_handle_message(
             logger,
             &hdr,
@@ -238,7 +239,7 @@ impl LoraWifiBeacon {
         _link: String,
         me: String,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         if hdr.destination == me {
             // info!(
             //     logger,

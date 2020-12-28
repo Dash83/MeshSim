@@ -1,6 +1,6 @@
 //! Gossip-based flooding protocol
 
-use crate::worker::protocols::{Outcome, Protocol, ProtocolMessages};
+use crate::worker::protocols::{Outcome, InterOutcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -78,7 +78,7 @@ impl Protocol for GossipRouting {
         })?;
         let msg_cache = Arc::clone(&self.msg_cache);
         let rng = Arc::clone(&self.rng);
-        GossipRouting::handle_message_internal(
+        let (resp, md) = GossipRouting::handle_message_internal(
             hdr,
             msg,
             self.get_self_peer(),
@@ -87,7 +87,8 @@ impl Protocol for GossipRouting {
             msg_cache,
             rng,
             &self.logger,
-        )
+        )?;
+        Ok((resp, md, Utc::now()))
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
@@ -158,32 +159,6 @@ impl GossipRouting {
         }
     }
 
-    // fn create_data_message(
-    //     sender: String,
-    //     destination: String,
-    //     hops: u16,
-    //     data: Vec<u8>,
-    // ) -> Result<MessageHeader, MeshSimError> {
-    //     let data_msg = Messages::Data(DataMessage{payload : data});
-    //     let payload = to_vec(&data_msg).map_err(|e| {
-    //         let err_msg = String::from("Failed to serialize message");
-    //         MeshSimError {
-    //             kind: MeshSimErrorKind::Serialization(err_msg),
-    //             cause: Some(Box::new(e)),
-    //         }
-    //     })?;
-    //     //info!("Built DATA message for peer: {}, id {:?}", &destination, destination.id);
-
-    //     //Build the message header that's ready for sending.
-    //     let msg = MessageHeader::new(
-    //         sender,
-    //         destination,
-    //         payload,
-    //         hops,
-    //     );
-    //     Ok(msg)
-    // }
-
     fn process_data_message(
         hdr: MessageHeader,
         msg: DataMessage,
@@ -193,7 +168,7 @@ impl GossipRouting {
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         {
             // LOCK:ACQUIRE:MSG_CACHE
             let mut cache = msg_cache.lock().map_err(|_e| {
@@ -311,7 +286,7 @@ impl GossipRouting {
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         match msg {
             Messages::Data(data) => {
                 GossipRouting::process_data_message(hdr, data, k, p, me, msg_cache, rng, logger)

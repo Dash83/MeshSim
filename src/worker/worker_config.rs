@@ -27,7 +27,7 @@ const DEFAULT_SPREADING_FACTOR: u32 = 0;
 const DEFAULT_LORA_FREQ: LoraFrequencies = LoraFrequencies::Europe;
 const DEFAULT_LORA_TRANS_POWER: u8 = 15;
 const DEFAULT_PACKET_QUEUE_SIZE: usize = 3000; //Max number of queued packets
-const DEFAULT_READ_TIMEOUT: u64 = 100;
+const DEFAULT_READ_TIMEOUT: u64 = 10000; //microseconds
 const DEFAULT_STALE_PACKET_THRESHOLD: i32 = 3_000; //3 seconds in nanoseconds
 const DEFAULT_TX_DELAY_PER_NODE: i64 = 40; //In microseconds
 
@@ -425,7 +425,7 @@ mod tests {
         Protocol = \"Flooding\"\n\
         \n\
         [radio_short]\n\
-        timeout = 100\n\
+        timeout = 10000\n\
         interface_name = \"wlan0\"\n\
         range = 0.0\n\
         mac_layer_retries = 8\n\
@@ -433,7 +433,7 @@ mod tests {
         max_delay_per_node = 40\n\
         \n\
         [radio_long]\n\
-        timeout = 100\n\
+        timeout = 10000\n\
         interface_name = \"wlan0\"\n\
         range = 0.0\n\
         mac_layer_retries = 8\n\

@@ -896,7 +896,9 @@ impl Master {
                                     /* All good */
                                     info!(
                                         logger,
-                                        "Send command {} written successfully", packet_counter
+                                        "[Source:{}] - Send command {} written successfully",
+                                        source,
+                                        packet_counter,
                                     );
                                 }
                                 Err(e) => error!(logger, "Error: {}", e),

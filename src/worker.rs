@@ -551,7 +551,9 @@ impl Worker {
                     loop {
                         let resp_tx = resp_tx.clone();
                         let radio_label = radio_label.clone();
-                        
+                        let rl = radio_label.clone();
+
+                        // Read any new messages over the current radio
                         match rx.read_message() {
                             Some(mut hdr) => {
                                 //Store the timestamp when this message was queued
@@ -589,6 +591,7 @@ impl Worker {
                                 }
 
                                 in_queue_thread_pool.execute(move || {
+                                    let radio_label = radio_label.clone();
                                     let ts0 = Utc.timestamp_nanos(hdr.delay);
                                     let perf_in_queued_duration =
                                         Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
@@ -604,7 +607,7 @@ impl Worker {
                                     if perf_in_queued_duration > (stale_packet_threshold * 1000) as i64 {
                                         warn!(
                                             log,
-                                            "Not transmitting";
+                                            "Skipping message";
                                             "destination" => &hdr.destination,
                                             "source" => &hdr.sender,
                                             "reason" => "stale packet",
@@ -626,7 +629,7 @@ impl Worker {
                                             if let Some(cause) = e.cause {
                                                 error!(log, "Cause: {}", cause);
                                             }
-                                            (None, None)
+                                            (None, None, Utc::now())
                                         }
                                     };
 
@@ -645,87 +648,90 @@ impl Worker {
                                 //                                );
                             }
                             None => {
-                                //read_message has timed out. Check if any maintenance work needs be done.
-                                match prot_handler.do_maintenance() {
-                                    Ok(_) => { /* All good! */ }
-                                    Err(e) => {
-                                        error!(
-                                            logger,
-                                            "Failed to perform maintenance operations: {}", e
+                                /* No new messages. Proceed to the next section */
+                            }
+                        }
+
+                        // Pop the top pending message from the out_queue (if any) and transmit it
+                        let resp = responses_pending.try_recv().ok();
+                        if let Some((response, log_data, out_queue_start)) = resp {
+                            let tx_channel = Arc::clone(&tx);
+                            let log = logger.clone();
+                            // let out_queue_start = Utc::now();
+
+                            if let Some(mut r) = response {
+                                //Is the packet stale?
+                                if (Utc::now().timestamp_millis() - out_queue_start.timestamp_millis()) > 
+                                    stale_packet_threshold as i64 {
+                                    warn!(
+                                        log,
+                                        "Not transmitting";
+                                        "destination" => &r.destination,
+                                        "source" => &r.sender,
+                                        "reason" => "stale packet",
+                                        "status" => MessageStatus::DROPPED,
+                                        "msg_id" => &r.msg_id,
+                                        "radio" => &rl,
+                                    );
+                                    return;
+                                }
+
+                                let log_data = match log_data {
+                                    Some(l) => l,
+                                    None => { 
+                                        warn!(
+                                            log,
+                                            "Log_Data was empty";
+                                            "destination" => &r.destination,
+                                            "source" => &r.sender,
+                                            "status" => MessageStatus::DROPPED,
+                                            "msg_id" => &r.msg_id,
                                         );
+                                        return;
+                                    },
+                                };
+
+                                //perf_out_queued_start
+                                r.delay = out_queue_start.timestamp_nanos();
+                                
+                                // let _msg_id = r.get_msg_id().to_string();
+                                match tx_channel.broadcast(r.clone()) {
+                                    Ok(tx) => {
+                                        if let Some(tx) = tx {
+                                            /* Log transmission */
+                                            radio::log_tx(
+                                                &log,
+                                                tx,
+                                                &r.msg_id,
+                                                MessageStatus::SENT,
+                                                &r.sender,
+                                                &r.destination,
+                                                log_data,
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        error!(log, "Error sending response: {}", e);
                                         if let Some(cause) = e.cause {
-                                            error!(logger, "Cause: {}", cause);
+                                            error!(log, "Cause: {}", cause);
                                         }
                                     }
                                 }
                             }
                         }
-                        let resp = responses_pending.try_recv().ok();
-                        if let Some((response, log_data)) = resp {
-                            let tx_channel = Arc::clone(&tx);
-                            let log = logger.clone();
-                            let out_queue_start = Utc::now();
 
-                            out_queue_thread_pool.execute(move || {
-                                if let Some(mut r) = response {
-                                    //Is the packet stale?
-                                    if (Utc::now().timestamp_millis() - out_queue_start.timestamp_millis()) > 
-                                        stale_packet_threshold as i64 {
-                                        warn!(
-                                            log,
-                                            "Not transmitting";
-                                            "destination" => &r.destination,
-                                            "source" => &r.sender,
-                                            "reason" => "stale packet",
-                                            "status" => MessageStatus::DROPPED,
-                                            "msg_id" => &r.msg_id,
-                                        );
-                                        return;
-                                    }
-
-                                    let log_data = match log_data {
-                                        Some(l) => l,
-                                        None => { 
-                                            warn!(
-                                                log,
-                                                "Log_Data was empty";
-                                                "destination" => &r.destination,
-                                                "source" => &r.sender,
-                                                "status" => MessageStatus::DROPPED,
-                                                "msg_id" => &r.msg_id,
-                                            );
-                                            return;
-                                        },
-                                    };
-
-                                    //perf_out_queued_start
-                                    r.delay = out_queue_start.timestamp_nanos();
-                                    
-                                    // let _msg_id = r.get_msg_id().to_string();
-                                    match tx_channel.broadcast(r.clone()) {
-                                        Ok(tx) => {
-                                            if let Some(tx) = tx {
-                                                /* Log transmission */
-                                                radio::log_tx(
-                                                    &log,
-                                                    tx,
-                                                    &r.msg_id,
-                                                    MessageStatus::SENT,
-                                                    &r.sender,
-                                                    &r.destination,
-                                                    log_data,
-                                                );
-                                            }
-                                        }
-                                        Err(e) => {
-                                            error!(log, "Error sending response: {}", e);
-                                            if let Some(cause) = e.cause {
-                                                error!(log, "Cause: {}", cause);
-                                            }
-                                        }
-                                    }
+                        // Check if any maintenance work needs be done.
+                        match prot_handler.do_maintenance() {
+                            Ok(_) => { /* All good! */ }
+                            Err(e) => {
+                                error!(
+                                    logger,
+                                    "Failed to perform maintenance operations: {}", e
+                                );
+                                if let Some(cause) = e.cause {
+                                    error!(logger, "Cause: {}", cause);
                                 }
-                            });
+                            }
                         }
                     }
                 })

@@ -29,8 +29,8 @@ pub mod reactive_gossip_routing_II;
 #[allow(non_snake_case)]
 pub mod reactive_gossip_routing_III;
 
-type Outcome<'a> = (Option<MessageHeader>, Option<ProtocolMessages>);
-
+type Outcome<'a> = (Option<MessageHeader>, Option<ProtocolMessages>, DateTime<Utc>);
+type InterOutcome<'a> = (Option<MessageHeader>, Option<ProtocolMessages>);
 /// Trait that all protocols need to implement.
 /// The function handle_message should
 pub trait Protocol: std::fmt::Debug + Send + Sync {

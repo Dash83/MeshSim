@@ -1,6 +1,6 @@
 //! This module implements the Reactive Gossip routing protocol
 
-use crate::worker::protocols::{Outcome, Protocol, ProtocolMessages};
+use crate::worker::protocols::{Outcome, InterOutcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -188,7 +188,7 @@ impl Protocol for ReactiveGossipRouting {
         let route_msg_cache = Arc::clone(&self.route_msg_cache);
         let data_msg_cache = Arc::clone(&self.data_msg_cache);
         let rng = Arc::clone(&self.rng);
-        ReactiveGossipRouting::handle_message_internal(
+        let (resp, md) = ReactiveGossipRouting::handle_message_internal(
             hdr,
             msg,
             self_peer,
@@ -204,7 +204,8 @@ impl Protocol for ReactiveGossipRouting {
             short_radio,
             &self.logger,
             rng,
-        )
+        )?;
+        Ok((resp, md, Utc::now()))
     }
 
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
@@ -547,7 +548,7 @@ impl ReactiveGossipRouting {
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
         rng: Arc<Mutex<StdRng>>,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         match msg {
             Messages::Data(data_msg) => {
                 // debug!(logger, "Received DATA message");
@@ -613,7 +614,7 @@ impl ReactiveGossipRouting {
         self_peer: String,
         msg_id: String,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         let route_id = msg.route_id.clone();
         let part_of_route = {
             let known_routes = known_routes
@@ -784,7 +785,7 @@ impl ReactiveGossipRouting {
         _msg_id: String,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         //Is this node the intended destination of the route?
         if msg.route_destination == self_peer {
             // info!(
@@ -908,7 +909,7 @@ impl ReactiveGossipRouting {
         _msg_id: String,
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         //Who's the next hop in the route?
         let next_hop = match msg.route.pop() {
             Some(h) => h,
@@ -1023,7 +1024,7 @@ impl ReactiveGossipRouting {
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
         self_peer: String,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         let subscribed = {
             let kr = known_routes
                 .lock()
@@ -1031,7 +1032,7 @@ impl ReactiveGossipRouting {
             kr.contains_key(&msg.route_id)
         };
 
-        let resp: Outcome = {
+        let resp: InterOutcome = {
             if subscribed {
                 //Log incoming packet
                 radio::log_handle_message(

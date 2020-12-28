@@ -118,9 +118,10 @@ impl SimulatedListener {
         r_type: RadioTypes,
         logger: Logger,
     ) -> SimulatedListener {
-        let read_time = std::time::Duration::from_millis(timeout);
+        let read_time = std::time::Duration::from_micros(timeout);
         socket
             .set_read_timeout(Some(read_time))
+            // .set_nonblocking(true)
             .expect("Coult not set socket on non-blocking mode");
         SimulatedListener {
             socket,

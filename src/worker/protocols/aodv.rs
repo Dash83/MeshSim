@@ -1,5 +1,5 @@
 //! Implemention of the AODV protocol, per its RFC https://www.rfc-editor.org/info/rfc3561
-use crate::worker::protocols::{Outcome, Protocol, ProtocolMessages};
+use crate::worker::protocols::{Outcome, InterOutcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -293,7 +293,7 @@ impl Protocol for AODV {
         let pd = Arc::clone(&self.pending_routes);
         let qt = Arc::clone(&self.queued_transmissions);
         let sr = Arc::clone(&self.short_radio);
-        AODV::handle_message_internal(
+        let (resp, md) = AODV::handle_message_internal(
             hdr,
             msg,
             ts,
@@ -309,7 +309,8 @@ impl Protocol for AODV {
             sr,
             rng,
             &self.logger,
-        )
+        )?;
+        Ok((resp, md, Utc::now()))
     }
 
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
@@ -613,7 +614,7 @@ impl AODV {
         short_radio: Arc<dyn Radio>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         AODV::connectivity_update(
             &hdr,
             ts,
@@ -692,7 +693,7 @@ impl AODV {
         seq_no: Arc<AtomicU32>,
         me: String,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         //Check if this is a duplicate RREQ
         {
             let mut rr_cache = rreq_cache
@@ -878,7 +879,7 @@ impl AODV {
         short_radio: Arc<dyn Radio>,
         _rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         let mut repaired = Default::default();
 
         //RREPs are UNICASTED. Is this the destination in the header? It not, exit.
@@ -1074,7 +1075,7 @@ impl AODV {
         // short_radio: Arc<dyn Radio>,
         _rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         let mut affected_neighbours = Vec::new();
         let mut rt = route_table.lock().expect("Could not lock route table");
 
@@ -1160,7 +1161,7 @@ impl AODV {
         me: String,
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         //Mark the packet in the cache as confirmed if applicable
         let _confirmed = {
             let mut dc = data_cache.lock().expect("Could not lock data cache");
@@ -1389,7 +1390,7 @@ impl AODV {
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         me: String,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         radio::log_handle_message(
             logger,
             &hdr,

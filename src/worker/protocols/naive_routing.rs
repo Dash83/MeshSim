@@ -1,6 +1,6 @@
 //! Protocol that naively routes data by relaying all messages it receives.
 
-use crate::worker::protocols::{Outcome, Protocol, ProtocolMessages};
+use crate::worker::protocols::{Outcome, InterOutcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -78,14 +78,15 @@ impl Protocol for NaiveRouting {
         })?;
         let msg_cache = Arc::clone(&self.msg_cache);
         let rng = Arc::clone(&self.rng);
-        NaiveRouting::handle_message_internal(
+        let (resp, md) = NaiveRouting::handle_message_internal(
             hdr,
             msg,
             self.get_self_peer(),
             msg_cache,
             rng,
             &self.logger,
-        )
+        )?;
+        Ok((resp, md, Utc::now()))
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
@@ -159,7 +160,7 @@ impl NaiveRouting {
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         let msg_id = hdr.get_msg_id().to_string();
         {
             // LOCK:ACQUIRE:MSG_CACHE
@@ -241,7 +242,7 @@ impl NaiveRouting {
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         match msg {
             Messages::Data(data) => {
                 NaiveRouting::process_data_message(hdr, data, me, msg_cache, rng, logger)

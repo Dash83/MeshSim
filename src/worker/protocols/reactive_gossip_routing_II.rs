@@ -1,6 +1,6 @@
 //! This module implements the Reactive Gossip routing protocol
 
-use crate::worker::protocols::{Outcome, Protocol, ProtocolMessages};
+use crate::worker::protocols::{Outcome, InterOutcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -200,7 +200,7 @@ impl Protocol for ReactiveGossipRoutingII {
         let data_msg_cache = Arc::clone(&self.data_msg_cache);
         let vicinity_cache = Arc::clone(&self.vicinity_cache);
         let rng = Arc::clone(&self.rng);
-        ReactiveGossipRoutingII::handle_message_internal(
+        let (resp, md) = ReactiveGossipRoutingII::handle_message_internal(
             hdr,
             msg,
             self_peer,
@@ -218,7 +218,8 @@ impl Protocol for ReactiveGossipRoutingII {
             short_radio,
             &self.logger,
             rng,
-        )
+        )?;
+        Ok((resp, md, Utc::now()))
     }
 
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
@@ -586,7 +587,7 @@ impl ReactiveGossipRoutingII {
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
         rng: Arc<Mutex<StdRng>>,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         let _ = ReactiveGossipRoutingII::update_vicinity_cache(
             &hdr,
             Arc::clone(&vicinity_cache),
@@ -667,7 +668,7 @@ impl ReactiveGossipRoutingII {
         self_peer: String,
         msg_id: String,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         let route_id = msg.route_id.clone();
         let part_of_route = {
             let known_routes = known_routes
@@ -804,7 +805,7 @@ impl ReactiveGossipRoutingII {
         _msg_id: String,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         //Update vicinity cache with the current route, since all those nodes should be reachable
         //by this node.
         {
@@ -956,7 +957,7 @@ impl ReactiveGossipRoutingII {
         _msg_id: String,
         short_radio: Arc<dyn Radio>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         //Who's the next hop in the route?
         let next_hop = match msg.route.pop() {
             Some(h) => h,
@@ -1103,7 +1104,7 @@ impl ReactiveGossipRoutingII {
         _msg_id: String,
         _short_radio: Arc<dyn Radio>,
         logger: &Logger,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<InterOutcome, MeshSimError> {
         let subscribed = {
             let kr = known_routes
                 .lock()
@@ -1111,7 +1112,7 @@ impl ReactiveGossipRoutingII {
             kr.contains_key(&msg.route_id)
         };
 
-        let response: Outcome = {
+        let response: InterOutcome = {
             if subscribed {
                 //Log incoming packet
                 radio::log_handle_message(
