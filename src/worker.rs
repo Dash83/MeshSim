@@ -41,11 +41,11 @@ use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
 use std::str::FromStr;
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::sync::{MutexGuard, PoisonError};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, mpsc, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::{self, error, fmt, io};
+use std::time::Duration;
 
 //Sub-modules declaration
 pub mod commands;
@@ -63,7 +63,7 @@ pub mod worker_config;
 const DNS_SERVICE_PORT: u16 = 23456;
 const WORKER_POOL_SIZE: usize = 1;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
-
+const MAIN_THREAD_PERIOD: u64 = 100; //milliseconds
 
 // *****************************
 // ********** Structs **********
@@ -506,6 +506,7 @@ impl Worker {
     /// 3. It starts to listen for messages of the network on all addresss
     ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
     pub fn start(&mut self, accept_commands: bool) -> Result<(), MeshSimError> {
+        let finish = AtomicBool::new(false);
         //Init the worker
         self.init()?;
 
@@ -536,9 +537,6 @@ impl Worker {
                 let prot_handler = Arc::clone(&prot_handler);
                 let logger = self.logger.clone();
                 let in_queue_thread_pool = threadpool::Builder::new()
-                    .num_threads(WORKER_POOL_SIZE)
-                    .build();
-                let out_queue_thread_pool = threadpool::Builder::new()
                     .num_threads(WORKER_POOL_SIZE)
                     .build();
                 let max_queued_jobs = self.packet_queue_size;
@@ -719,20 +717,6 @@ impl Worker {
                                 }
                             }
                         }
-
-                        // Check if any maintenance work needs be done.
-                        match prot_handler.do_maintenance() {
-                            Ok(_) => { /* All good! */ }
-                            Err(e) => {
-                                error!(
-                                    logger,
-                                    "Failed to perform maintenance operations: {}", e
-                                );
-                                if let Some(cause) = e.cause {
-                                    error!(logger, "Cause: {}", cause);
-                                }
-                            }
-                        }
                     }
                 })
             })
@@ -751,17 +735,54 @@ impl Worker {
             threads.push(com_loop_thread);
         }
 
-        // //DEBUG LINE
-        // let alive_thread = self.start_second_counter_thread()?;
-        // threads.push(alive_thread);
+        /*
+        After spawning the listener threads for each radio, the main thread remain in this loop
+        periodically executing the maintenance operations of the protocol handler.
 
-        // let _exit_values = threads.map(|x| x.map(|t| t.join())); //This compact version does not work. It seems the lazy iterator is not evaluated.
-        for x in threads {
-            // if let Some(h) = x {
-            //     debug!("Waiting for a listener thread...");
-            let _res = x.join();
-            // }
+        Ideally, it would also poll stdin for new commands instead of having a dedicated thread for that, but
+        I'm not sure there's a non-blocking way to read stdin.
+
+        Also in the future, it would be great if instead of having a dedicated logger, the log macros pushed the
+        log records into an mpsc channel that was the written by this thread when not doing maintenance tasks.
+
+        With this design, the master could send a stop command to the worker instead of a SIGTERM signal, at which
+        point the worker could kill the radio threads, stop doing maintenance work, and focus on flushing the log
+        records before exiting.
+        */
+        let main_thread_period = Duration::from_millis(MAIN_THREAD_PERIOD);
+        loop {
+            thread::sleep(main_thread_period);
+
+            // Check if any maintenance work needs be done.
+            match prot_handler.do_maintenance() {
+                Ok(_) => { /* All good! */ }
+                Err(mut e) => {
+                    let cause = e
+                        .cause
+                        .take()
+                        .map(|x| format!("{}", x));
+                    error!(
+                        self.logger,
+                        "Failed to perform maintenance operations: {}", e;
+                        "Cause" => cause,
+                    );
+
+                }
+            }
+
+            //This condition is never set to true at the moment.
+            if finish.load(Ordering::SeqCst) {
+                break;
+            }
         }
+
+        // // let _exit_values = threads.map(|x| x.map(|t| t.join())); //This compact version does not work. It seems the lazy iterator is not evaluated.
+        // for x in threads {
+        //     // if let Some(h) = x {
+        //     //     debug!("Waiting for a listener thread...");
+        //     let _res = x.join();
+        //     // }
+        // }
 
         Ok(())
     }
