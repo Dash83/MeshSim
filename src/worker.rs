@@ -595,8 +595,7 @@ impl Worker {
                                         Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
                                     info!(
                                         &log,
-                                        "Worker::start";
-                                        "event" => "in_queued",
+                                        "in_queued";
                                         "msg_id" => hdr.get_msg_id(),
                                         "duration" => perf_in_queued_duration,
                                         "radio" => &radio_label,
