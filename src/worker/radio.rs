@@ -105,7 +105,7 @@ pub trait Radio: std::fmt::Debug + Send + Sync {
     ///Used to broadcast a message using the radio
     fn broadcast(&self, hdr: MessageHeader) -> Result<Option<TxMetadata>, MeshSimError>;
     ///Get the time of the last transmission made by this readio
-    fn last_transmission(&self) -> i64;
+    fn last_transmission(&self) -> Arc<AtomicI64>;
 }
 
 /// Represents a radio used by the worker to send a message to the network.
@@ -136,7 +136,7 @@ pub struct SimulatedRadio {
     /// Use for syncronising thread operations on the DB
     transmitting: Arc<Mutex<()>>,
     /// The last time this radio made a transmission
-    last_transmission: AtomicI64,
+    last_transmission: Arc<AtomicI64>,
     ///Maximum delay per node in a broadcast.
     max_delay_per_node: i64,
 }
@@ -146,8 +146,9 @@ impl Radio for SimulatedRadio {
         &self.address
     }
 
-    fn last_transmission(&self) -> i64 {
-        self.last_transmission.load(Ordering::SeqCst)
+    fn last_transmission(&self) -> Arc<AtomicI64> {
+        // self.last_transmission.load(Ordering::SeqCst)
+        Arc::clone(&self.last_transmission)
     }
 
     fn broadcast(&self, mut hdr: MessageHeader) -> Result<Option<TxMetadata>, MeshSimError> {
@@ -292,7 +293,7 @@ impl Radio for SimulatedRadio {
         debug!(
             &self.logger,
             "last_transmission:{}",
-            self.last_transmission()
+            self.last_transmission.load(Ordering::SeqCst)
         );
 
         self.deregister_transmitter(&conn, guard)?;
@@ -609,7 +610,7 @@ pub struct WifiRadio {
     /// Logger for this Radio to use.
     logger: Logger,
     /// The last time this radio made a transmission
-    last_transmission: AtomicI64,
+    last_transmission: Arc<AtomicI64>,
     /// Timeout for every read operation of the radio.
     timeout: u64,
 }
@@ -619,8 +620,9 @@ impl Radio for WifiRadio {
         &self.address
     }
 
-    fn last_transmission(&self) -> i64 {
-        self.last_transmission.load(Ordering::SeqCst)
+    fn last_transmission(&self) -> Arc<AtomicI64> {
+        // self.last_transmission.load(Ordering::SeqCst)
+        Arc::clone(&self.last_transmission)
     }
 
     fn broadcast(&self, mut hdr: MessageHeader) -> Result<Option<TxMetadata>, MeshSimError> {

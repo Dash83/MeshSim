@@ -4,7 +4,7 @@ extern crate mesh_simulator;
 extern crate socket2;
 
 use std::env;
-
+use std::sync::atomic::Ordering;
 use super::super::*;
 use mesh_simulator::logging;
 
@@ -119,7 +119,7 @@ use mesh_simulator::worker::*;
 
 #[test]
 fn test_broadcast_simulated() {
-    use mesh_simulator::worker::protocols::naive_routing;
+    use mesh_simulator::worker::protocols::flooding;
 
     //Setup
     //Get general test settings
@@ -241,12 +241,12 @@ fn test_broadcast_simulated() {
     .expect("Could not register worker");
 
     //Test checks
-    let msg = naive_routing::Messages::Data(naive_routing::DataMessage::new(vec![]));
-    let log_data = protocols::ProtocolMessages::Naive(msg.clone());
+    let msg = flooding::Messages::Data(flooding::DataMessage::new(vec![]));
+    let log_data = protocols::ProtocolMessages::Flooding(msg.clone());
     let bcast_msg = MessageHeader::new(
         String::new(),
         String::new(),
-        naive_routing::serialize_message(msg).expect("Could not serialize message"),
+        flooding::serialize_message(msg).expect("Could not serialize message"),
     );
     let tx = r2.broadcast(bcast_msg.clone()).unwrap().unwrap();
     radio::log_tx(
@@ -419,7 +419,7 @@ fn test_mac_layer_basic() {
 
 #[test]
 fn test_broadcast_device() -> TestResult {
-    use mesh_simulator::worker::protocols::naive_routing;
+    use mesh_simulator::worker::protocols::flooding;
 
     //Setup
     let host = env::var("MESHSIM_HOST").unwrap_or(String::from(""));
@@ -460,12 +460,12 @@ fn test_broadcast_device() -> TestResult {
     // let listener1 = r1.init().unwrap();
 
     //Test checks
-    let msg = naive_routing::Messages::Data(naive_routing::DataMessage::new(vec![]));
-    let log_data = protocols::ProtocolMessages::Naive(msg.clone());
+    let msg = flooding::Messages::Data(flooding::DataMessage::new(vec![]));
+    let log_data = protocols::ProtocolMessages::Flooding(msg.clone());
     let bcast_msg = MessageHeader::new(
         String::new(),
         String::new(),
-        naive_routing::serialize_message(msg).expect("Could not serialize message"),
+        flooding::serialize_message(msg).expect("Could not serialize message"),
     );
     let tx = r1.broadcast(bcast_msg.clone()).unwrap().unwrap();
     radio::log_tx(
@@ -494,7 +494,7 @@ fn test_broadcast_device() -> TestResult {
 
 #[test]
 fn test_last_transmission() -> TestResult {
-    use mesh_simulator::worker::protocols::naive_routing;
+    use mesh_simulator::worker::protocols::flooding;
 
     let test_name = "last_transmission";
     let data = setup(test_name, false, true);
@@ -538,12 +538,12 @@ fn test_last_transmission() -> TestResult {
     //Time before
     let ts1 = Utc::now();
 
-    let msg = naive_routing::Messages::Data(naive_routing::DataMessage::new(vec![]));
-    let log_data = protocols::ProtocolMessages::Naive(msg.clone());
+    let msg = flooding::Messages::Data(flooding::DataMessage::new(vec![]));
+    let log_data = protocols::ProtocolMessages::Flooding(msg.clone());
     let hdr = MessageHeader::new(
         String::new(),
         String::new(),
-        naive_routing::serialize_message(msg).expect("Could not serialize message"),
+        flooding::serialize_message(msg).expect("Could not serialize message"),
     );
     let tx_md = tx
         .broadcast(hdr.clone())
@@ -559,7 +559,7 @@ fn test_last_transmission() -> TestResult {
         log_data,
     );
     //Broadcast time
-    let bc_ts = tx.last_transmission();
+    let bc_ts = tx.last_transmission().load(Ordering::SeqCst);
 
     //Now
     let ts2 = Utc::now();

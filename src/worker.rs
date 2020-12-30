@@ -533,7 +533,7 @@ impl Worker {
         let mut threads: Vec<JoinHandle<()>> = resources
             .radio_channels
             .drain(..)
-            .map(|(rx, tx)| {
+            .map(|(rx, (tx, out_queue_sender, out_queue_receiver))| {
                 let prot_handler = Arc::clone(&prot_handler);
                 let logger = self.logger.clone();
                 let in_queue_thread_pool = threadpool::Builder::new()
@@ -544,10 +544,8 @@ impl Worker {
 
                 thread::spawn(move || {
                     let radio_label: String = rx.get_radio_range().into();
-                    let (resp_tx, responses_pending) = mpsc::channel();
                     info!(logger, "[{}] Listening for messages", &radio_label);
                     loop {
-                        let resp_tx = resp_tx.clone();
                         let radio_label = radio_label.clone();
                         let rl = radio_label.clone();
 
@@ -618,19 +616,20 @@ impl Worker {
                                     //Perf_Recv_Msg_Start
                                     hdr.delay = Utc::now().timestamp_nanos();
                                     // let (response, log_data) =
-                                    let outcome = match prot.handle_message(hdr, ts0, r_type) {
-                                        Ok(resp) => resp,
+                                    match prot.handle_message(hdr, ts0, r_type) {
+                                        Ok(_) => {
+                                            /**/
+                                        },
                                         Err(e) => {
                                             error!(log, "Error handling message:");
                                             error!(log, "{}", &e);
                                             if let Some(cause) = e.cause {
                                                 error!(log, "Cause: {}", cause);
                                             }
-                                            (None, None, Utc::now())
                                         }
                                     };
 
-                                    resp_tx.send(outcome).unwrap();
+                                    // resp_tx.send(outcome).unwrap();
                                 });
                                 debug!(
                                     logger,
@@ -650,68 +649,66 @@ impl Worker {
                         }
 
                         // Pop the top pending message from the out_queue (if any) and transmit it
-                        let resp = responses_pending.try_recv().ok();
-                        if let Some((response, log_data, out_queue_start)) = resp {
+                        let resp = out_queue_receiver.try_recv().ok();
+                        if let Some((mut resp_hdr, log_data, out_queue_start)) = resp {
                             let tx_channel = Arc::clone(&tx);
                             let log = logger.clone();
                             // let out_queue_start = Utc::now();
 
-                            if let Some(mut r) = response {
-                                //Is the packet stale?
-                                if (Utc::now().timestamp_millis() - out_queue_start.timestamp_millis()) > 
-                                    stale_packet_threshold as i64 {
-                                    warn!(
-                                        log,
-                                        "Not transmitting";
-                                        "destination" => &r.destination,
-                                        "source" => &r.sender,
-                                        "reason" => "stale packet",
-                                        "status" => MessageStatus::DROPPED,
-                                        "msg_id" => &r.msg_id,
-                                        "radio" => &rl,
-                                    );
-                                    return;
-                                }
+                            //Is the packet stale?
+                            if (Utc::now().timestamp_millis() - out_queue_start.timestamp_millis()) > 
+                                stale_packet_threshold as i64 {
+                                warn!(
+                                    log,
+                                    "Not transmitting";
+                                    "destination" => &resp_hdr.destination,
+                                    "source" => &resp_hdr.sender,
+                                    "reason" => "stale packet",
+                                    "status" => MessageStatus::DROPPED,
+                                    "msg_id" => &resp_hdr.msg_id,
+                                    "radio" => &rl,
+                                );
+                                return;
+                            }
 
-                                let log_data = match log_data {
-                                    Some(l) => l,
-                                    None => { 
-                                        warn!(
-                                            log,
-                                            "Log_Data was empty";
-                                            "destination" => &r.destination,
-                                            "source" => &r.sender,
-                                            "status" => MessageStatus::DROPPED,
-                                            "msg_id" => &r.msg_id,
+                            // let log_data = match log_data {
+                            //     Some(l) => l,
+                            //     None => { 
+                            //         warn!(
+                            //             log,
+                            //             "Log_Data was empty";
+                            //             "destination" => &r.destination,
+                            //             "source" => &r.sender,
+                            //             "status" => MessageStatus::DROPPED,
+                            //             "msg_id" => &r.msg_id,
+                            //         );
+                            //         return;
+                            //     },
+                            // };
+
+                            //perf_out_queued_start
+                            resp_hdr.delay = out_queue_start.timestamp_nanos();
+                            
+                            // let _msg_id = r.get_msg_id().to_string();
+                            match tx_channel.broadcast(resp_hdr.clone()) {
+                                Ok(tx) => {
+                                    if let Some(tx) = tx {
+                                        /* Log transmission */
+                                        radio::log_tx(
+                                            &log,
+                                            tx,
+                                            &resp_hdr.msg_id,
+                                            MessageStatus::SENT,
+                                            &resp_hdr.sender,
+                                            &resp_hdr.destination,
+                                            log_data,
                                         );
-                                        return;
-                                    },
-                                };
-
-                                //perf_out_queued_start
-                                r.delay = out_queue_start.timestamp_nanos();
-                                
-                                // let _msg_id = r.get_msg_id().to_string();
-                                match tx_channel.broadcast(r.clone()) {
-                                    Ok(tx) => {
-                                        if let Some(tx) = tx {
-                                            /* Log transmission */
-                                            radio::log_tx(
-                                                &log,
-                                                tx,
-                                                &r.msg_id,
-                                                MessageStatus::SENT,
-                                                &r.sender,
-                                                &r.destination,
-                                                log_data,
-                                            );
-                                        }
                                     }
-                                    Err(e) => {
-                                        error!(log, "Error sending response: {}", e);
-                                        if let Some(cause) = e.cause {
-                                            error!(log, "Cause: {}", cause);
-                                        }
+                                }
+                                Err(e) => {
+                                    error!(log, "Error sending response: {}", e);
+                                    if let Some(cause) = e.cause {
+                                        error!(log, "Cause: {}", cause);
                                     }
                                 }
                             }
@@ -774,14 +771,6 @@ impl Worker {
                 break;
             }
         }
-
-        // // let _exit_values = threads.map(|x| x.map(|t| t.join())); //This compact version does not work. It seems the lazy iterator is not evaluated.
-        // for x in threads {
-        //     // if let Some(h) = x {
-        //     //     debug!("Waiting for a listener thread...");
-        //     let _res = x.join();
-        //     // }
-        // }
 
         Ok(())
     }

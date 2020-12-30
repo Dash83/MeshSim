@@ -1,6 +1,6 @@
 //! Protocol that naively routes data by relaying all messages it receives.
 
-use crate::worker::protocols::{Outcome, InterOutcome, Protocol, ProtocolMessages};
+use crate::worker::protocols::{Transmission, HandleMessageOutcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -13,6 +13,7 @@ use slog::{Logger, Record, Serializer, KV};
 use std::collections::HashSet;
 use std::iter::Iterator;
 use std::sync::{Arc, Mutex};
+use crossbeam_channel::Sender;
 
 const MSG_CACHE_SIZE: usize = 10000;
 
@@ -23,11 +24,11 @@ struct CacheEntry {
 
 ///The main struct for this protocol. Implements the worker::protocol::Protocol trait.
 #[derive(Debug)]
-pub struct NaiveRouting {
+pub struct Flooding {
     worker_name: String,
     worker_id: String,
     msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
-    short_radio: Arc<dyn Radio>,
+    tx_queue: Sender<Transmission>,
     rng: Arc<Mutex<StdRng>>,
     logger: Logger,
 }
@@ -57,7 +58,7 @@ impl KV for Messages {
     }
 }
 
-impl Protocol for NaiveRouting {
+impl Protocol for Flooding {
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
         //No initialization needed
         Ok(None)
@@ -68,7 +69,7 @@ impl Protocol for NaiveRouting {
         hdr: MessageHeader,
         _ts: DateTime<Utc>,
         _r_type: RadioTypes,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<(), MeshSimError> {
         let msg = deserialize_message(hdr.get_payload()).map_err(|e| {
             let err_msg = String::from("Failed to deserialize payload into a message");
             MeshSimError {
@@ -78,7 +79,7 @@ impl Protocol for NaiveRouting {
         })?;
         let msg_cache = Arc::clone(&self.msg_cache);
         let rng = Arc::clone(&self.rng);
-        let (resp, md) = NaiveRouting::handle_message_internal(
+        let resp = Flooding::handle_message_internal(
             hdr,
             msg,
             self.get_self_peer(),
@@ -86,13 +87,18 @@ impl Protocol for NaiveRouting {
             rng,
             &self.logger,
         )?;
-        Ok((resp, md, Utc::now()))
+
+        if let Some((resp_hdr, md)) = resp {
+            self.tx_queue.send((resp_hdr, md, Utc::now()));
+        }
+
+        Ok(())
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
         let perf_out_queued_start = Utc::now();
         let msg = Messages::Data(DataMessage { payload: data });
-        let log_data = ProtocolMessages::Naive(msg.clone());
+        let log_data = ProtocolMessages::Flooding(msg.clone());
         let mut hdr =
             MessageHeader::new(self.get_self_peer(), destination, serialize_message(msg)?);
         hdr.delay = perf_out_queued_start.timestamp_nanos();
@@ -112,17 +118,7 @@ impl Protocol for NaiveRouting {
             cache.insert(CacheEntry { msg_id });
         }
 
-        if let Some(tx) = self.short_radio.broadcast(hdr.clone())? {
-            radio::log_tx(
-                &self.logger,
-                tx,
-                &hdr.msg_id,
-                MessageStatus::SENT,
-                &hdr.sender,
-                &hdr.destination,
-                log_data,
-            );
-        }
+        self.tx_queue.send((hdr, log_data, Utc::now()));
 
         Ok(())
     }
@@ -133,21 +129,21 @@ impl Protocol for NaiveRouting {
     }
 }
 
-impl NaiveRouting {
+impl Flooding {
     /// Creates a new instance of the NaiveRouting protocol handler
     pub fn new(
         worker_name: String,
         worker_id: String,
-        sr: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
-    ) -> NaiveRouting {
+    ) -> Flooding {
         let v = HashSet::with_capacity(MSG_CACHE_SIZE);
-        NaiveRouting {
+        Flooding {
             worker_name,
             worker_id,
             msg_cache: Arc::new(Mutex::new(v)),
-            short_radio: sr,
+            tx_queue,
             rng,
             logger,
         }
@@ -160,7 +156,7 @@ impl NaiveRouting {
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<InterOutcome, MeshSimError> {
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
         let msg_id = hdr.get_msg_id().to_string();
         {
             // LOCK:ACQUIRE:MSG_CACHE
@@ -193,7 +189,7 @@ impl NaiveRouting {
                     None,
                     &Messages::Data(msg),
                 );
-                return Ok((None, None));
+                return Ok(None);
             }
 
             //Have not seen this message yet.
@@ -219,7 +215,7 @@ impl NaiveRouting {
                 None,
                 &Messages::Data(msg),
             );
-            return Ok((None, None));
+            return Ok(None);
         }
 
         let msg = Messages::Data(msg);
@@ -230,9 +226,9 @@ impl NaiveRouting {
         //and leave the rest the same.
         let fwd_hdr = hdr.create_forward_header(me).build();
         //Box the message to log it
-        let log_data = ProtocolMessages::Naive(msg);
+        let log_data = ProtocolMessages::Flooding(msg);
 
-        Ok((Some(fwd_hdr), Some(log_data)))
+        Ok(Some((fwd_hdr, log_data)))
     }
 
     fn handle_message_internal(
@@ -242,10 +238,10 @@ impl NaiveRouting {
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<InterOutcome, MeshSimError> {
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
         match msg {
             Messages::Data(data) => {
-                NaiveRouting::process_data_message(hdr, data, me, msg_cache, rng, logger)
+                Flooding::process_data_message(hdr, data, me, msg_cache, rng, logger)
             }
         }
     }

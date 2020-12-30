@@ -1,5 +1,5 @@
 //! Implemention of the AODV protocol, per its RFC https://www.rfc-editor.org/info/rfc3561
-use crate::worker::protocols::{Outcome, InterOutcome, Protocol, ProtocolMessages};
+use crate::worker::protocols::{Transmission, HandleMessageOutcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -16,6 +16,7 @@ use std::default::Default;
 
 use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use crossbeam_channel::Sender;
 
 const CONCCURENT_THREADS_PER_FLOW: usize = 1;
 
@@ -35,9 +36,9 @@ const NET_DIAMETER: usize = 35;
 // const MIN_REPAIR_TTL
 // const MY_ROUTE_TIMEOUT: u32 = 2 * ACTIVE_ROUTE_TIMEOUT as u32; //Lifetime used for RREPs when responding to an RREQ to the current node
 const NODE_TRAVERSAL_TIME: i64 = 40; //milliseconds
-                                         // const NET_TRAVERSAL_TIME: u64 = 2 * NODE_TRAVERSAL_TIME * NET_DIAMETER as u64; //milliseconds
-                                         // const NEXT_HOP_WAIT: u64 = NODE_TRAVERSAL_TIME + 10; //milliseconds
-                                         // const PATH_DISCOVERY_TIME: u64 = 2 * NET_TRAVERSAL_TIME; //milliseconds
+// const NET_TRAVERSAL_TIME: u64 = 2 * NODE_TRAVERSAL_TIME * NET_DIAMETER as u64; //milliseconds
+// const NEXT_HOP_WAIT: u64 = NODE_TRAVERSAL_TIME + 10; //milliseconds
+// const PATH_DISCOVERY_TIME: u64 = 2 * NET_TRAVERSAL_TIME; //milliseconds
 const _RERR_RATELIMITE: usize = 10;
 const RREQ_RETRIES: usize = 2;
 const _RREQ_RATELIMIT: usize = 10;
@@ -147,7 +148,7 @@ pub struct AODV {
     worker_name: String,
     worker_id: String,
     config: Config,
-    short_radio: Arc<dyn Radio>,
+    tx_queue: Sender<Transmission>,
     sequence_number: Arc<AtomicU32>,
     rreq_seq_no: Arc<AtomicU32>,
     route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
@@ -163,6 +164,7 @@ pub struct AODV {
     /// Timestamp for the next scheduled HELLO message transmission
     ts_last_hello_msg: AtomicI64,
     rng: Arc<Mutex<StdRng>>,
+    last_transmission: Arc<AtomicI64>,
     logger: Logger,
 }
 
@@ -281,7 +283,7 @@ impl Protocol for AODV {
         hdr: MessageHeader,
         ts: DateTime<Utc>,
         _r_type: RadioTypes,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<(), MeshSimError> {
         let _msg_id = hdr.get_msg_id();
         let msg = deserialize_message(&hdr.get_payload())?;
         let route_table = Arc::clone(&self.route_table);
@@ -292,8 +294,8 @@ impl Protocol for AODV {
         let rng = Arc::clone(&self.rng);
         let pd = Arc::clone(&self.pending_routes);
         let qt = Arc::clone(&self.queued_transmissions);
-        let sr = Arc::clone(&self.short_radio);
-        let (resp, md) = AODV::handle_message_internal(
+
+        let resp = AODV::handle_message_internal(
             hdr,
             msg,
             ts,
@@ -306,42 +308,19 @@ impl Protocol for AODV {
             qt,
             seq_no,
             rreq_seq_no,
-            sr,
+            self.tx_queue.clone(),
             rng,
             &self.logger,
         )?;
-        Ok((resp, md, Utc::now()))
+        
+        if let Some((resp_hdr, md)) = resp {
+            self.tx_queue.send((resp_hdr, md, Utc::now()));
+        }
+
+        Ok(())
     }
 
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
-        // let logger = self.logger.clone();
-        // let radio = Arc::clone(&self.short_radio);
-        // let route_table = Arc::clone(&self.route_table);
-        // let dc = Arc::clone(&self.data_cache);
-        // let seq_no = Arc::clone(&self.sequence_number);
-        // let rreq_no = Arc::clone(&self.rreq_seq_no);
-        // let rreq_cache = Arc::clone(&self.rreq_cache);
-        // let rng = Arc::clone(&self.rng);
-        // let pr = Arc::clone(&self.pending_routes);
-        // let _qt = Arc::clone(&self.queued_transmissions);
-        // let me = self.get_self_peer();
-        // let sr = Arc::clone(&self.short_radio);
-        // let _handle = thread::spawn(move || {
-        //     info!(logger, "Maintenance thread started");
-        //     let _ = AODV::maintenance_loop(
-        //         route_table,
-        //         rreq_cache,
-        //         pr,
-        //         dc,
-        //         seq_no,
-        //         rreq_no,
-        //         sr,
-        //         me,
-        //         rng,
-        //         logger,
-        //     );
-        // });
-
         info!(self.logger, "Protocol initialized");
         Ok(None)
     }
@@ -388,7 +367,7 @@ impl Protocol for AODV {
                 Arc::clone(&self.data_cache),
                 hdr,
                 log_data,
-                Arc::clone(&self.short_radio),
+                self.tx_queue.clone(),
                 self.logger.clone(),
             )?;
             return Ok(());
@@ -433,7 +412,7 @@ impl Protocol for AODV {
                     repair,
                     self.get_self_peer(),
                     self.config,
-                    Arc::clone(&self.short_radio),
+                    self.tx_queue.clone(),
                     pending_routes,
                     rreq_cache,
                     &self.logger,
@@ -450,7 +429,7 @@ impl Protocol for AODV {
                 Arc::clone(&self.route_table),
                 Arc::clone(&self.data_cache),
                 self.get_self_peer(),
-                Arc::clone(&self.short_radio),
+                self.tx_queue.clone(),
                 &self.logger,
             ) {
                 Ok(_) => {
@@ -476,7 +455,7 @@ impl Protocol for AODV {
                 Arc::clone(&self.route_table),
                 Arc::clone(&self.sequence_number),
                 Arc::clone(&self.rreq_seq_no),
-                Arc::clone(&self.short_radio),
+                self.tx_queue.clone(),
                 self.get_self_peer(),
                 self.config,
                 &self.logger,
@@ -503,7 +482,8 @@ impl Protocol for AODV {
                 self.get_self_peer(),
                 self.config,
                 Arc::clone(&self.sequence_number),
-                Arc::clone(&self.short_radio),
+                self.tx_queue.clone(),
+                Arc::clone(&self.last_transmission),
                 &self.logger,
             ) {
                 Ok(_) => {
@@ -537,8 +517,9 @@ impl AODV {
         next_hop_wait: Option<i64>,
         allowed_hello_loss: Option<usize>,
         rreq_retries: Option<usize>,
-        short_radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         rng: Arc<Mutex<StdRng>>,
+        last_transmission: Arc<AtomicI64>,
         logger: Logger,
     ) -> Self {
         let starting_rreq_id: u32 = {
@@ -582,7 +563,7 @@ impl AODV {
             worker_name,
             worker_id,
             config,
-            short_radio,
+            tx_queue,
             sequence_number: Arc::new(AtomicU32::new(0)),
             rreq_seq_no: Arc::new(AtomicU32::new(starting_rreq_id)),
             route_table: Arc::new(Mutex::new(HashMap::new())),
@@ -594,6 +575,7 @@ impl AODV {
             ts_rd_retransmission,
             ts_last_hello_msg,
             rng,
+            last_transmission,
             logger,
         }
     }
@@ -611,10 +593,10 @@ impl AODV {
         queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         seq_no: Arc<AtomicU32>,
         rreq_seq_no: Arc<AtomicU32>,
-        short_radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<InterOutcome, MeshSimError> {
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
         AODV::connectivity_update(
             &hdr,
             ts,
@@ -636,7 +618,7 @@ impl AODV {
                 rreq_seq_no,
                 config.active_route_timeout,
                 me,
-                short_radio,
+                tx_queue,
                 logger,
             ),
             Messages::RREQ(msg) => AODV::process_route_request_msg(
@@ -659,7 +641,7 @@ impl AODV {
                 config.active_route_timeout,
                 me,
                 config,
-                short_radio,
+                tx_queue,
                 rng,
                 logger,
             ),
@@ -693,7 +675,7 @@ impl AODV {
         seq_no: Arc<AtomicU32>,
         me: String,
         logger: &Logger,
-    ) -> Result<InterOutcome, MeshSimError> {
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
         //Check if this is a duplicate RREQ
         {
             let mut rr_cache = rreq_cache
@@ -715,7 +697,7 @@ impl AODV {
                     &Messages::RREQ(msg),
                 );
                 *cache_entry = Utc::now();
-                return Ok((None, None));
+                return Ok(None);
             }
             //Update the cache to the last time we received this RREQ
             *cache_entry = Utc::now();
@@ -774,7 +756,7 @@ impl AODV {
             let resp_hdr =
                 MessageHeader::new(me, entry.next_hop.clone(), serialize_message(response)?);
 
-            return Ok((Some(resp_hdr), Some(log_data)));
+            return Ok(Some((resp_hdr, log_data)));
         }
 
         //or if it has an active route to the destination...
@@ -837,7 +819,7 @@ impl AODV {
                     entry.precursors.insert(next_hop);
                 }
 
-                return Ok((Some(resp_hdr), Some(log_data)));
+                return Ok(Some((resp_hdr, log_data)));
             }
             // Stored route is not valid. Check however, if the dest_seq_no is larger
             // than the one in the message and use it for forwarding if so.
@@ -863,7 +845,7 @@ impl AODV {
             .set_payload(serialize_message(msg)?)
             .build();
 
-        Ok((Some(fwd_hdr), Some(log_data)))
+        Ok(Some((fwd_hdr, log_data)))
     }
 
     fn process_route_response_msg(
@@ -876,10 +858,10 @@ impl AODV {
         active_route_timeout: i64,
         me: String,
         config: Config,
-        short_radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         _rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<InterOutcome, MeshSimError> {
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
         let mut repaired = Default::default();
 
         //RREPs are UNICASTED. Is this the destination in the header? It not, exit.
@@ -892,7 +874,7 @@ impl AODV {
                 None,
                 &Messages::RREP(msg),
             );
-            return Ok((None, None));
+            return Ok(None);
         }
 
         //Update hop-count
@@ -973,11 +955,11 @@ impl AODV {
                 msg.destination,
                 me,
                 config,
-                short_radio,
+                tx_queue,
                 logger,
             );
 
-            return Ok((None, None));
+            return Ok(None);
         }
 
         //Update route towards ORIGINATOR
@@ -996,7 +978,7 @@ impl AODV {
                     Some("RREP_CANCELLED"),
                     &Messages::RREP(msg),
                 );
-                return Ok((None, None));
+                return Ok(None);
             }
         };
 
@@ -1062,7 +1044,7 @@ impl AODV {
             .set_payload(serialize_message(msg)?)
             .build();
 
-        Ok((Some(fwd_hdr), Some(log_data)))
+        Ok(Some((fwd_hdr, log_data)))
     }
 
     fn process_route_err_msg(
@@ -1072,10 +1054,10 @@ impl AODV {
         // pending_routes: Arc<Mutex<HashMap<String, u32>>>,
         // queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         me: String,
-        // short_radio: Arc<dyn Radio>,
+        // tx_queue: Sender<Transmission>,
         _rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<InterOutcome, MeshSimError> {
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
         let mut affected_neighbours = Vec::new();
         let mut rt = route_table.lock().expect("Could not lock route table");
 
@@ -1130,7 +1112,7 @@ impl AODV {
                 .set_payload(serialize_message(msg)?)
                 .build();
 
-            Ok((Some(rsp_hdr), Some(log_data)))
+            Ok(Some((rsp_hdr, log_data)))
         } else {
             radio::log_handle_message(
                 logger,
@@ -1141,7 +1123,7 @@ impl AODV {
                 &Messages::RERR(msg),
             );
 
-            Ok((None, None))
+            Ok(None)
         }
     }
 
@@ -1159,9 +1141,9 @@ impl AODV {
         rreq_seq_no: Arc<AtomicU32>,
         active_route_timeout: i64,
         me: String,
-        short_radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         logger: &Logger,
-    ) -> Result<InterOutcome, MeshSimError> {
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
         //Mark the packet in the cache as confirmed if applicable
         let _confirmed = {
             let mut dc = data_cache.lock().expect("Could not lock data cache");
@@ -1184,7 +1166,7 @@ impl AODV {
                 None,
                 &Messages::DATA(msg),
             );
-            return Ok((None, None));
+            return Ok(None);
         }
 
         //Is this the destination of the data?
@@ -1197,7 +1179,7 @@ impl AODV {
                 None,
                 &Messages::DATA(msg),
             );
-            return Ok((None, None));
+            return Ok(None);
         }
 
         //Not the destination. Forwarding message.
@@ -1246,7 +1228,7 @@ impl AODV {
                         serialize_message(rerr_msg)?,
                     );
 
-                    return Ok((Some(hdr), Some(log_data)));
+                    return Ok(Some((hdr, log_data)));
                 }
 
                 if entry.flags.contains(RTEFlags::ACTIVE_ROUTE) {
@@ -1269,7 +1251,7 @@ impl AODV {
                             Arc::clone(&seq_no),
                             me.clone(),
                             config,
-                            Arc::clone(&short_radio),
+                            tx_queue.clone(),
                             Arc::clone(&pending_routes),
                             Arc::clone(&rreq_cache),
                             &logger,
@@ -1327,10 +1309,10 @@ impl AODV {
                             serialize_message(rerr_msg)?,
                         );
 
-                        return Ok((Some(resp_hdr), Some(log_data)));
+                        return Ok(Some((resp_hdr, log_data)));
                     }
 
-                    return Ok((None, None));
+                    return Ok(None);
                 }
             }
             None => {
@@ -1380,7 +1362,7 @@ impl AODV {
             .set_payload(serialize_message(msg)?)
             .build();
 
-        Ok((Some(fwd_hdr), Some(log_data)))
+        Ok(Some((fwd_hdr, log_data)))
     }
 
     fn process_hello_msg(
@@ -1390,7 +1372,7 @@ impl AODV {
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         me: String,
         logger: &Logger,
-    ) -> Result<InterOutcome, MeshSimError> {
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
         radio::log_handle_message(
             logger,
             &hdr,
@@ -1422,7 +1404,7 @@ impl AODV {
         entry.flags.insert(RTEFlags::ACTIVE_ROUTE);
         entry.lifetime = std::cmp::max(entry.lifetime, lifetime);
 
-        Ok((None, None))
+        Ok(None)
     }
 
     fn start_flow(
@@ -1432,7 +1414,7 @@ impl AODV {
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         mut hdr: MessageHeader,
         log_data: ProtocolMessages,
-        short_radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         logger: Logger,
     ) -> Result<(), MeshSimError> {
         let (next_hop, seq_no) = {
@@ -1461,17 +1443,7 @@ impl AODV {
             },
         );
 
-        if let Some(tx) = short_radio.broadcast(hdr.clone())? {
-            radio::log_tx(
-                &logger,
-                tx,
-                &hdr.msg_id,
-                MessageStatus::SENT,
-                &hdr.sender,
-                &hdr.destination,
-                log_data,
-            );
-        }
+        tx_queue.send((hdr, log_data, Utc::now()));
 
         Ok(())
     }
@@ -1486,7 +1458,7 @@ impl AODV {
         repair: bool,
         me: String,
         config: Config,
-        short_radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
         rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
         logger: &Logger,
@@ -1545,18 +1517,13 @@ impl AODV {
         }
 
         //Broadcast RouteDiscovery
-        if let Some(tx) = short_radio.broadcast(hdr.clone())? {
-            radio::log_tx(
-                &logger,
-                tx,
-                &hdr.msg_id,
-                MessageStatus::SENT,
-                &hdr.sender,
-                &hdr.destination,
-                log_data,
-            );
-        }
+        tx_queue.send((hdr, log_data, Utc::now()));
 
+        /* TODO: This might present a bug in the data analysis. Before, this was logged after calling radio.broadcast(), thus making sure
+        the packet had actualley been sent. But now, the packet has been queued. Functionally, it is fine, but from an analysis point of view,
+        I'm logging the RREQ started and it doesn't really start until the packet has been sent, which might end up not being sent.
+        It's probably fine, but making note of this.
+        */ 
         //This log is necessary to differentiate the initial RREQ packet from all the other SENT logs in
         //the intermediate nodes.
         info!(logger, "Initiated RREQ"; "rreq_id" => rreq_id);
@@ -1584,7 +1551,7 @@ impl AODV {
         destination: String,
         _me: String,
         config: Config,
-        short_radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
         info!(logger, "Looking for queued flows for {}", &destination);
@@ -1596,33 +1563,18 @@ impl AODV {
             qt.remove_entry(&destination)
         };
 
-        let thread_pool = threadpool::Builder::new()
-            .num_threads(CONCCURENT_THREADS_PER_FLOW)
-            .build();
         if let Some((_key, flows)) = entry {
             info!(logger, "Processing {} queued transmissions.", &flows.len());
             for hdr in flows {
                 let dest = destination.clone();
                 let log_data = ProtocolMessages::AODV(deserialize_message(hdr.get_payload())?);
-                let radio = Arc::clone(&short_radio);
                 let l = logger.clone();
                 let rt = Arc::clone(&route_table);
                 let dc = Arc::clone(&data_cache);
-                thread_pool.execute(move || {
-                    match AODV::start_flow(dest, config, rt, dc, hdr, log_data, radio, l.clone()) {
-                        Ok(_) => {
-                            // All good!
-                        }
-                        Err(e) => {
-                            error!(l, "Failed to start transmission - {}", e);
-                        }
-                    }
-                });
+                AODV::start_flow(dest, config, rt, dc, hdr, log_data, tx_queue.clone(), l.clone())?;
             }
         }
 
-        //Wait for all threads to finish
-        thread_pool.join();
         Ok(())
     }
 
@@ -1633,7 +1585,7 @@ impl AODV {
         seq_no: Arc<AtomicU32>,
         me: String,
         config: Config,
-        short_radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
         rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
         logger: &Logger,
@@ -1661,7 +1613,7 @@ impl AODV {
                 repair,
                 me,
                 config,
-                short_radio,
+                tx_queue,
                 pending_routes,
                 rreq_cache,
                 logger,
@@ -1684,7 +1636,7 @@ impl AODV {
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         me: String,
-        short_radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
         let mut broken_links = {
@@ -1775,29 +1727,7 @@ impl AODV {
             let log_data = ProtocolMessages::AODV(rerr_msg.clone());
             let hdr = MessageHeader::new(me, String::new(), serialize_message(rerr_msg)?);
 
-            match short_radio.broadcast(hdr.clone()) {
-                Ok(tx) => {
-                    /* All good! */
-                    if let Some(tx) = tx {
-                        radio::log_tx(
-                            &logger,
-                            tx,
-                            &hdr.msg_id,
-                            MessageStatus::SENT,
-                            &hdr.sender,
-                            &hdr.destination,
-                            log_data,
-                        );
-                    }
-                }
-                Err(e) => {
-                    error!(
-                        logger,
-                        "Failed to send RERR message";
-                        "reason"=>format!("{}",e)
-                    );
-                }
-            };
+            tx_queue.send((hdr, log_data, Utc::now()));
         }
 
         Ok(())
@@ -1809,7 +1739,7 @@ impl AODV {
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         seq_no: Arc<AtomicU32>,
         rreq_no: Arc<AtomicU32>,
-        short_radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         me: String,
         config: Config,
         logger: &Logger,
@@ -1854,19 +1784,7 @@ impl AODV {
                                 String::from(""),
                                 serialize_message(msg)?,
                             );
-                            let msg_id = hdr.get_msg_id().to_string();
-                            let tx = short_radio.broadcast(hdr)?;
-                            if let Some(tx) = tx {
-                                radio::log_tx(
-                                    &logger,
-                                    tx,
-                                    &msg_id,
-                                    MessageStatus::SENT,
-                                    &me,
-                                    dest,
-                                    log_data,
-                                );
-                            }
+                            tx_queue.send((hdr, log_data, Utc::now()));
                         }
 
                         continue;
@@ -1893,7 +1811,7 @@ impl AODV {
                 repair,
                 me.clone(),
                 config,
-                Arc::clone(&short_radio),
+                tx_queue.clone(),
                 Arc::clone(&pending_routes),
                 Arc::clone(&rreq_cache),
                 &logger,
@@ -1916,7 +1834,8 @@ impl AODV {
         me: String,
         config: Config,
         seq_no: Arc<AtomicU32>,
-        short_radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
+        last_transmission: Arc<AtomicI64>,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
         let num_active_routes = {
@@ -1929,7 +1848,7 @@ impl AODV {
             .num_nanoseconds()
             .unwrap_or(1_000_000_000);
         if num_active_routes > 0
-            && (short_radio.last_transmission() + hello_threshold) < Utc::now().timestamp_nanos()
+            && (last_transmission.load(Ordering::SeqCst) + hello_threshold) < Utc::now().timestamp_nanos()
         {
             //Craft HELLO MESSAGE
             let flags: RREPFlags = Default::default();
@@ -1947,29 +1866,8 @@ impl AODV {
             let log_data = ProtocolMessages::AODV(msg.clone());
             let hdr = MessageHeader::new(me, String::new(), serialize_message(msg)?);
 
-            match short_radio.broadcast(hdr.clone()) {
-                Ok(tx) => {
-                    if let Some(tx) = tx {
-                        // All good
-                        radio::log_tx(
-                            &logger,
-                            tx,
-                            &hdr.msg_id,
-                            MessageStatus::SENT,
-                            &hdr.sender,
-                            &hdr.destination,
-                            log_data,
-                        );
-                    }
-                }
-                Err(e) => {
-                    error!(
-                        logger,
-                        "Failed to send HELLO message";
-                        "reason"=>format!("{}",e)
-                    );
-                }
-            };
+            tx_queue.send((hdr, log_data, Utc::now()));
+
         }
 
         Ok(())

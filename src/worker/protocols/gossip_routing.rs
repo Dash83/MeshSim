@@ -1,6 +1,6 @@
 //! Gossip-based flooding protocol
 
-use crate::worker::protocols::{Outcome, InterOutcome, Protocol, ProtocolMessages};
+use crate::worker::protocols::{Transmission, HandleMessageOutcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -13,6 +13,7 @@ use slog::{Logger, Record, Serializer, KV};
 use std::collections::HashSet;
 use std::iter::Iterator;
 use std::sync::{Arc, Mutex};
+use crossbeam_channel::Sender;
 
 const MSG_CACHE_SIZE: usize = 10000;
 /// The default number of hops messages are guaranteed to be propagated
@@ -33,7 +34,7 @@ pub struct GossipRouting {
     worker_name: String,
     worker_id: String,
     msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
-    short_radio: Arc<dyn Radio>,
+    tx_queue: Sender<Transmission>,
     /// RNG used for gossip calculations
     rng: Arc<Mutex<StdRng>>,
     logger: Logger,
@@ -68,7 +69,7 @@ impl Protocol for GossipRouting {
         hdr: MessageHeader,
         _ts: DateTime<Utc>,
         _r_type: RadioTypes,
-    ) -> Result<Outcome, MeshSimError> {
+    ) -> Result<(), MeshSimError> {
         let msg = deserialize_message(hdr.get_payload()).map_err(|e| {
             let err_msg = String::from("Failed to deserialize payload into a message");
             MeshSimError {
@@ -78,7 +79,7 @@ impl Protocol for GossipRouting {
         })?;
         let msg_cache = Arc::clone(&self.msg_cache);
         let rng = Arc::clone(&self.rng);
-        let (resp, md) = GossipRouting::handle_message_internal(
+        let resp = GossipRouting::handle_message_internal(
             hdr,
             msg,
             self.get_self_peer(),
@@ -88,7 +89,12 @@ impl Protocol for GossipRouting {
             rng,
             &self.logger,
         )?;
-        Ok((resp, md, Utc::now()))
+
+        if let Some((resp_hdr, md)) = resp {
+            self.tx_queue.send((resp_hdr, md, Utc::now()));
+        }
+
+        Ok(())
     }
 
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
@@ -114,17 +120,7 @@ impl Protocol for GossipRouting {
             cache.insert(CacheEntry { msg_id });
         }
 
-        if let Some(tx) = self.short_radio.broadcast(hdr.clone())? {
-            radio::log_tx(
-                &self.logger,
-                tx,
-                &hdr.msg_id,
-                MessageStatus::SENT,
-                &hdr.sender,
-                &hdr.destination,
-                log_data,
-            );
-        }
+        self.tx_queue.send((hdr, log_data, Utc::now()));
 
         Ok(())
     }
@@ -142,7 +138,7 @@ impl GossipRouting {
         worker_id: String,
         k: usize,
         p: f64,
-        sr: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
     ) -> GossipRouting {
@@ -153,7 +149,7 @@ impl GossipRouting {
             k,
             p,
             msg_cache: Arc::new(Mutex::new(v)),
-            short_radio: sr,
+            tx_queue,
             rng,
             logger,
         }
@@ -168,7 +164,7 @@ impl GossipRouting {
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<InterOutcome, MeshSimError> {
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
         {
             // LOCK:ACQUIRE:MSG_CACHE
             let mut cache = msg_cache.lock().map_err(|_e| {
@@ -199,7 +195,7 @@ impl GossipRouting {
                         None,
                         &Messages::Data(msg),
                     );
-                    return Ok((None, None));
+                    return Ok(None);
                 }
             }
 
@@ -228,7 +224,7 @@ impl GossipRouting {
                 None,
                 &Messages::Data(msg),
             );
-            return Ok((None, None));
+            return Ok(None);
         }
 
         //Gossip?
@@ -256,7 +252,7 @@ impl GossipRouting {
                 &Messages::Data(msg),
             );
             //Not gossiping this message.
-            return Ok((None, None));
+            return Ok(None);
         }
 
         let msg = Messages::Data(msg);
@@ -274,7 +270,7 @@ impl GossipRouting {
         //Box the message to log it
         let log_data = ProtocolMessages::Gossip(msg);
 
-        Ok((Some(fwd_hdr), Some(log_data)))
+        Ok(Some((fwd_hdr, log_data)))
     }
 
     fn handle_message_internal(
@@ -286,7 +282,7 @@ impl GossipRouting {
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
-    ) -> Result<InterOutcome, MeshSimError> {
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
         match msg {
             Messages::Data(data) => {
                 GossipRouting::process_data_message(hdr, data, k, p, me, msg_cache, rng, logger)

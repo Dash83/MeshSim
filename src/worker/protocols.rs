@@ -10,7 +10,7 @@ use aodv::AODV;
 use chrono::{DateTime, Utc};
 use gossip_routing::GossipRouting;
 use lora_wifi_beacon::LoraWifiBeacon;
-use naive_routing::NaiveRouting;
+use flooding::Flooding;
 use reactive_gossip_routing::ReactiveGossipRouting;
 use reactive_gossip_routing_II::ReactiveGossipRoutingII;
 use reactive_gossip_routing_III::ReactiveGossipRoutingIII;
@@ -18,19 +18,20 @@ use slog::{Logger, Record, Serializer, KV};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 
 pub mod aodv;
 pub mod gossip_routing;
 pub mod lora_wifi_beacon;
-pub mod naive_routing;
+pub mod flooding;
 pub mod reactive_gossip_routing;
 #[allow(non_snake_case)]
 pub mod reactive_gossip_routing_II;
 #[allow(non_snake_case)]
 pub mod reactive_gossip_routing_III;
 
-type Outcome<'a> = (Option<MessageHeader>, Option<ProtocolMessages>, DateTime<Utc>);
-type InterOutcome<'a> = (Option<MessageHeader>, Option<ProtocolMessages>);
+type Transmission = (MessageHeader, ProtocolMessages, DateTime<Utc>);
+type HandleMessageOutcome = Option<(MessageHeader, ProtocolMessages)>;
 /// Trait that all protocols need to implement.
 /// The function handle_message should
 pub trait Protocol: std::fmt::Debug + Send + Sync {
@@ -41,7 +42,7 @@ pub trait Protocol: std::fmt::Debug + Send + Sync {
         msg: MessageHeader,
         ts: DateTime<Utc>,
         r_type: RadioTypes,
-    ) -> Result<Outcome, MeshSimError>;
+    ) -> Result<(), MeshSimError>;
 
     /// Function to initialize the protocol.
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError>;
@@ -203,7 +204,7 @@ pub enum ProtocolMessages {
     AODV(aodv::Messages),
     Gossip(gossip_routing::Messages),
     LoraWifi(lora_wifi_beacon::Messages),
-    Naive(naive_routing::Messages),
+    Flooding(flooding::Messages),
     RGRI(reactive_gossip_routing::Messages),
     RGRII(reactive_gossip_routing_II::Messages),
     RGRIII(reactive_gossip_routing_III::Messages),
@@ -237,7 +238,7 @@ impl KV for ProtocolMessages {
                 aodv::Messages::RREP_ACK => serializer.emit_str("msg_type", "RREP_ACK"),
             },
             ProtocolMessages::Gossip(ref _msg) => serializer.emit_str("msg_type", "DATA"),
-            ProtocolMessages::Naive(ref _msg) => serializer.emit_str("msg_type", "DATA"),
+            ProtocolMessages::Flooding(ref _msg) => serializer.emit_str("msg_type", "DATA"),
             ProtocolMessages::LoraWifi(ref msg) => match msg {
                 lora_wifi_beacon::Messages::Beacon(m) => {
                     let _ = serializer.emit_str("msg_type", "BEACON")?;
@@ -614,7 +615,7 @@ pub struct ProtocolResources {
     ///Protocol handler for the selected protocol.
     pub handler: Arc<dyn Protocol>,
     ///Collection of rx/tx radio channels for the worker and protocol to communicate.
-    pub radio_channels: Vec<(Box<dyn Listener>, Arc<dyn Radio>)>,
+    pub radio_channels: Vec<(Box<dyn Listener>, (Arc<dyn Radio>, Sender<Transmission>, Receiver<Transmission>))>,
 }
 
 /// Provides a new boxed reference to the struct matching the passed protocol.
@@ -627,6 +628,8 @@ pub fn build_protocol_resources(
     name: String,
     logger: Logger,
 ) -> Result<ProtocolResources, MeshSimError> {
+    let (sr_sender, sr_receiver) = unbounded();
+    let (lr_sender, lr_receiver) = unbounded();
     match p {
         Protocols::LoraWifiBeacon => {
             //Obtain the short-range radio.
@@ -638,14 +641,14 @@ pub fn build_protocol_resources(
 
             //Build the listeners list
             let mut radio_channels = Vec::new();
-            radio_channels.push((sr_listener, Arc::clone(&sr)));
-            radio_channels.push((lr_listener, Arc::clone(&lr)));
+            radio_channels.push((sr_listener, (Arc::clone(&sr), sr_sender.clone(), sr_receiver)));
+            radio_channels.push((lr_listener, (Arc::clone(&lr), lr_sender.clone(), lr_receiver)));
 
             let rng = Worker::rng_from_seed(seed);
 
             //Build the protocol handler
             let handler: Arc<dyn Protocol> =
-                Arc::new(LoraWifiBeacon::new(name, id, sr, lr, rng, logger));
+                Arc::new(LoraWifiBeacon::new(name, id, sr_sender, lr_sender, rng, logger));
 
             //Build the resources context
             let resources = ProtocolResources {
@@ -659,15 +662,15 @@ pub fn build_protocol_resources(
             let (sr, listener) = short_radio
                 .expect("The NaiveRouting protocol requires a short_radio to be provided.");
             let rng = Worker::rng_from_seed(seed);
-            let handler: Arc<dyn Protocol> = Arc::new(NaiveRouting::new(
+            let handler: Arc<dyn Protocol> = Arc::new(Flooding::new(
                 name,
                 id,
-                Arc::clone(&sr),
+                sr_sender.clone(),
                 Arc::new(Mutex::new(rng)),
                 logger,
             ));
             let mut radio_channels = Vec::new();
-            radio_channels.push((listener, sr));
+            radio_channels.push((listener, (Arc::clone(&sr), sr_sender, sr_receiver)));
             let resources = ProtocolResources {
                 handler,
                 radio_channels,
@@ -684,12 +687,12 @@ pub fn build_protocol_resources(
                 id,
                 k,
                 p,
-                Arc::clone(&sr),
+                sr_sender.clone(),
                 Arc::new(Mutex::new(rng)),
                 logger,
             ));
             let mut radio_channels = Vec::new();
-            radio_channels.push((listener, sr));
+            radio_channels.push((listener, (Arc::clone(&sr), sr_sender, sr_receiver)));
             let resources = ProtocolResources {
                 handler,
                 radio_channels,
@@ -706,12 +709,12 @@ pub fn build_protocol_resources(
                 id,
                 k,
                 p,
-                Arc::clone(&sr),
+                sr_sender.clone(),
                 Arc::new(Mutex::new(rng)),
                 logger,
             ));
             let mut radio_channels = Vec::new();
-            radio_channels.push((listener, sr));
+            radio_channels.push((listener, (Arc::clone(&sr), sr_sender, sr_receiver)));
             let resources = ProtocolResources {
                 handler,
                 radio_channels,
@@ -729,12 +732,12 @@ pub fn build_protocol_resources(
                 k,
                 p,
                 q,
-                Arc::clone(&sr),
+                sr_sender.clone(),
                 Arc::new(Mutex::new(rng)),
                 logger,
             ));
             let mut radio_channels = Vec::new();
-            radio_channels.push((listener, sr));
+            radio_channels.push((listener, (Arc::clone(&sr), sr_sender, sr_receiver)));
             let resources = ProtocolResources {
                 handler,
                 radio_channels,
@@ -755,14 +758,15 @@ pub fn build_protocol_resources(
                 p,
                 q,
                 beacon_threshold,
-                Arc::clone(&sr),
-                Arc::clone(&lr),
+                sr_sender.clone(),
+                lr_sender.clone(),
                 Arc::new(Mutex::new(rng)),
                 logger,
             ));
             let mut radio_channels = Vec::new();
-            radio_channels.push((sr_listener, sr));
-            radio_channels.push((lr_listener, lr));
+            radio_channels.push((sr_listener, (Arc::clone(&sr), sr_sender, sr_receiver)));
+            radio_channels.push((lr_listener, (Arc::clone(&lr), lr_sender, lr_receiver)));
+
             let resources = ProtocolResources {
                 handler,
                 radio_channels,
@@ -790,12 +794,13 @@ pub fn build_protocol_resources(
                 next_hop_wait,
                 allowed_hello_loss,
                 rreq_retries,
-                Arc::clone(&sr),
+                sr_sender.clone(),
                 Arc::new(Mutex::new(rng)),
+                sr.last_transmission(),
                 logger,
             ));
             let mut radio_channels = Vec::new();
-            radio_channels.push((listener, sr));
+            radio_channels.push((listener, (Arc::clone(&sr), sr_sender, sr_receiver)));
             let resources = ProtocolResources {
                 handler,
                 radio_channels,
