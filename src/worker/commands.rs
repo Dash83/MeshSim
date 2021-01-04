@@ -2,12 +2,24 @@
 
 use crate::{MeshSimError, MeshSimErrorKind};
 use std::str::FromStr;
+use crate::mobility2::{Position, Velocity};
 
 /// Enummeration of all the commands the worker supports
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Commands {
     ///Send a chunk of data to the destination specified
     Send(String, Vec<u8>),
+    RegisterWorker{
+        w_name: String,
+        w_id: String, 
+        pos : Position,
+        vel: Option<Velocity>,
+        dest: Option<Position>,
+        sr_address: Option<String>,
+        lr_address: Option<String>,
+        cmd_address: String,
+    },
+    Finish,
 }
 
 impl FromStr for Commands {

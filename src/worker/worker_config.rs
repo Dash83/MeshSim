@@ -260,41 +260,26 @@ impl WorkerConfig {
             None => None,
         };
 
-        //Need to add an endline char to stdout after both radios have been initialized.
-        println!();
+        // //Need to add an endline char to stdout after both radios have been initialized.
+        // println!();
 
-        // if self.operation_mode == OperationMode::Simulated &&
-        //    register_worker == true {
-        //     let conn = mobility::get_db_connection(&self.work_dir, &logger)?;
-        //     // debug!("DB Connection obtained.");
-        //     let _rows = mobility::create_db_objects(&conn, &logger)?;
-        //     // debug!("create_positions_db returned {}", _rows);
-        //     let db_id = mobility::register_worker(&conn, self.worker_name.clone(),
-        //                                             &id,
-        //                                             &self.position,
-        //                                             &self.velocity,
-        //                                             &self.destination,
-        //                                             sr_addr,
-        //                                             lr_addr,
-        //                                             &logger)?;
-        //     debug!(logger, "Worker registered correcly with id {}", &db_id);
-        // }
-
-        let w = Worker {
-            name: self.worker_name,
-            short_radio: sr_channels,
-            long_radio: lr_channels,
-            work_dir: self.work_dir,
-            rng: Arc::clone(&rng),
-            seed: self.random_seed,
-            operation_mode: self.operation_mode,
+        Worker::new(
+            self.worker_name,
+            sr_channels,
+            lr_channels,
+            self.work_dir,
+            Arc::clone(&rng),
+            self.random_seed,
+            self.operation_mode,
             id,
             protocol,
-            packet_queue_size: self.packet_queue_size.unwrap_or(DEFAULT_PACKET_QUEUE_SIZE),
-            stale_packet_threshold: self.stale_packet_threshold.unwrap_or(DEFAULT_STALE_PACKET_THRESHOLD),
+            self.packet_queue_size.unwrap_or(DEFAULT_PACKET_QUEUE_SIZE),
+            self.stale_packet_threshold.unwrap_or(DEFAULT_STALE_PACKET_THRESHOLD),
+            self.position,
+            Some(self.velocity),
+            self.destination,
             logger,
-        };
-        Ok(w)
+        )
     }
 
     ///Writes the current configuration object to a formatted configuration file, that can be passed to

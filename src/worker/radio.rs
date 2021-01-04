@@ -389,70 +389,67 @@ impl SimulatedRadio {
         })?;
         let listener =
             SimulatedListener::new(sock, timeout, Arc::clone(rng), r_type, logger.clone());
-        let radio_type: String = r_type.into();
-        print!("{}-{};", radio_type, &listener.get_address());
+        // let radio_type: String = r_type.into();
+        // print!("{}-{};", radio_type, &listener.get_address());
 
         Ok(Box::new(listener))
     }
 
     ///Receives the output from a worker that initialized 1 or more radios, and returns
     ///the respective listen addresses.
-    pub fn extract_radio_addresses(
-        mut input: String,
-        logger: &Logger,
-    ) -> Result<(Option<String>, Option<String>), MeshSimError> {
-        let mut sr_address = None;
-        let mut lr_address = None;
+    // pub fn extract_radio_addresses(
+    //     mut input: String,
+    //     logger: &Logger,
+    // ) -> Result<(Option<String>, Option<String>, Option<String>), MeshSimError> {
+    //     let mut sr_address = None;
+    //     let mut lr_address = None;
+    //     let mut cmd_address: Option<String> = None;
 
-        // If the last char is a new line, remove it.
-        let last_c = input.pop();
-        if let Some(c) = last_c {
-            if c != '\n' {
-                input.push(c);
-            }
-        }
+    //     // If the last char is a new line, remove it.
+    //     let last_c = input.pop();
+    //     if let Some(c) = last_c {
+    //         if c != '\n' {
+    //             input.push(c);
+    //         }
+    //     }
 
-        for v in input.as_str().split(';') {
-            if v.is_empty() {
-                continue;
-            }
-            let parts: Vec<&str> = v.split('-').collect();
-            debug!(logger, "Parts: {:?}", &parts);
-            let r_type = {
-                if parts[0] == "SHORT" {
-                    RadioTypes::ShortRange
-                } else if parts[0] == "LONG" {
-                    RadioTypes::LongRange
-                } else {
-                    let err_msg = format!("Could not parse radio-address {}", &input);
-                    let err = MeshSimError {
-                        kind: MeshSimErrorKind::Configuration(err_msg),
-                        cause: None,
-                    };
-                    return Err(err);
-                }
-            };
-            //            let r_type: RadioTypes = parts[0].parse().map_err(|e| {
-            //                let err_msg = format!("Could not parse radio-address {}", &input);
-            //                MeshSimError {
-            //                    kind: MeshSimErrorKind::Configuration(err_msg),
-            //                    cause: Some(Box::new(e)),
-            //                }
-            //            })?;
-            debug!(logger, "RadioType {:?}", &r_type);
-            match r_type {
-                RadioTypes::ShortRange => {
-                    sr_address = Some(parts[1].into());
-                }
-                RadioTypes::LongRange => {
-                    lr_address = Some(parts[1].into());
-                }
-            }
-        }
-        // debug!(logger, "This function did finish!");
+    //     for v in input.as_str().split(';') {
+    //         if v.is_empty() {
+    //             continue;
+    //         }
+    //         let parts: Vec<&str> = v.split('-').collect();
+    //         debug!(logger, "Parts: {:?}", &parts);
+    //         if parts[0] == "SHORT" {
+    //             // RadioTypes::ShortRange
+    //             sr_address = Some(parts[1].into());
+    //         } else if parts[0] == "LONG" {
+    //             // RadioTypes::LongRange
+    //             lr_address = Some(parts[1].into());
+    //         } else if parts[0] == "Command" {
+    //             cmd_address = Some(parts[1].into());
+    //         } else {
+    //             let err_msg = format!("Could not parse radio-address {}", &input);
+    //             let err = MeshSimError {
+    //                 kind: MeshSimErrorKind::Configuration(err_msg),
+    //                 cause: None,
+    //             };
+    //             return Err(err);
+    //         }
 
-        Ok((sr_address, lr_address))
-    }
+    //         // debug!(logger, "RadioType {:?}", &r_type);
+    //         // match r_type {
+    //         //     RadioTypes::ShortRange => {
+    //         //         sr_address = Some(parts[1].into());
+    //         //     }
+    //         //     RadioTypes::LongRange => {
+    //         //         lr_address = Some(parts[1].into());
+    //         //     }
+    //         // }
+    //     }
+    //     // debug!(logger, "This function did finish!");
+
+    //     Ok((sr_address, lr_address, cmd_address))
+    // }
 
     fn register_transmitter(&self, conn: &PgConnection) -> Result<MutexGuard<()>, MeshSimError> {
         // let tx = start_tx(&mut conn)?;
@@ -814,7 +811,7 @@ impl WifiRadio {
 //************************************************//
 //*************** Utility functions **************//
 //************************************************//
-fn new_socket() -> Result<socket2::Socket, MeshSimError> {
+pub fn new_socket() -> Result<socket2::Socket, MeshSimError> {
     Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp())).map_err(|e| {
         let err_msg = String::from("Failed to create new socket");
         MeshSimError {
