@@ -81,14 +81,13 @@ fn run(mut master: Master, matches: &ArgMatches) -> Result<(), MeshSimError> {
     //Has a test file been provided?
     let test_file = matches.value_of(ARG_TEST_FILE);
     let sleep_time_override = matches.value_of(ARG_SLEEP_TIME);
-    let logger = master.logger.clone();
     if let Some(file) = test_file {
         let test_spec = test_specification::TestSpec::parse_test_spec(file)?;
         master.duration = test_spec.duration;
         master.test_area.height = test_spec.area_size.height;
         master.test_area.width = test_spec.area_size.width;
         master.mobility_model = test_spec.mobility.clone();
-        master.run_test(test_spec, sleep_time_override, &logger)?;
+        master.run_test(test_spec, sleep_time_override)?;
     }
 
     //Temporary fix. Since the logging now runs in a separate thread, the tests may end before
