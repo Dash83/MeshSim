@@ -28,21 +28,25 @@ use crate::worker::listener::Listener;
 use crate::worker::protocols::*;
 use crate::worker::radio::*;
 use crate::{MeshSimError, MeshSimErrorKind};
+use crate::mobility2::{Position, Velocity};
+use crate::master::MASTER_LISTEN_PORT;
 use byteorder::{NativeEndian, WriteBytesExt};
 use libc::{c_int, nice};
-
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::io::ErrorKind;
 use chrono::TimeZone;
 use chrono::Utc;
 use rand::{rngs::StdRng, SeedableRng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
 use slog::{Key, Logger, Record, Serializer, Value};
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, path::PathBuf};
 use std::io::Write;
+use socket2::{Socket, Domain, Type, SockAddr};
 
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, mpsc, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::{self, error, fmt, io};
 use std::time::Duration;
@@ -64,7 +68,10 @@ const DNS_SERVICE_PORT: u16 = 23456;
 const WORKER_POOL_SIZE: usize = 1;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 const MAIN_THREAD_PERIOD: u64 = 100; //milliseconds
-
+const SOCKET_DIR: &str = "sockets";
+const COMMAND_PERIOD: u64 = 10; //milliseconds
+// Period for logging statistics regarding the state of the worker
+const STATS_PERIOD: i64 = 1000;
 // *****************************
 // ********** Structs **********
 // *****************************
@@ -486,8 +493,10 @@ pub struct Worker {
     rng: Arc<Mutex<StdRng>>,
     ///Random number seed used for the rng of all processes.
     seed: u32,
-    ///Simulated or Device operation.
-    operation_mode: OperationMode,
+    ///UDS through which the worker receives commands
+    cmd_socket: Socket,
+    ///Listen address for the cmd sock.
+    cmd_socket_addr: String,
     /// The protocol that this Worker should run for this configuration.
     pub protocol: Protocols,
     /// The maximum number of queued packets a worker can have
@@ -500,15 +509,93 @@ pub struct Worker {
 }
 
 impl Worker {
-    /// The main function of the worker. The functions performs the following 3 functions:
-    /// 1. Starts up all radios.
-    /// 2. Joins the network.
-    /// 3. It starts to listen for messages of the network on all addresss
-    ///    defined by it's radio array. Upon reception of a message, it will react accordingly to the protocol.
+    fn new(
+        name: String,
+        sr_channels: Option<(Arc<dyn Radio>, Box<dyn Listener>)>,
+        lr_channels: Option<(Arc<dyn Radio>, Box<dyn Listener>)>,
+        work_dir: String,
+        rng: Arc<Mutex<StdRng>>,
+        seed: u32,
+        operation_mode: OperationMode,
+        id: String,
+        protocol: Protocols,
+        packet_queue_size: usize,
+        stale_packet_threshold: i32,
+        pos : Position,
+        vel: Option<Velocity>,
+        dest: Option<Position>,
+        logger: Logger,
+
+    ) -> Result<Self, MeshSimError> {
+
+        // Initialise the command socket
+        let (socket, sock_address) = Worker::new_command_socket(&work_dir, &name)?;
+
+        let mut w = Worker {
+            name,
+            short_radio: sr_channels,
+            long_radio: lr_channels,
+            work_dir,
+            rng,
+            seed,
+            cmd_socket: socket,
+            cmd_socket_addr: sock_address,
+            id,
+            protocol,
+            packet_queue_size,
+            stale_packet_threshold,
+            logger,
+        };
+        let _res = w.init(operation_mode, pos, vel, dest)?;
+
+        return Ok(w)
+    }
+
+    fn new_command_socket(work_dir: &String, name: &String) -> Result<(Socket, String), MeshSimError> {
+        let mut command_address = PathBuf::from(work_dir);
+        command_address.push(SOCKET_DIR);
+        //Make sure the directory exits
+        if !command_address.exists() {
+            std::fs::create_dir(&command_address).map_err(|e| {
+                let err_msg = String::from("Failed create socket directory");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Configuration(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
+        }
+        command_address.push(format!("{}.sock", name));
+        let socket = Socket::new(Domain::unix(), Type::dgram(), None)
+        .map_err(|e| {
+                let err_msg = String::from("Failed to start command server");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Configuration(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+        })?;
+        let sock_addr = SockAddr::unix(&command_address)
+        .map_err(|e| {
+                let err_msg = String::from("Failed to start command server");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Configuration(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+        })?;
+        socket.bind(&sock_addr).unwrap();
+        //Finally, set the socket in non-blocking mode
+        let read_time = std::time::Duration::from_micros(COMMAND_PERIOD);
+        socket
+            .set_read_timeout(Some(read_time))
+            // .set_nonblocking(true)
+            .expect("Coult not set socket on non-blocking mode");
+
+        Ok((socket, command_address.as_path().display().to_string()))
+    }
+
+    /// The main loop of the worker.
     pub fn start(&mut self, accept_commands: bool) -> Result<(), MeshSimError> {
         let finish = AtomicBool::new(false);
-        //Init the worker
-        self.init()?;
+        let mut buffer = [0; 65536];
 
         //Init the radios and get their respective listeners.
         let short_radio = self.short_radio.take();
@@ -523,17 +610,14 @@ impl Worker {
             self.logger.clone(),
         )?;
 
-        info!(self.logger, "Worker finished initializing.");
-
         //Initialize protocol.
         let _res = resources.handler.init_protocol()?;
-
         //Start listening for messages
         let prot_handler = Arc::clone(&resources.handler);
-        let mut threads: Vec<JoinHandle<()>> = resources
+        let _threads: Vec<JoinHandle<()>> = resources
             .radio_channels
             .drain(..)
-            .map(|(rx, (tx, out_queue_sender, out_queue_receiver))| {
+            .map(|(rx, (tx, _out_queue_sender, out_queue_receiver))| {
                 let prot_handler = Arc::clone(&prot_handler);
                 let logger = self.logger.clone();
                 let in_queue_thread_pool = threadpool::Builder::new()
@@ -541,14 +625,21 @@ impl Worker {
                     .build();
                 let max_queued_jobs = self.packet_queue_size;
                 let stale_packet_threshold = self.stale_packet_threshold;
+                let r_label: String = rx.get_radio_range().into();
 
-                thread::spawn(move || {
-                    let radio_label: String = rx.get_radio_range().into();
-                    info!(logger, "[{}] Listening for messages", &radio_label);
+                thread::Builder::new()
+                .name(format!("RadioListener[{}]", &r_label))
+                .spawn(move || {
+                    info!(logger, "[{}] Listening for messages", &r_label);
+
+                    let mut stats_ts = Utc::now();
                     loop {
-                        let radio_label = radio_label.clone();
+                        let radio_label = r_label.clone();
                         let rl = radio_label.clone();
 
+                        /**************************************************
+                        ***************  RADIO  RX  STAGE   ***************
+                        **************************************************/
                         // Read any new messages over the current radio
                         match rx.read_message() {
                             Some(mut hdr) => {
@@ -559,15 +650,15 @@ impl Worker {
                                 let log = logger.clone();
 
                                 if in_queue_thread_pool.queued_count() >= max_queued_jobs {
-                                    // let log_data = ();
-                                    // log_handle_message(
-                                    //     &log,
-                                    //     &hdr,
-                                    //     MessageStatus::DROPPED,
-                                    //     Some("packet_queue is full"),
-                                    //     None,
-                                    //     &log_data,
-                                    // );
+                                    let log_data = ();
+                                    log_handle_message(
+                                        &log,
+                                        &hdr,
+                                        MessageStatus::DROPPED,
+                                        Some("packet_queue is full"),
+                                        None,
+                                        &log_data,
+                                    );
                                     let perf_handle_message_duration = Utc::now().timestamp_nanos() - hdr.delay;
                                     //DO NOT change the order of these fields in the logging function.
                                     //This call mirrors the order of log_handle_message and it changed it might break the processing scripts.
@@ -587,7 +678,6 @@ impl Worker {
                                 }
 
                                 in_queue_thread_pool.execute(move || {
-                                    let radio_label = radio_label.clone();
                                     let ts0 = Utc.timestamp_nanos(hdr.delay);
                                     let perf_in_queued_duration =
                                         Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
@@ -596,7 +686,7 @@ impl Worker {
                                         "in_queued";
                                         "msg_id" => hdr.get_msg_id(),
                                         "duration" => perf_in_queued_duration,
-                                        "radio" => &radio_label,
+                                        "radio" => &rl,
                                     );
 
                                     if perf_in_queued_duration > (stale_packet_threshold * 1000) as i64 {
@@ -608,7 +698,7 @@ impl Worker {
                                             "reason" => "stale packet",
                                             "status" => MessageStatus::DROPPED,
                                             "msg_id" => &hdr.msg_id,
-                                            "radio" => &radio_label,
+                                            "radio" => &rl,
                                         );
                                         return;
                                     }
@@ -628,26 +718,17 @@ impl Worker {
                                             }
                                         }
                                     };
-
-                                    // resp_tx.send(outcome).unwrap();
                                 });
-                                debug!(
-                                    logger,
-                                    "Queued packets: {}",
-                                    in_queue_thread_pool.queued_count()
-                                );
-                                // info!(logger, "Jobs: {}", thread_pool.queued_count());
-                                //                                debug!(
-                                //                                    logger,
-                                //                                    "Jobs that have paniced: {}",
-                                //                                    thread_pool.panic_count()
-                                //                                );
+
                             }
                             None => {
                                 /* No new messages. Proceed to the next section */
                             }
                         }
 
+                        /**************************************************
+                        ***************  RADIO  TX  STAGE   ***************
+                        **************************************************/
                         // Pop the top pending message from the out_queue (if any) and transmit it
                         let resp = out_queue_receiver.try_recv().ok();
                         if let Some((mut resp_hdr, log_data, out_queue_start)) = resp {
@@ -666,25 +747,10 @@ impl Worker {
                                     "reason" => "stale packet",
                                     "status" => MessageStatus::DROPPED,
                                     "msg_id" => &resp_hdr.msg_id,
-                                    "radio" => &rl,
+                                    "radio" => &radio_label,
                                 );
                                 return;
                             }
-
-                            // let log_data = match log_data {
-                            //     Some(l) => l,
-                            //     None => { 
-                            //         warn!(
-                            //             log,
-                            //             "Log_Data was empty";
-                            //             "destination" => &r.destination,
-                            //             "source" => &r.sender,
-                            //             "status" => MessageStatus::DROPPED,
-                            //             "msg_id" => &r.msg_id,
-                            //         );
-                            //         return;
-                            //     },
-                            // };
 
                             //perf_out_queued_start
                             resp_hdr.delay = out_queue_start.timestamp_nanos();
@@ -713,23 +779,28 @@ impl Worker {
                                 }
                             }
                         }
+
+                        /**************************************************
+                        ***************  STATISTICS STAGE   ***************
+                        **************************************************/
+                        if stats_ts.timestamp_millis() + STATS_PERIOD <= Utc::now().timestamp_millis() {
+                            info!(
+                                logger,
+                                "Packets in IN_QUEUE: {}",
+                                in_queue_thread_pool.queued_count()
+                            );
+                            info!(
+                                logger,
+                                "Packets in OUT_QUEUE: {}",
+                                out_queue_receiver.len()
+                            );
+                            stats_ts = Utc::now();
+                        }
+
                     }
-                })
+                }).expect("Could not spawn radio thread")
             })
             .collect();
-
-        if accept_commands {
-            let com_loop_thread = self
-                .start_command_loop_thread(Arc::clone(&prot_handler))
-                .map_err(|e| {
-                    let err_msg = String::from("Failed to start command_loop_thread");
-                    MeshSimError {
-                        kind: MeshSimErrorKind::Worker(err_msg),
-                        cause: Some(Box::new(e)),
-                    }
-                })?;
-            threads.push(com_loop_thread);
-        }
 
         /*
         After spawning the listener threads for each radio, the main thread remain in this loop
@@ -749,6 +820,11 @@ impl Worker {
         loop {
             thread::sleep(main_thread_period);
 
+            //Has the finish command been received?
+            if finish.load(Ordering::SeqCst) {
+                break;
+            }
+
             // Check if any maintenance work needs be done.
             match prot_handler.do_maintenance() {
                 Ok(_) => { /* All good! */ }
@@ -766,26 +842,108 @@ impl Worker {
                 }
             }
 
-            //This condition is never set to true at the moment.
-            if finish.load(Ordering::SeqCst) {
-                break;
+            // Check if new commands have been received
+            // Keep this section at the end of the main thread loop since it skips the rest of the iteration
+            // when no data is available.
+            let (bytes_read, peer_addr) = match self.cmd_socket.recv_from(&mut buffer) {
+                Ok((bytes, addr)) => { (bytes, addr)},
+                Err(e) => {
+                    if e.kind() != ErrorKind::WouldBlock {
+                        error!(&self.logger, "Error reading from command socket: {}", &e);
+                    }
+                    continue;
+                }
+            };
+
+            if bytes_read > 0 {
+                let cmd: Option<commands::Commands> = from_slice(&buffer[..bytes_read]).ok();
+                match Worker::process_command(
+                    cmd,
+                    Arc::clone(&prot_handler),
+                    &finish,
+                    &self.logger,
+                ) {
+                    Ok(_) => { /* All good! */ }
+                    Err(e) => {
+                        error!(&self.logger, "Error executing command: {}", &e);
+                        if let Some(cause) = e.cause {
+                            error!(&self.logger, "Cause: {}", &cause);
+                        }
+                    }
+                }
             }
+
         }
 
         Ok(())
     }
 
-    fn init(&mut self) -> Result<(), MeshSimError> {
-        //        //Make sure the required directories are there and writable or create them.
-        //        //check log dir is there
-        //        let mut dir = std::fs::canonicalize(&self.work_dir)?;
-        //        dir.push("log"); //Dir is work_dir/log
-        //        if !dir.exists() {
-        //            //Create log dir
-        //            std::fs::create_dir_all(dir.as_path()).unwrap_or(());
-        //            info!(self.logger, "Created dir {} ", dir.as_path().display());
-        //        }
-        //        dir.pop(); //Dir is work_dir
+    fn init(
+        &mut self,
+        operation_mode: OperationMode,
+        pos : Position,
+        vel: Option<Velocity>,
+        dest: Option<Position>,
+    ) -> Result<(), MeshSimError> {
+
+        match operation_mode  {
+            OperationMode::Device => {
+                /* Nothing to do */
+                return Ok(())
+            },
+            OperationMode::Simulated => {
+                let sr = self.short_radio.take();
+                let sr_address = if let Some((radio, listener)) = sr {
+                    let sr_address = listener.get_address();
+                    self.short_radio = Some((radio, listener));
+                    Some(sr_address)
+                } else {
+                    None
+                };
+
+                let lr = self.long_radio.take();
+                let lr_address = if let Some((radio, listener)) = lr {
+                    let lr_address = listener.get_address();
+                    self.long_radio = Some((radio, listener));
+                    Some(lr_address)
+                } else {
+                    None
+                };
+
+                //Register the worker with the master
+                let sock = radio::new_socket()?;
+                let cmd = commands::Commands::RegisterWorker{
+                    w_name: self.name.clone(),
+                    w_id: self.id.clone(),
+                    pos,
+                    vel,
+                    dest,
+                    sr_address,
+                    lr_address,
+                    cmd_address: self.cmd_socket_addr.clone(),
+                };
+                let data = to_vec(&cmd)
+                    .map_err(|e|{
+                        let err_msg = String::from("Failed to serialise registration command");
+                        MeshSimError {
+                            kind: MeshSimErrorKind::Serialization(err_msg),
+                            cause: Some(Box::new(e)),
+                        }
+                    })?;
+                let master_addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), MASTER_LISTEN_PORT);
+                let bytes_written = sock.send_to(&data, &socket2::SockAddr::from(master_addr))
+                    .map_err(|e|{
+                        let err_msg = String::from("Failed to send registration command");
+                        MeshSimError {
+                            kind: MeshSimErrorKind::Networking(err_msg),
+                            cause: Some(Box::new(e)),
+                        }
+                    })?;
+                info!(self.logger, "Registration command sent"; "bytes_written" => bytes_written);
+            },
+        }
+
+        info!(self.logger, "Worker finished initializing.");
 
         Ok(())
     }
@@ -807,76 +965,28 @@ impl Worker {
         StdRng::from_seed(randomness)
     }
 
-    fn start_command_loop_thread(
-        &self,
-        protocol_handler: Arc<dyn Protocol>,
-    ) -> io::Result<JoinHandle<()>> {
-        let tb = thread::Builder::new();
-        let logger = self.logger.clone();
-
-        tb.name(String::from("CommandLoop")).spawn(move || {
-            unsafe {
-                let new_nice = nice(SYSTEM_THREAD_NICE);
-                debug!(logger, "[CommandLoop]: New priority: {}", new_nice);
-            }
-            Worker::command_loop(&logger, protocol_handler);
-        })
-    }
-
-    fn command_loop(logger: &Logger, protocol_handler: Arc<dyn Protocol>) {
-        let mut input = String::new();
-        let stdin = io::stdin();
-
-        info!(logger, "Command loop started");
-        loop {
-            match stdin.read_line(&mut input) {
-                Ok(_bytes) => {
-                    match input.parse::<commands::Commands>() {
-                        Ok(command) => {
-                            match Worker::process_command(
-                                command,
-                                Arc::clone(&protocol_handler),
-                                logger,
-                            ) {
-                                Ok(_) => { /* All good! */ }
-                                Err(e) => {
-                                    error!(logger, "Error executing command: {}", &e);
-                                    if let Some(cause) = e.cause {
-                                        error!(logger, "Cause: {}", &cause);
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            error!(logger, "Error parsing command: {}", e);
-                            if let Some(cause) = e.cause {
-                                error!(logger, "Cause: {}", &cause);
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!(logger, "{}", &e);
-                    //                    if let Some(cause) = e.cause {
-                    //                        error!(logger, "Cause: {}", &cause);
-                    //                    }
-                }
-            }
-            input.clear();
-        }
-        //        #[allow(unreachable_code)]
-        //        Ok(()) //Loop should never end
-    }
-
     fn process_command(
-        com: commands::Commands,
+        com: Option<commands::Commands>,
         ph: Arc<dyn Protocol>,
+        finish: &AtomicBool,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
+        info!(logger, "Received command: {:?}", &com);
+        let com = match com {
+            Some(c) => c,
+            None => return Ok(())
+        };
         match com {
             commands::Commands::Send(destination, data) => {
                 info!(logger, "Send command received");
                 ph.send(destination, data)?;
+            },
+            commands::Commands::Finish => {
+                finish.store(true, Ordering::SeqCst);
+            },
+            _ => {
+                /* The worker does not support any other commands */
+                warn!(logger, "Unsupported command received {:?}", com);
             }
         }
         Ok(())
@@ -897,40 +1007,9 @@ mod tests {
     use rand::RngCore;
     use std::iter;
 
-    //use worker::worker_config::*;
-
-    //**** Peer unit tests ****
-
-    //**** Worker unit tests ****
-    //Unit test for: Worker::new
-    // #[test]
-    // fn test_worker_new() {
-    //     let w = Worker::new();
-    //     let w_display = "Worker { short_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }, long_radio: Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }, nearby_peers: {}, me: Peer { public_key: \"00000000000000000000000000000000\", name: \"\", address: \"\", address_type: Simulated }, work_dir: \"\", random_seed: 0, operation_mode: Simulated, scan_interval: 1000, global_peer_list: Mutex { data: {} }, suspected_list: Mutex { data: [] } }";
-    //     assert_eq!(format!("{:?}", w), String::from(w_display));
-    // }
-
     // //Unit test for: Worker::init
     // #[test]
     // fn test_worker_init() {
-    //     let mut config = WorkerConfig::new();
-    //     config.work_dir = String::from("/tmp");
-    //     let mut w = config.create_worker();
-    //     w.short_radio.broadcast_groups.push(String::from("group2"));
-    //     let res = w.init();
-
-    //     //Check result is not error
-    //     assert!(res.is_ok());
-    // }
-
-    // //**** ServiceRecord unit tests ****
-    // //Unit test for get get_txt_record
-    // #[test]
-    // fn test_get_txt_record() {
-    //     let mut record = ServiceRecord::new();
-    //     record.txt_records.push(String::from("NAME=Worker1"));
-
-    //     assert_eq!(String::from("Worker1"), record.get_txt_record("NAME").unwrap());
     // }
 
     #[test]
@@ -948,65 +1027,6 @@ mod tests {
         let hash = msg.get_msg_id();
         assert_eq!(hash, "fd8559921846fd7e962ae3e1c3bc6e2d");
 
-        // rng.fill_bytes(&mut data[..]);
-        // msg.payload = data.clone();
-        // let hash = msg.get_msg_id();
-        // assert_eq!(hash, "48b9f1d803d6829bcab59056981e6771");
-
-        // rng.fill_bytes(&mut data[..]);
-        // msg.payload = data.clone();
-        // let hash = msg.get_msg_id();
-        // assert_eq!(hash, "a6048051b8727b181a6c69edf820914f");
-    }
-
-    //This test will me removed at some point, but it's useful at the moment for the message size calculations
-    //that will be needed to do segmentation of large pieces of data for transmission.
-    #[ignore]
-    #[test]
-    fn test_message_size() {
-        use std::mem;
-
-        let source = String::from("Foo");
-        let destination = String::from("Bar");
-        let empty_payload: Vec<u8> = vec![];
-        let hdr = MessageHeader::new(source, destination, empty_payload);
-
-        println!("Size of MessageHeader: {}", mem::size_of::<MessageHeader>());
-        let serialized_hdr = to_vec(&hdr).expect("Could not serialize");
-        let hdr_size = mem::size_of_val(&serialized_hdr);
-        println!("Size of a serialized MessageHeader: {}", hdr_size);
-
-        // println!("Size of Peer: {}", mem::size_of::<Peer>());
-        // let serialized_peer = to_vec(&self_peer).expect("Could not serialize");
-        // let peer_size = mem::size_of_val(&serialized_peer);
-        // println!("Size of a Peer instance: {}", peer_size);
-
-        //        let mut msg = DataMessage{ route_id : String::from("SOME_ROUTE"),
-        //            payload :  String::from("SOME DATA TO TRANSMIT").as_bytes().to_vec() };
-        //        println!("Size of DataMessage: {}", mem::size_of::<DataMessage>());
-        //        let msg_size = mem::size_of_val(&msg);
-        //        println!("Size of a MessageHeader instance: {}", msg_size);
-        //        let ser_msg = to_vec(&msg).expect("Could not serialize");
-        //        println!("Size of ser_msg: {}", mem::size_of_val(&ser_msg));
-        //        println!("Len of ser_msg: {}", ser_msg.len());
-        //        let ser_hdr = to_vec(&hdr).expect("Could not serialize");
-        //        println!("Len of ser_hdr: {}", ser_hdr.len());
-        //        hdr.payload = Some(ser_msg);
-
-        //        let final_hdr = to_vec(&hdr).expect("Could not serialize");
-        //        println!("Len of final_hdr: {}", final_hdr.len());
-        //
-        //        println!("Size of SampleStruct: {}", mem::size_of::<SampleStruct>());
-        //        let s = SampleStruct;
-        //        let xs = to_vec(&s).expect("Could not serialize");
-        //        println!("Size of serialized SampleStruct: {}", xs.len());
-        //        println!("xs: {:?}", &xs);
-
-        //        let sample_data = [1u8; 2048];
-        //        println!("sample data len: {}", sample_data.len());
-        //        println!("sample data sizeof: {}", mem::size_of_val(&sample_data));
-        //        let ser_sample_data = to_vec(&sample_data.to_vec()).expect("Could not serialize");
-        //        println!("ser_sample_data len: {}", ser_sample_data.len());
     }
 }
 
