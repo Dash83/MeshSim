@@ -927,7 +927,7 @@ where
         Ok(Some(tx))
     }
 
-    fn last_transmission(&self) -> i64 {
+    fn last_transmission(&self) -> Arc<AtomicI64> {
         unimplemented!("LoraRadio does not yet implement last_transmission")
     }
 }
