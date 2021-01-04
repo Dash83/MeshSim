@@ -55,6 +55,7 @@ use serde_cbor::ser::*;
 pub mod test_specification;
 mod workloads;
 
+const RECV_POOL_SIZE: usize = 1;
 const RANDOM_WAYPOINT_WAIT_TIME: u64 = 1000;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 /// Port on which the Master listens for workers to register
@@ -286,9 +287,11 @@ impl Master {
                 cause: Some(Box::new(e)),
             }
         })?;
-        let conn = get_db_connection_by_file(&env_file, logger)?;
         let log = logger.clone();
-        let workers = Arc::clone(&workers);
+        let recv_queue = threadpool::Builder::new()
+            .num_threads(RECV_POOL_SIZE)
+            .build();
+        let env_file = env_file.clone();
 
         let j = thread::Builder::new()
         .name(String::from("RegistrationServer"))
@@ -296,6 +299,10 @@ impl Master {
             //64kb buffer
             let mut buffer = [0; 65536];
             loop {
+                let ef = env_file.clone();
+                let workers = Arc::clone(&workers);
+                let log = log.clone();
+                
                 let (bytes_read, _peer_address) = match sock.recv_from(&mut buffer) {
                     Ok(data) => {
                         data
@@ -316,54 +323,17 @@ impl Master {
                 let data = buffer[..bytes_read].to_vec();
                 let cmd: Commands = from_slice(&data).expect("Could not deserialise message from worker");
 
-                match cmd {
-                    Commands::RegisterWorker{
-                        w_name,
-                        w_id,
-                        pos,
-                        vel,
-                        dest,
-                        sr_address,
-                        lr_address,
-                        cmd_address,} => {
-
-                        info!(
-                            &log,
-                            "Registration command received";
-                            "worker" => &w_name,
-                        );
-
-                        let id = match register_worker(
-                            &conn,
-                            w_name.clone(),
-                            w_id,
-                            pos,
-                            vel.unwrap_or_default(),
-                            &dest,
-                            sr_address,
-                            lr_address,
-                            &log,
-                        ) {
-                            Ok(id) => {
-                                id
-                            },
-                            Err(e) => {
-                                error!(log, "Error registering new worker: {}", e);
-                                continue;
-                            }
-                        };
-
-                        //Save the db_id of the worker as well as the handle to its process.
-                        let mut workers = workers
-                            .lock()
-                            .expect("Could not lock workers list");
-                        workers.insert(w_name, (id, cmd_address));
-                    },
-                    _ => {
-                        /* The master does  not support any other commands*/
-                        warn!(log, "Unsupported command received {:?}", cmd);
+                recv_queue.execute(move || { 
+                    match Master::handle_command(cmd, &ef, workers, &log) {
+                        Ok(_) => { 
+                            /* All good */
+                        },
+                        Err(e) => { 
+                            error!(log, "Error processing command: {}", e);
+                        },
                     }
-                }
+                });
+
             };
         })
         .map_err(|e| {
@@ -376,6 +346,48 @@ impl Master {
 
         info!(&logger, "Master has been initialised");
         Ok(j)
+    }
+
+    fn handle_command(
+        cmd: Commands,
+        env_file: &String,
+        workers: Arc<Mutex<HashMap<String, (i32, String)>>>,
+        log: &Logger,
+    ) -> Result<(), MeshSimError> {
+        let conn = get_db_connection_by_file(&env_file, log)?;
+        match cmd {
+            Commands::RegisterWorker{
+                w_name,
+                w_id,
+                pos,
+                vel,
+                dest,
+                sr_address,
+                lr_address,
+                cmd_address,} => {
+
+                info!(
+                    &log,
+                    "Registration command received";
+                    "worker" => &w_name,
+                );
+                let name = w_name.clone();
+                let v = vel.unwrap_or_default();
+                let id = register_worker(&conn,name,w_id,pos,v,&dest,sr_address,lr_address,&log)?;
+
+                //Save the db_id of the worker as well as the handle to its process.
+                let mut workers = workers
+                    .lock()
+                    .expect("Could not lock workers list");
+                workers.insert(w_name, (id, cmd_address));
+            },
+            _ => {
+                /* The master does  not support any other commands*/
+                warn!(log, "Unsupported command received {:?}", cmd);
+            }
+        }
+
+        Ok(())
     }
 
     /// Adds a single worker to the worker vector with a specified name and starts the worker process
@@ -428,7 +440,6 @@ impl Master {
         &mut self,
         mut spec: test_specification::TestSpec,
         sleep_time_override: Option<&str>,
-        logger: &Logger,
     ) -> Result<(), MeshSimError> {
         info!(self.logger, "Running test {}", &spec.name);
         info!(
@@ -460,9 +471,6 @@ impl Master {
         //First of all, schedule the End_test action, so that the test will finish even if things go wrong
         let end_test_handle = self.testaction_end_test(self.duration)?;
         action_handles.push(end_test_handle);
-
-        // Obtain database connection
-        let conn = get_db_connection_by_file(&self.env_file, &self.logger)?;
 
         //Start all workers
         let conn_str = get_connection_string_from_file(&self.env_file)?;
@@ -662,12 +670,10 @@ impl Master {
         time: u64,
     ) -> Result<JoinHandle<()>, MeshSimError> {
         let available_nodes = Arc::clone(&self.available_nodes);
-        let workers = Arc::clone(&self.workers);
         let worker_binary = self.worker_binary.clone();
         let work_dir = self.work_dir.clone();
         let logger = self.logger.clone();
         let conn_str = get_connection_string_from_file(&self.env_file)?;
-        let conn = get_db_connection_by_file(&self.env_file, &self.logger)?;
 
         let handle = thread::spawn(move || {
             let test_endtime = Duration::from_millis(time);
@@ -690,11 +696,6 @@ impl Master {
                     );
                     return 
                 }
-            };
-
-            let worker_id = match config.worker_id {
-                Some(ref id) => id.clone(),
-                None => WorkerConfig::gen_id(config.random_seed),
             };
 
             match Master::run_worker(
