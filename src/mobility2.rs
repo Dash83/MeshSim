@@ -23,6 +23,9 @@ use diesel::sql_types::{Double, Text};
 use diesel::Connection;
 use slog::Logger;
 use strfmt::strfmt;
+use rand::{thread_rng, RngCore};
+use std::time::Duration;
+use std::borrow::Cow;
 
 embed_migrations!("migrations");
 
@@ -53,6 +56,8 @@ CREATE DATABASE {db_name}
     TABLESPACE = pg_default
     CONNECTION LIMIT = -1;
 ";
+const CONNECTION_RETRIES: usize = 3;
+const CONNECTION_RETRY_SLEEP_BASE: u64 = 10;
 
 ///Struct to encapsule the 2D position of the worker
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default, Copy)]
@@ -87,19 +92,74 @@ pub struct ConnectionParts {
 //     experiment,
 // }
 
+
+fn get_db_url(env_file: Option<String>, logger: &Logger) -> Result<String, MeshSimError> {
+    let mut database_url: Option<String> = None;
+    let mut i = 0;
+    let mut rng = thread_rng();
+
+    while database_url.is_none() && i <= CONNECTION_RETRIES {
+        i +=1;
+
+        //Read the connection file
+        if let Some(env_file) = env_file.clone() {
+            match dotenv::from_filename(env_file) {
+                Ok(_path) => {
+                    /* All good */
+                },
+                Err(e) => {
+                    warn!(logger, "Error reading env file: {}", &e);
+                }
+            }
+        }
+
+        //Load the connection string from the corresponding env variable.
+        match env::var(DB_CONN_ENV_VAR) {
+            Ok(v) => {
+                database_url = Some(v)
+            },
+            Err(e) => {
+                if e == env::VarError::NotPresent {
+                    /* There seems to be a contention issue with parallel reads of an OS env var, so we retry a couple of times */
+                    let r: u64 = rng.next_u64() % CONNECTION_RETRY_SLEEP_BASE;
+                    let sleep = Duration::from_millis(r);
+                    let s = format!("{:?}", &sleep);
+                    debug!(logger, "Failed to read {} environment variable", DB_CONN_ENV_VAR; "attempts"=>i+1, "retry_in" => &s);
+                    std::thread::sleep(sleep);
+                } else {
+                    let error_msg = String::from("Unable to acquire database connection");
+                    let err = MeshSimError {
+                        kind: MeshSimErrorKind::Contention(error_msg),
+                        cause: Some(Box::new(e)),
+                    };
+                    return Err(err);
+                }
+            }
+        }
+    }
+
+    let cause_msg = String::from("Unable to obtain connection string");
+    let cause = MeshSimError {
+        kind: MeshSimErrorKind::Contention(cause_msg),
+        cause: None,
+    };
+
+    let error_msg = String::from("Unable to acquire database connection");
+    let err = MeshSimError {
+        kind: MeshSimErrorKind::Contention(error_msg),
+        cause: Some(Box::new(cause)),
+    };
+
+    database_url.ok_or(err)
+}
+
 //****************************************
 //********** Exported functions **********
 //****************************************
 /// Returns a connection to the database
 pub fn get_db_connection(logger: &Logger) -> Result<PgConnection, MeshSimError> {
-    let database_url = env::var(DB_CONN_ENV_VAR).map_err(|e| {
-        let error_msg = String::from("Failed to read DATABASE_URL environment variable");
-        MeshSimError {
-            kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
-            cause: Some(Box::new(e)),
-        }
-    })?;
-
+    let env_file: Option<String> = None;
+    let database_url = get_db_url(env_file, logger)?;
     debug!(logger, "DATABASE_URL={}", database_url);
     let conn = PgConnection::establish(&database_url).map_err(|e| {
         let error_msg = format!(
@@ -115,20 +175,15 @@ pub fn get_db_connection(logger: &Logger) -> Result<PgConnection, MeshSimError> 
 }
 
 /// Returns a connection to the database
-pub fn get_db_connection_by_file<P: AsRef<Path>>(
-    env_file: P,
+pub fn get_db_connection_by_file(
+    env_file: String,
     logger: &Logger,
 ) -> Result<PgConnection, MeshSimError> {
+    //Environment variable must be removed before trying to load it again with the dotenv crate.
     env::remove_var(DB_CONN_ENV_VAR);
 
-    dotenv::from_filename(env_file).ok();
-    let database_url = env::var(DB_CONN_ENV_VAR).map_err(|e| {
-        let error_msg = String::from("Failed to read DATABASE_URL environment variable");
-        MeshSimError {
-            kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
-            cause: Some(Box::new(e)),
-        }
-    })?;
+    //Guaranteed to exist
+    let database_url = get_db_url(Some(env_file), logger)?;
     debug!(logger, "DATABASE_URL={}", database_url);
     let conn = PgConnection::establish(&database_url).map_err(|e| {
         let error_msg = format!(
@@ -215,7 +270,7 @@ pub fn create_db_objects(
     //Create experiment database
     let root_conn_parts = parse_env_file(ROOT_ENV_FILE)?;
     let owner: String = root_conn_parts.user_pwd.split(':').collect::<Vec<&str>>()[0].into();
-    let root_conn = get_db_connection_by_file(ROOT_ENV_FILE, &logger)?;
+    let root_conn = get_db_connection_by_file(ROOT_ENV_FILE.into(), &logger)?;
     let _ = create_database(&root_conn, &dbm, &owner, &logger)?;
     debug!(logger, "Experiment database created: {}", &dbm);
 
@@ -224,7 +279,7 @@ pub fn create_db_objects(
     debug!(logger, "Connection file created: {}", &fpath);
 
     //Run all the migrations on the experiment DB
-    let exp_conn = get_db_connection_by_file(&fpath, &logger)?;
+    let exp_conn = get_db_connection_by_file(fpath.clone(), &logger)?;
     let _ = embedded_migrations::run(&exp_conn);
 
     Ok(fpath)
@@ -854,7 +909,7 @@ mod tests {
 
         // Connect to root DB. If nothing failed, the test was succesful.
         let root_env_file = String::from(ROOT_ENV_FILE);
-        let _conn = get_db_connection_by_file(&root_env_file, &test_data.logger)
+        let _conn = get_db_connection_by_file(root_env_file, &test_data.logger)
             .expect("Could not get DB connection");
 
         //Test passed. Results are not needed.
@@ -882,7 +937,7 @@ mod tests {
         //Connect to experiment DB
         //If nothing failed, the test was succesful.
         let env_file = data.db_env_file.take().unwrap();
-        let _conn = get_db_connection_by_file(&env_file, &data.logger)
+        let _conn = get_db_connection_by_file(env_file.clone(), &data.logger)
             .expect("Failed to connect to experiment DB");
 
         //TODO: Select db name and check it matches de DB_NAME pattern: SELECT current_database();
@@ -918,7 +973,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
 
         let _ = register_worker(
@@ -1007,7 +1062,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let positions = update_worker_positions(&conn).expect("Could not update all workers");
         debug!(&data.logger, "New Positions: {:?}", positions);
@@ -1027,7 +1082,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = insert_active_transmitter(
             &conn,
@@ -1063,7 +1118,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = insert_active_transmitter(
             &conn,
@@ -1099,7 +1154,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = register_active_transmitter_if_free(
             &conn,
@@ -1126,7 +1181,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = remove_active_transmitter(
             &conn,
@@ -1162,7 +1217,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = register_active_transmitter_if_free(
             &conn,
@@ -1189,7 +1244,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = get_workers_in_range(&conn, "Worker2", 50.0, &data.logger)
             .expect("get_workers_in_range Failed");
@@ -1212,7 +1267,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let workers_to_stop = [1, 3];
         let rows = stop_workers(&conn, &workers_to_stop, &data.logger)
@@ -1242,7 +1297,7 @@ mod tests {
             env::var(TEST_DB_ENV_FILE)
                 .expect("Could not read TEST_DB_ENV_FILE environment variable"),
         );
-        let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
+        let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
         let rows = select_workers_that_arrived(&conn).expect("get_workers_in_range Failed");
         assert_eq!(rows.len(), 1);
@@ -1265,7 +1320,7 @@ mod tests {
             );
             data.db_name =
                 env::var(TEST_DB_NAME).expect("Could not read TEST_DB_NAME environment variable");
-            let conn = get_db_connection_by_file(&data.db_env_file.clone().unwrap(), &data.logger)
+            let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
                 .expect("Failed to connect to experiment DB");
             let rows = stop_all_workers(&conn).expect("get_workers_in_range Failed");
             assert_eq!(rows, 5);
@@ -1274,5 +1329,42 @@ mod tests {
         // Test passed. Results are not needed.
         // Make sure conn has been dropped before attempting to drop the database
         teardown(data, true);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_db_get_conn_bench() {
+        use threadpool;
+        use chrono::prelude::*;
+
+        let _db = DB.lock().expect("Unable to acquire DB lock");
+        // let _ = create_db_objects(&logger).expect("Could not create db objects");
+        let mut data = setup("get_conn_bench", false, true);
+        let env_file = data.db_env_file.clone().unwrap();
+        //Get a file connection to load the env file in the process
+        let conn = get_db_connection_by_file(env_file.clone(), &data.logger);
+
+        let workers = threadpool::Builder::new()
+        .num_threads(3)
+        .thread_name("Worker".into())
+        .build();
+
+        let ITERATIONS=5000;
+        for i in 0..ITERATIONS {
+            let conn_file = env_file.clone();
+            let logger = data.logger.clone();
+            workers.execute(move || {
+                let ts0 = Utc::now();
+                let conn = get_db_connection(&logger)
+                    .expect("Failed to connect to experiment DB");
+                let dur = Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
+                info!(&logger, "Operation completed"; "iter"=>i, "duration"=>dur);
+            });
+        }
+
+        workers.join();
+        let out = format!("Check results dir: {}", data.work_dir);
+        panic!(out);
+        // teardown(data, false);
     }
 }

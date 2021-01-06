@@ -109,11 +109,11 @@ pub fn setup(base_name: &str, log_to_term: bool, create_db: bool) -> TestSetup {
     if create_db {
         let root_conn_parts = parse_env_file(ROOT_ENV_FILE).expect("Could not parse env file");
         let owner: String = root_conn_parts.user_pwd.split(':').collect::<Vec<&str>>()[0].into();
-        let root_conn = get_db_connection_by_file(ROOT_ENV_FILE, &logger)
+        let root_conn = get_db_connection_by_file(ROOT_ENV_FILE.into(), &logger)
             .expect("Could not connect to root DB");
         let _ = create_database(&root_conn, &db_name, &owner, &logger).expect("Could not crete DB");
 
-        let exp_conn = get_db_connection_by_file(&db_env_file, &logger)
+        let exp_conn = get_db_connection_by_file(db_env_file.clone(), &logger)
             .expect("Could not connect to experiment DB");
         let _ = embedded_migrations::run(&exp_conn);
     }
@@ -134,7 +134,7 @@ pub fn teardown(data: TestSetup, delete_db: bool) {
     //Delete the created database if applicable.
     if data.db_env_file.is_some() && delete_db {
         let root_env_file = String::from(ROOT_ENV_FILE);
-        let conn = get_db_connection_by_file(&root_env_file, &data.logger)
+        let conn = get_db_connection_by_file(root_env_file, &data.logger)
             .expect("Could not get DB connection for cleanup");
         let query_str = format!("DROP DATABASE {};", &data.db_name);
 

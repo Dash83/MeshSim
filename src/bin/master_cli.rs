@@ -1,5 +1,5 @@
 use clap::{App, Arg, ArgMatches};
-use mesh_simulator::master;
+use mesh_simulator::{master, worker};
 use mesh_simulator::master::*;
 use mesh_simulator::{MeshSimError, MeshSimErrorKind};
 
@@ -81,6 +81,7 @@ fn run(mut master: Master, matches: &ArgMatches) -> Result<(), MeshSimError> {
     //Has a test file been provided?
     let test_file = matches.value_of(ARG_TEST_FILE);
     let sleep_time_override = matches.value_of(ARG_SLEEP_TIME);
+    let master_log_file = master.log_file.clone();
     if let Some(file) = test_file {
         let test_spec = test_specification::TestSpec::parse_test_spec(file)?;
         master.duration = test_spec.duration;
@@ -92,7 +93,7 @@ fn run(mut master: Master, matches: &ArgMatches) -> Result<(), MeshSimError> {
 
     //Temporary fix. Since the logging now runs in a separate thread, the tests may end before
     //all the data is captured. Check if the log file is still changing.
-    let md = std::fs::metadata(&master.log_file).map_err(|e| {
+    let md = std::fs::metadata(&master_log_file).map_err(|e| {
         let err_msg = String::from("Failed read log file");
         MeshSimError {
             kind: MeshSimErrorKind::Master(err_msg),
@@ -140,6 +141,35 @@ fn init(matches: &ArgMatches) -> Result<Master, MeshSimError> {
             }
         })?;
     }
+
+    //Make sure the log directory exists
+    work_dir_path.push(logging::LOG_DIR_NAME);
+    if !work_dir_path.exists() {
+        std::fs::create_dir(&work_dir_path)
+        .map_err(|e| {
+            let err_msg = String::from("Failed create log directory");
+            MeshSimError {
+                kind: MeshSimErrorKind::Master(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+    }
+    work_dir_path.pop();
+
+    //Make sure the socket directory exists
+    work_dir_path.push(worker::SOCKET_DIR);
+    if !work_dir_path.exists() {
+        std::fs::create_dir(&work_dir_path)
+        .map_err(|e| {
+            let err_msg = String::from("Failed create sockets directory");
+            MeshSimError {
+                kind: MeshSimErrorKind::Master(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+    }
+    work_dir_path.pop();
+
     work_dir_path.push(logging::LOG_DIR_NAME);
     work_dir_path.push(logging::DEFAULT_MASTER_LOG);
 
@@ -163,13 +193,8 @@ fn init(matches: &ArgMatches) -> Result<Master, MeshSimError> {
             .collect();
             parts[0].to_string()
         });
-    let mut master = Master::new(work_dir, log_file, db_name, logger)?;
-
-    //What else was passed to the master?
-    master.worker_binary = match matches.value_of(ARG_WORKER_PATH) {
-        Some(path_arg) => String::from(path_arg),
-        None => master.worker_binary,
-    };
+    let worker_path = matches.value_of(ARG_WORKER_PATH).or(Some("./worker_cli")).unwrap().into();
+    let master = Master::new(work_dir, worker_path, log_file, db_name, logger)?;
 
     Ok(master)
 }

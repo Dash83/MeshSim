@@ -27,9 +27,10 @@
 use crate::worker::listener::Listener;
 use crate::worker::protocols::*;
 use crate::worker::radio::*;
+use crate::master::Master;
 use crate::{MeshSimError, MeshSimErrorKind};
 use crate::mobility2::{Position, Velocity};
-use crate::master::MASTER_LISTEN_PORT;
+use crate::master::REG_SERVER_LISTEN_PORT;
 use byteorder::{NativeEndian, WriteBytesExt};
 use libc::{c_int, nice};
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
@@ -43,6 +44,7 @@ use slog::{Key, Logger, Record, Serializer, Value};
 use std::{collections::{HashMap, HashSet}, path::PathBuf};
 use std::io::Write;
 use socket2::{Socket, Domain, Type, SockAddr};
+use rand::{thread_rng, RngCore};
 
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -68,10 +70,13 @@ const DNS_SERVICE_PORT: u16 = 23456;
 const WORKER_POOL_SIZE: usize = 1;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 const MAIN_THREAD_PERIOD: u64 = 100; //milliseconds
-const SOCKET_DIR: &str = "sockets";
+/// subdirectory name where the command sockets are placed
+pub const SOCKET_DIR: &str = "sockets";
 const COMMAND_PERIOD: u64 = 10; //milliseconds
 // Period for logging statistics regarding the state of the worker
 const STATS_PERIOD: i64 = 1000;
+const REGISTRATION_RETRIES: usize = 5;
+
 // *****************************
 // ********** Structs **********
 // *****************************
@@ -557,7 +562,7 @@ impl Worker {
         //Make sure the directory exits
         if !command_address.exists() {
             std::fs::create_dir(&command_address).map_err(|e| {
-                let err_msg = String::from("Failed create socket directory");
+                let err_msg = String::from("Failed to create socket directory");
                 MeshSimError {
                     kind: MeshSimErrorKind::Configuration(err_msg),
                     cause: Some(Box::new(e)),
@@ -567,7 +572,7 @@ impl Worker {
         command_address.push(format!("{}.sock", name));
         let socket = Socket::new(Domain::unix(), Type::dgram(), None)
         .map_err(|e| {
-                let err_msg = String::from("Failed to start command server");
+                let err_msg = String::from("Failed to create command server socket");
                 MeshSimError {
                     kind: MeshSimErrorKind::Configuration(err_msg),
                     cause: Some(Box::new(e)),
@@ -575,26 +580,41 @@ impl Worker {
         })?;
         let sock_addr = SockAddr::unix(&command_address)
         .map_err(|e| {
-                let err_msg = String::from("Failed to start command server");
+                let err_msg = String::from("Failed to create UDS address");
                 MeshSimError {
                     kind: MeshSimErrorKind::Configuration(err_msg),
                     cause: Some(Box::new(e)),
                 }
         })?;
-        socket.bind(&sock_addr).unwrap();
+        //Bind the server
+        socket.bind(&sock_addr)
+        .map_err(|e| {
+            let err_msg = String::from("Failed to start command server");
+            MeshSimError {
+                kind: MeshSimErrorKind::Configuration(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
         //Finally, set the socket in non-blocking mode
         let read_time = std::time::Duration::from_micros(COMMAND_PERIOD);
         socket
             .set_read_timeout(Some(read_time))
             // .set_nonblocking(true)
-            .expect("Coult not set socket on non-blocking mode");
+            .map_err(|e| {
+                let err_msg = String::from("Coult not set socket on non-blocking mode");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Configuration(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
 
         Ok((socket, command_address.as_path().display().to_string()))
     }
 
     /// The main loop of the worker.
     pub fn start(&mut self, accept_commands: bool) -> Result<(), MeshSimError> {
-        let finish = AtomicBool::new(false);
+        let finish = Arc::new(AtomicBool::new(false));
         let mut buffer = [0; 65536];
 
         //Init the radios and get their respective listeners.
@@ -626,6 +646,7 @@ impl Worker {
                 let max_queued_jobs = self.packet_queue_size;
                 let stale_packet_threshold = self.stale_packet_threshold;
                 let r_label: String = rx.get_radio_range().into();
+                let finish = Arc::clone(&finish);
 
                 thread::Builder::new()
                 .name(format!("RadioListener[{}]", &r_label))
@@ -633,7 +654,7 @@ impl Worker {
                     info!(logger, "[{}] Listening for messages", &r_label);
 
                     let mut stats_ts = Utc::now();
-                    loop {
+                    while !finish.load(Ordering::SeqCst)  {
                         let radio_label = r_label.clone();
                         let rl = radio_label.clone();
 
@@ -817,13 +838,8 @@ impl Worker {
         records before exiting.
         */
         let main_thread_period = Duration::from_millis(MAIN_THREAD_PERIOD);
-        loop {
+        while !finish.load(Ordering::SeqCst) {
             thread::sleep(main_thread_period);
-
-            //Has the finish command been received?
-            if finish.load(Ordering::SeqCst) {
-                break;
-            }
 
             // Check if any maintenance work needs be done.
             match prot_handler.do_maintenance() {
@@ -875,6 +891,13 @@ impl Worker {
 
         }
 
+        /*
+        The finish command has been received. Give the process a bit of time to finish writing logs.
+        This is due to the fact that currently the logging is done asynchronously by a separate thread, 
+        and some times the logs are truncated in the middle of a message.
+        */
+        thread::sleep(Duration::from_millis(1000));
+
         Ok(())
     }
 
@@ -911,7 +934,6 @@ impl Worker {
                 };
 
                 //Register the worker with the master
-                let sock = radio::new_socket()?;
                 let cmd = commands::Commands::RegisterWorker{
                     w_name: self.name.clone(),
                     w_id: self.id.clone(),
@@ -930,8 +952,21 @@ impl Worker {
                             cause: Some(Box::new(e)),
                         }
                     })?;
-                let master_addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), MASTER_LISTEN_PORT);
-                let bytes_written = sock.send_to(&data, &socket2::SockAddr::from(master_addr))
+
+                let sock = Worker::connect_to_registration_server(&self.logger)?;
+                let local_addr = sock.local_addr()
+                .map_err(|e| {
+                        let err_msg = String::from("Failed to extract local address of registration socket");
+                        MeshSimError {
+                            kind: MeshSimErrorKind::Networking(err_msg),
+                            cause: Some(Box::new(e)),
+                        }
+                })?;
+
+                //Log the local address so that it can be matched to any potential errors on the server side.
+                info!(self.logger, "Connected to registration server with local_address: {:?}", &local_addr);
+
+                let bytes_written = sock.send(&data)
                     .map_err(|e|{
                         let err_msg = String::from("Failed to send registration command");
                         MeshSimError {
@@ -946,6 +981,49 @@ impl Worker {
         info!(self.logger, "Worker finished initializing.");
 
         Ok(())
+    }
+
+    fn connect_to_registration_server(logger: &Logger) -> Result<Socket, MeshSimError> {
+        let conn_timeout = Duration::from_millis(10);
+        let master_addr = SocketAddr::new(
+            IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+            REG_SERVER_LISTEN_PORT
+        );
+        let master_addr = SockAddr::from(master_addr);
+        let mut rng = thread_rng();
+
+        for i in 0..REGISTRATION_RETRIES+1 {
+            let sock = Master::new_registration_socket()?;
+            match sock.connect_timeout(&master_addr, conn_timeout) {
+                Ok(_) => {
+                    /* All good! */
+                    return Ok(sock)
+                },
+                Err(e) => {
+                    if i == REGISTRATION_RETRIES {
+                        let err_msg = String::from("Failed to connect to registration server");
+                        let err = MeshSimError {
+                            kind: MeshSimErrorKind::Networking(err_msg),
+                            cause: Some(Box::new(e)),
+                        };
+                        return Err(err);
+                    } else {
+                        let r: u64 = rng.next_u64() % 10;
+                        let sleep = Duration::from_millis(r);
+                        let s = format!("{:?}", &sleep);
+                        warn!(&logger, "Connection to registration server timed out"; "attempts"=>i+1, "retry_in" => &s);
+                        thread::sleep(sleep);
+                    }
+                },
+            }
+        }
+
+        let err_msg = String::from("Failed to connect to registration server. Retries exhausted");
+        let err = MeshSimError {
+            kind: MeshSimErrorKind::Networking(err_msg),
+            cause: None,
+        };
+        Err(err)
     }
 
     ///Returns a random number generator seeded with the passed parameter.
@@ -971,7 +1049,7 @@ impl Worker {
         finish: &AtomicBool,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
-        info!(logger, "Received command: {:?}", &com);
+        // info!(logger, "Received command: {:?}", &com);
         let com = match com {
             Some(c) => c,
             None => return Ok(())
@@ -982,6 +1060,7 @@ impl Worker {
                 ph.send(destination, data)?;
             },
             commands::Commands::Finish => {
+                info!(logger, "Finish command received");
                 finish.store(true, Ordering::SeqCst);
             },
             _ => {

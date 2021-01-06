@@ -28,6 +28,8 @@ use rand::{thread_rng, Rng, RngCore};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use serde_cbor::de::*;
+use crossbeam_channel::{unbounded, Receiver, Sender};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // use rusqlite::Connection;
 use chrono::{DateTime, Utc};
@@ -55,11 +57,19 @@ use serde_cbor::ser::*;
 pub mod test_specification;
 mod workloads;
 
-const RECV_POOL_SIZE: usize = 1;
+/// Port on which the Master listens for workers to register
+pub const REG_SERVER_LISTEN_PORT: u16 = 9999;
+//Size of the threadpool to handle worker registration.
+//A certain level of parallelism is required since most nodes are expected to be started almost
+//simultaneously during a simulation.
+const REG_SERVER_POOL_SIZE: usize = 2;
+const REG_SERVER_PERIOD: u64 = 100; //microseconds
+/// Maximum number of backlog connections for the registration server. 
+/// Ideally, this should be the number of expected nodes, to avoid any registration issues,
+/// but this is a sane default for now.
+const REG_SERVER_BACKLOG: i32 = 256;
 const RANDOM_WAYPOINT_WAIT_TIME: u64 = 1000;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
-/// Port on which the Master listens for workers to register
-pub const MASTER_LISTEN_PORT: u16 = 9999;
 
 type PendingWorker = (DateTime<Utc>, Velocity);
 
@@ -144,6 +154,8 @@ pub struct Master {
     pub sleep_time_override: Option<u64>,
     /// Registration server handle
     rs_handle: JoinHandle<()>,
+    /// Signal across the Master threads that the test has ended so they can wrap up and finish.
+    finish_test: Arc<AtomicBool>,
 }
 
 //region Errors
@@ -229,27 +241,28 @@ impl error::Error for MasterError {
 
 impl Master {
     /// Constructor for the struct.
-    pub fn new(work_dir: String, log_file: String, db_name: String, logger: Logger) -> Result<Master, MeshSimError> {
+    pub fn new(work_dir: String, worker_path: String, log_file: String, db_name: String, logger: Logger) -> Result<Master, MeshSimError> {
         let workers = Arc::new(Mutex::new(HashMap::new()));
-        let wb = String::from("./worker_cli");
         let an = HashMap::new();
         let env_file = create_db_objects(&work_dir, &db_name, &logger)?;
+        let finish_test = Arc::new(AtomicBool::new(false));
 
         debug!(&logger, "Using connection file: {}", &env_file);
         debug!(&logger, "Using DB name: {}", &db_name);
 
         // Master::start_registration_server(port)?;
         let handle = Master::start_registration_server(
-            MASTER_LISTEN_PORT,
+            REG_SERVER_LISTEN_PORT,
             &env_file,
             Arc::clone(&workers),
-            &logger,
+            Arc::clone(&finish_test),
+            logger.clone(),
         )?;
 
         let m = Master {
             workers,
             work_dir,
-            worker_binary: wb,
+            worker_binary: worker_path,
             available_nodes: Arc::new(an),
             duration: 0,
             test_area: Area {
@@ -263,6 +276,7 @@ impl Master {
             log_file,
             sleep_time_override: None,
             rs_handle: handle,
+            finish_test,
         };
 
 
@@ -273,68 +287,156 @@ impl Master {
         listening_port: u16,
         env_file: &String,
         workers: Arc<Mutex<HashMap<String, (i32, String)>>>,
-        logger: &Logger,
+        finish_test: Arc<AtomicBool>,
+        logger: Logger,
     ) -> Result<JoinHandle<()>, MeshSimError> {
-        let sock = Master::new_socket()?;
+        //Do all socket operatons before spawning the threads, so that we can both fail earlier if there's an issue,
+        //and can propagate the error back since it gets hairy to do so inside the threads.
+        let sock = Master::new_registration_socket()?;
         let base_addr = SocketAddr::new(
             IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
                 listening_port
         );
-        sock.bind(&SockAddr::from(base_addr)).map_err(|e| {
+        // let recv_queue = threadpool::Builder::new()
+        //     .num_threads(REG_SERVER_POOL_SIZE)
+        //     .build();
+        // let env_file = env_file.clone();
+
+
+        // The API requires that we first bind the socket to the listen adddress...
+        let _ = sock.bind(&SockAddr::from(base_addr))
+        .map_err(|e| {
             let err_msg = format!("Could not bind socket to address {}", &base_addr);
             MeshSimError {
                 kind: MeshSimErrorKind::Networking(err_msg),
                 cause: Some(Box::new(e)),
             }
         })?;
-        let log = logger.clone();
-        let recv_queue = threadpool::Builder::new()
-            .num_threads(RECV_POOL_SIZE)
-            .build();
-        let env_file = env_file.clone();
+        // and then mark it as ready to listen. Can't call accept on it before these 2 things.
+        let _ = sock.listen(REG_SERVER_BACKLOG)
+        .map_err(|e| {
+            let err_msg = format!("Could not bind socket to address {}", &base_addr);
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        //Finally, set the server socket into nonblocking mode, otherwise it is very likely this thread will hang
+        //on the accept() call even if the finish_test signal has been set.
+        sock.set_nonblocking(true)
+        .map_err(|e| {
+            let err_msg = format!("Failed to set RegistrationServer socket into nonblocking mode");
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        //Create the queues for the clients
+        let (client_queue_sender, client_queue_receiver) = unbounded();
 
+        // start the listener thread
         let j = thread::Builder::new()
         .name(String::from("RegistrationServer"))
         .spawn(move || {
-            //64kb buffer
-            let mut buffer = [0; 65536];
-            loop {
-                let ef = env_file.clone();
-                let workers = Arc::clone(&workers);
-                let log = log.clone();
+            //Start the workers
+            let mut worker_threads = Vec::new();
+            let log = logger.clone();
+
+            for i in 0..REG_SERVER_POOL_SIZE {
+                //Resources for each thread
+                let thread_name = format!("RegWorker{}", i);
+                let client_queue = client_queue_receiver.clone();
+                let finish_test = Arc::clone(&finish_test);
+                let w = Arc::clone(&workers);
+                let l = log.clone();
+                let j = thread::Builder::new()
+                    .name(thread_name.clone())
+                    .spawn(move || {
+                        //Local-scope resources for this worker thread
+                        let conn = get_db_connection(&l).expect("Could not get db connection");
+                        let read_timeout = Duration::from_millis(100);
+                        while !finish_test.load(Ordering::SeqCst) {
+                            match client_queue.recv_timeout(read_timeout) {
+                                Ok((client, client_address)) => {
+                                    match Master::handle_client(
+                                        client,
+                                        client_address,
+                                        &conn,
+                                        Arc::clone(&w),
+                                        &l)
+                                    {
+                                        Ok(_) => {
+                                            /* All good */
+                                        },
+                                        Err(e) => {
+                                            error!(l, "Error handling client: {}", e);
+                                        },
+                                    }
+                                },
+                                Err(e) => {
+                                    if e.is_timeout() {
+                                        /* The read operation timed out, which is totally fine. Moving on. */
+                                        continue;
+                                    }
+                                    error!(l, "{} - Failed to get client from queue {}", &thread_name, &e);
+                                },
+                            }
+                        }
+                    })
+                    .expect("Failed to spawn RegWorker thread");
+                    // .map_err(|e| {
+                    //     let err_msg = String::from("Failed to spawn RegWorker thread");
+                    //     MeshSimError {
+                    //         kind: MeshSimErrorKind::Master(err_msg),
+                    //         cause: Some(Arc::new(e)),
+                    //     }
+                    // })?;
+                worker_threads.push(j);
+            }
+
+            //Start the listeneing loop
+            let sleep_time = Duration::from_micros(REG_SERVER_PERIOD);
+            while !finish_test.load(Ordering::SeqCst) {
+                let l = log.clone();
                 
-                let (bytes_read, _peer_address) = match sock.recv_from(&mut buffer) {
+                let (client, client_address) = match sock.accept() {
                     Ok(data) => {
                         data
                     },
                     Err(e) => {
-                        //No message read
-                        error!(log, "Error reading from RegistrationServer socket: {}", &e);
+                        /* If it's a timeout error, just continue to the next iteration. */
+                        //Log all other errors though.
+                        if e.kind() == std::io::ErrorKind::WouldBlock {
+                            thread::sleep(sleep_time);
+                        } else {
+                            error!(l, "[RegistrationServer] - Error accepting new client connection: {}", &e);
+                        }
                         continue;
                     }
                 };
-
-                if bytes_read == 0 {
-                    /* 0 bytes read*/
-                    warn!(log, "Successful read from socket was empty (0 bytes)");
-                    continue;
+                match client_queue_sender.send((client, client_address)) {
+                    Ok(_) => {
+                        /* All good! */
+                    },
+                    Err(e) => {
+                        error!(l, "[RegistrationServer] -Failed to queue new client connection {}", &e);
+                    }
                 }
 
-                let data = buffer[..bytes_read].to_vec();
-                let cmd: Commands = from_slice(&data).expect("Could not deserialise message from worker");
-
-                recv_queue.execute(move || { 
-                    match Master::handle_command(cmd, &ef, workers, &log) {
-                        Ok(_) => { 
-                            /* All good */
-                        },
-                        Err(e) => { 
-                            error!(log, "Error processing command: {}", e);
-                        },
-                    }
-                });
-
             };
+
+            //Wait for the worker threads to finish and log any errors
+            for h in worker_threads {
+                match h.join() {
+                    Ok(_) => {
+                        /* All good! */
+                    },
+                    Err(e) => {
+                        error!(log, "RegWorker thread exited with the following error: {:?}", &e);
+                    }
+                }
+            }
+
         })
         .map_err(|e| {
             let err_msg = String::from("Failed to spawn RegistrationServer thread");
@@ -344,17 +446,59 @@ impl Master {
             }
         })?;
 
-        info!(&logger, "Master has been initialised");
+        // info!(&logger, "Master has been initialised");
         Ok(j)
     }
 
-    fn handle_command(
-        cmd: Commands,
-        env_file: &String,
+    fn handle_client(
+        client: Socket,
+        client_addr: SockAddr,
+        conn: &PgConnection,
         workers: Arc<Mutex<HashMap<String, (i32, String)>>>,
         log: &Logger,
     ) -> Result<(), MeshSimError> {
-        let conn = get_db_connection_by_file(&env_file, log)?;
+        //64kb buffer
+        let mut buffer = [0; 65536];
+        //Set the client socket to non-blocking, otherwise the receive operation would fail.
+        client.set_nonblocking(false)
+        .map_err(|e| {
+            let err_msg = format!("Failed to set client socket into blocking mode");
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        //Also set a read timeout, otherwise this thread might hand, and the entire Master would wait on it to finish.
+        let read_timeout = Duration::from_millis(200);
+        client.set_read_timeout(Some(read_timeout))
+        .map_err(|e| {
+            let err_msg = format!("Failed to set client read timeout");
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        let bytes_read = client.recv(&mut buffer)
+        .map_err(|e| {
+            let err_msg = format!("Failed to read data from client {}", client_addr.as_inet6().unwrap());
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        debug!(log, "Connection received from {}", client_addr.as_inet6().unwrap(); "bytes_read" => bytes_read);
+
+        //Attempt to parse the read data into a Command
+        let data = buffer[..bytes_read].to_vec();
+        let cmd: Commands = from_slice(&data)
+        .map_err(|e| {
+            let err_msg = format!("Could not deserialise message from client");
+            MeshSimError {
+                kind: MeshSimErrorKind::Serialization(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
         match cmd {
             Commands::RegisterWorker{
                 w_name,
@@ -378,7 +522,7 @@ impl Master {
                 //Save the db_id of the worker as well as the handle to its process.
                 let mut workers = workers
                     .lock()
-                    .expect("Could not lock workers list");
+                    .expect("Failed to lock workers list");
                 workers.insert(w_name, (id, cmd_address));
             },
             _ => {
@@ -437,7 +581,7 @@ impl Master {
 
     ///Runs the test defined in the specification passed to the master.
     pub fn run_test(
-        &mut self,
+        mut self,
         mut spec: test_specification::TestSpec,
         sleep_time_override: Option<&str>,
     ) -> Result<(), MeshSimError> {
@@ -469,7 +613,7 @@ impl Master {
         let mut action_handles = Vec::new();
 
         //First of all, schedule the End_test action, so that the test will finish even if things go wrong
-        let end_test_handle = self.testaction_end_test(self.duration)?;
+        let end_test_handle = self.testaction_end_test(self.duration, Arc::clone(&self.finish_test))?;
         action_handles.push(end_test_handle);
 
         //Start all workers
@@ -531,13 +675,25 @@ impl Master {
         //All actions have been scheduled. Wait for all actions to be executed and then exit.
         for h in action_handles {
             match h.join() {
-                Ok(_) => {}
-                Err(_) => {
-                    warn!(self.logger, "Couldn't join on thread");
+                Ok(_) => {
+                    /* All good */
+                },
+                Err(e) => {
+                    /* The thread exited with an error */
+                    error!(self.logger, "Thread exited with the following error: {:?}", &e);
                 }
             }
         }
 
+        //Check if the regisration server had any errors
+        match self.rs_handle.join() {
+            Ok(_) => {
+                /* All good */
+            },
+            Err(e) => {
+                error!(self.logger, "RegistrationServer thread exited with the following error: {:?}", &e);
+            },
+        }
         //cl.join();
 
         Ok(())
@@ -579,7 +735,7 @@ impl Master {
 
         for action in actions {
             let action_handle = match action {
-                TestActions::EndTest(time) => self.testaction_end_test(time)?,
+                TestActions::EndTest(time) => self.testaction_end_test(time, Arc::clone(&self.finish_test))?,
                 TestActions::AddNode(name, time) => {
                     self.testaction_add_node(name.clone(), active_nodes.contains(&name), time)?
                 }
@@ -594,7 +750,7 @@ impl Master {
         Ok(thread_handles)
     }
 
-    fn testaction_end_test(&self, time: u64) -> Result<JoinHandle<()>, MeshSimError> {
+    fn testaction_end_test(&self, time: u64, finish_test: Arc<AtomicBool>) -> Result<JoinHandle<()>, MeshSimError> {
         let workers_handle = Arc::clone(&self.workers);
         let logger = self.logger.clone();
 
@@ -624,6 +780,8 @@ impl Master {
                     Err(_) => info!(logger, "Process was not running."),
                 }
             }
+            //Signal the end to other threads
+            finish_test.store(true, Ordering::SeqCst);
             info!(
                 logger,
                 "End_Test action: Finished. {} processes terminated.", i
@@ -632,7 +790,7 @@ impl Master {
         Ok(handle)
     }
 
-    fn send_command(addr: &String, cmd: Commands, logger: &Logger) -> Result<(), MeshSimError> {
+    fn send_command(addr: &str, cmd: Commands, logger: &Logger) -> Result<(), MeshSimError> {
         let socket = Socket::new(Domain::unix(), Type::dgram(), None)
             .map_err(|e| {
                 let err_msg = String::from("Could not create socket");
@@ -641,7 +799,14 @@ impl Master {
                     cause: Some(Box::new(e)),
                 }
         })?;
-        let worker_addr = SockAddr::unix(addr).unwrap();
+        let worker_addr = SockAddr::unix(addr)
+        .map_err(|e| {
+            let err_msg = format!("Could not create a UDS to {}", &addr);
+            MeshSimError {
+                kind: MeshSimErrorKind::Configuration(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
         let data = to_vec(&cmd)
             .map_err(|e| {
                 let err_msg = String::from("Could not serialise command");
@@ -658,7 +823,7 @@ impl Master {
                     cause: Some(Box::new(e)),
             }
         })?;
-        info!(logger," Command sent: {:?}", &cmd);
+        debug!(logger," Command sent to {}", addr);
 
         Ok(())
     }
@@ -737,9 +902,9 @@ impl Master {
             let workers = workers.lock();
             match workers {
                 Ok(mut w) => {
-                    if let Some((_id, addr)) = w.get(&name) {
+                    if let Some((_w_name, (_id, addr))) = w.remove_entry(&name) {
                         // let mut c = child.1.lock().expect("Could not get lock to worker handle");
-                        match Master::send_command(addr, Commands::Finish, &logger) {
+                        match Master::send_command(&addr, Commands::Finish, &logger) {
                             Ok(_) => {
                                 // let exit_status = c.wait();
                                 info!(
@@ -948,8 +1113,6 @@ impl Master {
             packet_counter += 1;
 
             rng.fill_bytes(&mut data[..]);
-            let encoded_data = base64::encode(&data);
-            let payload = format!("SEND {} {}\n", &destination, &encoded_data);
             let cmd = Commands::Send(destination.clone(), data.clone());
 
             match Master::send_command(&addr, cmd, &logger) {
@@ -1001,7 +1164,7 @@ impl Master {
         let logger = self.logger.clone();
         let mut paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
         let sleep_time_override = self.sleep_time_override.clone();
-        let conn = get_db_connection_by_file(&self.env_file, &self.logger)?;
+        let conn = get_db_connection_by_file(self.env_file.clone(), &self.logger)?;
 
         tb.name(String::from("MobilityThread")).spawn(move || {
             let mut rng = thread_rng();
@@ -1189,8 +1352,9 @@ impl Master {
         }
     }
 
-    fn new_socket() -> Result<Socket, MeshSimError> {
-        Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp())).map_err(|e| {
+    /// Creates a new socket for the Master/worker registration
+    pub fn new_registration_socket() -> Result<Socket, MeshSimError> {
+        Socket::new(Domain::ipv6(), Type::stream(), Some(Protocol::tcp())).map_err(|e| {
             let err_msg = String::from("Failed to create new socket");
             MeshSimError {
                 kind: MeshSimErrorKind::Networking(err_msg),
