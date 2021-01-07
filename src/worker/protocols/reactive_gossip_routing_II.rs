@@ -221,7 +221,14 @@ impl Protocol for ReactiveGossipRoutingII {
         )?;
 
         if let Some((resp_hdr, md)) = resp {
-            self.wifi_tx_queue.send((resp_hdr, md, Utc::now()));
+            self.wifi_tx_queue.send((resp_hdr, md, Utc::now()))
+            .map_err(|e| { 
+                let msg = format!("Failed to queue response into tx_queue");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Contention(msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
         }
 
         Ok(())
@@ -479,7 +486,14 @@ impl ReactiveGossipRoutingII {
             rmc.insert(route_id.clone());
         }
 
-        wifi_tx_queue.send((hdr, log_data, Utc::now()));
+        wifi_tx_queue.send((hdr, log_data, Utc::now()))
+        .map_err(|e| { 
+            let msg = format!("Failed to queue response into tx_queue");
+            MeshSimError {
+                kind: MeshSimErrorKind::Contention(msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
 
         info!(logger, "Route discovery initiated"; "route_id"=>&route_id);
 
@@ -510,7 +524,14 @@ impl ReactiveGossipRoutingII {
         );
         //Right now this assumes the data can be sent in a single broadcast message
         //This might be addressed later on.
-        wifi_tx_queue.send((hdr, log_data, Utc::now()));
+        wifi_tx_queue.send((hdr, log_data, Utc::now()))
+        .map_err(|e| { 
+            let msg = format!("Failed to queue response into tx_queue");
+            MeshSimError {
+                kind: MeshSimErrorKind::Contention(msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
 
         Ok(())
     }
@@ -1178,157 +1199,172 @@ impl ReactiveGossipRoutingII {
         self.worker_name.clone()
     }
 
-    fn maintenance_loop(
-        data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-        destination_routes: Arc<Mutex<HashMap<String, String>>>,
-        known_routes: Arc<Mutex<HashMap<String, bool>>>,
-        pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
-        queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
-        route_msg_cache: Arc<Mutex<HashSet<String>>>,
-        me: String,
-        wifi_tx_queue: Sender<Transmission>,
-        vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
-        logger: Logger,
-    ) -> Result<(), MeshSimError> {
-        let sleep_time = std::time::Duration::from_millis(MAINTENANCE_LOOP);
+    // fn maintenance_loop(
+    //     data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
+    //     destination_routes: Arc<Mutex<HashMap<String, String>>>,
+    //     known_routes: Arc<Mutex<HashMap<String, bool>>>,
+    //     pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
+    //     queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
+    //     route_msg_cache: Arc<Mutex<HashSet<String>>>,
+    //     me: String,
+    //     wifi_tx_queue: Sender<Transmission>,
+    //     vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
+    //     logger: Logger,
+    // ) -> Result<(), MeshSimError> {
+    //     let sleep_time = std::time::Duration::from_millis(MAINTENANCE_LOOP);
 
-        loop {
-            thread::sleep(sleep_time);
+    //     loop {
+    //         thread::sleep(sleep_time);
 
-            //Retransmission loop
-            {
-                let mut cache = data_msg_cache
-                    .lock()
-                    .expect("Error trying to acquire lock to data_messages cache");
-                for (msg_hash, entry) in cache
-                    .iter_mut()
-                    .filter(|(_msg_hash, entry)| entry.state.is_pending())
-                {
-                    debug!(logger, "Message {} is pending confirmation", &msg_hash);
+    //         //Retransmission loop
+    //         {
+    //             let mut cache = data_msg_cache
+    //                 .lock()
+    //                 .expect("Error trying to acquire lock to data_messages cache");
+    //             for (msg_hash, entry) in cache
+    //                 .iter_mut()
+    //                 .filter(|(_msg_hash, entry)| entry.state.is_pending())
+    //             {
+    //                 debug!(logger, "Message {} is pending confirmation", &msg_hash);
 
-                    if entry.retries < MAX_PACKET_RETRANSMISSION {
-                        let hdr = entry.payload.clone();
-                        entry.retries += 1;
-                        let log_data =
-                            ProtocolMessages::RGRII(deserialize_message(hdr.get_payload())?);
-                        info!(
-                            logger,
-                            "Retransmitting message {}", &hdr.get_msg_id();
-                            "retries"=>entry.retries,
-                        );
+    //                 if entry.retries < MAX_PACKET_RETRANSMISSION {
+    //                     let hdr = entry.payload.clone();
+    //                     entry.retries += 1;
+    //                     let log_data =
+    //                         ProtocolMessages::RGRII(deserialize_message(hdr.get_payload())?);
+    //                     info!(
+    //                         logger,
+    //                         "Retransmitting message {}", &hdr.get_msg_id();
+    //                         "retries"=>entry.retries,
+    //                     );
 
-                        //The message is still cached, so re-transmit it.
-                        wifi_tx_queue.send((hdr, log_data, Utc::now()));
-                    } else {
-                        // The message is no longer cached.
-                        // At this point, we assume the route is broken.
-                        // Send the route teardown message.
-                        if let DataMessageStates::Pending(ref route_id) = entry.state.clone() {
-                            // info!(logger, "Starting route {} teardown", route_id);
-                            //Mark this entry in the message cache as confirmed so that we don't
-                            //process it again.
-                            entry.state = DataMessageStates::Confirmed;
+    //                     //The message is still cached, so re-transmit it.
+    //                     wifi_tx_queue.send((hdr, log_data, Utc::now()))
+    //                     .map_err(|e| { 
+    //                         let msg = format!("Failed to queue response into tx_queue");
+    //                         MeshSimError {
+    //                             kind: MeshSimErrorKind::Contention(msg),
+    //                             cause: Some(Box::new(e)),
+    //                         }
+    //                     })?;
+    //                 } else {
+    //                     // The message is no longer cached.
+    //                     // At this point, we assume the route is broken.
+    //                     // Send the route teardown message.
+    //                     if let DataMessageStates::Pending(ref route_id) = entry.state.clone() {
+    //                         // info!(logger, "Starting route {} teardown", route_id);
+    //                         //Mark this entry in the message cache as confirmed so that we don't
+    //                         //process it again.
+    //                         entry.state = DataMessageStates::Confirmed;
 
-                            //Tear down the route in the internal caches
-                            let msg = ReactiveGossipRoutingII::route_teardown(
-                                route_id,
-                                &me,
-                                Arc::clone(&destination_routes),
-                                Arc::clone(&known_routes),
-                                &logger,
-                            )?;
-                            //Tag the message
-                            let msg = Messages::RouteTeardown(msg);
-                            //Build log data from the packet
-                            let log_data = ProtocolMessages::RGRII(msg.clone());
-                            //Pack the message and build the header for transmission
-                            let hdr = MessageHeader::new(
-                                me.clone(),
-                                String::new(),
-                                serialize_message(msg)?,
-                            );
-                            //Send message
-                            wifi_tx_queue.send((hdr, log_data, Utc::now()));
-                            info!(
-                                logger,
-                                "Route Teardown initiated";
-                                "route_id"=>&route_id,
-                                "reason"=>"Unable to confirm previously sent DATA message"
-                            );                            
+    //                         //Tear down the route in the internal caches
+    //                         let msg = ReactiveGossipRoutingII::route_teardown(
+    //                             route_id,
+    //                             &me,
+    //                             Arc::clone(&destination_routes),
+    //                             Arc::clone(&known_routes),
+    //                             &logger,
+    //                         )?;
+    //                         //Tag the message
+    //                         let msg = Messages::RouteTeardown(msg);
+    //                         //Build log data from the packet
+    //                         let log_data = ProtocolMessages::RGRII(msg.clone());
+    //                         //Pack the message and build the header for transmission
+    //                         let hdr = MessageHeader::new(
+    //                             me.clone(),
+    //                             String::new(),
+    //                             serialize_message(msg)?,
+    //                         );
+    //                         //Send message
+                            //  wifi_tx_queue.send((hdr, log_data, Utc::now()))
+                            //  .map_err(|e| { 
+                            //     let msg = format!("Failed to queue response into tx_queue");
+                            //     MeshSimError {
+                            //         kind: MeshSimErrorKind::Contention(msg),
+                            //         cause: Some(Box::new(e)),
+                            //     }
+                            // })?;
+    
+    //                         info!(
+    //                             logger,
+    //                             "Route Teardown initiated";
+    //                             "route_id"=>&route_id,
+    //                             "reason"=>"Unable to confirm previously sent DATA message"
+    //                         );                            
                             
-                        } else {
-                            error!(logger, "Inconsistent state reached");
-                            unreachable!();
-                        }
-                    }
-                }
-            }
+    //                     } else {
+    //                         error!(logger, "Inconsistent state reached");
+    //                         unreachable!();
+    //                     }
+    //                 }
+    //             }
+    //         }
 
-            let mut expired_discoveries = Vec::new();
-            //Route expiration retransmission
-            {
-                let mut pd = pending_destinations
-                    .lock()
-                    .expect("Failed to lock pending_destinations table");
-                for (dest, (route_id, ts, retries)) in
-                    pd.iter_mut().filter(|(_dest, entry)| entry.1 < Utc::now())
-                {
-                    //Should we retry?
-                    if *retries < ROUTE_DISCOVERY_MAX_RETRY {
-                        info!(
-                            logger,
-                            "Re-trying ROUTE_DISCOVERY for {}", &dest;
-                            "reason"=>"Time limit for discover exceeded"
-                        );
-                        //Transmit new route discovery
-                        let new_route_id = ReactiveGossipRoutingII::start_route_discovery(
-                            &me,
-                            dest.clone(),
-                            wifi_tx_queue.clone(),
-                            Arc::clone(&route_msg_cache),
-                            Arc::clone(&queued_transmissions),
-                            &logger,
-                        )?;
+    //         let mut expired_discoveries = Vec::new();
+    //         //Route expiration retransmission
+    //         {
+    //             let mut pd = pending_destinations
+    //                 .lock()
+    //                 .expect("Failed to lock pending_destinations table");
+    //             for (dest, (route_id, ts, retries)) in
+    //                 pd.iter_mut().filter(|(_dest, entry)| entry.1 < Utc::now())
+    //             {
+    //                 //Should we retry?
+    //                 if *retries < ROUTE_DISCOVERY_MAX_RETRY {
+    //                     info!(
+    //                         logger,
+    //                         "Re-trying ROUTE_DISCOVERY for {}", &dest;
+    //                         "reason"=>"Time limit for discover exceeded"
+    //                     );
+    //                     //Transmit new route discovery
+    //                     let new_route_id = ReactiveGossipRoutingII::start_route_discovery(
+    //                         &me,
+    //                         dest.clone(),
+    //                         wifi_tx_queue.clone(),
+    //                         Arc::clone(&route_msg_cache),
+    //                         Arc::clone(&queued_transmissions),
+    //                         &logger,
+    //                     )?;
 
-                        //Increase retries for route-discovery
-                        *retries += 1;
-                        *route_id = new_route_id;
-                        *ts =
-                            Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);
-                    } else {
-                        //Retries exhausted. Add to list.
-                        expired_discoveries.push(dest.clone());
-                        warn!(
-                            logger,
-                            "Dropping queued packets for {}", &dest;
-                            "reason"=>"ROUTE_DISCOVERY retries exceeded",
-                            "route"=>&(*route_id),
-                        );
-                    }
-                }
-                //Remove the expired entries from the pending_destinations list.
-                pd.retain(|k, _| !expired_discoveries.contains(&k));
-            }
+    //                     //Increase retries for route-discovery
+    //                     *retries += 1;
+    //                     *route_id = new_route_id;
+    //                     *ts =
+    //                         Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);
+    //                 } else {
+    //                     //Retries exhausted. Add to list.
+    //                     expired_discoveries.push(dest.clone());
+    //                     warn!(
+    //                         logger,
+    //                         "Dropping queued packets for {}", &dest;
+    //                         "reason"=>"ROUTE_DISCOVERY retries exceeded",
+    //                         "route"=>&(*route_id),
+    //                     );
+    //                 }
+    //             }
+    //             //Remove the expired entries from the pending_destinations list.
+    //             pd.retain(|k, _| !expired_discoveries.contains(&k));
+    //         }
 
-            //Purge queued packets of expired routes
-            {
-                let mut qt = queued_transmissions
-                    .lock()
-                    .expect("Failed to lock queued_transmissions queue");
-                qt.retain(|k, _| !expired_discoveries.contains(&k));
-            }
+    //         //Purge queued packets of expired routes
+    //         {
+    //             let mut qt = queued_transmissions
+    //                 .lock()
+    //                 .expect("Failed to lock queued_transmissions queue");
+    //             qt.retain(|k, _| !expired_discoveries.contains(&k));
+    //         }
 
-            //Vicinity cache maintenance
-            let mut vc = vicinity_cache
-                .lock()
-                .expect("Failed to lock vicinity cache");
-            let mut threshold = Utc::now() - chrono::Duration::milliseconds(VC_FRESHNESS_THRESHOLD);
-            vc.retain(|_node, ts| ts >= &mut threshold);
-            debug!(logger, "Vicinity cache:{:?}", &vc);
-        }
-        #[allow(unreachable_code)]
-        Ok(()) //Loop should never end
-    }
+    //         //Vicinity cache maintenance
+    //         let mut vc = vicinity_cache
+    //             .lock()
+    //             .expect("Failed to lock vicinity cache");
+    //         let mut threshold = Utc::now() - chrono::Duration::milliseconds(VC_FRESHNESS_THRESHOLD);
+    //         vc.retain(|_node, ts| ts >= &mut threshold);
+    //         debug!(logger, "Vicinity cache:{:?}", &vc);
+    //     }
+    //     #[allow(unreachable_code)]
+    //     Ok(()) //Loop should never end
+    // }
 
     fn route_teardown(
         route_id: &str,
@@ -1455,7 +1491,14 @@ impl ReactiveGossipRoutingII {
                 );
 
                 //The message is still cached, so re-transmit it.
-                wifi_tx_queue.send((hdr, log_data, Utc::now()));
+                wifi_tx_queue.send((hdr, log_data, Utc::now()))
+                .map_err(|e| { 
+                    let msg = format!("Failed to queue response into tx_queue");
+                    MeshSimError {
+                        kind: MeshSimErrorKind::Contention(msg),
+                        cause: Some(Box::new(e)),
+                    }
+                })?;
 
             } else {
                 // The message is no longer cached.
@@ -1482,7 +1525,14 @@ impl ReactiveGossipRoutingII {
                     let hdr =
                         MessageHeader::new(me.clone(), String::new(), serialize_message(msg)?);
                     //Send message
-                    wifi_tx_queue.send((hdr, log_data, Utc::now()));
+                    wifi_tx_queue.send((hdr, log_data, Utc::now()))
+                    .map_err(|e| { 
+                        let msg = format!("Failed to queue response into tx_queue");
+                        MeshSimError {
+                            kind: MeshSimErrorKind::Contention(msg),
+                            cause: Some(Box::new(e)),
+                        }
+                    })?;
                     info!(
                         logger,
                         "Route Teardown initiated";

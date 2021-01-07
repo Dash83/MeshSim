@@ -87,7 +87,14 @@ impl Protocol for LoraWifiBeacon {
             RadioTypes::LongRange => self.lora_tx_queue.clone(),
         };
         if let Some((resp_hdr, md)) = resp {
-            tx_queue.send((resp_hdr, md, Utc::now()));
+            tx_queue.send((resp_hdr, md, Utc::now()))
+            .map_err(|e| { 
+                let msg = format!("Failed to queue response into tx_queue");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Contention(msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
         }
 
         Ok(())
@@ -180,7 +187,14 @@ impl LoraWifiBeacon {
             let log_data = ProtocolMessages::LoraWifi(msg.clone());
             let hdr = MessageHeader::new(self_peer.clone(), String::new(), serialize_message(msg)?);
 
-            tx_queue.send((hdr, log_data, Utc::now()));
+            tx_queue.send((hdr, log_data, Utc::now()))
+            .map_err(|e| { 
+                let msg = format!("Failed to queue response into tx_queue");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Contention(msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
         }
     }
 

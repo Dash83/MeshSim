@@ -18,8 +18,6 @@ use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use crossbeam_channel::Sender;
 
-const CONCCURENT_THREADS_PER_FLOW: usize = 1;
-
 // **************************************************
 // ************ Configuration parameters ************
 // **************************************************
@@ -314,7 +312,14 @@ impl Protocol for AODV {
         )?;
         
         if let Some((resp_hdr, md)) = resp {
-            self.tx_queue.send((resp_hdr, md, Utc::now()));
+            self.tx_queue.send((resp_hdr, md, Utc::now()))
+            .map_err(|e| { 
+                let msg = format!("Failed to queue response into tx_queue");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Contention(msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
         }
 
         Ok(())
@@ -1443,7 +1448,14 @@ impl AODV {
             },
         );
 
-        tx_queue.send((hdr, log_data, Utc::now()));
+        tx_queue.send((hdr, log_data, Utc::now()))
+        .map_err(|e| { 
+            let msg = format!("Failed to queue response into tx_queue");
+            MeshSimError {
+                kind: MeshSimErrorKind::Contention(msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
 
         Ok(())
     }
@@ -1517,7 +1529,14 @@ impl AODV {
         }
 
         //Broadcast RouteDiscovery
-        tx_queue.send((hdr, log_data, Utc::now()));
+        tx_queue.send((hdr, log_data, Utc::now()))
+        .map_err(|e| { 
+            let msg = format!("Failed to queue response into tx_queue");
+            MeshSimError {
+                kind: MeshSimErrorKind::Contention(msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
 
         /* TODO: This might present a bug in the data analysis. Before, this was logged after calling radio.broadcast(), thus making sure
         the packet had actualley been sent. But now, the packet has been queued. Functionally, it is fine, but from an analysis point of view,
@@ -1727,7 +1746,14 @@ impl AODV {
             let log_data = ProtocolMessages::AODV(rerr_msg.clone());
             let hdr = MessageHeader::new(me, String::new(), serialize_message(rerr_msg)?);
 
-            tx_queue.send((hdr, log_data, Utc::now()));
+            tx_queue.send((hdr, log_data, Utc::now()))
+            .map_err(|e| { 
+                let msg = format!("Failed to queue response into tx_queue");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Contention(msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
         }
 
         Ok(())
@@ -1784,7 +1810,14 @@ impl AODV {
                                 String::from(""),
                                 serialize_message(msg)?,
                             );
-                            tx_queue.send((hdr, log_data, Utc::now()));
+                            tx_queue.send((hdr, log_data, Utc::now()))
+                            .map_err(|e| { 
+                                let msg = format!("Failed to queue response into tx_queue");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Contention(msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
                         }
 
                         continue;
@@ -1866,7 +1899,14 @@ impl AODV {
             let log_data = ProtocolMessages::AODV(msg.clone());
             let hdr = MessageHeader::new(me, String::new(), serialize_message(msg)?);
 
-            tx_queue.send((hdr, log_data, Utc::now()));
+            tx_queue.send((hdr, log_data, Utc::now()))
+            .map_err(|e| { 
+                let msg = format!("Failed to queue response into tx_queue");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Contention(msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
 
         }
 

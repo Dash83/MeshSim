@@ -58,7 +58,7 @@ pub mod test_specification;
 mod workloads;
 
 /// Port on which the Master listens for workers to register
-pub const REG_SERVER_LISTEN_PORT: u16 = 9999;
+pub const REG_SERVER_LISTEN_PORT: u16 = 12345;
 //Size of the threadpool to handle worker registration.
 //A certain level of parallelism is required since most nodes are expected to be started almost
 //simultaneously during a simulation.
@@ -253,7 +253,7 @@ impl Master {
         // Master::start_registration_server(port)?;
         let handle = Master::start_registration_server(
             REG_SERVER_LISTEN_PORT,
-            &env_file,
+            env_file.clone(),
             Arc::clone(&workers),
             Arc::clone(&finish_test),
             logger.clone(),
@@ -285,7 +285,7 @@ impl Master {
 
     fn start_registration_server(
         listening_port: u16,
-        env_file: &String,
+        env_file: String,
         workers: Arc<Mutex<HashMap<String, (i32, String)>>>,
         finish_test: Arc<AtomicBool>,
         logger: Logger,
@@ -341,6 +341,7 @@ impl Master {
             //Start the workers
             let mut worker_threads = Vec::new();
             let log = logger.clone();
+            let conn_file = env_file.clone();
 
             for i in 0..REG_SERVER_POOL_SIZE {
                 //Resources for each thread
@@ -349,11 +350,18 @@ impl Master {
                 let finish_test = Arc::clone(&finish_test);
                 let w = Arc::clone(&workers);
                 let l = log.clone();
+                let cf = conn_file.clone();
                 let j = thread::Builder::new()
                     .name(thread_name.clone())
                     .spawn(move || {
                         //Local-scope resources for this worker thread
-                        let conn = get_db_connection(&l).expect("Could not get db connection");
+                        let conn = match get_db_connection_by_file(cf, &l) {
+                            Ok(c) => { c } ,
+                            Err(e) => {
+                                error!(l, "RegServerWorker failed to obtain database connection and will terminate"; "thread"=>&thread_name);
+                                return;
+                            }
+                        };
                         let read_timeout = Duration::from_millis(100);
                         while !finish_test.load(Ordering::SeqCst) {
                             match client_queue.recv_timeout(read_timeout) {
@@ -419,7 +427,7 @@ impl Master {
                         /* All good! */
                     },
                     Err(e) => {
-                        error!(l, "[RegistrationServer] -Failed to queue new client connection {}", &e);
+                        error!(l, "[RegistrationServer] - Failed to queue new client connection {}", &e);
                     }
                 }
 
@@ -523,7 +531,8 @@ impl Master {
                 let mut workers = workers
                     .lock()
                     .expect("Failed to lock workers list");
-                workers.insert(w_name, (id, cmd_address));
+                workers.insert(w_name.clone(), (id, cmd_address));
+                info!(&log, "Worker registered successfully!"; "worker"=>&w_name);
             },
             _ => {
                 /* The master does  not support any other commands*/

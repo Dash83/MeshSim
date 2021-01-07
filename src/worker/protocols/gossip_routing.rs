@@ -91,7 +91,14 @@ impl Protocol for GossipRouting {
         )?;
 
         if let Some((resp_hdr, md)) = resp {
-            self.tx_queue.send((resp_hdr, md, Utc::now()));
+            self.tx_queue.send((resp_hdr, md, Utc::now()))
+            .map_err(|e| { 
+                let msg = format!("Failed to queue response into tx_queue");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Contention(msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
         }
 
         Ok(())
@@ -120,7 +127,14 @@ impl Protocol for GossipRouting {
             cache.insert(CacheEntry { msg_id });
         }
 
-        self.tx_queue.send((hdr, log_data, Utc::now()));
+        self.tx_queue.send((hdr, log_data, Utc::now()))
+        .map_err(|e| { 
+            let msg = format!("Failed to queue response into tx_queue");
+            MeshSimError {
+                kind: MeshSimErrorKind::Contention(msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
 
         Ok(())
     }
