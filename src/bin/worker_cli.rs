@@ -106,7 +106,21 @@ impl From<toml::de::Error> for CLIError {
 }
 // ***************End Errors****************
 
-fn run(config: WorkerConfig, logger: Logger) -> Result<(), MeshSimError> {
+fn run(config: WorkerConfig) -> Result<(), MeshSimError> {
+    let log_file_name = format!(
+        "{}{}{}{}{}.log",
+        &config.work_dir,
+        std::path::MAIN_SEPARATOR,
+        logging::LOG_DIR_NAME,
+        std::path::MAIN_SEPARATOR,
+        &config.worker_name
+    );
+    let logger = logging::create_logger(&log_file_name, config.term_log.unwrap_or(false))
+        .unwrap_or_else(|e| {
+            println!("worker_cli failed with the following error: {}", e);
+            ::std::process::exit(ERROR_INITIALIZATION);
+        });
+
     info!(logger, "Worker Config: {:?}", &config);
     let ac = config.accept_commands.unwrap_or(false);
     let mut obj = config.create_worker(logger)?;
@@ -264,26 +278,13 @@ fn main() {
     //Initialization
     let config = init(&matches).unwrap_or_else(|e| {
         println!("worker_cli failed with the following error: {}", e);
-        ::std::process::exit(ERROR_INITIALIZATION);
+        std::process::exit(ERROR_INITIALIZATION);
     });
 
-    let log_file_name = format!(
-        "{}{}{}{}{}.log",
-        &config.work_dir,
-        std::path::MAIN_SEPARATOR,
-        logging::LOG_DIR_NAME,
-        std::path::MAIN_SEPARATOR,
-        &config.worker_name
-    );
-    let logger = logging::create_logger(&log_file_name, config.term_log.unwrap_or(false))
-        .unwrap_or_else(|e| {
-            println!("worker_cli failed with the following error: {}", e);
-            ::std::process::exit(ERROR_INITIALIZATION);
-        });
     //Main loop
-    if let Err(ref e) = run(config, logger.clone()) {
-        error!(logger, "worker_cli failed with the following error: {}", e);
-        ::std::process::exit(ERROR_EXECUTION_FAILURE);
+    if let Err(ref e) = run(config) {
+        eprintln!("worker_cli failed with the following error: {}", e);
+        // std::process::exit(ERROR_EXECUTION_FAILURE);
     }
 }
 

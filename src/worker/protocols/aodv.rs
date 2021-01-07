@@ -1321,11 +1321,12 @@ impl AODV {
                 }
             }
             None => {
-                let err_msg = format!("This node does not have a route to {}", &msg.destination);
-                let err = MeshSimError {
-                    kind: MeshSimErrorKind::Worker(err_msg),
-                    cause: None,
-                };
+                warn!(logger, "This node does not have a route to {}", &msg.destination);
+                // let err_msg = format!("This node does not have a route to {}", &msg.destination);
+                // let err = MeshSimError {
+                //     kind: MeshSimErrorKind::Worker(err_msg),
+                //     cause: None,
+                // };
                 radio::log_handle_message(
                     logger,
                     &hdr,
@@ -1334,7 +1335,7 @@ impl AODV {
                     None,
                     &Messages::DATA(msg),
                 );
-                return Err(err);
+                return Ok(None);
             }
         };
 
@@ -1422,6 +1423,7 @@ impl AODV {
         tx_queue: Sender<Transmission>,
         logger: Logger,
     ) -> Result<(), MeshSimError> {
+        let msg_hash = hdr.get_msg_id().to_string();
         let (next_hop, seq_no) = {
             let rt = route_table.lock().expect("Could not lock route table");
             let e = rt.get(&dest).ok_or(MeshSimError {
@@ -1436,17 +1438,18 @@ impl AODV {
         hdr.destination = next_hop.clone();
 
         //Record the packet in the data cache
-        let mut dc = data_cache.lock().expect("Could not lock data cache");
-        let msg_hash = hdr.get_msg_id().to_string();
-        dc.insert(
-            msg_hash,
-            DataCacheEntry {
-                destination: next_hop,
-                seq_no,
-                ts: Utc::now() + Duration::milliseconds(config.next_hop_wait),
-                confirmed: false,
-            },
-        );
+        {
+            let mut dc = data_cache.lock().expect("Could not lock data cache");
+            dc.insert(
+                msg_hash,
+                DataCacheEntry {
+                    destination: next_hop,
+                    seq_no,
+                    ts: Utc::now() + Duration::milliseconds(config.next_hop_wait),
+                    confirmed: false,
+                },
+            );
+        }
 
         tx_queue.send((hdr, log_data, Utc::now()))
         .map_err(|e| { 

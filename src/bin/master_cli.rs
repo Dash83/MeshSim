@@ -275,6 +275,6 @@ fn main() {
             chain = internal.source();
         }
 
-        ::std::process::exit(ERROR_EXECUTION_FAILURE);
+        // ::std::process::exit(ERROR_EXECUTION_FAILURE);
     }
 }

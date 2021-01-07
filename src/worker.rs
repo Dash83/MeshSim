@@ -634,7 +634,7 @@ impl Worker {
         let _res = resources.handler.init_protocol()?;
         //Start listening for messages
         let prot_handler = Arc::clone(&resources.handler);
-        let _threads: Vec<JoinHandle<()>> = resources
+        let threads: Vec<JoinHandle<String>> = resources
             .radio_channels
             .drain(..)
             .map(|(rx, (tx, _out_queue_sender, out_queue_receiver))| {
@@ -647,16 +647,40 @@ impl Worker {
                 let stale_packet_threshold = self.stale_packet_threshold;
                 let r_label: String = rx.get_radio_range().into();
                 let finish = Arc::clone(&finish);
+                let thread_name = format!("RadioListener[{}]", &r_label);
 
                 thread::Builder::new()
-                .name(format!("RadioListener[{}]", &r_label))
-                .spawn(move || {
+                .name(thread_name.clone())
+                .spawn(move || -> String {
                     info!(logger, "[{}] Listening for messages", &r_label);
-
                     let mut stats_ts = Utc::now();
+
                     while !finish.load(Ordering::SeqCst)  {
                         let radio_label = r_label.clone();
                         let rl = radio_label.clone();
+
+                        /**************************************************
+                        ***************  STATISTICS STAGE   ***************
+                        **************************************************/
+                        if stats_ts.timestamp_millis() + STATS_PERIOD <= Utc::now().timestamp_millis() {
+                            info!(
+                                logger,
+                                "Packets in IN_QUEUE: {}",
+                                in_queue_thread_pool.queued_count()
+                            );
+                            info!(
+                                logger,
+                                "Packets in OUT_QUEUE: {}",
+                                out_queue_receiver.len()
+                            );
+                            info!(
+                                logger,
+                                "Workers - Active: {}, Panicked: {}",
+                                in_queue_thread_pool.active_count(),
+                                in_queue_thread_pool.panic_count(),
+                            );
+                            stats_ts = Utc::now();
+                        }
 
                         /**************************************************
                         ***************  RADIO  RX  STAGE   ***************
@@ -671,22 +695,12 @@ impl Worker {
                                 let log = logger.clone();
 
                                 if in_queue_thread_pool.queued_count() >= max_queued_jobs {
-                                    let log_data = ();
-                                    log_handle_message(
-                                        &log,
-                                        &hdr,
-                                        MessageStatus::DROPPED,
-                                        Some("packet_queue is full"),
-                                        None,
-                                        &log_data,
-                                    );
                                     let perf_handle_message_duration = Utc::now().timestamp_nanos() - hdr.delay;
                                     //DO NOT change the order of these fields in the logging function.
                                     //This call mirrors the order of log_handle_message and it changed it might break the processing scripts.
                                     info!(
                                         &log,
                                         "Received message";
-                                        "radio"=>&radio_label,
                                         "hops"=>hdr.hops,
                                         "destination"=>&hdr.destination,
                                         "source"=>&hdr.sender,
@@ -694,6 +708,7 @@ impl Worker {
                                         "duration"=> perf_handle_message_duration,
                                         "status"=>MessageStatus::DROPPED,
                                         "msg_id"=>&hdr.get_msg_id(),
+                                        "radio"=>&radio_label,
                                     );
                                     continue;
                                 }
@@ -755,7 +770,6 @@ impl Worker {
                         if let Some((mut resp_hdr, log_data, out_queue_start)) = resp {
                             let tx_channel = Arc::clone(&tx);
                             let log = logger.clone();
-                            // let out_queue_start = Utc::now();
 
                             //Is the packet stale?
                             if (Utc::now().timestamp_millis() - out_queue_start.timestamp_millis()) > 
@@ -770,7 +784,7 @@ impl Worker {
                                     "msg_id" => &resp_hdr.msg_id,
                                     "radio" => &radio_label,
                                 );
-                                return;
+                                continue;
                             }
 
                             //perf_out_queued_start
@@ -800,25 +814,9 @@ impl Worker {
                                 }
                             }
                         }
-
-                        /**************************************************
-                        ***************  STATISTICS STAGE   ***************
-                        **************************************************/
-                        if stats_ts.timestamp_millis() + STATS_PERIOD <= Utc::now().timestamp_millis() {
-                            info!(
-                                logger,
-                                "Packets in IN_QUEUE: {}",
-                                in_queue_thread_pool.queued_count()
-                            );
-                            info!(
-                                logger,
-                                "Packets in OUT_QUEUE: {}",
-                                out_queue_receiver.len()
-                            );
-                            stats_ts = Utc::now();
-                        }
-
                     }
+
+                    return thread_name;
                 }).expect("Could not spawn radio thread")
             })
             .collect();
@@ -861,7 +859,7 @@ impl Worker {
             // Check if new commands have been received
             // Keep this section at the end of the main thread loop since it skips the rest of the iteration
             // when no data is available.
-            let (bytes_read, peer_addr) = match self.cmd_socket.recv_from(&mut buffer) {
+            let (bytes_read, _peer_addr) = match self.cmd_socket.recv_from(&mut buffer) {
                 Ok((bytes, addr)) => { (bytes, addr)},
                 Err(e) => {
                     if e.kind() != ErrorKind::WouldBlock {
@@ -891,12 +889,25 @@ impl Worker {
 
         }
 
+        for h in threads {
+            let name = match h.join() {
+                Ok(s) => s,
+                Err(e) => {
+                    info!(&self.logger, "Thread finished with an error: {:?}", &e);
+                    continue;
+                }
+            };
+            info!(&self.logger, "{} thread finished", &name);
+        }
+
         /*
         The finish command has been received. Give the process a bit of time to finish writing logs.
         This is due to the fact that currently the logging is done asynchronously by a separate thread, 
         and some times the logs are truncated in the middle of a message.
         */
-        thread::sleep(Duration::from_millis(1000));
+        // thread::sleep(Duration::from_millis(10));
+
+        info!(&self.logger, "Worker exiting");
 
         Ok(())
     }
