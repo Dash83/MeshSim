@@ -1188,154 +1188,156 @@ impl AODV {
         }
 
         //Not the destination. Forwarding message.
-        let mut rt = route_table.lock().expect("Coult not lock route table");
-        let (next_hop, dest_seq_no, confirmed) = match rt.get_mut(&msg.destination) {
-            Some(entry) => {
-                if !entry.flags.contains(RTEFlags::VALID_SEQ_NO) {
-                    //This is considered a route error.
-                    //Proceed to process this route error per RFC section 6.11, case (i)
-                    // (i) if it detects a link break for the next hop of an active
-                    // route in its routing table while transmitting data (and
-                    // route repair, if attempted, was unsuccessful)
-                    // For case (i), the node first makes a list of unreachable destinations
-                    // consisting of the unreachable neighbor and any additional destinations
-                    // (or subnets, see section 7) in the local routing table that use the
-                    // unreachable neighbor as the next hop.
-                    //
-                    // For this particular case, we assume having the route marked as invalid counts
-                    // as a link break.
-                    radio::log_handle_message(
-                        logger,
-                        &hdr,
-                        MessageStatus::DROPPED,
-                        Some("Route to destination is marked as invalid"),
-                        Some("Generating RouteError"),
-                        &Messages::DATA(msg.clone()),
-                    );
-
-                    //No valid route, so reply with an RERR
-                    let mut dest = HashMap::new();
-                    dest.insert(msg.destination.clone(), entry.dest_seq_no);
-                    let rerr_msg = RouteErrorMessage {
-                        flags: Default::default(),
-                        destinations: dest,
-                    };
-
-                    //Tag response
-                    let rerr_msg = Messages::RERR(rerr_msg);
-                    //Build log data
-                    let log_data = ProtocolMessages::AODV(rerr_msg.clone());
-
-                    //Build header
-                    let hdr = MessageHeader::new(
-                        me,
-                        String::from(""), //Destination should be hdr.sender, but need to check
-                        serialize_message(rerr_msg)?,
-                    );
-
-                    return Ok(Some((hdr, log_data)));
-                }
-
-                if entry.flags.contains(RTEFlags::ACTIVE_ROUTE) {
-                    //We have an active and valid route to the destination
-                    //Update the lifetime to the destination
-                    entry.lifetime = std::cmp::max(
-                        entry.lifetime,
-                        Utc::now() + Duration::milliseconds(active_route_timeout),
-                    );
-                    let confirmed = entry.next_hop == msg.destination;
-                    (entry.next_hop.clone(), entry.dest_seq_no, confirmed)
-                } else {
-                    //Route is inactive. Attempt to repair it.
-                    //If it's already repairing, just queue the transmission.
-                    if entry.repairing
-                        || AODV::route_repair(
-                            &msg.destination,
-                            Arc::clone(&route_table),
-                            Arc::clone(&rreq_seq_no),
-                            Arc::clone(&seq_no),
-                            me.clone(),
-                            config,
-                            tx_queue.clone(),
-                            Arc::clone(&pending_routes),
-                            Arc::clone(&rreq_cache),
-                            &logger,
-                        )?
-                    {
-                        AODV::queue_transmission(
-                            queued_transmissions,
-                            msg.destination.clone(),
-                            hdr.clone(),
-                        )?;
-                        radio::log_handle_message(
-                            logger,
-                            &hdr,
-                            MessageStatus::QUEUED,
-                            Some("Route to destination being repaired"),
-                            None,
-                            &Messages::DATA(msg.clone()),
-                        );
-                    } else {
-                        // This is considered a route error.
-                        // Proceed to process this route error per RFC section 6.11, case (ii).
+        let (next_hop, dest_seq_no, confirmed) = {
+            let mut rt = route_table.lock().expect("Coult not lock route table");
+            match rt.get_mut(&msg.destination) {
+                Some(entry) => {
+                    if !entry.flags.contains(RTEFlags::VALID_SEQ_NO) {
+                        //This is considered a route error.
+                        //Proceed to process this route error per RFC section 6.11, case (i)
+                        // (i) if it detects a link break for the next hop of an active
+                        // route in its routing table while transmitting data (and
+                        // route repair, if attempted, was unsuccessful)
+                        // For case (i), the node first makes a list of unreachable destinations
+                        // consisting of the unreachable neighbor and any additional destinations
+                        // (or subnets, see section 7) in the local routing table that use the
+                        // unreachable neighbor as the next hop.
                         //
-                        // (ii) if it gets a data packet destined to a node for which it
-                        // does not have an active route and is not repairing (if
-                        // using local repair).
-                        //
-                        // In this case, failing to run route_repair counts as "is not repairing".
+                        // For this particular case, we assume having the route marked as invalid counts
+                        // as a link break.
                         radio::log_handle_message(
                             logger,
                             &hdr,
                             MessageStatus::DROPPED,
-                            Some("RouteHealing was not possible"),
+                            Some("Route to destination is marked as invalid"),
                             Some("Generating RouteError"),
                             &Messages::DATA(msg.clone()),
                         );
-
-                        // For case (ii), there is only one unreachable destination, which is the
-                        // destination of the data packet that cannot be delivered.
+    
+                        //No valid route, so reply with an RERR
                         let mut dest = HashMap::new();
                         dest.insert(msg.destination.clone(), entry.dest_seq_no);
                         let rerr_msg = RouteErrorMessage {
                             flags: Default::default(),
                             destinations: dest,
                         };
-
+    
                         //Tag response
                         let rerr_msg = Messages::RERR(rerr_msg);
                         //Build log data
                         let log_data = ProtocolMessages::AODV(rerr_msg.clone());
-
+    
                         //Build header
-                        let resp_hdr = MessageHeader::new(
+                        let hdr = MessageHeader::new(
                             me,
-                            hdr.sender, //Destination should be hdr.sender, but need to check
+                            String::from(""), //Destination should be hdr.sender, but need to check
                             serialize_message(rerr_msg)?,
                         );
-
-                        return Ok(Some((resp_hdr, log_data)));
+    
+                        return Ok(Some((hdr, log_data)));
                     }
-
+    
+                    if entry.flags.contains(RTEFlags::ACTIVE_ROUTE) {
+                        //We have an active and valid route to the destination
+                        //Update the lifetime to the destination
+                        entry.lifetime = std::cmp::max(
+                            entry.lifetime,
+                            Utc::now() + Duration::milliseconds(active_route_timeout),
+                        );
+                        let confirmed = entry.next_hop == msg.destination;
+                        (entry.next_hop.clone(), entry.dest_seq_no, confirmed)
+                    } else {
+                        //Route is inactive. Attempt to repair it.
+                        //If it's already repairing, just queue the transmission.
+                        if entry.repairing
+                            || AODV::route_repair(
+                                &msg.destination,
+                                Arc::clone(&route_table),
+                                Arc::clone(&rreq_seq_no),
+                                Arc::clone(&seq_no),
+                                me.clone(),
+                                config,
+                                tx_queue.clone(),
+                                Arc::clone(&pending_routes),
+                                Arc::clone(&rreq_cache),
+                                &logger,
+                            )?
+                        {
+                            AODV::queue_transmission(
+                                queued_transmissions,
+                                msg.destination.clone(),
+                                hdr.clone(),
+                            )?;
+                            radio::log_handle_message(
+                                logger,
+                                &hdr,
+                                MessageStatus::QUEUED,
+                                Some("Route to destination being repaired"),
+                                None,
+                                &Messages::DATA(msg.clone()),
+                            );
+                        } else {
+                            // This is considered a route error.
+                            // Proceed to process this route error per RFC section 6.11, case (ii).
+                            //
+                            // (ii) if it gets a data packet destined to a node for which it
+                            // does not have an active route and is not repairing (if
+                            // using local repair).
+                            //
+                            // In this case, failing to run route_repair counts as "is not repairing".
+                            radio::log_handle_message(
+                                logger,
+                                &hdr,
+                                MessageStatus::DROPPED,
+                                Some("RouteHealing was not possible"),
+                                Some("Generating RouteError"),
+                                &Messages::DATA(msg.clone()),
+                            );
+    
+                            // For case (ii), there is only one unreachable destination, which is the
+                            // destination of the data packet that cannot be delivered.
+                            let mut dest = HashMap::new();
+                            dest.insert(msg.destination.clone(), entry.dest_seq_no);
+                            let rerr_msg = RouteErrorMessage {
+                                flags: Default::default(),
+                                destinations: dest,
+                            };
+    
+                            //Tag response
+                            let rerr_msg = Messages::RERR(rerr_msg);
+                            //Build log data
+                            let log_data = ProtocolMessages::AODV(rerr_msg.clone());
+    
+                            //Build header
+                            let resp_hdr = MessageHeader::new(
+                                me,
+                                hdr.sender, //Destination should be hdr.sender, but need to check
+                                serialize_message(rerr_msg)?,
+                            );
+    
+                            return Ok(Some((resp_hdr, log_data)));
+                        }
+    
+                        return Ok(None);
+                    }
+                }
+                None => {
+                    warn!(logger, "This node does not have a route to {}", &msg.destination);
+                    // let err_msg = format!("This node does not have a route to {}", &msg.destination);
+                    // let err = MeshSimError {
+                    //     kind: MeshSimErrorKind::Worker(err_msg),
+                    //     cause: None,
+                    // };
+                    radio::log_handle_message(
+                        logger,
+                        &hdr,
+                        MessageStatus::DROPPED,
+                        Some("No route to destination"),
+                        None,
+                        &Messages::DATA(msg),
+                    );
                     return Ok(None);
                 }
-            }
-            None => {
-                warn!(logger, "This node does not have a route to {}", &msg.destination);
-                // let err_msg = format!("This node does not have a route to {}", &msg.destination);
-                // let err = MeshSimError {
-                //     kind: MeshSimErrorKind::Worker(err_msg),
-                //     cause: None,
-                // };
-                radio::log_handle_message(
-                    logger,
-                    &hdr,
-                    MessageStatus::DROPPED,
-                    Some("No route to destination"),
-                    None,
-                    &Messages::DATA(msg),
-                );
-                return Ok(None);
             }
         };
 
