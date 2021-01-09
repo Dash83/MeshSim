@@ -30,6 +30,8 @@ use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use serde_cbor::de::*;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::sync::atomic::{AtomicBool, Ordering};
+use sysinfo::{self, ProcessExt, SystemExt, Signal};
+use std::path::Path;
 
 // use rusqlite::Connection;
 use chrono::{DateTime, Utc};
@@ -70,6 +72,7 @@ const REG_SERVER_PERIOD: u64 = 100; //microseconds
 const REG_SERVER_BACKLOG: i32 = 256;
 const RANDOM_WAYPOINT_WAIT_TIME: u64 = 1000;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
+const CLEANUP_SLEEP: u64 = 500;
 
 type PendingWorker = (DateTime<Utc>, Velocity);
 
@@ -679,8 +682,6 @@ impl Master {
             action_handles.len()
         );
 
-        //let cl = self.start_command_loop_thread()?;
-
         //All actions have been scheduled. Wait for all actions to be executed and then exit.
         for h in action_handles {
             match h.join() {
@@ -703,7 +704,31 @@ impl Master {
                 error!(self.logger, "RegistrationServer thread exited with the following error: {:?}", &e);
             },
         }
-        //cl.join();
+
+        // Now that all Master threads have finished, perform any cleanup required.
+        // Firstly, we'll give the worker processes a little time to process the Finish command, in case they were overloaded
+        // and have not yet processed it.
+        let cleanup_sleep = Duration::from_millis(CLEANUP_SLEEP);
+        thread::sleep(cleanup_sleep);
+
+        //Now check if any worker processes are lingering.
+        let mut system = sysinfo::System::new_all();
+        //Refresh the system to get new info about running processes
+        system.refresh_all();
+        let worker_path = Path::new(&self.worker_binary);
+        let worker_program_name = worker_path.file_name().unwrap_or_default();
+        let logger = self.logger.clone();
+        system.get_processes()
+            .iter()
+            .filter(|(_pid, p)| p.name() == worker_program_name)
+            .for_each(|(pid, p)| { 
+                error!(&logger, "Process {} did not exit on time", pid; "cmd" => p.cmd().join(" "));
+                if p.kill(Signal::Kill) {
+                    info!(&logger, "Kill signal sent to process {}", pid);
+                } else {
+                    error!(&logger, "Failed to send kill signal to process {}", pid);
+                }
+            });
 
         Ok(())
     }
