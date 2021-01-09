@@ -7,7 +7,7 @@ use crate::{MeshSimError, MeshSimErrorKind};
 use chrono::offset::TimeZone;
 use chrono::{DateTime, Duration, Utc};
 
-use rand::{rngs::StdRng, Rng};
+use rand::{rngs::StdRng, thread_rng, Rng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
 use slog::{Logger, Record, Serializer, KV};
@@ -527,6 +527,7 @@ impl AODV {
         last_transmission: Arc<AtomicI64>,
         logger: Logger,
     ) -> Self {
+        // let starting_rreq_id: u32 = thread_rng().gen_range(0, std::u32::MAX);
         let starting_rreq_id: u32 = {
             let mut rng = rng.lock().expect("Could not lock RNG");
             rng.gen_range(0, std::u32::MAX)
@@ -712,18 +713,22 @@ impl AODV {
         msg.hop_count += 1;
 
         //Create/update route to msg.originator
-        let mut rt = route_table
-            .lock()
-            .expect("Error trying to acquire lock on route table");
-        let mut entry = rt.entry(msg.originator.clone()).or_insert_with(|| {
-            RouteTableEntry::new(&msg.originator, &hdr.sender, Some(msg.orig_seq_no))
-        });
-        entry.dest_seq_no = std::cmp::max(entry.dest_seq_no, msg.orig_seq_no);
-        entry.flags.insert(RTEFlags::VALID_SEQ_NO); //Should this be done only if the seq_no is updated?
-        entry.hop_count = msg.hop_count;
-        let minimal_lifetime = Utc::now() + Duration::milliseconds(2 * config.net_traversal_time)
-            - Duration::milliseconds(2 * entry.hop_count as i64 * config.node_traversal_time);
-        entry.lifetime = std::cmp::max(entry.lifetime, minimal_lifetime);
+        let entry = {
+            let mut rt = route_table
+                .lock()
+                .expect("Error trying to acquire lock on route table");
+            let mut entry = rt.entry(msg.originator.clone()).or_insert_with(|| {
+                RouteTableEntry::new(&msg.originator, &hdr.sender, Some(msg.orig_seq_no))
+            });
+            entry.dest_seq_no = std::cmp::max(entry.dest_seq_no, msg.orig_seq_no);
+            entry.flags.insert(RTEFlags::VALID_SEQ_NO); //Should this be done only if the seq_no is updated?
+            entry.hop_count = msg.hop_count;
+            let minimal_lifetime = Utc::now() + Duration::milliseconds(2 * config.net_traversal_time)
+                - Duration::milliseconds(2 * entry.hop_count as i64 * config.node_traversal_time);
+            entry.lifetime = std::cmp::max(entry.lifetime, minimal_lifetime);
+            entry.clone()
+        };
+
 
         // debug!(logger, "Route table entry: {:#?}", entry);
 
@@ -765,71 +770,81 @@ impl AODV {
         }
 
         //or if it has an active route to the destination...
-        if let Some(entry) = rt.get_mut(&msg.destination) {
-            // AND the dest_seq_no in the RT is greater than or equal to the one in the RREQ
-            // AND also valid
-            // AND the destination_only flag is not set
-            // AND the route is active
-            if entry.dest_seq_no >= msg.dest_seq_no &&
-                entry.flags.contains(RTEFlags::VALID_SEQ_NO) &&
-                !msg.flags.contains(RREQFlags::DESTINATION_ONLY) &&
-                // entry.flags.contains(RTEFlags::ACTIVE_ROUTE) {
-                entry.lifetime >= Utc::now()
-            {
-                radio::log_handle_message(
-                    logger,
-                    &hdr,
-                    MessageStatus::ACCEPTED,
-                    Some("A valid route to destination has been found!"),
-                    Some("RREP process will be initiated"),
-                    &Messages::RREQ(msg.clone()),
-                );
+        {
+            let mut rt = route_table
+                .lock()
+                .expect("Error trying to acquire lock on route table");
+            if let Some(entry) = rt.get_mut(&msg.destination) {
+                // AND the dest_seq_no in the RT is greater than or equal to the one in the RREQ
+                // AND also valid
+                // AND the destination_only flag is not set
+                // AND the route is active
+                if entry.dest_seq_no >= msg.dest_seq_no &&
+                    entry.flags.contains(RTEFlags::VALID_SEQ_NO) &&
+                    !msg.flags.contains(RREQFlags::DESTINATION_ONLY) &&
+                    // entry.flags.contains(RTEFlags::ACTIVE_ROUTE) {
+                    entry.lifetime >= Utc::now()
+                {
+                    radio::log_handle_message(
+                        logger,
+                        &hdr,
+                        MessageStatus::ACCEPTED,
+                        Some("A valid route to destination has been found!"),
+                        Some("RREP process will be initiated"),
+                        &Messages::RREQ(msg.clone()),
+                    );
 
-                //Update forward-route entry's precursor list
-                entry.precursors.insert(hdr.sender.clone());
+                    //Update forward-route entry's precursor list
+                    entry.precursors.insert(hdr.sender.clone());
 
-                //Use the rest of the values from the route-entry
-                let flags: RREPFlags = Default::default();
-                let response = RouteResponseMessage {
-                    flags,
-                    prefix_size: 0,
-                    hop_count: entry.hop_count,
-                    destination: msg.destination.clone(),
-                    //Uses its own value for the dest_seq_no
-                    dest_seq_no: entry.dest_seq_no,
-                    originator: msg.originator.clone(),
-                    //Lifetime = The stored routes expiration minus the current time, in millis.
-                    lifetime: (entry.lifetime.timestamp_millis() - Utc::now().timestamp_millis())
-                        as u32,
-                };
+                    //Use the rest of the values from the route-entry
+                    let flags: RREPFlags = Default::default();
+                    let response = RouteResponseMessage {
+                        flags,
+                        prefix_size: 0,
+                        hop_count: entry.hop_count,
+                        destination: msg.destination.clone(),
+                        //Uses its own value for the dest_seq_no
+                        dest_seq_no: entry.dest_seq_no,
+                        originator: msg.originator.clone(),
+                        //Lifetime = The stored routes expiration minus the current time, in millis.
+                        lifetime: (entry.lifetime.timestamp_millis() - Utc::now().timestamp_millis())
+                            as u32,
+                    };
 
-                //Tag the response
-                let response = Messages::RREP(response);
-                //Create the log data for the packet
-                let log_data = ProtocolMessages::AODV(response.clone());
+                    //Tag the response
+                    let response = Messages::RREP(response);
+                    //Create the log data for the packet
+                    let log_data = ProtocolMessages::AODV(response.clone());
 
-                let dest = hdr.sender.clone();
-                // let resp_hdr = hdr
-                //     .create_forward_header(me)
-                //     .set_destination(dest)
-                //     .set_payload(serialize_message(response)?)
-                //     .build();
-                let resp_hdr = MessageHeader::new(me, dest, serialize_message(response)?);
-                //Before responding
-                //Save the next-hop to the RREQ destination
-                let next_hop = entry.next_hop.clone();
-                //Get the RT entry for the RREQ originator
-                if let Some(entry) = rt.get_mut(&msg.originator) {
-                    //and update reverse-route entry's precursor list
-                    entry.precursors.insert(next_hop);
+                    let dest = hdr.sender.clone();
+                    // let resp_hdr = hdr
+                    //     .create_forward_header(me)
+                    //     .set_destination(dest)
+                    //     .set_payload(serialize_message(response)?)
+                    //     .build();
+                    let resp_hdr = MessageHeader::new(
+                        me,
+                        dest,
+                        serialize_message(response)?
+                    );
+                    //Before responding
+                    //Save the next-hop to the RREQ destination
+                    let next_hop = entry.next_hop.clone();
+                    //Get the RT entry for the RREQ originator
+                    if let Some(entry) = rt.get_mut(&msg.originator) {
+                        //and update reverse-route entry's precursor list
+                        entry.precursors.insert(next_hop);
+                    }
+
+                    return Ok(Some((resp_hdr, log_data)));
                 }
-
-                return Ok(Some((resp_hdr, log_data)));
+                // Stored route is not valid. Check however, if the dest_seq_no is larger
+                // than the one in the message and use it for forwarding if so.
+                msg.dest_seq_no = std::cmp::max(msg.dest_seq_no, entry.dest_seq_no);
             }
-            // Stored route is not valid. Check however, if the dest_seq_no is larger
-            // than the one in the message and use it for forwarding if so.
-            msg.dest_seq_no = std::cmp::max(msg.dest_seq_no, entry.dest_seq_no);
         }
+
 
         //Re-tag the message
         let msg = Messages::RREQ(msg);
@@ -867,8 +882,6 @@ impl AODV {
         _rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
-        let mut repaired = Default::default();
-
         //RREPs are UNICASTED. Is this the destination in the header? It not, exit.
         if hdr.destination != me {
             radio::log_handle_message(
@@ -885,7 +898,7 @@ impl AODV {
         //Update hop-count
         msg.hop_count += 1;
 
-        {
+        let repaired = {
             let mut rt = route_table.lock().expect("Could not lock route table");
             // Should we update route to DESTINATON with the RREP data?
             let mut entry = rt.entry(msg.destination.clone()).or_insert_with(|| {
@@ -925,8 +938,8 @@ impl AODV {
             }
 
             //If the route to this destination was in repair, mark it as repaired
-            repaired = std::mem::replace(&mut entry.repairing, false);
-        }
+            std::mem::replace(&mut entry.repairing, false)
+        };
 
         //Is this node the ORIGINATOR?
         if msg.originator == me {
@@ -941,7 +954,6 @@ impl AODV {
 
             // Remove this node from the pending destinations
             {
-                debug!(logger, "Trying to lock pending_destinations");
                 let mut pd = pending_routes
                     .lock()
                     .expect("Error trying to acquire lock to pending_destinations table");
@@ -968,71 +980,64 @@ impl AODV {
         }
 
         //Update route towards ORIGINATOR
-        let mut rt = route_table.lock().expect("Could not lock route table");
-        let mut entry = match rt.get_mut(&msg.originator) {
-            Some(entry) => entry,
-            None => {
-                //A route towards the originator should have been created when the RREQ was processed.
-                //If the route no longer exists, that is likely due to delay created by congestion and/or long routes.
-                //Regardless, this RREP can't proceed. Drop the packet
-                radio::log_handle_message(
-                    logger,
-                    &hdr,
-                    MessageStatus::DROPPED,
-                    Some("No route to RREQ originator"),
-                    Some("RREP_CANCELLED"),
-                    &Messages::RREP(msg),
-                );
-                return Ok(None);
+        let next_hop_originator = {
+            let mut rt = route_table.lock().expect("Could not lock route table");
+            let mut entry = match rt.get_mut(&msg.originator) {
+                Some(entry) => entry,
+                None => {
+                    //A route towards the originator should have been created when the RREQ was processed.
+                    //If the route no longer exists, that is likely due to delay created by congestion and/or long routes.
+                    //Regardless, this RREP can't proceed. Drop the packet
+                    radio::log_handle_message(
+                        logger,
+                        &hdr,
+                        MessageStatus::DROPPED,
+                        Some("No route to RREQ originator"),
+                        Some("RREP_CANCELLED"),
+                        &Messages::RREP(msg),
+                    );
+                    return Ok(None);
+                }
+            };
+    
+            // RFC(6.7) - At each node the (reverse) route used to forward a RREP has its lifetime changed to be
+            // the maximum of (existing-lifetime, (current time + ACTIVE_ROUTE_TIMEOUT).
+            entry.lifetime = std::cmp::max(
+                entry.lifetime,
+                Utc::now() + Duration::milliseconds(active_route_timeout),
+            );
+            // Mark route to originator as active
+            entry
+                .flags
+                .insert(RTEFlags::ACTIVE_ROUTE | RTEFlags::VALID_SEQ_NO);
+            
+            if &entry.next_hop == &me {
+                msg.originator.clone()
+            } else {
+                entry.next_hop.clone()
             }
-        };
-
-        // RFC(6.7) - At each node the (reverse) route used to forward a RREP has its lifetime changed to be
-        // the maximum of (existing-lifetime, (current time + ACTIVE_ROUTE_TIMEOUT).
-        entry.lifetime = std::cmp::max(
-            entry.lifetime,
-            Utc::now() + Duration::milliseconds(active_route_timeout),
-        );
-        // Mark route to originator as active
-        entry
-            .flags
-            .insert(RTEFlags::ACTIVE_ROUTE | RTEFlags::VALID_SEQ_NO);
-        let next_hop_originator = if &entry.next_hop == &me {
-            msg.originator.clone()
-        } else {
-            entry.next_hop.clone()
         };
 
         // RFC(6.7) - When any node transmits a RREP, the precursor list for the
         // corresponding destination node is updated by adding to it the next
         // hop node to which the RREP is forwarded.
-        let entry = rt.get_mut(&msg.destination).unwrap(); //Guaranteed to exist
-        entry.precursors.insert(next_hop_originator.clone());
-        let next_hop_destination = entry.next_hop.clone();
+        {
+            let mut rt = route_table.lock().expect("Could not lock route table");
+            let entry = rt.get_mut(&msg.destination).unwrap(); //Guaranteed to exist
+            entry.precursors.insert(next_hop_originator.clone());
+            let next_hop_destination = entry.next_hop.clone();
 
-        //This check is not described in the RFC. This might be a partial error-checking I was performing
-        // in the past and never finished. Commenting out for the time being, but will be removed later.
-        // if &next_hop_destination != &hdr.sender {
-        //     // Why am I checking this and not doing anything with it?
-        //     //This could be the case if this RREP is not the first one to be processed for this route (e.g. the route it's already established)
-        //     //What should we do in this case?
-        //     error!(
-        //         logger,
-        //         "MISTAKE!!!";
-        //         "hdr.sender"=>&hdr.sender,
-        //         "next_hop_destination"=>&next_hop_destination,
-        //     );
-        // }
-        // RFC(6.7) - Finally, the precursor list for the next hop towards the destination
-        // is updated to contain the next hop towards the source.
-        let entry = rt
-            .entry(next_hop_destination.clone())
-            .or_insert_with(|| RouteTableEntry::new(&next_hop_destination, &me, None));
-        entry.precursors.insert(next_hop_originator.clone());
-        entry.lifetime = std::cmp::max(
-            entry.lifetime,
-            Utc::now() + Duration::milliseconds(active_route_timeout),
-        );
+            // RFC(6.7) - Finally, the precursor list for the next hop towards the destination
+            // is updated to contain the next hop towards the source.
+            let entry = rt
+                .entry(next_hop_destination.clone())
+                .or_insert_with(|| RouteTableEntry::new(&next_hop_destination, &me, None));
+            entry.precursors.insert(next_hop_originator.clone());
+            entry.lifetime = std::cmp::max(
+                entry.lifetime,
+                Utc::now() + Duration::milliseconds(active_route_timeout),
+            );            
+        }
 
         //Re-tag message
         let msg = Messages::RREP(msg);
@@ -1063,46 +1068,50 @@ impl AODV {
         _rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
-        let mut affected_neighbours = Vec::new();
-        let mut rt = route_table.lock().expect("Could not lock route table");
+        let affected_neighbours = {
+            let mut affected_neighbours = Vec::new();
+            let mut rt = route_table
+                .lock()
+                .expect("Could not lock route table");
+            //Invalidate existing routes
+            for (destination, seq_no) in msg.destinations.iter() {
+                if let Some(entry) = rt.get_mut(destination) {
+                    if entry.dest_seq_no < *seq_no {
+                        entry
+                            .flags
+                            .remove(RTEFlags::VALID_SEQ_NO | RTEFlags::ACTIVE_ROUTE);
+                        entry.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
+                        let mut precursors: Vec<_> = entry.precursors.iter().cloned().collect();
+                        affected_neighbours.append(&mut precursors);
+                        debug!(logger, "Invalidating route to {}", destination);
+                    }
+                    debug!(logger, "Current route for {} is fresher", &destination);
+                }
+            }
 
-        //Invalidate existing routes
-        for (destination, seq_no) in msg.destinations.iter() {
-            if let Some(entry) = rt.get_mut(destination) {
-                if entry.dest_seq_no < *seq_no {
-                    entry
-                        .flags
-                        .remove(RTEFlags::VALID_SEQ_NO | RTEFlags::ACTIVE_ROUTE);
-                    entry.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
+            // Iterate through the node's route table. If any of the entries rely on a node listed
+            // in the RERR msg as its next hop, we mark it as affected, since it can no longer be reached.
+            let mut affected_destinations = Vec::new();
+            for (dest, entry) in rt.iter_mut() {
+                if msg.destinations.contains_key(&entry.next_hop) {
+                    affected_destinations.push(dest.clone());
+                    msg.destinations.insert(dest.clone(), entry.dest_seq_no);
+                }
+            }
+
+            //Get all the precursors for the newly affected destinations
+            for dest in affected_destinations.iter() {
+                if let Some(entry) = rt.get_mut(dest) {
+                    debug!(
+                        logger,
+                        "Dest:{} - Precursors: {:?}", dest, &entry.precursors
+                    );
                     let mut precursors: Vec<_> = entry.precursors.iter().cloned().collect();
                     affected_neighbours.append(&mut precursors);
-                    debug!(logger, "Invalidating route to {}", destination);
                 }
-                debug!(logger, "Current route for {} is fresher", &destination);
             }
-        }
-
-        // Iterate through the node's route table. If any of the entries rely on a node listed
-        // in the RERR msg as its next hop, we mark it as affected, since it can no longer be reached.
-        let mut affected_destinations = Vec::new();
-        for (dest, entry) in rt.iter_mut() {
-            if msg.destinations.contains_key(&entry.next_hop) {
-                affected_destinations.push(dest.clone());
-                msg.destinations.insert(dest.clone(), entry.dest_seq_no);
-            }
-        }
-
-        //Get all the precursors for the newly affected destinations
-        for dest in affected_destinations.iter() {
-            if let Some(entry) = rt.get_mut(dest) {
-                debug!(
-                    logger,
-                    "Dest:{} - Precursors: {:?}", dest, &entry.precursors
-                );
-                let mut precursors: Vec<_> = entry.precursors.iter().cloned().collect();
-                affected_neighbours.append(&mut precursors);
-            }
-        }
+            affected_neighbours
+        };
 
         //Deliver an appropriate RERR to such neighbours
         if !affected_neighbours.is_empty() {
@@ -1343,8 +1352,9 @@ impl AODV {
 
         {
             //Record the packet in the data cache
-            let mut dc = data_cache.lock().expect("Could not lock data cache");
-            // let msg_hash = format!("{:x}", md5::compute(&payload));
+            let mut dc = data_cache
+                .lock()
+                .expect("Could not lock data cache");
             dc.insert(
                 hdr.get_msg_id().to_string(),
                 DataCacheEntry {
@@ -1776,76 +1786,93 @@ impl AODV {
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
         //Has any of the pending routes expired?
-        let new_routes = {
-            let mut pd = pending_routes
-                .lock()
-                .expect("Could not lock pending routes table");
-            let mut nr = Vec::new();
-            for (dest, entry) in pd.iter_mut() {
-                if entry.lifetime < Utc::now() {
-                    if entry.retries >= config.rreq_retries {
-                        //retries exceeded
-                        info!(
-                            logger,
-                            "RREQ retries exceeded";
-                            "destination"=>dest,
-                        );
-
-                        //Was the RREQ a route repair?
-                        if entry.route_repair {
-                            {
-                                //Remove the repair flag from the route_entry
-                                let mut rt =
-                                    route_table.lock().expect("Could not lock route table");
-                                if let Some(entry) = rt.get_mut(dest) {
-                                    entry.repairing = false;
-                                }
-                            }
-
-                            //We need to indicate the repair did not succeed and send an RERR
-                            let mut destinations = HashMap::new();
-                            destinations.insert(dest.into(), entry.dest_seq_no);
-                            let msg = Messages::RERR(RouteErrorMessage {
-                                destinations,
-                                flags: Default::default(),
-                            });
-                            let log_data = ProtocolMessages::AODV(msg.clone());
-                            let hdr = MessageHeader::new(
-                                me.clone(),
-                                String::from(""),
-                                serialize_message(msg)?,
-                            );
-                            tx_queue.send((hdr, log_data, Utc::now()))
-                            .map_err(|e| { 
-                                let msg = format!("Failed to queue response into tx_queue");
-                                MeshSimError {
-                                    kind: MeshSimErrorKind::Contention(msg),
-                                    cause: Some(Box::new(e)),
-                                }
-                            })?;
-                        }
-
-                        continue;
-                    }
-                    entry.retries += 1;
-                    //Add to retry list
-                    nr.push((dest.clone(), entry.dest_seq_no));
-                }
-            }
-            nr
+        let expired_rreqs: HashMap<String, PendingRouteEntry> = { 
+            let pd = pending_routes
+            .lock()
+            .expect("Could not lock pending routes table");
+            pd.iter()
+                .filter(|(_, entry)| entry.lifetime < Utc::now())
+                .map(|(dest, entry)| (dest.clone(), entry.clone()))
+                .collect()
         };
 
+        //We first deal with the RREQs that exhausted their retries
+        let failed_rreq_transmissions: Vec<Transmission>= {
+            let mut rt = route_table
+                .lock()
+                .expect("Could not lock route table");
+
+            expired_rreqs
+            .iter()
+            .filter(|(_, entry)| entry.retries >= config.rreq_retries)
+            .filter_map(|(dest, entry)| { 
+                info!(
+                    logger,
+                    "RREQ retries exceeded";
+                    "destination"=>dest,
+                );
+
+                if entry.route_repair {
+                    //Remove the repair flag from the route_entry
+                    if let Some(entry) = rt.get_mut(dest) {
+                        entry.repairing = false;
+                    }
+                    //We need to indicate the repair did not succeed and send an RERR
+                    let mut destinations = HashMap::new();
+                    destinations.insert(dest.into(), entry.dest_seq_no);
+                    let msg = Messages::RERR(RouteErrorMessage {
+                        destinations,
+                        flags: Default::default(),
+                    });
+                    let log_data = ProtocolMessages::AODV(msg.clone());
+                    let payload = match serialize_message(msg) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            warn!(logger, "Could not serialise payload: {}", e);
+                            return None;
+                        },
+                    };
+                    let hdr = MessageHeader::new(
+                        me.clone(),
+                        String::from(""),
+                        payload,
+                    );
+                    Some((hdr, log_data, Utc::now()))
+                } else {
+                    None
+                }
+            })
+            .collect()
+        };
+
+        for (hdr, log_data, ts) in failed_rreq_transmissions {
+            tx_queue.send((hdr, log_data, ts))
+            .map_err(|e| { 
+                let msg = format!("Failed to queue RERR into tx_queue");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Contention(msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
+        }
+
+
+        let rreqs_to_resend: HashMap<&String, &PendingRouteEntry> = expired_rreqs
+            .iter()
+            .filter(|(_, entry)| entry.retries < config.rreq_retries)
+            .collect();
+
         //Start a new Route discovery process for each destination with retries remaining.
-        for (dest, dest_seq_no) in new_routes {
+        for (dest, entry) in rreqs_to_resend {
             let ttl = None;
             let repair = false;
             AODV::start_route_discovery(
-                dest,
-                dest_seq_no,
+                dest.clone(),
+                entry.dest_seq_no,
                 Arc::clone(&rreq_no),
                 seq_no.fetch_add(1, Ordering::SeqCst) + 1,
                 ttl,
-                None,
+                Some(entry.retries + 1),
                 repair,
                 me.clone(),
                 config,
