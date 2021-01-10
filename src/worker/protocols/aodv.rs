@@ -1198,8 +1198,13 @@ impl AODV {
 
         //Not the destination. Forwarding message.
         let (next_hop, dest_seq_no, confirmed) = {
-            let mut rt = route_table.lock().expect("Coult not lock route table");
-            match rt.get_mut(&msg.destination) {
+            let entry = {
+                let rt = route_table.lock().expect("Coult not lock route table");
+                let e = rt.get(&msg.destination);
+                e.cloned()
+            };
+            
+            match entry {
                 Some(entry) => {
                     if !entry.flags.contains(RTEFlags::VALID_SEQ_NO) {
                         //This is considered a route error.
@@ -1239,7 +1244,7 @@ impl AODV {
                         //Build header
                         let hdr = MessageHeader::new(
                             me,
-                            String::from(""), //Destination should be hdr.sender, but need to check
+                            hdr.sender.clone(),
                             serialize_message(rerr_msg)?,
                         );
     
@@ -1249,15 +1254,20 @@ impl AODV {
                     if entry.flags.contains(RTEFlags::ACTIVE_ROUTE) {
                         //We have an active and valid route to the destination
                         //Update the lifetime to the destination
-                        entry.lifetime = std::cmp::max(
-                            entry.lifetime,
+                        let mut rt = route_table.lock().expect("Coult not lock route table");
+                        let e = rt.entry(msg.destination.clone())
+                            .or_insert(entry);
+                        e.lifetime = std::cmp::max(
+                            e.lifetime,
                             Utc::now() + Duration::milliseconds(active_route_timeout),
                         );
-                        let confirmed = entry.next_hop == msg.destination;
-                        (entry.next_hop.clone(), entry.dest_seq_no, confirmed)
+                        let confirmed = e.next_hop == msg.destination;
+                        (e.next_hop.clone(), e.dest_seq_no, confirmed)
                     } else {
                         //Route is inactive. Attempt to repair it.
                         //If it's already repairing, just queue the transmission.
+                        //Note: Make sure none of the FOUR tables being passed are currently locked, or it will
+                        //create a deadlock, as it once did.
                         if entry.repairing
                             || AODV::route_repair(
                                 &msg.destination,

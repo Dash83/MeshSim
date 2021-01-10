@@ -204,6 +204,7 @@ impl Radio for SimulatedRadio {
                     info!(
                         &self.logger,
                         "{}", m;
+                        "msg_id" => hdr.get_msg_id(),
                         "thread"=>&thread_id,
                         "radio"=>&radio_range,
                         "out_queued_duration"=>perf_out_queued_duration,
@@ -581,7 +582,7 @@ impl SimulatedRadio {
         // let mut rng = self.rng.lock().expect("Could not lock RNG");
         // let r = rng.next_u64() % 2u64.pow(i);
         let mut rng = rand::thread_rng();
-        let x = (rng.next_u64() % 5u64) + 1;
+        let x = rng.next_u64() % 5u64;
         let r = 2u64.pow(std::cmp::min(i, TRANSMISSION_EXP_CAP));
         Duration::from_micros(self.mac_layer_base_wait * x * r)
     }
