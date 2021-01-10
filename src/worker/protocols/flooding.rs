@@ -68,7 +68,7 @@ impl Protocol for Flooding {
         &self,
         hdr: MessageHeader,
         _ts: DateTime<Utc>,
-        _r_type: RadioTypes,
+        r_type: RadioTypes,
     ) -> Result<(), MeshSimError> {
         let msg = deserialize_message(hdr.get_payload()).map_err(|e| {
             let err_msg = String::from("Failed to deserialize payload into a message");
@@ -84,6 +84,7 @@ impl Protocol for Flooding {
             msg,
             self.get_self_peer(),
             msg_cache,
+            r_type,
             rng,
             &self.logger,
         )?;
@@ -169,6 +170,7 @@ impl Flooding {
         me: String,
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         rng: Arc<Mutex<StdRng>>,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         let msg_id = hdr.get_msg_id().to_string();
@@ -182,6 +184,7 @@ impl Flooding {
                     MessageStatus::DROPPED,
                     Some(&err_msg),
                     None,
+                    r_type,
                     &Messages::Data(msg.clone()),
                 );
                 MeshSimError {
@@ -201,6 +204,7 @@ impl Flooding {
                     MessageStatus::DROPPED,
                     Some("DUPLICATE"),
                     None,
+                    r_type,
                     &Messages::Data(msg),
                 );
                 return Ok(None);
@@ -227,6 +231,7 @@ impl Flooding {
                 MessageStatus::ACCEPTED,
                 None,
                 None,
+                r_type,
                 &Messages::Data(msg),
             );
             return Ok(None);
@@ -235,7 +240,7 @@ impl Flooding {
         let msg = Messages::Data(msg);
 
         //Message is not meant for this node
-        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, r_type, &msg);
         //The payload of the incoming header is still valid, so just build a new header with this node as the sender
         //and leave the rest the same.
         let fwd_hdr = hdr.create_forward_header(me).build();
@@ -250,12 +255,13 @@ impl Flooding {
         msg: Messages,
         me: String,
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
+        r_type: RadioTypes,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         match msg {
             Messages::Data(data) => {
-                Flooding::process_data_message(hdr, data, me, msg_cache, rng, logger)
+                Flooding::process_data_message(hdr, data, me, msg_cache, rng, r_type, logger)
             }
         }
     }

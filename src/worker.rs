@@ -695,20 +695,29 @@ impl Worker {
                                 let log = logger.clone();
 
                                 if in_queue_thread_pool.queued_count() >= max_queued_jobs {
-                                    let perf_handle_message_duration = Utc::now().timestamp_nanos() - hdr.delay;
                                     //DO NOT change the order of these fields in the logging function.
                                     //This call mirrors the order of log_handle_message and it changed it might break the processing scripts.
-                                    info!(
+                                    // info!(
+                                    //     &log,
+                                    //     "Received message";
+                                    //     "hops"=>hdr.hops,
+                                    //     "destination"=>&hdr.destination,
+                                    //     "source"=>&hdr.sender,
+                                    //     "reason"=>"packet_queue is full",
+                                    //     "duration"=> perf_handle_message_duration,
+                                    //     "status"=>MessageStatus::DROPPED,
+                                    //     "msg_id"=>&hdr.get_msg_id(),
+                                    //     "radio"=>&radio_label,
+                                    // );
+                                    let log_data = ();
+                                    radio::log_handle_message(
                                         &log,
-                                        "Received message";
-                                        "hops"=>hdr.hops,
-                                        "destination"=>&hdr.destination,
-                                        "source"=>&hdr.sender,
-                                        "reason"=>"packet_queue is full",
-                                        "duration"=> perf_handle_message_duration,
-                                        "status"=>MessageStatus::DROPPED,
-                                        "msg_id"=>&hdr.get_msg_id(),
-                                        "radio"=>&radio_label,
+                                        &hdr,
+                                        MessageStatus::DROPPED, 
+                                        Some("packet_queue is full"),
+                                        None,
+                                        r_type,
+                                        &log_data,
                                     );
                                     continue;
                                 }

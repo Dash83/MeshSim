@@ -77,7 +77,7 @@ impl Protocol for LoraWifiBeacon {
         let resp = LoraWifiBeacon::handle_message_internal(
             hdr,
             msg,
-            link,
+            r_type,
             self_peer,
             &self.logger,
         )?;
@@ -205,16 +205,16 @@ impl LoraWifiBeacon {
     fn handle_message_internal(
         hdr: MessageHeader,
         msg: Messages,
-        link: String,
+        r_type: RadioTypes,
         self_peer: String,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         match msg {
             Messages::Beacon(msg) => {
-                LoraWifiBeacon::process_beacon_msg(hdr, msg, link, self_peer, logger)
+                LoraWifiBeacon::process_beacon_msg(hdr, msg, self_peer, r_type, logger)
             }
             Messages::BeaconResponse(msg) => {
-                LoraWifiBeacon::process_beacon_response_msg(hdr, msg, link, self_peer, logger)
+                LoraWifiBeacon::process_beacon_response_msg(hdr, msg, self_peer, r_type, logger)
             }
         }
     }
@@ -222,8 +222,8 @@ impl LoraWifiBeacon {
     fn process_beacon_msg(
         hdr: MessageHeader,
         msg: BeaconMessage,
-        _link: String,
         me: String,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         radio::log_handle_message(
@@ -232,6 +232,7 @@ impl LoraWifiBeacon {
             MessageStatus::ACCEPTED,
             None,
             Some("Replying to message"),
+            r_type,
             &Messages::Beacon(msg.clone()),
         );
 
@@ -245,8 +246,8 @@ impl LoraWifiBeacon {
     fn process_beacon_response_msg(
         hdr: MessageHeader,
         msg: BeaconMessage,
-        _link: String,
         me: String,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         if hdr.destination == me {
@@ -260,6 +261,7 @@ impl LoraWifiBeacon {
                 MessageStatus::ACCEPTED,
                 None,
                 None,
+                r_type,
                 &Messages::BeaconResponse(msg),
             );
         }

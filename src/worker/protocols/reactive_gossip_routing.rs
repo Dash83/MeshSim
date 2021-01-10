@@ -175,7 +175,7 @@ impl Protocol for ReactiveGossipRouting {
         &self,
         hdr: MessageHeader,
         _ts: DateTime<Utc>,
-        _r_type: RadioTypes,
+        r_type: RadioTypes,
     ) -> Result<(), MeshSimError> {
         let msg_id = hdr.get_msg_id().to_string();
         let msg = deserialize_message(hdr.get_payload())?;
@@ -202,6 +202,7 @@ impl Protocol for ReactiveGossipRouting {
             route_msg_cache,
             data_msg_cache,
             wifi_tx_queue,
+            r_type,
             &self.logger,
             rng,
         )?;
@@ -528,6 +529,7 @@ impl ReactiveGossipRouting {
         route_msg_cache: Arc<Mutex<HashSet<String>>>,
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         wifi_tx_queue: Sender<Transmission>,
+        r_type: RadioTypes,
         logger: &Logger,
         rng: Arc<Mutex<StdRng>>,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
@@ -541,6 +543,7 @@ impl ReactiveGossipRouting {
                     data_msg_cache,
                     self_peer,
                     msg_id,
+                    r_type,
                     logger,
                 )
             }
@@ -556,6 +559,7 @@ impl ReactiveGossipRouting {
                     self_peer,
                     msg_id,
                     rng,
+                    r_type,
                     logger,
                 )
             }
@@ -572,6 +576,7 @@ impl ReactiveGossipRouting {
                     self_peer,
                     msg_id,
                     wifi_tx_queue,
+                    r_type,
                     logger,
                 )
             }
@@ -582,6 +587,7 @@ impl ReactiveGossipRouting {
                     known_routes,
                     dest_routes,
                     self_peer,
+                    r_type,
                     logger,
                 )
             }
@@ -595,6 +601,7 @@ impl ReactiveGossipRouting {
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
         self_peer: String,
         msg_id: String,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         let route_id = msg.route_id.clone();
@@ -624,6 +631,7 @@ impl ReactiveGossipRouting {
                     MessageStatus::DROPPED,
                     Some("Not part of route"),
                     None,
+                    r_type,
                     &Messages::Data(msg),
                 );
                 return Ok(None);
@@ -642,42 +650,24 @@ impl ReactiveGossipRouting {
                     DataMessageStates::Pending(_route_id) => {
                         entry.state = DataMessageStates::Confirmed;
                         //TODO: Should the packet copy be dropped here?
-                        // let unused_data = entry.data;
-                        // drop(entry);
-                        // info!(
-                        //     logger,
-                        //     "Received message";
-                        //     "msg_id"=> &msg_id,
-                        //     "msg_type"=>"DATA",
-                        //     "sender"=>&hdr.sender,
-                        //     "status"=>MessageStatus::DROPPED,
-                        //     "reason"=>"CONFIRMED",
-                        // );
                         radio::log_handle_message(
                             logger,
                             &hdr,
                             MessageStatus::DROPPED,
                             Some("CONFIRMED"),
                             None,
+                            r_type,
                             &Messages::Data(msg),
                         );
                     }
                     DataMessageStates::Confirmed => {
-                        // info!(
-                        //     logger,
-                        //     "Received message";
-                        //     "msg_id"=> &msg_id,
-                        //     "msg_type"=>"DATA",
-                        //     "sender"=>&hdr.sender,
-                        //     "status"=>MessageStatus::DROPPED,
-                        //     "reason"=>"DUPLICATE",
-                        // );
                         radio::log_handle_message(
                             logger,
                             &hdr,
                             MessageStatus::DROPPED,
                             Some("DUPLICATE"),
                             None,
+                            r_type,
                             &Messages::Data(msg),
                         );
                     }
@@ -718,21 +708,13 @@ impl ReactiveGossipRouting {
 
         //Are the intended recipient?
         if hdr.destination == self_peer {
-            // info!(
-            //     logger,
-            //     "Received message";
-            //     "msg_id"=> &msg_id,
-            //     "msg_type"=>"DATA",
-            //     "sender"=>&hdr.sender,
-            //     "status"=>MessageStatus::ACCEPTED,
-            //     "route_length" => hdr.hops
-            // );
             radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
                 None,
                 None,
+                r_type,
                 &Messages::Data(msg),
             );
             Ok(None)
@@ -743,6 +725,7 @@ impl ReactiveGossipRouting {
                 MessageStatus::FORWARDING,
                 None,
                 None,
+                r_type,
                 &Messages::Data(msg.clone()),
             );
 
@@ -766,26 +749,18 @@ impl ReactiveGossipRouting {
         self_peer: String,
         _msg_id: String,
         rng: Arc<Mutex<StdRng>>,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         //Is this node the intended destination of the route?
         if msg.route_destination == self_peer {
-            // info!(
-            //     logger,
-            //     "Received message";
-            //     "msg_id"=>&msg_id,
-            //     "msg_type"=>"ROUTE_DISCOVERY",
-            //     "route_id" => &msg.route_id,
-            //     "sender"=>&hdr.sender,
-            //     "status"=>MessageStatus::ACCEPTED,
-            //     "action"=>"Start RouteEstablish process"
-            // );
             radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::ACCEPTED,
                 Some("Route discovery succeeded"),
                 Some("Start RouteEstablish process"),
+                r_type,
                 &Messages::RouteDiscovery(msg.clone()),
             );
             //Add this route to the list of known routes.
@@ -827,6 +802,7 @@ impl ReactiveGossipRouting {
                     MessageStatus::DROPPED,
                     Some("DUPLICATE"),
                     None,
+                    r_type,
                     &Messages::RouteDiscovery(msg),
                 );
                 return Ok(None);
@@ -840,22 +816,13 @@ impl ReactiveGossipRouting {
         };
         debug!(logger, "Gossip prob {}", s);
         if msg.route.len() > k && s > p {
-            // info!(
-            //     logger,
-            //     "Received message";
-            //     "msg_id"=>&msg_id,
-            //     "msg_type"=>"ROUTE_DISCOVERY",
-            //     "route_id" => &msg.route_id,
-            //     "sender"=>&hdr.sender,
-            //     "status"=>MessageStatus::DROPPED,
-            //     "reason"=>"Gossip failed",
-            // );
             radio::log_handle_message(
                 logger,
                 &hdr,
                 MessageStatus::DROPPED,
                 Some("Gossip failed"),
                 None,
+                r_type,
                 &Messages::RouteDiscovery(msg),
             );
             //Not gossiping this message.
@@ -867,7 +834,7 @@ impl ReactiveGossipRouting {
         //Re-tag the message
         let msg = Messages::RouteDiscovery(msg);
 
-        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, r_type, &msg);
         // Build log data
         let log_data = ProtocolMessages::RGRI(msg.clone());
         //Build message and forward it
@@ -890,6 +857,7 @@ impl ReactiveGossipRouting {
         self_peer: String,
         _msg_id: String,
         wifi_tx_queue: Sender<Transmission>,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         //Who's the next hop in the route?
@@ -902,6 +870,7 @@ impl ReactiveGossipRouting {
                     MessageStatus::DROPPED,
                     Some("Empty payload"),
                     None,
+                    r_type,
                     &Messages::RouteEstablish(msg),
                 );
                 return Ok(None);
@@ -915,6 +884,7 @@ impl ReactiveGossipRouting {
                 MessageStatus::DROPPED,
                 Some("Not meant for this node"),
                 None,
+                r_type,
                 &Messages::RouteEstablish(msg),
             );
             return Ok(None);
@@ -956,6 +926,7 @@ impl ReactiveGossipRouting {
                 MessageStatus::ACCEPTED,
                 None,
                 None,
+                r_type,
                 &Messages::RouteEstablish(msg.clone()),
             );
             info!(logger, "route {}:{}", &msg.route_id, route);
@@ -985,7 +956,7 @@ impl ReactiveGossipRouting {
         //Re-tag the message
         let msg = Messages::RouteEstablish(msg);
 
-        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, r_type, &msg);
 
         //Build log data
         let log_data = ProtocolMessages::RGRI(msg.clone());
@@ -1005,6 +976,7 @@ impl ReactiveGossipRouting {
         known_routes: Arc<Mutex<HashMap<String, bool>>>,
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
         self_peer: String,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         let subscribed = {
@@ -1023,6 +995,7 @@ impl ReactiveGossipRouting {
                     MessageStatus::FORWARDING,
                     None,
                     None,
+                    r_type,
                     &Messages::RouteTeardown(msg.clone()),
                 );
                 //Teardown relevant routes and build new msg
@@ -1048,6 +1021,7 @@ impl ReactiveGossipRouting {
                     MessageStatus::DROPPED,
                     Some("Not subscribed to route"),
                     None,
+                    r_type,
                     &Messages::RouteTeardown(msg),
                 );
                 None
@@ -1113,157 +1087,6 @@ impl ReactiveGossipRouting {
     fn get_self_peer(&self) -> String {
         self.worker_name.clone()
     }
-
-    // fn maintenance_loop(
-    //     data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-    //     destination_routes: Arc<Mutex<HashMap<String, String>>>,
-    //     known_routes: Arc<Mutex<HashMap<String, bool>>>,
-    //     pending_destinations: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
-    //     queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
-    //     route_msg_cache: Arc<Mutex<HashSet<String>>>,
-    //     me: String,
-    //     wifi_tx_queue: Sender<Transmission>,
-    //     logger: Logger,
-    // ) -> Result<(), MeshSimError> {
-    //     let sleep_time = std::time::Duration::from_millis(MAINTENANCE_LOOP);
-
-    //     loop {
-    //         thread::sleep(sleep_time);
-
-    //         //Retransmission loop
-    //         {
-    //             let mut cache = data_msg_cache
-    //                 .lock()
-    //                 .expect("Error trying to acquire lock to data_messages cache");
-    //             for (msg_hash, entry) in cache
-    //                 .iter_mut()
-    //                 .filter(|(_msg_hash, entry)| entry.state.is_pending())
-    //             {
-    //                 debug!(logger, "Message {} is pending confirmation", &msg_hash);
-
-    //                 if entry.retries < MAX_PACKET_RETRANSMISSION {
-    //                     let hdr = entry.payload.clone();
-    //                     entry.retries += 1;
-    //                     let log_data =
-    //                         ProtocolMessages::RGRI(deserialize_message(hdr.get_payload())?);
-    //                     info!(
-    //                         logger,
-    //                         "Retransmitting message {}", &hdr.get_msg_id();
-    //                         "retries"=>entry.retries,
-    //                     );
-
-    //                     //The message is still cached, so re-transmit it.
-    //                     wifi_tx_queue.send((hdr, log_data, Utc::now()))
-    //                     .map_err(|e| { 
-    //                         let msg = format!("Failed to queue response into tx_queue");
-    //                         MeshSimError {
-    //                             kind: MeshSimErrorKind::Contention(msg),
-    //                             cause: Some(Box::new(e)),
-    //                         }
-    //                     })?;
-
-    //                 } else {
-    //                     // The message is no longer cached.
-    //                     // At this point, we assume the route is broken.
-    //                     // Send the route teardown message.
-    //                     if let DataMessageStates::Pending(ref route_id) = entry.state.clone() {
-    //                         // info!(logger, "Starting route {} teardown", route_id);
-    //                         //Mark this entry in the message cache as confirmed so that we don't
-    //                         //process it again.
-    //                         entry.state = DataMessageStates::Confirmed;
-
-    //                         //Tear down the route in the internal caches
-    //                         let msg = ReactiveGossipRouting::route_teardown(
-    //                             route_id,
-    //                             &me,
-    //                             Arc::clone(&destination_routes),
-    //                             Arc::clone(&known_routes),
-    //                             &logger,
-    //                         )?;
-    //                         let msg = Messages::RouteTeardown(msg);
-    //                         //Build log data from the packet
-    //                         let log_data = ProtocolMessages::RGRI(msg.clone());
-    //                         //Pack the message and build the header for transmission
-    //                         let hdr = MessageHeader::new(
-    //                             me.clone(),
-    //                             String::new(),
-    //                             serialize_message(msg)?,
-    //                         );
-    //                         //Send message
-    //                         wifi_tx_queue.send((hdr, log_data, Utc::now()))
-    //                         .map_err(|e| { 
-    //                             let msg = format!("Failed to queue response into tx_queue");
-    //                             MeshSimError {
-    //                                 kind: MeshSimErrorKind::Contention(msg),
-    //                                 cause: Some(Box::new(e)),
-    //                             }
-    //                         })?;
-
-    //                     } else {
-    //                         error!(logger, "Inconsistent state reached");
-    //                         unreachable!();
-    //                     }
-    //                 }
-    //             }
-    //         }
-
-    //         let mut expired_discoveries = Vec::new();
-    //         //Route expiration retransmission
-    //         {
-    //             let mut pd = pending_destinations
-    //                 .lock()
-    //                 .expect("Failed to lock pending_destinations table");
-    //             for (dest, (route_id, ts, retries)) in
-    //                 pd.iter_mut().filter(|(_dest, entry)| entry.1 < Utc::now())
-    //             {
-    //                 //Should we retry?
-    //                 if *retries < ROUTE_DISCOVERY_MAX_RETRY {
-    //                     info!(
-    //                         logger,
-    //                         "Re-trying ROUTE_DISCOVERY for {}", &dest;
-    //                         "reason"=>"Time limit for discover exceeded"
-    //                     );
-    //                     //Transmit new route discovery
-    //                     let new_route_id = ReactiveGossipRouting::start_route_discovery(
-    //                         &me,
-    //                         dest.clone(),
-    //                         wifi_tx_queue.clone(),
-    //                         Arc::clone(&route_msg_cache),
-    //                         Arc::clone(&queued_transmissions),
-    //                         &logger,
-    //                     )?;
-
-    //                     //Increase retries for route-discovery
-    //                     *retries += 1;
-    //                     *route_id = new_route_id;
-    //                     *ts =
-    //                         Utc::now() + chrono::Duration::milliseconds(ROUTE_DISCOVERY_THRESHOLD);
-    //                 } else {
-    //                     //Retries exhausted. Add to list.
-    //                     expired_discoveries.push(dest.clone());
-    //                     warn!(
-    //                         logger,
-    //                         "Dropping queued packets for {}", &dest;
-    //                         "reason"=>"ROUTE_DISCOVERY retries exceeded",
-    //                         "route"=>&(*route_id),
-    //                     );
-    //                 }
-    //             }
-    //             //Remove the expired entries from the pending_destinations list.
-    //             pd.retain(|dest, _| !expired_discoveries.contains(dest));
-    //         }
-
-    //         //Purge queued packets of expired routes
-    //         {
-    //             let mut qt = queued_transmissions
-    //                 .lock()
-    //                 .expect("Failed to lock queued_transmissions queue");
-    //             qt.retain(|dest, _| !expired_discoveries.contains(dest));
-    //         }
-    //     }
-    //     #[allow(unreachable_code)]
-    //     Ok(()) //Loop should never end
-    // }
 
     fn data_retransmission(
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,

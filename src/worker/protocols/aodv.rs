@@ -280,7 +280,7 @@ impl Protocol for AODV {
         &self,
         hdr: MessageHeader,
         ts: DateTime<Utc>,
-        _r_type: RadioTypes,
+        r_type: RadioTypes,
     ) -> Result<(), MeshSimError> {
         let _msg_id = hdr.get_msg_id();
         let msg = deserialize_message(&hdr.get_payload())?;
@@ -307,7 +307,7 @@ impl Protocol for AODV {
             seq_no,
             rreq_seq_no,
             self.tx_queue.clone(),
-            rng,
+            r_type,
             &self.logger,
         )?;
         
@@ -600,7 +600,7 @@ impl AODV {
         seq_no: Arc<AtomicU32>,
         rreq_seq_no: Arc<AtomicU32>,
         tx_queue: Sender<Transmission>,
-        rng: Arc<Mutex<StdRng>>,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         AODV::connectivity_update(
@@ -625,6 +625,7 @@ impl AODV {
                 config.active_route_timeout,
                 me,
                 tx_queue,
+                r_type,
                 logger,
             ),
             Messages::RREQ(msg) => AODV::process_route_request_msg(
@@ -635,6 +636,7 @@ impl AODV {
                 rreq_cache,
                 seq_no,
                 me,
+                r_type,
                 logger,
             ),
             Messages::RREP(msg) => AODV::process_route_response_msg(
@@ -648,7 +650,7 @@ impl AODV {
                 me,
                 config,
                 tx_queue,
-                rng,
+                r_type,
                 logger,
             ),
             Messages::RERR(msg) => {
@@ -656,10 +658,8 @@ impl AODV {
                     hdr,
                     msg,
                     route_table,
-                    // pending_routes,
-                    // queued_transmissions,
                     me,
-                    rng,
+                    r_type,
                     logger,
                 )
                 // info!(logger, "RERR message received");
@@ -667,7 +667,7 @@ impl AODV {
             }
             Messages::RREP_ACK => unimplemented!(),
             Messages::HELLO(msg) => {
-                AODV::process_hello_msg(hdr, msg, config, route_table, me, logger)
+                AODV::process_hello_msg(hdr, msg, config, route_table, me, r_type, logger)
             }
         }
     }
@@ -680,6 +680,7 @@ impl AODV {
         rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
         seq_no: Arc<AtomicU32>,
         me: String,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         //Check if this is a duplicate RREQ
@@ -700,6 +701,7 @@ impl AODV {
                     MessageStatus::DROPPED,
                     Some("DUPLICATE"),
                     None,
+                    r_type,
                     &Messages::RREQ(msg),
                 );
                 *cache_entry = Utc::now();
@@ -741,6 +743,7 @@ impl AODV {
                 MessageStatus::ACCEPTED,
                 Some("RREQ reached its destination"),
                 None,
+                r_type,
                 &Messages::RREQ(msg.clone()),
             );
 
@@ -791,6 +794,7 @@ impl AODV {
                         MessageStatus::ACCEPTED,
                         Some("A valid route to destination has been found!"),
                         Some("RREP process will be initiated"),
+                        r_type,
                         &Messages::RREQ(msg.clone()),
                     );
 
@@ -855,6 +859,7 @@ impl AODV {
             MessageStatus::FORWARDING,
             Some("No route to destination"),
             None,
+            r_type,
             &msg,
         );
         //Create log data
@@ -879,7 +884,7 @@ impl AODV {
         me: String,
         config: Config,
         tx_queue: Sender<Transmission>,
-        _rng: Arc<Mutex<StdRng>>,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         //RREPs are UNICASTED. Is this the destination in the header? It not, exit.
@@ -890,6 +895,7 @@ impl AODV {
                 MessageStatus::DROPPED,
                 Some("Not meant for this node"),
                 None,
+                r_type,
                 &Messages::RREP(msg),
             );
             return Ok(None);
@@ -949,6 +955,7 @@ impl AODV {
                 MessageStatus::ACCEPTED,
                 None,
                 None,
+                r_type,
                 &Messages::RREP(msg.clone()),
             );
 
@@ -994,6 +1001,7 @@ impl AODV {
                         MessageStatus::DROPPED,
                         Some("No route to RREQ originator"),
                         Some("RREP_CANCELLED"),
+                        r_type,
                         &Messages::RREP(msg),
                     );
                     return Ok(None);
@@ -1042,7 +1050,7 @@ impl AODV {
         //Re-tag message
         let msg = Messages::RREP(msg);
 
-        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, r_type, &msg);
 
         //Create log data
         let log_data = ProtocolMessages::AODV(msg.clone());
@@ -1061,11 +1069,8 @@ impl AODV {
         hdr: MessageHeader,
         mut msg: RouteErrorMessage,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
-        // pending_routes: Arc<Mutex<HashMap<String, u32>>>,
-        // queued_transmissions: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
         me: String,
-        // tx_queue: Sender<Transmission>,
-        _rng: Arc<Mutex<StdRng>>,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         let affected_neighbours = {
@@ -1134,6 +1139,7 @@ impl AODV {
                 MessageStatus::DROPPED,
                 Some("No routes affected"),
                 None,
+                r_type,
                 &Messages::RERR(msg),
             );
 
@@ -1156,6 +1162,7 @@ impl AODV {
         active_route_timeout: i64,
         me: String,
         tx_queue: Sender<Transmission>,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         //Mark the packet in the cache as confirmed if applicable
@@ -1178,6 +1185,7 @@ impl AODV {
                 MessageStatus::DROPPED,
                 Some("Not meant for this node"),
                 None,
+                r_type,
                 &Messages::DATA(msg),
             );
             return Ok(None);
@@ -1191,6 +1199,7 @@ impl AODV {
                 MessageStatus::ACCEPTED,
                 None,
                 None,
+                r_type,
                 &Messages::DATA(msg),
             );
             return Ok(None);
@@ -1225,6 +1234,7 @@ impl AODV {
                             MessageStatus::DROPPED,
                             Some("Route to destination is marked as invalid"),
                             Some("Generating RouteError"),
+                            r_type,
                             &Messages::DATA(msg.clone()),
                         );
     
@@ -1293,6 +1303,7 @@ impl AODV {
                                 MessageStatus::QUEUED,
                                 Some("Route to destination being repaired"),
                                 None,
+                                r_type,
                                 &Messages::DATA(msg.clone()),
                             );
                         } else {
@@ -1310,6 +1321,7 @@ impl AODV {
                                 MessageStatus::DROPPED,
                                 Some("RouteHealing was not possible"),
                                 Some("Generating RouteError"),
+                                r_type,
                                 &Messages::DATA(msg.clone()),
                             );
     
@@ -1353,6 +1365,7 @@ impl AODV {
                         MessageStatus::DROPPED,
                         Some("No route to destination"),
                         None,
+                        r_type,
                         &Messages::DATA(msg),
                     );
                     return Ok(None);
@@ -1381,7 +1394,7 @@ impl AODV {
         //Build log data
         let log_data = ProtocolMessages::AODV(msg.clone());
 
-        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, r_type, &msg);
 
         //Build forward hdr
         let fwd_hdr = hdr
@@ -1399,6 +1412,7 @@ impl AODV {
         config: Config,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         me: String,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         radio::log_handle_message(
@@ -1407,6 +1421,7 @@ impl AODV {
             MessageStatus::ACCEPTED,
             Some("HELLO message"),
             None,
+            r_type,
             &Messages::HELLO(msg.clone()),
         );
 

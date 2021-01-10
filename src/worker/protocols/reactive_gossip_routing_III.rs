@@ -232,6 +232,7 @@ impl Protocol for ReactiveGossipRoutingIII {
             vicinity_cache,
             wifi_tx_queue,
             lora_tx_queue,
+            r_type,
             &self.logger,
             rng,
         )?;
@@ -617,6 +618,7 @@ impl ReactiveGossipRoutingIII {
         vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         wifi_tx_queue: Sender<Transmission>,
         lora_tx_queue: Sender<Transmission>,
+        r_type: RadioTypes,
         logger: &Logger,
         rng: Arc<Mutex<StdRng>>,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
@@ -628,7 +630,6 @@ impl ReactiveGossipRoutingIII {
 
         match msg {
             Messages::Data(data_msg) => {
-                // debug!(logger, "Received DATA message");
                 ReactiveGossipRoutingIII::process_data_msg(
                     hdr,
                     data_msg,
@@ -637,11 +638,11 @@ impl ReactiveGossipRoutingIII {
                     vicinity_cache,
                     self_peer,
                     msg_hash,
+                    r_type,
                     logger,
                 )
             }
             Messages::RouteDiscovery(route_msg) => {
-                //                        debug!(logger, "Received ROUTE_DISCOVERY message");
                 ReactiveGossipRoutingIII::process_route_discovery_msg(
                     hdr,
                     route_msg,
@@ -654,12 +655,12 @@ impl ReactiveGossipRoutingIII {
                     self_peer,
                     msg_hash,
                     lora_tx_queue,
+                    r_type,
                     rng,
                     logger,
                 )
             }
             Messages::RouteEstablish(route_msg) => {
-                //                        debug!(logger, "Received ROUTE_ESTABLISH message");
                 ReactiveGossipRoutingIII::process_route_established_msg(
                     hdr,
                     route_msg,
@@ -671,6 +672,7 @@ impl ReactiveGossipRoutingIII {
                     vicinity_cache,
                     self_peer,
                     wifi_tx_queue,
+                    r_type,
                     logger,
                 )
             }
@@ -682,11 +684,12 @@ impl ReactiveGossipRoutingIII {
                     dest_routes,
                     queued_transmissions,
                     self_peer,
+                    r_type,
                     logger,
                 )
             }
             Messages::Beacon(msg) => {
-                ReactiveGossipRoutingIII::process_beacon_msg(hdr, msg, vicinity_cache, logger)
+                ReactiveGossipRoutingIII::process_beacon_msg(hdr, msg, vicinity_cache, r_type, logger)
             }
         }
     }
@@ -699,6 +702,7 @@ impl ReactiveGossipRoutingIII {
         _vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         self_peer: String,
         msg_id: String,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         let route_id = msg.route_id.clone();
@@ -713,21 +717,13 @@ impl ReactiveGossipRoutingIII {
         let last_hop = match part_of_route {
             Some(last_hop) => last_hop,
             None => {
-                // info!(
-                //     logger,
-                //     "Received message";
-                //     "msg_id"=>&msg_id,
-                //     "msg_type"=>"DATA",
-                //     "sender"=>&hdr.sender,
-                //     "status"=>MessageStatus::DROPPED,
-                //     "reason"=>"Not part of route",
-                // );
                 radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
                     Some("Not part of route"),
                     None,
+                    r_type,
                     &Messages::Data(msg),
                 );
                 return Ok(None);
@@ -746,40 +742,24 @@ impl ReactiveGossipRoutingIII {
                         entry.state = DataMessageStates::Confirmed;
                         // let unused_data = entry.data;
                         // drop(entry);
-                        // info!(
-                        //     logger,
-                        //     "Received message";
-                        //     "msg_id"=>&msg_id,
-                        //     "msg_type"=>"DATA",
-                        //     "sender"=>&hdr.sender,
-                        //     "status"=>MessageStatus::DROPPED,
-                        //     "reason"=>"CONFIRMED",
-                        // );
                         radio::log_handle_message(
                             logger,
                             &hdr,
                             MessageStatus::DROPPED,
                             Some("CONFIRMED"),
                             None,
+                            r_type,
                             &Messages::Data(msg),
                         );
                     }
                     DataMessageStates::Confirmed => {
-                        // info!(
-                        //     logger,
-                        //     "Received message";
-                        //     "msg_id"=>&msg_id,
-                        //     "msg_type"=>"DATA",
-                        //     "sender"=>&hdr.sender,
-                        //     "status"=>MessageStatus::DROPPED,
-                        //     "reason"=>"DUPLICATE",
-                        // );
                         radio::log_handle_message(
                             logger,
                             &hdr,
                             MessageStatus::DROPPED,
                             Some("DUPLICATE"),
                             None,
+                            r_type,
                             &Messages::Data(msg),
                         );
                     }
@@ -826,13 +806,14 @@ impl ReactiveGossipRoutingIII {
                 MessageStatus::ACCEPTED,
                 None,
                 None,
+                r_type,
                 &Messages::Data(msg),
             );
             Ok(None)
         } else {
             //Re-tag msg
             let msg = Messages::Data(msg);
-            radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+            radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, r_type, &msg);
             //Since the payload remains unchanged, just create new header with this node as the sender.
             let fwd_hdr = hdr.create_forward_header(self_peer).build();
             let log_data = ProtocolMessages::RGRIII(msg);
@@ -853,6 +834,7 @@ impl ReactiveGossipRoutingIII {
         self_peer: String,
         _msg_id: String,
         _lora_tx_queue: Sender<Transmission>,
+        r_type: RadioTypes,
         rng: Arc<Mutex<StdRng>>,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
@@ -875,6 +857,7 @@ impl ReactiveGossipRoutingIII {
                 MessageStatus::ACCEPTED,
                 None,
                 None,
+                r_type,
                 &Messages::RouteDiscovery(msg.clone()),
             );
             //Add this route to the list of known routes.
@@ -916,6 +899,7 @@ impl ReactiveGossipRoutingIII {
                     MessageStatus::DROPPED,
                     None,
                     None,
+                    r_type,
                     &Messages::RouteDiscovery(msg),
                 );
                 return Ok(None);
@@ -949,6 +933,7 @@ impl ReactiveGossipRoutingIII {
                 MessageStatus::DROPPED,
                 Some("Gossip failed"),
                 None,
+                r_type,
                 &Messages::RouteDiscovery(msg),
             );
             //Not gossiping this message.
@@ -961,7 +946,7 @@ impl ReactiveGossipRoutingIII {
         let msg = Messages::RouteDiscovery(msg);
 
         //Log the reception of the message
-        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, r_type, &msg);
 
         // Build log data
         let log_data = ProtocolMessages::RGRIII(msg.clone());
@@ -985,6 +970,7 @@ impl ReactiveGossipRoutingIII {
         vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
         self_peer: String,
         wifi_tx_queue: Sender<Transmission>,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         //Who's the next hop in the route?
@@ -998,6 +984,7 @@ impl ReactiveGossipRoutingIII {
                     MessageStatus::DROPPED,
                     Some("Empty payload"),
                     None,
+                    r_type,
                     &Messages::RouteEstablish(msg),
                 );
                 return Ok(None);
@@ -1027,6 +1014,7 @@ impl ReactiveGossipRoutingIII {
                 MessageStatus::DROPPED,
                 Some("Not meant for this node"),
                 None,
+                r_type,
                 &Messages::RouteEstablish(msg),
             );
             return Ok(None);
@@ -1068,6 +1056,7 @@ impl ReactiveGossipRoutingIII {
                 MessageStatus::ACCEPTED,
                 None,
                 None,
+                r_type,
                 &Messages::RouteEstablish(msg.clone()),
             );
             info!(logger, "route {}:{}", &msg.route_id, route);
@@ -1097,7 +1086,7 @@ impl ReactiveGossipRoutingIII {
         let msg = Messages::RouteEstablish(msg);
 
         //Log the reception of this message
-        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, &msg);
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, r_type, &msg);
 
         //Build log data
         let log_data = ProtocolMessages::RGRIII(msg.clone());
@@ -1118,6 +1107,7 @@ impl ReactiveGossipRoutingIII {
         dest_routes: Arc<Mutex<HashMap<String, String>>>,
         _queued_transmissions: Arc<Mutex<HashMap<String, Vec<MessageHeader>>>>,
         self_peer: String,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         let subscribed = {
@@ -1136,6 +1126,7 @@ impl ReactiveGossipRoutingIII {
                     MessageStatus::FORWARDING,
                     None,
                     None,
+                    r_type,
                     &Messages::RouteTeardown(msg.clone()),
                 );
                 //Teardown relevant routes and build new msg
@@ -1162,6 +1153,7 @@ impl ReactiveGossipRoutingIII {
                     MessageStatus::DROPPED,
                     Some("Not subscribed to route"),
                     None,
+                    r_type,
                     &Messages::RouteTeardown(msg),
                 );
                 None
@@ -1174,6 +1166,7 @@ impl ReactiveGossipRoutingIII {
         hdr: MessageHeader,
         msg: HelloMessage,
         vicinity_cache: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         radio::log_handle_message(
@@ -1182,6 +1175,7 @@ impl ReactiveGossipRoutingIII {
             MessageStatus::ACCEPTED,
             None,
             None,
+            r_type,
             &Messages::Beacon(msg),
         );
         let mut vc = vicinity_cache

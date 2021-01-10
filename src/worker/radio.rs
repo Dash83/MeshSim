@@ -858,13 +858,16 @@ pub fn log_handle_message<T: KV>(
     status: MessageStatus,
     reason: Option<&str>,
     action: Option<&str>,
+    radio: RadioTypes,
     msg: &T,
 ) {
     let perf_handle_message_duration = Utc::now().timestamp_nanos() - hdr.delay;
+    let r_label: String = radio.into();
     info!(
         logger,
         "Received message";
         msg,
+        "radio"=>r_label,
         "hops"=>hdr.hops,
         "destination"=>&hdr.destination,
         "source"=>&hdr.sender,
