@@ -665,20 +665,13 @@ impl Worker {
                         if stats_ts.timestamp_millis() + STATS_PERIOD <= Utc::now().timestamp_millis() {
                             info!(
                                 logger,
-                                "Packets in IN_QUEUE: {}",
-                                in_queue_thread_pool.queued_count()
+                                "Worker stats";
+                                "IN_QUEUE_LENGTH" => in_queue_thread_pool.queued_count(),
+                                "OUT_QUEUE_LENGTH" => out_queue_receiver.len(),
+                                "WORKERS_ACTIVE" => in_queue_thread_pool.active_count(),
+                                "WORKERS_PANICKED" => in_queue_thread_pool.panic_count(),
                             );
-                            info!(
-                                logger,
-                                "Packets in OUT_QUEUE: {}",
-                                out_queue_receiver.len()
-                            );
-                            info!(
-                                logger,
-                                "Workers - Active: {}, Panicked: {}",
-                                in_queue_thread_pool.active_count(),
-                                in_queue_thread_pool.panic_count(),
-                            );
+
                             stats_ts = Utc::now();
                         }
 
@@ -695,20 +688,6 @@ impl Worker {
                                 let log = logger.clone();
 
                                 if in_queue_thread_pool.queued_count() >= max_queued_jobs {
-                                    //DO NOT change the order of these fields in the logging function.
-                                    //This call mirrors the order of log_handle_message and it changed it might break the processing scripts.
-                                    // info!(
-                                    //     &log,
-                                    //     "Received message";
-                                    //     "hops"=>hdr.hops,
-                                    //     "destination"=>&hdr.destination,
-                                    //     "source"=>&hdr.sender,
-                                    //     "reason"=>"packet_queue is full",
-                                    //     "duration"=> perf_handle_message_duration,
-                                    //     "status"=>MessageStatus::DROPPED,
-                                    //     "msg_id"=>&hdr.get_msg_id(),
-                                    //     "radio"=>&radio_label,
-                                    // );
                                     let log_data = ();
                                     radio::log_handle_message(
                                         &log,
