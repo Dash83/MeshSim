@@ -29,6 +29,7 @@ pub mod master;
 pub mod mobility2;
 pub mod tests;
 pub mod worker;
+pub mod mobility;
 
 //*****************
 //Errors

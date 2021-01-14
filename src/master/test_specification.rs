@@ -12,7 +12,7 @@ use std::io::Read;
 use std::str::FromStr;
 
 /// Struct to keep the area of the simulation
-#[derive(Debug, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Default, Clone, Copy)]
 pub struct Area {
     /// Horizontal measure of the test area
     pub width: f64,

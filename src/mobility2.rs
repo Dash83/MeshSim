@@ -5,12 +5,13 @@ extern crate chrono;
 extern crate dotenv;
 extern crate strfmt;
 
-use crate::{MeshSimError, MeshSimErrorKind};
+use crate::{MeshSimError, MeshSimErrorKind, worker};
 // use crate::worker::Peer;
 use crate::worker::radio::RadioTypes;
+use crate::mobility::*;
 use models::*;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, unimplemented};
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -25,7 +26,6 @@ use slog::Logger;
 use strfmt::strfmt;
 use rand::{thread_rng, RngCore};
 use std::time::Duration;
-use std::borrow::Cow;
 
 embed_migrations!("migrations");
 
@@ -59,23 +59,6 @@ CREATE DATABASE {db_name}
 const CONNECTION_RETRIES: usize = 3;
 const CONNECTION_RETRY_SLEEP_BASE: u64 = 10;
 
-///Struct to encapsule the 2D position of the worker
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default, Copy)]
-pub struct Position {
-    /// X component
-    pub x: f64,
-    /// Y component
-    pub y: f64,
-}
-
-///Struct to encapsule the velocity vector of a worker
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Copy, Default)]
-pub struct Velocity {
-    /// X component
-    pub x: f64,
-    /// Y component
-    pub y: f64,
-}
 /// Struct used for parsing connection files
 pub struct ConnectionParts {
     pub user_pwd: String,
@@ -83,15 +66,6 @@ pub struct ConnectionParts {
     pub host: String,
     pub db_name: String,
 }
-
-// /// Used with get_db_connection.
-// pub enum db_type {
-//     /// Should only be used with create_db_objects.
-//     root,
-//     /// All other simulation operations should be used with this.
-//     experiment,
-// }
-
 
 fn get_db_url(env_file: Option<String>, logger: &Logger) -> Result<String, MeshSimError> {
     let mut database_url: Option<String> = None;
@@ -374,25 +348,28 @@ pub fn update_worker_target(
 }
 
 /// Function exported exclusively for the use of the Master module.
-/// Returns ids of all workers that have reached their destination.
-pub fn select_workers_that_arrived(
+/// Returns ids and positions of all workers that have reached their destination.
+pub fn select_workers_at_destination(
     conn: &PgConnection,
-) -> Result<HashMap<i32, Position>, MeshSimError> {
-    use schema::worker_destinations;
+) -> Result<Vec<NodeState>, MeshSimError> {
+    use schema::workers;
     use schema::worker_positions;
     use schema::worker_velocities;
+    use schema::worker_destinations;
 
-    let source: Vec<(i32, f64, f64, f64, f64, f64, f64)> = worker_positions::table
-        .inner_join(worker_destinations::table)
+    let source: Vec<(i32, String, f64, f64, f64, f64, Option<f64>, Option<f64>)> = workers::table
+        .inner_join(worker_positions::table)
         .inner_join(worker_velocities::table)
+        .inner_join(worker_destinations::table)
         .select((
-            worker_positions::worker_id,
+            workers::id,
+            workers::worker_name,
             worker_positions::x,
             worker_positions::y,
-            worker_destinations::x,
-            worker_destinations::y,
             worker_velocities::x,
             worker_velocities::y,
+            worker_destinations::x.nullable(),
+            worker_destinations::y.nullable(),
         ))
         .get_results(conn)
         .map_err(|e| {
@@ -404,15 +381,45 @@ pub fn select_workers_that_arrived(
             }
         })?;
 
-    let mut result = HashMap::new();
-    for (w_id, pos_x, pos_y, dest_x, dest_y, vel_x, vel_y) in source {
-        let vel_magnitude = (vel_x.powi(2) + vel_y.powi(2)).sqrt();
-        let remaining_distance = euclidean_distance(pos_x, pos_y, dest_x, dest_y);
-        let dist_threshold = vel_magnitude / 2.0;
-        if remaining_distance <= dist_threshold {
-            result.insert(w_id, Position { x: pos_x, y: pos_y });
+    let result = source.into_iter()
+    .map(|(id, name, p_x, p_y, v_x, v_y, d_x, d_y)| { 
+        let dest = if d_x.is_some() && d_y.is_some() {
+            let d = Position {
+                x: d_x.unwrap(),
+                y: d_y.unwrap(),
+            };
+            Some(d)
+        } else {
+            None
+        };
+
+        NodeState {
+            id,
+            name,
+            pos: Position{x: p_x, y: p_y},
+            vel: Velocity{x: v_x, y: v_y},
+            dest,
         }
-    }
+    })
+    .filter(|ns| { 
+        if ns.dest.is_some() {
+            let dest = ns.dest.as_ref().unwrap();
+            ns.pos.distance(dest) <= ns.vel.magnitude()
+        } else {
+            false
+        }
+    })
+    .collect();
+
+    // let mut result = HashMap::new();
+    // for (w_id, w_name, pos_x, pos_y, dest_x, dest_y, vel_x, vel_y) in source {
+    //     let vel_magnitude = (vel_x.powi(2) + vel_y.powi(2)).sqrt();
+    //     let remaining_distance = euclidean_distance(pos_x, pos_y, dest_x, dest_y);
+    //     let dist_threshold = vel_magnitude / 2.0;
+    //     if remaining_distance <= dist_threshold {
+    //         result.insert(w_id, (w_name, Position { x: pos_x, y: pos_y }, Velocity { x: vel_x, y: vel_y }));
+    //     }
+    // }
 
     Ok(result)
 }
@@ -482,14 +489,68 @@ pub fn update_worker_positions(conn: &PgConnection) -> Result<usize, MeshSimErro
     Ok(rows)
 }
 
-// /// Gets the current position and database id of a given worker
-// pub fn get_worker_position(
-//     conn: &PgConnection,
-//     worker_id: &str,
-//     _logger: &Logger,
-// ) -> Result<(Position, i64), MeshSimError> {
-//     unimplemented!()
-// }
+/// Get the positions of all workers
+pub fn select_all_workers_state(conn: &PgConnection) -> Result<Vec<NodeState>, MeshSimError> {
+    use schema::workers;
+    use schema::worker_positions;
+    use schema::worker_velocities;
+    use schema::worker_destinations;
+
+    let source: Vec<(i32, String, f64, f64, f64, f64, Option<f64>, Option<f64>)> = workers::table
+        .inner_join(worker_positions::table)
+        .inner_join(worker_velocities::table)
+        .inner_join(worker_destinations::table)
+        .select((
+            workers::id,
+            workers::worker_name,
+            worker_positions::x,
+            worker_positions::y,
+            worker_velocities::x,
+            worker_velocities::y,
+            worker_destinations::x.nullable(),
+            worker_destinations::y.nullable(),
+        ))
+        .get_results(conn)
+        .map_err(|e| {
+            let error_msg =
+                String::from("Failed to read worker positions, destinations and velocities");
+            MeshSimError {
+                kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
+    let result = source
+        .into_iter()
+        .map(|(id, name, p_x, p_y, v_x, v_y, d_x, d_y)| {
+            let dest = if d_x.is_some() && d_y.is_some() {
+                let d = Position {
+                    x: d_x.unwrap(),
+                    y: d_y.unwrap(),
+                };
+                Some(d)
+            } else {
+                None
+            };
+
+            NodeState {
+                id,
+                name,
+                pos: Position{x: p_x, y: p_y},
+                vel: Velocity{x: v_x, y: v_y},
+                dest,
+            }
+        })
+        .collect();
+
+    Ok(result)
+}
+
+/// Updates the positions of all nodes according to their velocity and returns
+/// a view of all nodes, their new positions, destinations, and velocities,
+pub fn update_mobility_state(conn: &PgConnection) -> Result<HashMap<String, NodeMobilityState>, MeshSimError> {
+    unimplemented!()
+}
 
 /// Returns all workers within RANGE meters of the current position of WORKER_ID
 pub fn get_workers_in_range(
@@ -1299,7 +1360,7 @@ mod tests {
         );
         let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
-        let rows = select_workers_that_arrived(&conn).expect("get_workers_in_range Failed");
+        let rows = select_workers_at_destination(&conn).expect("get_workers_in_range Failed");
         assert_eq!(rows.len(), 1);
 
         //Test passed. Results are not needed.

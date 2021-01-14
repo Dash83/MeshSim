@@ -22,13 +22,15 @@ use crate::mobility2::*;
 use crate::worker::worker_config::WorkerConfig;
 use crate::worker::commands::Commands;
 use crate::{MeshSimError, MeshSimErrorKind};
+use crate::mobility::*;
+use crate::logging::log_node_state;
 use libc::{c_int, nice};
 use rand::distributions::{Normal, Uniform};
 use rand::{thread_rng, Rng, RngCore};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
-use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::{net::{IpAddr, Ipv6Addr, SocketAddr}, unimplemented};
 use serde_cbor::de::*;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::unbounded;
 use std::sync::atomic::{AtomicBool, Ordering};
 use sysinfo::{self, ProcessExt, SystemExt, Signal};
 use std::path::Path;
@@ -70,11 +72,9 @@ const REG_SERVER_PERIOD: u64 = 100; //microseconds
 /// Ideally, this should be the number of expected nodes, to avoid any registration issues,
 /// but this is a sane default for now.
 const REG_SERVER_BACKLOG: i32 = 256;
-const RANDOM_WAYPOINT_WAIT_TIME: u64 = 1000;
+const RANDOM_WAYPOINT_WAIT_TIME: i64 = 1000;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 const CLEANUP_SLEEP: u64 = 500;
-
-type PendingWorker = (DateTime<Utc>, Velocity);
 
 ///Different supported mobility models
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -83,10 +83,21 @@ pub enum MobilityModels {
     /// Random waypoint model
     RandomWaypoint {
         /// The amount of time a node will wait once it reaches its destination.
-        pause_time: u64,
+        pause_time: i64,
     },
     /// No movement
     Stationary,
+    /// Increased mobility model
+    IncreasedMobility {
+        /// The mean velocity used for nodes
+        vel_mean: f64,
+        /// The standard deviation of the velocity
+        vel_std: f64,
+        /// The percentage increase of velocity used each time a node reaches its destination. Between 0 and 1.
+        vel_increase: f64,
+        /// The time a node will pause each it reaches its destination.
+        pause_time: i64,
+    },
 }
 
 impl FromStr for MobilityModels {
@@ -106,10 +117,55 @@ impl FromStr for MobilityModels {
 
         match parts[0].to_uppercase().as_str() {
             "RANDOMWAYPOINT" => {
-                let pause_time = parts[1].parse::<u64>().unwrap_or(RANDOM_WAYPOINT_WAIT_TIME);
+                let pause_time = parts[1].parse::<i64>().unwrap_or(RANDOM_WAYPOINT_WAIT_TIME);
                 Ok(MobilityModels::RandomWaypoint { pause_time })
             }
             "STATIONARY" => Ok(MobilityModels::Stationary),
+            "INCREASEDMOBILITY" => {
+                if parts.len() < 5 {
+                    let err_msg = String::from("Wrong number of arguments for Increased Mobility. \nExpected: VEL_MEAN VEL_STD VEL_INCREASE PAUSE_TIME");
+                    let e = MeshSimError{
+                        kind: MeshSimErrorKind::Configuration(err_msg),
+                        cause: None,
+                    };
+                    return Err(e);
+                }
+                let vel_mean = parts[1].parse::<f64>()
+                    .map_err(|e| { 
+                        let err_msg = String::from("Failed to parse VEL_MEAN for IncreasedMobility model");
+                        MeshSimError{
+                            kind: MeshSimErrorKind::Configuration(err_msg),
+                            cause: Some(Box::new(e)),
+                        }
+                    })?;
+                let vel_std = parts[2].parse::<f64>()
+                    .map_err(|e| { 
+                        let err_msg = String::from("Failed to parse VEL_STD for IncreasedMobility model");
+                        MeshSimError{
+                            kind: MeshSimErrorKind::Configuration(err_msg),
+                            cause: Some(Box::new(e)),
+                        }
+                    })?;
+                let vel_increase = parts[3].parse::<f64>()
+                    .map_err(|e| { 
+                        let err_msg = String::from("Failed to parse VEL_INCREASE for IncreasedMobility model");
+                        MeshSimError{
+                            kind: MeshSimErrorKind::Configuration(err_msg),
+                            cause: Some(Box::new(e)),
+                        }
+                    })?;
+
+                let pause_time = parts[4].parse::<i64>()
+                    .map_err(|e| { 
+                        let err_msg = String::from("Failed to parse PAUSE_TIME for IncreasedMobility model");
+                        MeshSimError{
+                            kind: MeshSimErrorKind::Configuration(err_msg),
+                            cause: Some(Box::new(e)),
+                        }
+                    })?;
+
+                Ok(MobilityModels::IncreasedMobility { vel_mean, vel_std, vel_increase, pause_time })
+            },
             _ => {
                 let err_msg = String::from("Invalid mobility model");
                 let err = MeshSimError {
@@ -526,16 +582,16 @@ impl Master {
                     "Registration command received";
                     "worker" => &w_name,
                 );
-                let name = w_name.clone();
-                let v = vel.unwrap_or_default();
-                let id = register_worker(&conn,name,w_id,pos,v,&dest,sr_address,lr_address,&log)?;
+                let vel = vel.unwrap_or_default();
+                let id = register_worker(&conn, w_name.clone(), w_id, pos, vel, &dest, sr_address, lr_address, &log)?;
 
                 //Save the db_id of the worker as well as the handle to its process.
                 let mut workers = workers
                     .lock()
                     .expect("Failed to lock workers list");
                 workers.insert(w_name.clone(), (id, cmd_address));
-                info!(&log, "Worker registered successfully!"; "worker"=>&w_name);
+                let ns = NodeState { id, name: w_name, pos, vel, dest };
+                log_node_state("Worker registered successfully!", ns, &log);
             },
             _ => {
                 /* The master does  not support any other commands*/
@@ -1190,112 +1246,70 @@ impl Master {
         let update_time = Duration::from_millis(1000); //All velocities are expresed in meters per second.
         let sim_start_time = Instant::now();
         let sim_end_time = Duration::from_millis(self.duration);
-        let width = self.test_area.width;
-        let height = self.test_area.height;
-        let duration = self.duration;
-        let mut initialized: bool = Default::default();
         let m_model = self.mobility_model.clone();
         let logger = self.logger.clone();
-        let mut paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
-        let sleep_time_override = self.sleep_time_override.clone();
-        let conn = get_db_connection_by_file(self.env_file.clone(), &self.logger)?;
-
+        // let mut paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
+        let _sleep_time_override = self.sleep_time_override.clone();
+        let conn = get_db_connection(&self.logger)?;
+        let test_area = self.test_area;
+        
         tb.name(String::from("MobilityThread")).spawn(move || {
-            let mut rng = thread_rng();
-            let width_sample = Uniform::new(0.0, width);
-            let height_sample = Uniform::new(0.0, height);
-            let walking_sample = Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV);
 
-            let model = match m_model {
-                Some(m) => m,
-                None => {
-                    info!(
-                        logger,
-                        "No mobility model defined. Setting Stationary model"
-                    );
-                    MobilityModels::Stationary
-                }
-            };
+            let model = m_model.unwrap_or_else(|| { 
+                info!(
+                    logger,
+                    "No mobility model defined. Setting Stationary model"
+                );
+                MobilityModels::Stationary
+            });
 
-            let sleep_time = match sleep_time_override {
-                Some(time) => time,
-                None => match &model {
-                    MobilityModels::RandomWaypoint { pause_time } => *pause_time,
-                    MobilityModels::Stationary => duration,
+            let mut mobility_handler = match Master::build_mobility_handler(model, test_area, logger.clone()) {
+                Ok(mh) => mh,
+                Err(e) => {
+                    //The mobility thread can't function without a handler. Exit the thread.
+                    error!(logger, "{}", e);
+                    return;
                 },
             };
 
             while Instant::now().duration_since(sim_start_time) < sim_end_time {
-                //Restart movement for workers whose pause has ended.
-                let mut restarted_workers: Vec<i32> = Vec::new();
-                for (key, val) in paused_workers.iter() {
-                    let worker_id = key;
-                    let restart_time = &val.0;
-                    let velocity = &val.1;
-                    if *restart_time <= Utc::now() {
-                        match update_worker_vel(&conn, *velocity, *worker_id, &logger) {
-                            Ok(_r) => restarted_workers.push(*worker_id),
-                            Err(e) => {
-                                error!(
-                                    logger,
-                                    "Failed updating target for worker_id {}: {}", worker_id, &e
-                                );
-                                if let Some(cause) = e.cause {
-                                    error!(logger, "Cause: {}", cause);
-                                }
-                            }
-                        }
-                    }
-                }
 
-                //Remove the workers that were succesfully updated from the pending list
-                paused_workers.retain(|&k, _| !restarted_workers.contains(&k));
-
-                //Wait times will be uniformly sampled from the remain simulation time.
-                let mut lower_bound: u64 = sim_start_time.elapsed().as_secs() * 1000;
-                lower_bound += u64::from(sim_start_time.elapsed().subsec_millis());
-                let wait_sample = Uniform::new(lower_bound, duration);
-
+                // Let one second elapse
                 thread::sleep(update_time);
 
-                // ****** DEBUG ******* //
-                // let workers = get_all_worker_positions(&conn)?;
-                // for w in workers {
-                //     debug!(logger, "{}({}): ({}, {})", w.1, w.0, w.2, w.3);
-                // }
-
-                match model {
-                    MobilityModels::RandomWaypoint { pause_time: _ } => {
-                        Master::handle_random_waypoint(
-                            &conn,
-                            &width_sample,
-                            &height_sample,
-                            &walking_sample,
-                            &wait_sample,
-                            sleep_time,
-                            &mut paused_workers,
-                            &mut rng,
-                            &logger,
-                        );
-                    }
-                    MobilityModels::Stationary => {
-                        if !initialized {
-                            Master::handle_stationary(&conn, &logger);
-                            initialized = true;
-                        }
-                    }
-                }
-
-                //Update worker positions
-                match update_worker_positions(&conn) {
-                    Ok(rows) => {
-                        debug!(logger, "The position of {} workers has been updated", rows);
-                    }
+                //Update all worker positions
+                let _res = match update_worker_positions(&conn) {
+                    Ok(v) => { v },
                     Err(e) => {
                         error!(logger, "Error updating worker positions: {}", e);
+                        continue;
                     }
+                };
+
+                //Pass control to mobility model
+                let new_nodes_state = match mobility_handler.handle_iteration() {
+                    Ok(npn) => {
+                        /* All good! */
+                        npn
+                    },
+                    Err(e) => {
+                        warn!(logger, "Mobility error: {}", e);
+                        continue;
+                    }
+                };
+
+                for n in new_nodes_state {
+                    log_node_state("A node reached its destination", n, &logger);
                 }
             }
+
+            //Before exiting the mobility loop, log the final destinations of all nodes.
+            let all_worker_positions = select_all_workers_state(&conn).expect("whoops");
+            for node in all_worker_positions {
+                log_node_state("Final position reached", node, &logger);
+                
+            }
+
         })
         .map_err(|e| { 
             let err_msg = String::from("Failed to start mobility thread");
@@ -1306,84 +1320,47 @@ impl Master {
         })
     }
 
-    fn handle_stationary(conn: &PgConnection, logger: &Logger) {
-        let _rows = match stop_all_workers(conn) {
-            Ok(rows) => rows,
-            Err(e) => {
-                error!(logger, "{}", e);
-                0
-            }
-        };
-    }
+    fn build_mobility_handler(model: MobilityModels, test_area: Area, logger: Logger) -> Result<Box<dyn MobilityHandler>, MeshSimError> {
+        let conn = get_db_connection(&logger)?;
 
-    fn handle_random_waypoint(
-        conn: &PgConnection,
-        width_sample: &Uniform<f64>,
-        height_sample: &Uniform<f64>,
-        walking_sample: &Normal,
-        _wait_sample: &Uniform<u64>,
-        pause_time: u64,
-        paused_workers: &mut HashMap<i32, PendingWorker>,
-        rng: &mut dyn RngCore,
-        // db_path: &str,
-        logger: &Logger,
-    ) {
-        debug!(logger, "Entered function handle_random_waypoint");
-
-        //Select workers that reached their destination
-        let rows = match select_workers_that_arrived(&conn) {
-            Ok(rows) => rows,
-            Err(e) => {
-                error!(logger, "Error updating worker positions: {}", e);
-                HashMap::new()
-            }
-        };
-
-        if !rows.is_empty() {
-            info!(
-                logger,
-                "{} workers have reached their destinations",
-                rows.len()
-            );
-            //Stop workers that have reached their destination
-            let stoppable: Vec<i32> = rows.keys().copied().collect();
-            match stop_workers(&conn, &stoppable, logger) {
-                Ok(r) => {
-                    info!(logger, "{} workers have been stopped", r);
-                }
-                Err(e) => {
-                    error!(logger, "Could not stop workers: {}", e);
-                }
-            }
-
-            for w in rows {
-                let w_id = w.0;
-                let pos = w.1;
-
-                //Calculate parameters
-                let next_x: f64 = rng.sample(width_sample);
-                let next_y: f64 = rng.sample(height_sample);
-                let vel: f64 = rng.sample(walking_sample);
-                let distance: f64 = euclidean_distance(pos.x, pos.y, next_x, next_y);
-                let time: f64 = distance / vel;
-                let x_vel = (next_x - pos.x) / time;
-                let y_vel = (next_y - pos.y) / time;
-
-                //Update worker target position
-                let _res = update_worker_target(
-                    &conn,
-                    Position {
-                        x: next_x,
-                        y: next_y,
-                    },
-                    w_id,
-                    &logger,
+        let handler: Box<dyn MobilityHandler> = match model {
+            MobilityModels::Stationary => { 
+                let _ = Stationary::new(&conn, &logger);
+                let err_msg = format!("Exiting thread since Stationary model is selected");
+                let e = MeshSimError{
+                    kind: MeshSimErrorKind::Configuration(err_msg),
+                    cause: None
+                };
+                return Err(e);
+            },
+            MobilityModels::RandomWaypoint{ pause_time } => { 
+                let h = RandomWaypoint::new(
+                    HUMAN_SPEED_MEAN,
+                    HUMAN_SPEED_STD_DEV,
+                    0, //TODO: HUGE BUG. Must control this, can significantly change the direction of the simulation.
+                    test_area,
+                    pause_time,
+                    conn,
+                    logger
                 );
+                Box::new(h)
+            },
+            MobilityModels::IncreasedMobility{vel_mean, vel_std, vel_increase, pause_time } => { 
+                let h = IncreasedMobility::new(
+                    vel_mean,
+                    vel_std,
+                    vel_increase,
+                    0, //TODO: HUGE BUG. Must control this, can significantly change the direction of the simulation.
+                    test_area,
+                    pause_time,
+                    conn,
+                    logger
+                );
+                Box::new(h)                
+            },
+        };
 
-                let restart_time = Utc::now() + chrono::Duration::milliseconds(pause_time as i64);
-                paused_workers.insert(w_id, (restart_time, Velocity { x: x_vel, y: y_vel }));
-            }
-        }
+        Ok(handler)
     }
 
     /// Creates a new socket for the Master/worker registration

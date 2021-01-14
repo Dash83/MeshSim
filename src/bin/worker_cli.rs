@@ -6,7 +6,7 @@ use clap::{App, Arg, ArgMatches};
 use mesh_simulator::worker::worker_config::WorkerConfig;
 use mesh_simulator::{logging, worker};
 use mesh_simulator::{MeshSimError, MeshSimErrorKind};
-use slog::Logger;
+// use slog::Logger;
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::{env, error, fmt};
@@ -19,7 +19,7 @@ const ARG_ACCEPT_COMMANDS: &str = "accept_commands";
 const ARG_TERMINAL_LOG: &str = "term_log";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const CONFIG_FILE_NAME: &str = "worker.toml";
-const ERROR_EXECUTION_FAILURE: i32 = 1;
+// const ERROR_EXECUTION_FAILURE: i32 = 1;
 const ERROR_INITIALIZATION: i32 = 2;
 
 // *****************************************

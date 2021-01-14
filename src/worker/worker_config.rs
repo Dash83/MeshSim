@@ -1,7 +1,7 @@
 //! This module defines the worker_config struct and related functions. It allows meshsim to
 //! deserialize a configuration file into a worker_config object that eventually creates a worker object.
 
-use crate::mobility2::{Position, Velocity};
+use crate::mobility::{Position, Velocity};
 use crate::worker::listener::Listener;
 use crate::worker::protocols::*;
 use crate::worker::radio::*;

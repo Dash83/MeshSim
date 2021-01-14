@@ -6,6 +6,7 @@ use mesh_simulator::mobility2::*;
 use mesh_simulator::worker;
 use mesh_simulator::worker::protocols::Protocols;
 use mesh_simulator::worker::worker_config::*;
+use crate::mesh_simulator::mobility::{Position, Velocity};
 
 use rand::distributions::{Normal, Uniform};
 use rand::{thread_rng, Rng, RngCore};
@@ -313,11 +314,21 @@ fn command_add_nodes(
     spec: &mut TestSpec,
     data: &TestBasics,
 ) -> Result<bool, Errors> {
+    let model = data.m_model.clone().unwrap_or(MobilityModels::Stationary);
     let mut rng = rand::thread_rng();
-    let width_sample = Uniform::new(0.0, data.width);
-    let height_sample = Uniform::new(0.0, data.height);
-    let walking_sample = Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV);
-
+    let width_distribution = Uniform::new(0.0, data.width);
+    let height_distribution = Uniform::new(0.0, data.height);
+    let vel_distribution = match model {
+        MobilityModels::RandomWaypoint { pause_time: _ } => {
+            Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV)
+        },
+        MobilityModels::Stationary => { 
+            Normal::new(0., 0.)
+        },
+        MobilityModels::IncreasedMobility {vel_mean, vel_std, vel_increase:_, pause_time:_ } => { 
+            Normal::new(vel_mean, vel_std)
+        },
+    };
     let nodes = match node_type.to_uppercase().as_str() {
         "AVAILABLE" => &mut spec.available_nodes,
         "INITIAL" => &mut spec.initial_nodes,
@@ -340,39 +351,36 @@ fn command_add_nodes(
         w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
 
         //Calculate the position
-        let x = rng.sample(width_sample);
-        let y = rng.sample(height_sample);
+        let x = rng.sample(width_distribution);
+        let y = rng.sample(height_distribution);
         w.position = Position { x, y };
 
-        if let Some(model) = &data.m_model {
-            match model {
-                MobilityModels::RandomWaypoint { pause_time: _ } => {
-                    let target_x = rng.sample(width_sample);
-                    let target_y = rng.sample(height_sample);
-                    w.destination = Some(Position {
-                        x: target_x,
-                        y: target_y,
-                    });
 
-                    //Velocity vector should point to destination
-                    let vel = rng.sample(walking_sample);
-                    let distance: f64 =
-                        euclidean_distance(w.position.x, w.position.y, target_x, target_y);
-                    let time: f64 = distance / vel;
-                    let x_vel = (target_x - w.position.x) / time;
-                    let y_vel = (target_y - w.position.y) / time;
-                    w.velocity = Velocity { x: x_vel, y: y_vel };
-                }
-                MobilityModels::Stationary => { /* Nothing else to do */ }
-            }
-        } else {
-            //Calculate velocity
-            // let x_vel = rng.sample(walking_sample);
-            // let y_vel = rng.sample(walking_sample);
-            //Since no mobility model is provided, assume velocity of 0
-            let x_vel = 0.0f64;
-            let y_vel = 0.0f64;
-            w.velocity = Velocity { x: x_vel, y: y_vel };
+        match model {
+            //Random waypoint and Increased Mobility only differ in the velocitry distribution used
+            MobilityModels::RandomWaypoint { pause_time: _ } | 
+            MobilityModels::IncreasedMobility {vel_mean:_, vel_std:_, vel_increase:_, pause_time:_ } => {
+                let target_x = rng.sample(width_distribution);
+                let target_y = rng.sample(height_distribution);
+                w.destination = Some(Position {
+                    x: target_x,
+                    y: target_y,
+                });
+
+                //Velocity vector should point to destination
+                let vel = rng.sample(vel_distribution);
+                let distance: f64 =
+                    euclidean_distance(w.position.x, w.position.y, target_x, target_y);
+                let time: f64 = distance / vel;
+                let x_vel = (target_x - w.position.x) / time;
+                let y_vel = (target_y - w.position.y) / time;
+                w.velocity = Velocity { x: x_vel, y: y_vel };
+            },
+            MobilityModels::Stationary => { 
+                let x_vel = 0.0f64;
+                let y_vel = 0.0f64;
+                w.velocity = Velocity { x: x_vel, y: y_vel };
+            },
         }
 
         //Create the radio configurations

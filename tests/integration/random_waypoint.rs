@@ -3,9 +3,10 @@ extern crate mesh_simulator;
 use super::super::*;
 
 use mesh_simulator::tests::common::*;
+// use mesh_simulator::master::test_specification::TestSpec;
 
 #[test]
-fn test_random_waypoint_basic() {
+fn three_node_movement() {
     let test_name = String::from("random_waypoint");
     let data = setup(&test_name, false, false);
 
@@ -38,16 +39,50 @@ fn test_random_waypoint_basic() {
     );
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
     let master_node_num = logging::find_record_by_msg(
-        "End_Test action: Finished. 5 processes terminated.",
+        "End_Test action: Finished. 3 processes terminated.",
         &master_log_records,
     );
     assert!(master_node_num.is_some());
 
-    let node_3_arrived = logging::find_record_by_msg(
-        "1 workers have reached their destinations",
-        &master_log_records,
-    );
-    assert!(node_3_arrived.is_some());
+    // let test_spec = TestSpec::parse_test_spec(&data.test_file).expect("Could not parse test file");
+    let mobility_records = logging::get_mobility_records(&master_log_file)
+        .expect("Could not load mobility records");
+
+    // Check that every recorded position for node1 is different (e.g. it kept moving)
+    let mut prev_pos = mobility_records["node1"]
+        .iter()
+        .find(|_x| true)
+        .map(|(_ts, (pos, _vel))| pos.clone())
+        .unwrap();
+    
+    for (_ts, (pos, _vel)) in mobility_records["node1"].iter().skip(1) {
+        assert_ne!(pos, &prev_pos);
+        prev_pos = pos.clone();
+    }
+    
+    // Check that every recorded position for node2 is different (e.g. it kept moving)
+    let mut prev_pos = mobility_records["node2"]
+        .iter()
+        .find(|_x| true)
+        .map(|(_ts, (pos, _vel))| pos.clone())
+        .unwrap();
+    
+    for (_ts, (pos, _vel)) in mobility_records["node2"].iter().skip(1) {
+        assert_ne!(pos, &prev_pos);
+        prev_pos = pos.clone();
+    }
+
+    // Check that every recorded position for node3 is different (e.g. it kept moving)
+    let mut prev_pos = mobility_records["node3"]
+        .iter()
+        .find(|_x| true)
+        .map(|(_ts, (pos, _vel))| pos.clone())
+        .unwrap();
+    
+    for (_ts, (pos, _vel)) in mobility_records["node3"].iter().skip(1) {
+        assert_ne!(pos, &prev_pos);
+        prev_pos = pos.clone();
+    }
 
     //Test passed. Results are not needed.
     teardown(data, true);

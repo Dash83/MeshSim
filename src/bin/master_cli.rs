@@ -22,7 +22,7 @@ const ARG_SLEEP_TIME: &str = "sleep_time";
 const ARG_DB_NAME: &str = "database_name";
 
 const ERROR_LOG_INITIALIZATION: i32 = 1;
-const ERROR_EXECUTION_FAILURE: i32 = 2;
+// const ERROR_EXECUTION_FAILURE: i32 = 2;
 
 #[derive(Debug)]
 enum CLIError {

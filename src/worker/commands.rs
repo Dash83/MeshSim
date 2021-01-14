@@ -2,7 +2,7 @@
 
 use crate::{MeshSimError, MeshSimErrorKind};
 use std::str::FromStr;
-use crate::mobility2::{Position, Velocity};
+use crate::mobility::{Position, Velocity};
 
 /// Enummeration of all the commands the worker supports
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -31,25 +31,6 @@ impl FromStr for Commands {
         //Assuming here we can have actions with 0 parameters.
         if !parts.is_empty() {
             match parts[0].to_uppercase().as_str() {
-                // "ADD_BCG" => {
-                //     if parts.len() < 2 {
-                //         //Error out
-                //         return Err(WorkerError::Command(format!("Add_bcg needs two parameters: Radio type (short/long) and Broadcast group.")))
-                //     }
-                //     let radio = parts[1].parse::<RadioTypes>().unwrap();
-                //     let bg_name = parts[2].into();
-                //     Ok(Commands::Add_bcg(radio, bg_name))
-                // },
-
-                // "REM_BCG" => {
-                //     if parts.len() < 2 {
-                //         //Error out
-                //         return Err(WorkerError::Command(format!("Rem_bcg needs two parameters: Radio type (short/long) and Broadcast group.")))
-                //     }
-                //     let radio = parts[1].parse::<RadioTypes>().unwrap();
-                //     let bg_name = parts[2].into();
-                //     Ok(Commands::Rem_bcg(radio, bg_name))
-                // },
                 "SEND" => {
                     if parts.len() < 2 {
                         //Error out

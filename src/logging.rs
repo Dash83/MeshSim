@@ -12,11 +12,15 @@
 )]
 
 use crate::worker::WorkerError;
+use crate::mobility::{NodeState, Position, Velocity};
 use slog::{Drain, Logger};
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::BufRead;
 use std::path::Path;
+use serde_json::Value;
+use std::collections::{HashMap, BTreeMap};
+use std::str::FromStr;
 
 /// Directory name for where the logs will be placed.
 pub const LOG_DIR_NAME: &str = "log";
@@ -101,6 +105,20 @@ pub struct OutgoingMsgLog {
     pub broadcast_duration: u64,
 }
 
+/// Logs the state of a node at some point in the simulation
+pub fn log_node_state(event: &str, node: NodeState, logger: &Logger) {
+    info!(
+        logger, 
+        "Node-state update";
+        "dest"=>node.dest,
+        "vel"=>node.vel,
+        "pos"=>node.pos,
+        "name"=> node.name,
+        "id"=>node.id,
+        "event"=> event,
+    );
+}
+
 ///Loads a log file and produces an array of log records for processing.
 pub fn get_log_records_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<LogEntry>, io::Error> {
     let file = File::open(path)?;
@@ -111,6 +129,32 @@ pub fn get_log_records_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<LogEntry
         let data = line?;
         let u: LogEntry = serde_json::from_str(&data)?;
         records.push(u);
+    }
+
+    Ok(records)
+}
+
+/// Get records regarding mobility updates in the simulation
+pub fn get_mobility_records<P: AsRef<Path>>(path: P) -> Result<HashMap<String, BTreeMap<String, (Position, Velocity)>>, io::Error> {
+    let mut records = HashMap::new();
+    let file = File::open(path)?;
+    let reader = io::BufReader::new(file);
+
+    for line in reader.lines() {
+        let data = line?;
+        let u: Value = serde_json::from_str(&data)?;
+        if u["msg"] == "Node-state update" {
+            let node_name: String = u["name"].to_string().trim_matches(|p| p == '"').to_string();
+            let node_records = records
+                .entry(node_name)
+                .or_insert(BTreeMap::new());
+            let ts: String = u["ts"].to_string();
+            let pos = u["pos"].to_string();
+            let pos = Position::from_str(&pos).expect("Could not parse string into Position");
+            let vel = u["vel"].to_string();
+            let vel = Velocity::from_str(&vel).expect("Could not parse string into Velocity");
+            node_records.insert(ts, (pos, vel));
+        }
     }
 
     Ok(records)

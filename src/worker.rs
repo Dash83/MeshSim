@@ -29,7 +29,7 @@ use crate::worker::protocols::*;
 use crate::worker::radio::*;
 use crate::master::Master;
 use crate::{MeshSimError, MeshSimErrorKind};
-use crate::mobility2::{Position, Velocity};
+use crate::mobility::{Position, Velocity};
 use crate::master::REG_SERVER_LISTEN_PORT;
 use byteorder::{NativeEndian, WriteBytesExt};
 use libc::{c_int, nice};
