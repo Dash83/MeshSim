@@ -4,6 +4,7 @@ actions = [ "Ping node1 node25 1500",
             "Ping node7 node25 2500"]
 width = 200.0
 height = 200.0
+random_seed = 12345
 [protocol]
 Protocol = "AODV"
 active_route_timeout = 3000

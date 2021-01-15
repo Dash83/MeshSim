@@ -15,6 +15,7 @@ actions = ["Add_Source node21 node43 1 64 8000 1000",
            ]
 width = 400.0
 height = 400.0
+random_seed = 12345
 [protocol]
 Protocol = "RGRII"
 k = 2

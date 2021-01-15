@@ -1,6 +1,6 @@
 [package]
 name = "mesh_simulator"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Marco Caballero <marco.caballero@cl.cam.ac.uk>"]
 repository = "https://github.com/Dash83/mesh_simulator.git"
 homepage = "https://github.com/Dash83/mesh_simulator.git"
@@ -11,7 +11,8 @@ description = "Simulation platform for a mesh network."
 edition = "2018"
 
 [dependencies]
-rand = "0.6.5"
+rand = "0.8.1"
+rand_distr = "0.4.0"
 rustc-serialize = "0.3"
 serde_derive = "1.0.10"
 serde = "1.0.10"

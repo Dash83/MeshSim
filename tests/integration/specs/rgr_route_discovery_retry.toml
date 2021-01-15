@@ -1,11 +1,14 @@
 name = "route_discovery_retry"
 duration = 9000
+random_seed = 12345
 width = 200 
 height = 200 
 actions = ["ping node2 node6 1000"]
+
 [mobility]
 Model = "RandomWaypoint"
 pause_time = 1
+
 [protocol]
 Protocol = "RGR"
 k = 2

@@ -1,5 +1,6 @@
 name = "random_waypoint_test"
 duration = 10000
+random_seed = 1
 actions = []
 width = 20.0
 height = 20.0
@@ -10,6 +11,7 @@ pause_time = 0
 
 [protocol]
 Protocol = "Flooding"
+
 [initial_nodes.node2]
 worker_name = "node2"
 worker_id = "de40c187094fd700761f22d7a2eaa1d8"
@@ -49,8 +51,8 @@ packet_queue_size = 3000
 stale_packet_threshold = 3000
 
 [initial_nodes.node1.position]
-x = 8.00669306708308
-y = 16.36772945397159
+x = 8.470385704513097
+y = 14.918601791008705
 
 [initial_nodes.node1.destination]
 x = 12.486206652602609

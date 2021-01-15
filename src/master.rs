@@ -26,7 +26,7 @@ use crate::mobility::*;
 use crate::logging::log_node_state;
 use libc::{c_int, nice};
 
-use rand::{thread_rng, RngCore};
+use rand::{RngCore, thread_rng};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{net::{IpAddr, Ipv6Addr, SocketAddr}};
 use serde_cbor::de::*;
@@ -75,6 +75,8 @@ const REG_SERVER_BACKLOG: i32 = 256;
 const RANDOM_WAYPOINT_WAIT_TIME: i64 = 1000;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 const CLEANUP_SLEEP: u64 = 500;
+/// Default random seed used for the master process
+pub const DEFAULT_RANDOM_SEED: u64 = 0;
 
 ///Different supported mobility models
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -215,6 +217,8 @@ pub struct Master {
     rs_handle: JoinHandle<()>,
     /// Signal across the Master threads that the test has ended so they can wrap up and finish.
     finish_test: Arc<AtomicBool>,
+    /// Random seed used to initialise all rngs in the master process.
+    random_seed: u64,
 }
 
 //region Errors
@@ -300,7 +304,7 @@ impl error::Error for MasterError {
 
 impl Master {
     /// Constructor for the struct.
-    pub fn new(work_dir: String, worker_path: String, log_file: String, db_name: String, logger: Logger) -> Result<Master, MeshSimError> {
+    pub fn new(work_dir: String, worker_path: String, log_file: String, db_name: String, random_seed: Option<u64>, logger: Logger) -> Result<Master, MeshSimError> {
         let workers = Arc::new(Mutex::new(HashMap::new()));
         let an = HashMap::new();
         let env_file = create_db_objects(&work_dir, &db_name, &logger)?;
@@ -317,6 +321,8 @@ impl Master {
             Arc::clone(&finish_test),
             logger.clone(),
         )?;
+
+        info!(&logger, "Regisration server started");
 
         let m = Master {
             workers,
@@ -336,6 +342,7 @@ impl Master {
             sleep_time_override: None,
             rs_handle: handle,
             finish_test,
+            random_seed: random_seed.unwrap_or(DEFAULT_RANDOM_SEED),
         };
 
 
@@ -356,12 +363,6 @@ impl Master {
             IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
                 listening_port
         );
-        // let recv_queue = threadpool::Builder::new()
-        //     .num_threads(REG_SERVER_POOL_SIZE)
-        //     .build();
-        // let env_file = env_file.clone();
-
-
         // The API requires that we first bind the socket to the listen adddress...
         let _ = sock.bind(&SockAddr::from(base_addr))
         .map_err(|e| {
@@ -1252,6 +1253,7 @@ impl Master {
         let _sleep_time_override = self.sleep_time_override;
         let conn = get_db_connection(&self.logger)?;
         let test_area = self.test_area;
+        let random_seed = self.random_seed;
         
         tb.name(String::from("MobilityThread")).spawn(move || {
 
@@ -1263,7 +1265,7 @@ impl Master {
                 MobilityModels::Stationary
             });
 
-            let mut mobility_handler = match Master::build_mobility_handler(model, test_area, logger.clone()) {
+            let mut mobility_handler = match Master::build_mobility_handler(model, random_seed, test_area, logger.clone()) {
                 Ok(mh) => mh,
                 Err(e) => {
                     //The mobility thread can't function without a handler. Exit the thread.
@@ -1320,7 +1322,7 @@ impl Master {
         })
     }
 
-    fn build_mobility_handler(model: MobilityModels, test_area: Area, logger: Logger) -> Result<Box<dyn MobilityHandler>, MeshSimError> {
+    fn build_mobility_handler(model: MobilityModels, random_seed: u64, test_area: Area, logger: Logger) -> Result<Box<dyn MobilityHandler>, MeshSimError> {
         let conn = get_db_connection(&logger)?;
 
         let handler: Box<dyn MobilityHandler> = match model {
@@ -1337,20 +1339,18 @@ impl Master {
                 let h = RandomWaypoint::new(
                     HUMAN_SPEED_MEAN,
                     HUMAN_SPEED_STD_DEV,
-                    0, //TODO: HUGE BUG. Must control this, can significantly change the direction of the simulation.
+                    random_seed,
                     test_area,
                     pause_time,
                     conn,
                     logger
-                );
+                )?;
                 Box::new(h)
             },
-            MobilityModels::IncreasedMobility{vel_mean, vel_std, vel_increase, pause_time } => { 
+            MobilityModels::IncreasedMobility{vel_mean: _, vel_std: _, vel_increase, pause_time } => { 
                 let h = IncreasedMobility::new(
-                    vel_mean,
-                    vel_std,
                     vel_increase,
-                    0, //TODO: HUGE BUG. Must control this, can significantly change the direction of the simulation.
+                    random_seed,
                     test_area,
                     pause_time,
                     conn,

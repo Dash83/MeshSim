@@ -1,12 +1,13 @@
-use crate::backend::{stop_all_workers, update_worker_vel, select_workers_at_destination, stop_workers, update_worker_target};
+use crate::{MeshSimErrorKind, backend::{stop_all_workers, update_worker_vel, select_workers_at_destination, stop_workers, update_worker_target}};
 use crate::MeshSimError;
-use crate::worker::Worker;
 use crate::master::test_specification::Area;
+use rand::SeedableRng;
 use diesel::pg::PgConnection;
 use slog::Logger;
 use std::collections::HashMap;
 use rand::{rngs::StdRng, Rng};
-use rand::distributions::{Normal, Uniform};
+use rand::distributions::Uniform;
+use rand_distr::Normal;
 use chrono::{DateTime, Utc};
 use slog::{Key, Value, Record, Serializer};
 use std::num::ParseFloatError;
@@ -132,7 +133,7 @@ impl MobilityHandler for Stationary {
 // Random Waypoint mobility model
 pub struct RandomWaypoint {
     paused_workers: HashMap<i32, PendingWorker>,
-    velocity_distribution: Normal,
+    velocity_distribution: Normal<f64>,
     area_width_dist: Uniform<f64>,
     area_height_dist: Uniform<f64>,
     pause_time: i64,
@@ -148,18 +149,25 @@ impl RandomWaypoint {
     pub fn new(
         vel_mean: f64,
         vel_std: f64,
-        random_seed: u32,
+        random_seed: u64,
         simulation_area: Area,
         pause_time: i64,
         conn: PgConnection,
-        logger: Logger) -> Self {
+        logger: Logger) -> Result<Self, MeshSimError> {
         let paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
-        let rng = Worker::rng_from_seed(random_seed);
-        let velocity_distribution = Normal::new(vel_mean, vel_std);
+        let rng = StdRng::seed_from_u64(random_seed);
+        let velocity_distribution = Normal::new(vel_mean, vel_std)
+        .map_err(|e| { 
+            let err_msg = format!("Could not create Normal distribution from Mean:{} & SD:{}", vel_mean, vel_std);
+            MeshSimError{
+                kind: MeshSimErrorKind::Configuration(err_msg),
+                cause: Some(Box::new(e))
+            }
+        })?;
         let width_dist = Uniform::new_inclusive(0., simulation_area.width);
         let height_dist = Uniform::new_inclusive(0., simulation_area.height);
 
-        RandomWaypoint {
+        let rwp = RandomWaypoint {
             paused_workers,
             velocity_distribution,
             area_width_dist: width_dist,
@@ -168,7 +176,8 @@ impl RandomWaypoint {
             conn,
             rng,
             logger,
-        }
+        };
+        Ok(rwp)
     }
 }
 
@@ -256,17 +265,14 @@ pub struct IncreasedMobility {
 
 impl IncreasedMobility {
     pub fn new(
-        vel_mean: f64,
-        vel_std: f64,
         vel_incr: f64,
-        random_seed: u32,
+        random_seed: u64,
         simulation_area: Area,
         pause_time: i64,
         conn: PgConnection,
         logger: Logger) -> Self {
         let paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
-        let rng = Worker::rng_from_seed(random_seed);
-        let _velocity_distribution = Normal::new(vel_mean, vel_std);
+        let rng = StdRng::seed_from_u64(random_seed);
         let width_dist = Uniform::new_inclusive(0., simulation_area.width);
         let height_dist = Uniform::new_inclusive(0., simulation_area.height);
 

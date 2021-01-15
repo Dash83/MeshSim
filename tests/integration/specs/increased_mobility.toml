@@ -3,6 +3,7 @@ duration = 10000
 actions = []
 width = 50.0
 height = 50.0
+random_seed = 12345
 
 [mobility]
 Model = "IncreasedMobility"
@@ -13,6 +14,7 @@ pause_time = 0
 
 [protocol]
 Protocol = "Flooding"
+
 [initial_nodes.node1]
 worker_name = "node1"
 worker_id = "8fc4154c0ef688925c2a428600a8ced4"

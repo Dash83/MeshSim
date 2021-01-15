@@ -249,7 +249,7 @@ impl GossipRouting {
         //Gossip?
         let s: f64 = {
             let mut rng = rng.lock().expect("Could not obtain lock for RNG");
-            rng.gen_range(0f64, 1f64)
+            rng.gen_range(0f64..1f64)
         };
         debug!(logger, "Gossip prob {}", s);
         if hdr.hops as usize > k && s > p {

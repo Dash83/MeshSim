@@ -5,6 +5,7 @@ duration = 1500
 width = 200
 height = 200
 actions = ["Kill_Node node2 500"]
+random_seed = 12345
 [protocol]
 Protocol = "Flooding"
 

@@ -8,7 +8,8 @@ use mesh_simulator::worker::protocols::Protocols;
 use mesh_simulator::worker::worker_config::*;
 use crate::mesh_simulator::mobility::{Position, Velocity};
 
-use rand::distributions::{Normal, Uniform};
+use rand::distributions::Uniform;
+use rand_distr::Normal;
 use rand::{thread_rng, Rng, RngCore};
 use std::error;
 use std::fmt;
@@ -323,12 +324,24 @@ fn command_add_nodes(
     let vel_distribution = match model {
         MobilityModels::RandomWaypoint { pause_time: _ } => {
             Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV)
+            .map_err(|_e| { 
+                let err_msg = "Could not create Normal distribution from the provided values".into();
+                Errors::TestParsing(err_msg)
+            })?
         },
         MobilityModels::Stationary => { 
             Normal::new(0., 0.)
+            .map_err(|_e| { 
+                let err_msg = "Could not create Normal distribution from the provided values".into();
+                Errors::TestParsing(err_msg)
+            })?
         },
         MobilityModels::IncreasedMobility {vel_mean, vel_std, vel_increase:_, pause_time:_ } => { 
             Normal::new(vel_mean, vel_std)
+            .map_err(|_e| { 
+                let err_msg = "Could not create Normal distribution from the provided values".into();
+                Errors::TestParsing(err_msg)
+            })?
         },
     };
     let nodes = match node_type.to_uppercase().as_str() {

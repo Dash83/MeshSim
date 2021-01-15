@@ -6,7 +6,7 @@ use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 
 use chrono::{DateTime, Utc};
-use rand::thread_rng;
+use std::sync::{Arc, Mutex};
 use rand::{rngs::StdRng, Rng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
@@ -26,7 +26,7 @@ pub struct LoraWifiBeacon {
     worker_id: String,
     wifi_tx_queue: Sender<Transmission>,
     lora_tx_queue: Sender<Transmission>,
-    rng: StdRng,
+    rng: Arc<Mutex<StdRng>>,
     logger: Logger,
 }
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -103,8 +103,8 @@ impl Protocol for LoraWifiBeacon {
     /// Function to initialize the protocol.
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
         //Random startup delay to avoid high collisions
-        let mut rng = thread_rng();
-        let startup_delay: u64 = rng.gen_range(0, 50);
+        let mut rng = self.rng.lock().expect("Failed to lock rng");
+        let startup_delay: u64 = rng.gen_range(0..50);
         std::thread::sleep(Duration::from_millis(startup_delay));
 
         let wifi_tx_queue = self.wifi_tx_queue.clone();
@@ -165,7 +165,7 @@ impl LoraWifiBeacon {
             worker_id,
             wifi_tx_queue,
             lora_tx_queue,
-            rng,
+            rng: Arc::new(Mutex::new(rng)),
             logger,
         }
     }

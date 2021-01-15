@@ -20,6 +20,7 @@ const ARG_WORKER_PATH: &str = "worker_path";
 const ARG_TERMINAL_LOG: &str = "term_log";
 const ARG_SLEEP_TIME: &str = "sleep_time";
 const ARG_DB_NAME: &str = "database_name";
+const ARG_RANDOM_SEED: &str = "random_seed";
 
 const ERROR_LOG_INITIALIZATION: i32 = 1;
 // const ERROR_EXECUTION_FAILURE: i32 = 2;
@@ -193,8 +194,22 @@ fn init(matches: &ArgMatches) -> Result<Master, MeshSimError> {
             .collect();
             parts[0].to_string()
         });
+    
+    //If a random seed is passed, use it.
+    let random_seed = matches
+        .value_of(ARG_RANDOM_SEED)
+        .map(|v| v.parse::<u64>())
+        .transpose()
+        .map_err(|e| { 
+            let err = "Could not parse provided random_seed into u64".into();
+            MeshSimError {
+                kind: MeshSimErrorKind::Configuration(err),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
     let worker_path = matches.value_of(ARG_WORKER_PATH).or(Some("./worker_cli")).unwrap().into();
-    let master = Master::new(work_dir, worker_path, log_file, db_name, logger)?;
+    let master = Master::new(work_dir, worker_path, log_file, db_name, random_seed, logger)?;
 
     Ok(master)
 }
@@ -247,6 +262,14 @@ fn get_cli_parameters<'a>() -> ArgMatches<'a> {
                 .long("db_name")
                 .value_name("NAME")
                 .help("Name for the database that will be created for running the test spec passed")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name(ARG_RANDOM_SEED)
+                .short("rand")
+                .long("random_seed")
+                .value_name("u64")
+                .help("Random seed used for creating the RNG for the Master")
                 .takes_value(true),
         )        
         .get_matches()

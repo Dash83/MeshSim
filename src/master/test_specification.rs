@@ -1,7 +1,7 @@
 extern crate toml;
 
 use super::workloads::*;
-use crate::master::MobilityModels;
+use crate::master::{MobilityModels, DEFAULT_RANDOM_SEED};
 use crate::worker::protocols::Protocols;
 use crate::worker::worker_config::WorkerConfig;
 use crate::{MeshSimError, MeshSimErrorKind};
@@ -10,6 +10,8 @@ use std::default::Default;
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
+
+
 
 /// Struct to keep the area of the simulation
 #[derive(Debug, Deserialize, Serialize, PartialEq, Default, Clone, Copy)]
@@ -25,6 +27,8 @@ pub struct Area {
 pub struct TestSpec {
     ///Name of the test. For informational purposes only.
     pub name: String,
+    /// Random seed used for all RNG operations of the master.
+    pub random_seed: u64,
     /// Duration of the test in milliseconds.
     pub duration: u64,
     /// Vector of actions for the Master to take.
@@ -88,6 +92,7 @@ impl TestSpec {
     pub fn new() -> TestSpec {
         TestSpec {
             name: String::from(""),
+            random_seed: DEFAULT_RANDOM_SEED,
             duration: 0,
             area_size: Area {
                 width: 0.0,

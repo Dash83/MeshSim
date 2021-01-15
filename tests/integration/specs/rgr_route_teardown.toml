@@ -5,6 +5,7 @@ actions = [ "Add_Source node7 node25 1 64 8000 1000",
             "Kill_Node node24 3900"]
 width = 300.0
 height = 300.0
+random_seed = 12345
 [protocol]
 Protocol = "RGR"
 k = 2

@@ -530,7 +530,7 @@ impl AODV {
         // let starting_rreq_id: u32 = thread_rng().gen_range(0, std::u32::MAX);
         let starting_rreq_id: u32 = {
             let mut rng = rng.lock().expect("Could not lock RNG");
-            rng.gen_range(0, std::u32::MAX)
+            rng.gen_range(0..std::u32::MAX)
         };
         let ts_rt_maintenance = Utc::now() + Duration::milliseconds(MAINTENANCE_RT_MAINTENANCE);
         let ts_rt_maintenance = AtomicI64::new(ts_rt_maintenance.timestamp_nanos());

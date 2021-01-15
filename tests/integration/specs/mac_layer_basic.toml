@@ -10,6 +10,7 @@ actions = [ "Ping node1 node25 1000",
 ]
 width = 300.0
 height = 300.0
+random_seed = 12345
 [protocol]
 Protocol = "Flooding"
 

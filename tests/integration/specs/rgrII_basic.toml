@@ -3,6 +3,7 @@ duration = 6000
 actions = ["ping node7 node25 3000 "]
 width = 300.0
 height = 300.0
+random_seed = 12345
 [protocol]
 Protocol = "RGRII"
 k = 1
