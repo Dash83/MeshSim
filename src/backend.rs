@@ -936,7 +936,7 @@ fn update_worker_position(
 #[cfg(test)]
 mod tests {
     // extern crate tests;
-    use crate::mobility2::*;
+    use crate::backend::*;
     use crate::tests::common::*;
 
     use std::sync::Mutex;

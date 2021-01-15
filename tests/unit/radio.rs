@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering;
 use super::super::*;
 use mesh_simulator::logging;
 
-use mesh_simulator::mobility2::*;
+use mesh_simulator::backend::*;
 use mesh_simulator::mobility::*;
 use mesh_simulator::tests::common::*;
 use mesh_simulator::worker::radio::*;

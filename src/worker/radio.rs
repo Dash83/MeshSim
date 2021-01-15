@@ -1,6 +1,6 @@
 //! This module defines the abstraction and functionality for what a Radio is in MeshSim
 
-use crate::mobility2::*;
+use crate::backend::*;
 use crate::worker::listener::*;
 use crate::worker::*;
 use crate::{MeshSimError, MeshSimErrorKind};
