@@ -3,11 +3,10 @@ extern crate mesh_simulator;
 use super::super::*;
 
 use mesh_simulator::tests::common::*;
-use std::io;
 use mesh_simulator::master::test_specification::TestSpec;
 
 #[test]
-fn one_node() -> io::Result<()> {
+fn one_node() {
     let test_name = String::from("increased_mobility");
     let data = setup(&test_name, false, false);
 
@@ -52,7 +51,7 @@ fn one_node() -> io::Result<()> {
     let (pos0, vel0) = mobility_records["node1"]
         .iter()
         .find(|_x| true)
-        .map(|(_ts, (pos, vel))| (pos.clone(), vel.clone()))
+        .map(|(_ts, (pos, vel))| (*pos, *vel))
         .unwrap();
 
     let dist = mobility_records["node1"].iter()
@@ -71,6 +70,4 @@ fn one_node() -> io::Result<()> {
 
     //Test passed. Results are not needed.
     teardown(data, true);
-
-    Ok(())
 }

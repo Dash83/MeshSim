@@ -314,7 +314,7 @@ impl Protocol for AODV {
         if let Some((resp_hdr, md)) = resp {
             self.tx_queue.send((resp_hdr, md, Utc::now()))
             .map_err(|e| { 
-                let msg = format!("Failed to queue response into tx_queue");
+                let msg = "Failed to queue response into tx_queue".to_string();
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(msg),
                     cause: Some(Box::new(e)),
@@ -757,7 +757,7 @@ impl AODV {
                 hop_count: 0,
                 destination: me.clone(),
                 dest_seq_no: seq_no.load(Ordering::SeqCst),
-                originator: msg.originator.clone(),
+                originator: msg.originator,
                 lifetime: config.my_route_timeout as u32,
             };
 
@@ -767,7 +767,7 @@ impl AODV {
             let log_data = ProtocolMessages::AODV(response.clone());
 
             let resp_hdr =
-                MessageHeader::new(me, entry.next_hop.clone(), serialize_message(response)?);
+                MessageHeader::new(me, entry.next_hop, serialize_message(response)?);
 
             return Ok(Some((resp_hdr, log_data)));
         }
@@ -821,7 +821,7 @@ impl AODV {
                     //Create the log data for the packet
                     let log_data = ProtocolMessages::AODV(response.clone());
 
-                    let dest = hdr.sender.clone();
+                    let dest = hdr.sender;
                     // let resp_hdr = hdr
                     //     .create_forward_header(me)
                     //     .set_destination(dest)
@@ -1240,7 +1240,7 @@ impl AODV {
     
                         //No valid route, so reply with an RERR
                         let mut dest = HashMap::new();
-                        dest.insert(msg.destination.clone(), entry.dest_seq_no);
+                        dest.insert(msg.destination, entry.dest_seq_no);
                         let rerr_msg = RouteErrorMessage {
                             flags: Default::default(),
                             destinations: dest,
@@ -1254,7 +1254,7 @@ impl AODV {
                         //Build header
                         let hdr = MessageHeader::new(
                             me,
-                            hdr.sender.clone(),
+                            hdr.sender,
                             serialize_message(rerr_msg)?,
                         );
     
@@ -1286,7 +1286,7 @@ impl AODV {
                                 Arc::clone(&seq_no),
                                 me.clone(),
                                 config,
-                                tx_queue.clone(),
+                                tx_queue,
                                 Arc::clone(&pending_routes),
                                 Arc::clone(&rreq_cache),
                                 &logger,
@@ -1304,7 +1304,7 @@ impl AODV {
                                 Some("Route to destination being repaired"),
                                 None,
                                 r_type,
-                                &Messages::DATA(msg.clone()),
+                                &Messages::DATA(msg),
                             );
                         } else {
                             // This is considered a route error.
@@ -1328,7 +1328,7 @@ impl AODV {
                             // For case (ii), there is only one unreachable destination, which is the
                             // destination of the data packet that cannot be delivered.
                             let mut dest = HashMap::new();
-                            dest.insert(msg.destination.clone(), entry.dest_seq_no);
+                            dest.insert(msg.destination, entry.dest_seq_no);
                             let rerr_msg = RouteErrorMessage {
                                 flags: Default::default(),
                                 destinations: dest,
@@ -1490,7 +1490,7 @@ impl AODV {
 
         tx_queue.send((hdr, log_data, Utc::now()))
         .map_err(|e| { 
-            let msg = format!("Failed to queue response into tx_queue");
+            let msg = "Failed to queue response into tx_queue".to_string();
             MeshSimError {
                 kind: MeshSimErrorKind::Contention(msg),
                 cause: Some(Box::new(e)),
@@ -1571,7 +1571,7 @@ impl AODV {
         //Broadcast RouteDiscovery
         tx_queue.send((hdr, log_data, Utc::now()))
         .map_err(|e| { 
-            let msg = format!("Failed to queue response into tx_queue");
+            let msg = "Failed to queue response into tx_queue".to_string();
             MeshSimError {
                 kind: MeshSimErrorKind::Contention(msg),
                 cause: Some(Box::new(e)),
@@ -1788,7 +1788,7 @@ impl AODV {
 
             tx_queue.send((hdr, log_data, Utc::now()))
             .map_err(|e| { 
-                let msg = format!("Failed to queue response into tx_queue");
+                let msg = "Failed to queue response into tx_queue".to_string();
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(msg),
                     cause: Some(Box::new(e)),
@@ -1817,7 +1817,7 @@ impl AODV {
             .expect("Could not lock pending routes table");
             pd.iter()
                 .filter(|(_, entry)| entry.lifetime < Utc::now())
-                .map(|(dest, entry)| (dest.clone(), entry.clone()))
+                .map(|(dest, entry)| (dest.clone(), *entry))
                 .collect()
         };
 
@@ -1873,7 +1873,7 @@ impl AODV {
         for (hdr, log_data, ts) in failed_rreq_transmissions {
             tx_queue.send((hdr, log_data, ts))
             .map_err(|e| { 
-                let msg = format!("Failed to queue RERR into tx_queue");
+                let msg = "Failed to queue RERR into tx_queue".to_string();
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(msg),
                     cause: Some(Box::new(e)),
@@ -1958,7 +1958,7 @@ impl AODV {
 
             tx_queue.send((hdr, log_data, Utc::now()))
             .map_err(|e| { 
-                let msg = format!("Failed to queue response into tx_queue");
+                let msg = "Failed to queue response into tx_queue".to_string();
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(msg),
                     cause: Some(Box::new(e)),

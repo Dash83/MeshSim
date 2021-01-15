@@ -89,7 +89,7 @@ impl Protocol for LoraWifiBeacon {
         if let Some((resp_hdr, md)) = resp {
             tx_queue.send((resp_hdr, md, Utc::now()))
             .map_err(|e| { 
-                let msg = format!("Failed to queue response into tx_queue");
+                let msg = "Failed to queue response into tx_queue".to_string();
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(msg),
                     cause: Some(Box::new(e)),
@@ -189,7 +189,7 @@ impl LoraWifiBeacon {
 
             tx_queue.send((hdr, log_data, Utc::now()))
             .map_err(|e| { 
-                let msg = format!("Failed to queue response into tx_queue");
+                let msg = "Failed to queue response into tx_queue".to_string();
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(msg),
                     cause: Some(Box::new(e)),
@@ -233,7 +233,7 @@ impl LoraWifiBeacon {
             None,
             Some("Replying to message"),
             r_type,
-            &Messages::Beacon(msg.clone()),
+            &Messages::Beacon(msg),
         );
 
         let sender = hdr.sender;

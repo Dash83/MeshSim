@@ -4,7 +4,7 @@ use super::super::*;
 
 use mesh_simulator::tests::common::*;
 
-fn count_data_packets(log_recors: &Vec<LogEntry>) -> usize {
+fn count_data_packets(log_recors: &[LogEntry]) -> usize {
     let mut packet_count = 0;
     for record in log_recors.iter() {
         if record.status.is_some() && record.msg_type.is_some() {

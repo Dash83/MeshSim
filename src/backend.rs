@@ -11,7 +11,7 @@ use crate::worker::radio::RadioTypes;
 use crate::mobility::*;
 use models::*;
 
-use std::{collections::HashMap, unimplemented};
+use std::{collections::HashMap};
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -1389,7 +1389,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_db_get_conn_bench() {
-        use threadpool;
+        
         use chrono::prelude::*;
 
         let _db = DB.lock().expect("Unable to acquire DB lock");
@@ -1404,8 +1404,8 @@ mod tests {
         .thread_name("Worker".into())
         .build();
 
-        let ITERATIONS=5000;
-        for i in 0..ITERATIONS {
+        let iterations=5000;
+        for i in 0..iterations {
             let _conn_file = env_file.clone();
             let logger = data.logger.clone();
             workers.execute(move || {

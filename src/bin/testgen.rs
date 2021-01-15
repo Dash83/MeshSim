@@ -260,12 +260,14 @@ fn process_command(com: Commands, spec: &mut TestSpec, data: &TestBasics) -> Res
     match com {
         Commands::Finish => command_finish(spec, data),
         Commands::AddNodes(node_type, num) => command_add_nodes(node_type, num, spec, data),
-        Commands::AddAction(parts) => command_add_action(parts, spec),
+        Commands::AddAction(parts) => {
+            Ok(command_add_action(parts, spec))
+        },
         Commands::AddSources(num_sources, s_type, params) => {
             command_add_sources(num_sources, s_type, params, spec)
         }
         Commands::AddGrid(x, y, sr_range, lr_range) => {
-            command_add_grid(x, y, sr_range, lr_range, spec, &data)
+            Ok(command_add_grid(x, y, sr_range, lr_range, spec, &data))
         }
     }
 }
@@ -401,9 +403,9 @@ fn command_add_nodes(
     Ok(false)
 }
 
-fn command_add_action(parts: String, spec: &mut TestSpec) -> Result<bool, Errors> {
+fn command_add_action(parts: String, spec: &mut TestSpec) -> bool {
     spec.actions.push(parts);
-    Ok(false)
+    false
 }
 
 fn command_add_sources(
@@ -604,7 +606,7 @@ fn command_add_grid(
     lr_range: f64,
     spec: &mut TestSpec,
     data: &TestBasics,
-) -> Result<bool, Errors> {
+) -> bool {
     let start_x: usize = 0;
     let start_y: usize = 0;
     let effective_range = sr_range * 0.90;
@@ -643,7 +645,7 @@ fn command_add_grid(
         }
     }
 
-    Ok(false)
+    false
 }
 
 fn main() {

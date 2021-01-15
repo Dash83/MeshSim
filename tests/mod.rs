@@ -5,9 +5,9 @@ extern crate mesh_simulator;
 #[cfg(test)]
 #[macro_use]
 extern crate pretty_assertions;
-#[macro_use]
+// #[macro_use]
 extern crate lazy_static;
-#[macro_use]
+// #[macro_use]
 extern crate slog;
 
 use self::chrono::prelude::*;

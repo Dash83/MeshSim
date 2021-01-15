@@ -423,7 +423,7 @@ fn test_broadcast_device() -> TestResult {
     use mesh_simulator::worker::protocols::flooding;
 
     //Setup
-    let host = env::var("MESHSIM_HOST").unwrap_or(String::from(""));
+    let host = env::var("MESHSIM_HOST").unwrap_or_else(|_| String::from(""));
     //This test should ONLY run on my lab development machine due to required configuration of device_mode.
     if !host.eq("kaer-morhen") {
         println!("This test should only run in the kaer-morhen host");
@@ -494,7 +494,7 @@ fn test_broadcast_device() -> TestResult {
 }
 
 #[test]
-fn test_last_transmission() -> TestResult {
+fn test_last_transmission() {
     use mesh_simulator::worker::protocols::flooding;
 
     let test_name = "last_transmission";
@@ -572,5 +572,4 @@ fn test_last_transmission() -> TestResult {
     //If test checks fail, this section won't be reached and not cleaned up for investigation.
     let _res = std::fs::remove_dir_all(&data.work_dir).unwrap();
 
-    Ok(())
 }

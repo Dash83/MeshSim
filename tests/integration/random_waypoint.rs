@@ -52,36 +52,36 @@ fn three_node_movement() {
     let mut prev_pos = mobility_records["node1"]
         .iter()
         .find(|_x| true)
-        .map(|(_ts, (pos, _vel))| pos.clone())
+        .map(|(_ts, (pos, _vel))| *pos)
         .unwrap();
     
     for (_ts, (pos, _vel)) in mobility_records["node1"].iter().skip(1) {
         assert_ne!(pos, &prev_pos);
-        prev_pos = pos.clone();
+        prev_pos = *pos;
     }
     
     // Check that every recorded position for node2 is different (e.g. it kept moving)
     let mut prev_pos = mobility_records["node2"]
         .iter()
         .find(|_x| true)
-        .map(|(_ts, (pos, _vel))| pos.clone())
+        .map(|(_ts, (pos, _vel))| *pos)
         .unwrap();
     
     for (_ts, (pos, _vel)) in mobility_records["node2"].iter().skip(1) {
         assert_ne!(pos, &prev_pos);
-        prev_pos = pos.clone();
+        prev_pos = *pos;
     }
 
     // Check that every recorded position for node3 is different (e.g. it kept moving)
     let mut prev_pos = mobility_records["node3"]
         .iter()
         .find(|_x| true)
-        .map(|(_ts, (pos, _vel))| pos.clone())
+        .map(|(_ts, (pos, _vel))| *pos)
         .unwrap();
     
     for (_ts, (pos, _vel)) in mobility_records["node3"].iter().skip(1) {
         assert_ne!(pos, &prev_pos);
-        prev_pos = pos.clone();
+        prev_pos = *pos;
     }
 
     //Test passed. Results are not needed.

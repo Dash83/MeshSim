@@ -223,7 +223,7 @@ impl Protocol for ReactiveGossipRoutingII {
         if let Some((resp_hdr, md)) = resp {
             self.wifi_tx_queue.send((resp_hdr, md, Utc::now()))
             .map_err(|e| { 
-                let msg = format!("Failed to queue response into tx_queue");
+                let msg = "Failed to queue response into tx_queue".to_string();
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(msg),
                     cause: Some(Box::new(e)),
@@ -439,7 +439,7 @@ impl ReactiveGossipRoutingII {
             q,
             worker_name,
             worker_id,
-            wifi_tx_queue: wifi_tx_queue,
+            wifi_tx_queue,
             destination_routes: Arc::new(Mutex::new(d_routes)),
             queued_transmissions: Arc::new(Mutex::new(qt)),
             known_routes: Arc::new(Mutex::new(k_routes)),
@@ -488,7 +488,7 @@ impl ReactiveGossipRoutingII {
 
         wifi_tx_queue.send((hdr, log_data, Utc::now()))
         .map_err(|e| { 
-            let msg = format!("Failed to queue response into tx_queue");
+            let msg = "Failed to queue response into tx_queue".to_string();
             MeshSimError {
                 kind: MeshSimErrorKind::Contention(msg),
                 cause: Some(Box::new(e)),
@@ -526,7 +526,7 @@ impl ReactiveGossipRoutingII {
         //This might be addressed later on.
         wifi_tx_queue.send((hdr, log_data, Utc::now()))
         .map_err(|e| { 
-            let msg = format!("Failed to queue response into tx_queue");
+            let msg = "Failed to queue response into tx_queue".to_string();
             MeshSimError {
                 kind: MeshSimErrorKind::Contention(msg),
                 cause: Some(Box::new(e)),
@@ -1463,7 +1463,7 @@ impl ReactiveGossipRoutingII {
                 //The message is still cached, so re-transmit it.
                 wifi_tx_queue.send((hdr, log_data, Utc::now()))
                 .map_err(|e| { 
-                    let msg = format!("Failed to queue response into tx_queue");
+                    let msg = "Failed to queue response into tx_queue".to_string();
                     MeshSimError {
                         kind: MeshSimErrorKind::Contention(msg),
                         cause: Some(Box::new(e)),
@@ -1497,7 +1497,7 @@ impl ReactiveGossipRoutingII {
                     //Send message
                     wifi_tx_queue.send((hdr, log_data, Utc::now()))
                     .map_err(|e| { 
-                        let msg = format!("Failed to queue response into tx_queue");
+                        let msg = "Failed to queue response into tx_queue".to_string();
                         MeshSimError {
                             kind: MeshSimErrorKind::Contention(msg),
                             cause: Some(Box::new(e)),

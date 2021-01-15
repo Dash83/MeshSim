@@ -20,7 +20,7 @@ use std::time::Duration;
 #[test]
 // #[cfg(target_os = "linux")]
 fn integration_device_mode_basic() -> TestResult {
-    let host = env::var("MESHSIM_HOST").unwrap_or(String::from(""));
+    let host = env::var("MESHSIM_HOST").unwrap_or_else(|_| String::from(""));
     let test_duration: u64 = 3000; //3000 ms
     let test_name = String::from("device_mode_basic");
     let data = setup(&test_name, false, false);

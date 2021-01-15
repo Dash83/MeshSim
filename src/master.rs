@@ -384,7 +384,7 @@ impl Master {
         //on the accept() call even if the finish_test signal has been set.
         sock.set_nonblocking(true)
         .map_err(|e| {
-            let err_msg = format!("Failed to set RegistrationServer socket into nonblocking mode");
+            let err_msg = "Failed to set RegistrationServer socket into nonblocking mode".to_string();
             MeshSimError {
                 kind: MeshSimErrorKind::Networking(err_msg),
                 cause: Some(Box::new(e)),
@@ -529,7 +529,7 @@ impl Master {
         //Set the client socket to non-blocking, otherwise the receive operation would fail.
         client.set_nonblocking(false)
         .map_err(|e| {
-            let err_msg = format!("Failed to set client socket into blocking mode");
+            let err_msg = "Failed to set client socket into blocking mode".to_string();
             MeshSimError {
                 kind: MeshSimErrorKind::Networking(err_msg),
                 cause: Some(Box::new(e)),
@@ -539,7 +539,7 @@ impl Master {
         let read_timeout = Duration::from_millis(200);
         client.set_read_timeout(Some(read_timeout))
         .map_err(|e| {
-            let err_msg = format!("Failed to set client read timeout");
+            let err_msg = "Failed to set client read timeout".to_string();
             MeshSimError {
                 kind: MeshSimErrorKind::Networking(err_msg),
                 cause: Some(Box::new(e)),
@@ -559,7 +559,7 @@ impl Master {
         let data = buffer[..bytes_read].to_vec();
         let cmd: Commands = from_slice(&data)
         .map_err(|e| {
-            let err_msg = format!("Could not deserialise message from client");
+            let err_msg = "Could not deserialise message from client".to_string();
             MeshSimError {
                 kind: MeshSimErrorKind::Serialization(err_msg),
                 cause: Some(Box::new(e)),
@@ -688,7 +688,7 @@ impl Master {
         let conn_str = get_connection_string_from_file(&self.env_file)?;
         for (_, val) in spec.initial_nodes.iter_mut() {
             //Assign a protocol for the worker
-            val.protocol = Some(spec.protocol.clone());
+            val.protocol = Some(spec.protocol);
 
             //Start the child process
             let listen_for_commands = active_nodes.contains(&val.worker_name);
@@ -1249,7 +1249,7 @@ impl Master {
         let m_model = self.mobility_model.clone();
         let logger = self.logger.clone();
         // let mut paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
-        let _sleep_time_override = self.sleep_time_override.clone();
+        let _sleep_time_override = self.sleep_time_override;
         let conn = get_db_connection(&self.logger)?;
         let test_area = self.test_area;
         
@@ -1326,7 +1326,7 @@ impl Master {
         let handler: Box<dyn MobilityHandler> = match model {
             MobilityModels::Stationary => { 
                 let _ = Stationary::new(&conn, &logger);
-                let err_msg = format!("Exiting thread since Stationary model is selected");
+                let err_msg = "Exiting thread since Stationary model is selected".to_string();
                 let e = MeshSimError{
                     kind: MeshSimErrorKind::Configuration(err_msg),
                     cause: None

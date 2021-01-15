@@ -552,7 +552,7 @@ impl Worker {
         };
         let _res = w.init(operation_mode, pos, vel, dest)?;
 
-        return Ok(w)
+        Ok(w)
     }
 
     fn new_command_socket(work_dir: &String, name: &String) -> Result<(Socket, String), MeshSimError> {
@@ -803,7 +803,7 @@ impl Worker {
                         }
                     }
 
-                    return thread_name;
+                    thread_name
                 }).expect("Could not spawn radio thread")
             })
             .collect();
