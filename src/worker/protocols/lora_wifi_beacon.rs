@@ -1,7 +1,7 @@
 //! Module for the test protocol that uses Lora and Wifi radios
 
 use crate::worker::protocols::{Transmission, HandleMessageOutcome, Protocol, ProtocolMessages};
-use crate::worker::radio::{self, Radio, RadioTypes};
+use crate::worker::radio::{self, RadioTypes};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 
@@ -11,7 +11,7 @@ use rand::{rngs::StdRng, Rng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
 use slog::{Logger, Record, Serializer, KV};
-use std::sync::Arc;
+
 use std::thread;
 use std::time::Duration;
 use crossbeam_channel::Sender;
@@ -70,7 +70,7 @@ impl Protocol for LoraWifiBeacon {
         let self_peer = self.get_self_peer();
 
         // let logger = self.logger.clone();
-        let link = match r_type {
+        let _link = match r_type {
             RadioTypes::ShortRange => String::from("wifi"),
             RadioTypes::LongRange => String::from("lora"),
         };
@@ -175,7 +175,7 @@ impl LoraWifiBeacon {
         timeout: u64,
         self_peer: String,
         _link: String,
-        logger: Logger,
+        _logger: Logger,
     ) -> Result<(), MeshSimError> {
         let mut counter: u64 = 0;
         let sleep_time = Duration::from_millis(timeout);

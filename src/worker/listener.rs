@@ -6,7 +6,7 @@ extern crate linux_embedded_hal as hal;
 
 use crate::worker::radio::RadioTypes;
 use crate::worker::*;
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use socket2::Socket;
 #[cfg(target_os = "linux")]
 use sx1276::socket::{Link, LoRa};

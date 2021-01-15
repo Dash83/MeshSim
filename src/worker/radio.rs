@@ -7,7 +7,7 @@ use crate::{MeshSimError, MeshSimErrorKind};
 use chrono::Utc;
 use diesel::pg::PgConnection;
 use pnet_datalink as datalink;
-use rand::prelude::*;
+
 
 use slog::{Logger, KV};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};

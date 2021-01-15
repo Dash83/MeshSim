@@ -7,7 +7,7 @@ use crate::{MeshSimError, MeshSimErrorKind};
 use chrono::offset::TimeZone;
 use chrono::{DateTime, Duration, Utc};
 
-use rand::{rngs::StdRng, thread_rng, Rng};
+use rand::{rngs::StdRng, Rng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
 use slog::{Logger, Record, Serializer, KV};
@@ -40,7 +40,7 @@ const NODE_TRAVERSAL_TIME: i64 = 40; //milliseconds
 const _RERR_RATELIMITE: usize = 10;
 const RREQ_RETRIES: usize = 2;
 const _RREQ_RATELIMIT: usize = 10;
-const TIMEOUT_BUFFER: u64 = 2; //in ??
+// const TIMEOUT_BUFFER: u64 = 2; //in ??
 const _TTL_START: usize = 1;
 const _TTL_INCREMENT: usize = 2;
 const _TTL_THRESHOLD: usize = 7;
@@ -289,7 +289,7 @@ impl Protocol for AODV {
         let rreq_seq_no = Arc::clone(&self.rreq_seq_no);
         let rreq_cache = Arc::clone(&self.rreq_cache);
         let data_cache = Arc::clone(&self.data_cache);
-        let rng = Arc::clone(&self.rng);
+        let _rng = Arc::clone(&self.rng);
         let pd = Arc::clone(&self.pending_routes);
         let qt = Arc::clone(&self.queued_transmissions);
 
@@ -904,7 +904,7 @@ impl AODV {
         //Update hop-count
         msg.hop_count += 1;
 
-        let repaired = {
+        let _repaired = {
             let mut rt = route_table.lock().expect("Could not lock route table");
             // Should we update route to DESTINATON with the RREP data?
             let mut entry = rt.entry(msg.destination.clone()).or_insert_with(|| {
@@ -1926,7 +1926,7 @@ impl AODV {
         seq_no: Arc<AtomicU32>,
         tx_queue: Sender<Transmission>,
         last_transmission: Arc<AtomicI64>,
-        logger: &Logger,
+        _logger: &Logger,
     ) -> Result<(), MeshSimError> {
         let num_active_routes = {
             let rt = route_table.lock().expect("Could not lock route table");

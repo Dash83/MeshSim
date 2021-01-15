@@ -266,7 +266,7 @@ impl IncreasedMobility {
         logger: Logger) -> Self {
         let paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
         let rng = Worker::rng_from_seed(random_seed);
-        let velocity_distribution = Normal::new(vel_mean, vel_std);
+        let _velocity_distribution = Normal::new(vel_mean, vel_std);
         let width_dist = Uniform::new_inclusive(0., simulation_area.width);
         let height_dist = Uniform::new_inclusive(0., simulation_area.height);
 

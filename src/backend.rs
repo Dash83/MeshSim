@@ -5,7 +5,7 @@ extern crate chrono;
 extern crate dotenv;
 extern crate strfmt;
 
-use crate::{MeshSimError, MeshSimErrorKind, worker};
+use crate::{MeshSimError, MeshSimErrorKind};
 // use crate::worker::Peer;
 use crate::worker::radio::RadioTypes;
 use crate::mobility::*;
@@ -544,12 +544,6 @@ pub fn select_all_workers_state(conn: &PgConnection) -> Result<Vec<NodeState>, M
         .collect();
 
     Ok(result)
-}
-
-/// Updates the positions of all nodes according to their velocity and returns
-/// a view of all nodes, their new positions, destinations, and velocities,
-pub fn update_mobility_state(conn: &PgConnection) -> Result<HashMap<String, NodeMobilityState>, MeshSimError> {
-    unimplemented!()
 }
 
 /// Returns all workers within RANGE meters of the current position of WORKER_ID
@@ -1400,10 +1394,10 @@ mod tests {
 
         let _db = DB.lock().expect("Unable to acquire DB lock");
         // let _ = create_db_objects(&logger).expect("Could not create db objects");
-        let mut data = setup("get_conn_bench", false, true);
+        let data = setup("get_conn_bench", false, true);
         let env_file = data.db_env_file.clone().unwrap();
         //Get a file connection to load the env file in the process
-        let conn = get_db_connection_by_file(env_file.clone(), &data.logger);
+        let _conn = get_db_connection_by_file(env_file.clone(), &data.logger);
 
         let workers = threadpool::Builder::new()
         .num_threads(3)
@@ -1412,11 +1406,11 @@ mod tests {
 
         let ITERATIONS=5000;
         for i in 0..ITERATIONS {
-            let conn_file = env_file.clone();
+            let _conn_file = env_file.clone();
             let logger = data.logger.clone();
             workers.execute(move || {
                 let ts0 = Utc::now();
-                let conn = get_db_connection(&logger)
+                let _conn = get_db_connection(&logger)
                     .expect("Failed to connect to experiment DB");
                 let dur = Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
                 info!(&logger, "Operation completed"; "iter"=>i, "duration"=>dur);

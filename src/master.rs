@@ -25,10 +25,10 @@ use crate::{MeshSimError, MeshSimErrorKind};
 use crate::mobility::*;
 use crate::logging::log_node_state;
 use libc::{c_int, nice};
-use rand::distributions::{Normal, Uniform};
-use rand::{thread_rng, Rng, RngCore};
+
+use rand::{thread_rng, RngCore};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
-use std::{net::{IpAddr, Ipv6Addr, SocketAddr}, unimplemented};
+use std::{net::{IpAddr, Ipv6Addr, SocketAddr}};
 use serde_cbor::de::*;
 use crossbeam_channel::unbounded;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -36,7 +36,7 @@ use sysinfo::{self, ProcessExt, SystemExt, Signal};
 use std::path::Path;
 
 // use rusqlite::Connection;
-use chrono::{DateTime, Utc};
+
 use diesel::pg::PgConnection;
 use slog::Logger;
 use std::collections::{HashMap, HashSet};
@@ -416,7 +416,7 @@ impl Master {
                         //Local-scope resources for this worker thread
                         let conn = match get_db_connection_by_file(cf, &l) {
                             Ok(c) => { c } ,
-                            Err(e) => {
+                            Err(_e) => {
                                 error!(l, "RegServerWorker failed to obtain database connection and will terminate"; "thread"=>&thread_name);
                                 return;
                             }
@@ -961,7 +961,7 @@ impl Master {
                 &conn_str,
                 &logger,
             ) {
-                Ok(mut child_handle) => {
+                Ok(_child_handle) => {
                     /* All good */
                 }
                 Err(e) => {
@@ -1090,7 +1090,7 @@ impl Master {
                         "Ping {}->{} action: completed", &source, &destination
                     );
                 },
-                Err(e) => { 
+                Err(_e) => { 
                     error!(logger, "Failed to send PING command to {}", &source);
                 },
             }
@@ -1215,7 +1215,7 @@ impl Master {
                         packet_counter,
                     );
                 },
-                Err(e) => { 
+                Err(_e) => { 
                     error!(logger, "Could not send SEND command to worker"; "node" => &source);
                 },
             }

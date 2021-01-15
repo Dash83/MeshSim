@@ -14,7 +14,7 @@ use chrono::{DateTime, Duration, Utc};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
+
 use crossbeam_channel::Sender;
 
 /// The default number of hops messages are guaranteed to be propagated
@@ -25,7 +25,6 @@ pub const BASE_GOSSIP_PROB: f64 = 0.50;
 pub const VICINITY_GOSSIP_PROB: f64 = 0.20;
 const MSG_CACHE_SIZE: usize = 2000;
 const CONCCURENT_THREADS_PER_FLOW: usize = 2;
-const MAINTENANCE_LOOP: u64 = 1_000;
 const MAINTENANCE_DATA_RETRANSMISSION: i64 = 1_000;
 const MAINTENANCE_RD_RETRANSMISSION: i64 = 1_000;
 const MAINTENANCE_VICINITY_CACHE: i64 = 1_000;
@@ -507,7 +506,7 @@ impl ReactiveGossipRoutingII {
         hdr: MessageHeader,
         wifi_tx_queue: Sender<Transmission>,
         data_msg_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
-        logger: &Logger,
+        _logger: &Logger,
     ) -> Result<(), MeshSimError> {
         //Log this message in the data_msg_cache so that we can monitor if the neighbors relay it
         //properly, retransmit if necessary, and don't relay it again when we hear it from others.

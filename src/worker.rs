@@ -32,7 +32,7 @@ use crate::{MeshSimError, MeshSimErrorKind};
 use crate::mobility::{Position, Velocity};
 use crate::master::REG_SERVER_LISTEN_PORT;
 use byteorder::{NativeEndian, WriteBytesExt};
-use libc::{c_int, nice};
+// use libc::{c_int};
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::io::ErrorKind;
 use chrono::TimeZone;
@@ -68,7 +68,6 @@ pub mod worker_config;
 //const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT: u16 = 23456;
 const WORKER_POOL_SIZE: usize = 1;
-const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
 const MAIN_THREAD_PERIOD: u64 = 100; //milliseconds
 /// subdirectory name where the command sockets are placed
 pub const SOCKET_DIR: &str = "sockets";
@@ -613,7 +612,7 @@ impl Worker {
     }
 
     /// The main loop of the worker.
-    pub fn start(&mut self, accept_commands: bool) -> Result<(), MeshSimError> {
+    pub fn start(&mut self, _accept_commands: bool) -> Result<(), MeshSimError> {
         let finish = Arc::new(AtomicBool::new(false));
         let mut buffer = [0; 65536];
 
