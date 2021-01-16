@@ -89,7 +89,7 @@ range = 160.0
 worker_name = "node24"
 worker_id = "a83487435c13220eea09ec7d88a50607"
 work_dir = "/tmp/rgr_route_teardown1141351916"
-random_seed = 2640706197
+random_seed = 264070619
 operation_mode = "Simulated"
 
 [initial_nodes.node24.position]

@@ -22,6 +22,8 @@ pub struct Position {
     pub y: f64,
 }
 
+impl Eq for Position { }
+
 impl Position {
     pub fn distance(&self, other: &Position) -> f64 {
         euclidean_distance(self.x, self.y, other.x, other.y)

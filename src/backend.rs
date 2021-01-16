@@ -404,7 +404,7 @@ pub fn select_workers_at_destination(
     .filter(|ns| { 
         if ns.dest.is_some() {
             let dest = ns.dest.as_ref().unwrap();
-            ns.pos.distance(dest) <= ns.vel.magnitude()
+            ns.pos == *dest
         } else {
             false
         }
@@ -451,15 +451,18 @@ pub fn stop_workers(
 /// respective velocity vector. Update happens every 1 second.
 pub fn update_worker_positions(conn: &PgConnection) -> Result<usize, MeshSimError> {
     use diesel::pg::upsert::excluded;
-    use schema::worker_positions::{self};
-    use schema::worker_velocities::{self};
+    use schema::worker_positions;
+    use schema::worker_velocities;
+    use schema::worker_destinations;
 
     let new_positions: Vec<NewPos> = worker_positions::table
         .inner_join(worker_velocities::table)
+        .inner_join(worker_destinations::table)
         .select((
             worker_positions::worker_id,
-            worker_positions::x + worker_velocities::x,
-            worker_positions::y + worker_velocities::y,
+            worker_positions::x, worker_positions::y,
+            worker_velocities::x, worker_velocities::y,
+            worker_destinations::x, worker_destinations::y,
         ))
         .load(conn)
         .map_err(|e| {
@@ -468,7 +471,21 @@ pub fn update_worker_positions(conn: &PgConnection) -> Result<usize, MeshSimErro
                 kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
                 cause: Some(Box::new(e)),
             }
-        })?;
+        })?
+        .into_iter()
+        .map(|(id, pos_x, pos_y, vel_x, vel_y, dest_x, dest_y)| { 
+            let pos = Position{x: pos_x, y: pos_y};
+            let dest = Position{x: dest_x, y: dest_y};
+            let vel = Velocity{x: vel_x, y: vel_y};
+
+            let new_pos = if pos.distance(&dest) < vel.magnitude() {
+                NewPos{ worker_id: id, x: dest.x, y: dest.y }
+            } else {
+                NewPos{ worker_id: id, x: pos.x + vel.x, y: pos.y + vel.y}
+            };
+            new_pos
+        })
+        .collect();
 
     let rows = diesel::insert_into(worker_positions::table)
         .values(&new_positions)
