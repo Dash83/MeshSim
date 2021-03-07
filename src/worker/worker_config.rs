@@ -1,8 +1,8 @@
 //! This module defines the worker_config struct and related functions. It allows meshsim to
 //! deserialize a configuration file into a worker_config object that eventually creates a worker object.
 
+use crate::mobility::{Position, Velocity};
 use crate::worker::listener::Listener;
-use crate::worker::mobility::{Position, Velocity};
 use crate::worker::protocols::*;
 use crate::worker::radio::*;
 use crate::worker::radio::{self, LoraFrequencies, SimulatedRadio, WifiRadio};
@@ -27,23 +27,32 @@ const DEFAULT_SPREADING_FACTOR: u32 = 0;
 const DEFAULT_LORA_FREQ: LoraFrequencies = LoraFrequencies::Europe;
 const DEFAULT_LORA_TRANS_POWER: u8 = 15;
 const DEFAULT_PACKET_QUEUE_SIZE: usize = 3000; //Max number of queued packets
+const DEFAULT_READ_TIMEOUT: u64 = 10000; //microseconds
+const DEFAULT_STALE_PACKET_THRESHOLD: i32 = 3_000; //3 seconds in nanoseconds
+const DEFAULT_TX_DELAY_PER_NODE: i64 = 40; //In microseconds
 
 //TODO: Cleanup this struct
 ///Configuration pertaining to a given radio of the worker.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default)]
 pub struct RadioConfig {
-    ///Simulated mode only. How likely ([0-1]) are packets to reach their destination.
-    pub reliability: Option<f64>,
+    ///Timeout (in ms) for each network read.
+    pub timeout: Option<u64>,
     ///Name of the network interface that this radio will use.
     pub interface_name: Option<String>,
     ///Range in meters of this radio.
     pub range: f64,
+    ///Max number of retries for the mac layer CDMA/CA algorithm
+    pub mac_layer_retries: Option<usize>,
+    ///The base wait-number in milliseconds for each time the mac layer has a collition
+    pub mac_layer_base_wait: Option<u64>,
     ///Frequency for the Lora radio. Varies by country.
     pub frequency: Option<u64>,
     ///Spreading factor for the Lora radio.
     pub spreading_factor: Option<u32>,
     ///Transmission power for the Lora radio.
     pub transmission_power: Option<u8>,
+    ///Maximum delay per node in a broadcast.
+    pub max_delay_per_node: Option<i64>,
 }
 
 impl RadioConfig {
@@ -51,12 +60,15 @@ impl RadioConfig {
     /// so users should take care to modify the appropriate values.
     pub fn new() -> RadioConfig {
         RadioConfig {
-            reliability: Some(1.0),
+            timeout: Some(DEFAULT_READ_TIMEOUT),
             interface_name: Some(format!("{}0", DEFAULT_INTERFACE_NAME)),
             range: 0.0,
             frequency: None,
             spreading_factor: None,
             transmission_power: None,
+            mac_layer_retries: Some(DEFAULT_TRANSMISSION_MAX_RETRY),
+            mac_layer_base_wait: Some(DEFAULT_TRANSMISSION_WAIT_BASE),
+            max_delay_per_node: Some(DEFAULT_TX_DELAY_PER_NODE),
         }
     }
 
@@ -82,8 +94,16 @@ impl RadioConfig {
                 let iname = self.interface_name.expect("An interface name for radio_short must be provided when operating in device_mode.");
                 let (radio, listener): (Arc<dyn Radio>, Box<dyn Listener>) = match r_type {
                     RadioTypes::ShortRange => {
-                        let (r, l) =
-                            WifiRadio::new(iname, worker_name, worker_id, rng, r_type, logger)?;
+                        let timeout = self.timeout.unwrap_or(DEFAULT_READ_TIMEOUT);
+                        let (r, l) = WifiRadio::new(
+                            iname,
+                            worker_name,
+                            worker_id,
+                            timeout,
+                            rng,
+                            r_type,
+                            logger,
+                        )?;
                         (Arc::new(r), l)
                     }
                     RadioTypes::LongRange => {
@@ -97,16 +117,26 @@ impl RadioConfig {
                 Ok((radio, listener))
             }
             OperationMode::Simulated => {
-                //let delay = self.delay.unwrap_or(0);
-                let reliability = self.reliability.unwrap_or(1.0);
-                //let bg = self.broadcast_groups;
+                let timeout = self.timeout.unwrap_or(DEFAULT_READ_TIMEOUT);
+                let mac_layer_retries = self
+                    .mac_layer_retries
+                    .unwrap_or(DEFAULT_TRANSMISSION_MAX_RETRY);
+                let mac_layer_base_wait = self
+                    .mac_layer_base_wait
+                    .unwrap_or(DEFAULT_TRANSMISSION_WAIT_BASE);
+                let max_delay_per_node = self
+                    .max_delay_per_node
+                    .unwrap_or(DEFAULT_TX_DELAY_PER_NODE);
                 let (radio, listener) = SimulatedRadio::new(
-                    reliability,
+                    timeout,
                     work_dir,
                     worker_id,
                     worker_name,
                     r_type,
                     self.range,
+                    mac_layer_retries,
+                    mac_layer_base_wait,
+                    max_delay_per_node,
                     rng,
                     logger,
                 )?;
@@ -140,14 +170,17 @@ pub struct WorkerConfig {
     pub term_log: Option<bool>,
     /// The maximum number of queued packets a worker can have
     pub packet_queue_size: Option<usize>,
+    ///Threshold after which a packet is considered stale and dropped.
+    ///Expressed in milliseconds.
+    pub stale_packet_threshold: Option<i32>,
+    ///NOTE: Due to the way serde_toml works, the following fields must be kept last in the structure.
     /// Initial position of the worker
-//    #[serde(flatten)]
+    //    #[serde(flatten)]
     pub position: Position,
     /// Optional field used for mobility models.
     pub destination: Option<Position>,
     /// Velocity vector of the worker
     pub velocity: Velocity,
-    ///NOTE: Due to the way serde_toml works, the following fields must be kept last in the structure.
     /// The protocol that this Worker should run for this configuration.
     pub protocol: Option<Protocols>,
     /// This is because they are interpreted as TOML tables, and those are always placed at the end of structures.
@@ -169,7 +202,8 @@ impl WorkerConfig {
             accept_commands: None,
             term_log: None,
             packet_queue_size: Some(DEFAULT_PACKET_QUEUE_SIZE),
-            protocol: Some(Protocols::NaiveRouting),
+            stale_packet_threshold: Some(DEFAULT_STALE_PACKET_THRESHOLD),
+            protocol: Some(Protocols::Flooding),
             radio_short: None,
             radio_long: None,
             position: Position { x: 0.0, y: 0.0 },
@@ -184,7 +218,7 @@ impl WorkerConfig {
         let gen = Worker::rng_from_seed(self.random_seed);
         //Check if a worker_id is present
         let id = match self.worker_id {
-            Some(id) => id.clone(),
+            Some(id) => id,
             None => WorkerConfig::gen_id(self.random_seed),
         };
         //Wrap the rng in the shared-mutable-state smart pointers
@@ -226,40 +260,26 @@ impl WorkerConfig {
             None => None,
         };
 
-        //Need to add an endline char to stdout after both radios have been initialized.
-        println!();
+        // //Need to add an endline char to stdout after both radios have been initialized.
+        // println!();
 
-        // if self.operation_mode == OperationMode::Simulated &&
-        //    register_worker == true {
-        //     let conn = mobility::get_db_connection(&self.work_dir, &logger)?;
-        //     // debug!("DB Connection obtained.");
-        //     let _rows = mobility::create_db_objects(&conn, &logger)?;
-        //     // debug!("create_positions_db returned {}", _rows);
-        //     let db_id = mobility::register_worker(&conn, self.worker_name.clone(),
-        //                                             &id,
-        //                                             &self.position,
-        //                                             &self.velocity,
-        //                                             &self.destination,
-        //                                             sr_addr,
-        //                                             lr_addr,
-        //                                             &logger)?;
-        //     debug!(logger, "Worker registered correcly with id {}", &db_id);
-        // }
-
-        let w = Worker {
-            name: self.worker_name,
-            short_radio: sr_channels,
-            long_radio: lr_channels,
-            work_dir: self.work_dir,
-            rng: Arc::clone(&rng),
-            seed: self.random_seed,
-            operation_mode: self.operation_mode,
+        Worker::new(
+            self.worker_name,
+            sr_channels,
+            lr_channels,
+            self.work_dir,
+            Arc::clone(&rng),
+            self.random_seed,
+            self.operation_mode,
             id,
             protocol,
-            packet_queue_size: self.packet_queue_size.unwrap_or(DEFAULT_PACKET_QUEUE_SIZE),
+            self.packet_queue_size.unwrap_or(DEFAULT_PACKET_QUEUE_SIZE),
+            self.stale_packet_threshold.unwrap_or(DEFAULT_STALE_PACKET_THRESHOLD),
+            self.position,
+            Some(self.velocity),
+            self.destination,
             logger,
-        };
-        Ok(w)
+        )
     }
 
     ///Writes the current configuration object to a formatted configuration file, that can be passed to
@@ -293,7 +313,7 @@ impl WorkerConfig {
         let mut key: Vec<u8> = iter::repeat(0u8).take(16).collect();
         //Fill the vector with 16 random bytes.
         gen.fill_bytes(&mut key[..]);
-        key.to_hex().to_string()
+        key.to_hex()
     }
 }
 
@@ -320,10 +340,11 @@ mod tests {
             accept_commands: None, \
             term_log: None, \
             packet_queue_size: Some(3000), \
+            stale_packet_threshold: Some(3000), \
             position: Position { x: 0.0, y: 0.0 }, \
             destination: None, \
             velocity: Velocity { x: 0.0, y: 0.0 }, \
-            protocol: Some(NaiveRouting), \
+            protocol: Some(Flooding), \
             radio_short: None, \
             radio_long: None }";
 
@@ -376,6 +397,7 @@ mod tests {
         random_seed = 0\n\
         operation_mode = \"Simulated\"\n\
         packet_queue_size = 3000\n\
+        stale_packet_threshold = 3000\n\
         \n[position]\n\
         x = 0.0\n\
         y = 0.0\n\
@@ -385,17 +407,23 @@ mod tests {
         y = 0.0\n\
         \n\
         [protocol]\n\
-        Protocol = \"NaiveRouting\"\n\
+        Protocol = \"Flooding\"\n\
         \n\
         [radio_short]\n\
-        reliability = 1.0\n\
+        timeout = 10000\n\
         interface_name = \"wlan0\"\n\
         range = 0.0\n\
+        mac_layer_retries = 8\n\
+        mac_layer_base_wait = 16\n\
+        max_delay_per_node = 40\n\
         \n\
         [radio_long]\n\
-        reliability = 1.0\n\
+        timeout = 10000\n\
         interface_name = \"wlan0\"\n\
-        range = 0.0\n";
+        range = 0.0\n\
+        mac_layer_retries = 8\n\
+        mac_layer_base_wait = 16\n\
+        max_delay_per_node = 40\n";
 
         let mut file_content = String::new();
         let _res = File::open(path).unwrap().read_to_string(&mut file_content);

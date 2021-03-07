@@ -1,18 +1,20 @@
 extern crate toml;
 
 use super::workloads::*;
-use crate::master::MobilityModels;
+use crate::master::{MobilityModels, DEFAULT_RANDOM_SEED};
+use crate::worker::protocols::Protocols;
 use crate::worker::worker_config::WorkerConfig;
 use crate::{MeshSimError, MeshSimErrorKind};
 use std::collections::HashMap;
+use std::default::Default;
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
-use crate::worker::protocols::Protocols;
-use std::default::Default;
+
+
 
 /// Struct to keep the area of the simulation
-#[derive(Debug, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Default, Clone, Copy)]
 pub struct Area {
     /// Horizontal measure of the test area
     pub width: f64,
@@ -25,6 +27,8 @@ pub struct Area {
 pub struct TestSpec {
     ///Name of the test. For informational purposes only.
     pub name: String,
+    /// Random seed used for all RNG operations of the master.
+    pub random_seed: u64,
     /// Duration of the test in milliseconds.
     pub duration: u64,
     /// Vector of actions for the Master to take.
@@ -43,6 +47,9 @@ pub struct TestSpec {
     /// Collection of available worker configurations that the master may start at any time during
     /// the test.
     pub available_nodes: HashMap<String, WorkerConfig>,
+    /// Table used for storing any additional key-value pairs.
+    /// Initially added to keep track of the grep patterns used for data analysis when running experiments.
+    pub metadata: HashMap<String, String>
 }
 
 impl TestSpec {
@@ -85,6 +92,7 @@ impl TestSpec {
     pub fn new() -> TestSpec {
         TestSpec {
             name: String::from(""),
+            random_seed: DEFAULT_RANDOM_SEED,
             duration: 0,
             area_size: Area {
                 width: 0.0,
@@ -93,9 +101,10 @@ impl TestSpec {
             mobility: None,
             packet_queue_size: Default::default(),
             actions: vec![],
-            protocol : Default::default(),
+            protocol: Default::default(),
             initial_nodes: HashMap::new(),
             available_nodes: HashMap::new(),
+            metadata: HashMap::new(),
         }
     }
 }

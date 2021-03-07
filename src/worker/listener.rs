@@ -6,10 +6,10 @@ extern crate linux_embedded_hal as hal;
 
 use crate::worker::radio::RadioTypes;
 use crate::worker::*;
+use chrono::Utc;
 use socket2::Socket;
 #[cfg(target_os = "linux")]
 use sx1276::socket::{Link, LoRa};
-use std::time::Duration;
 
 /// Main trait of this module. Abstracts its underlying socket and provides methods to interact with it
 /// and listen for incoming connections.
@@ -31,7 +31,6 @@ pub trait Listener: Send + std::fmt::Debug {
 #[derive(Debug)]
 pub struct SimulatedListener {
     socket: Socket,
-    reliability: f64,
     rng: Arc<Mutex<StdRng>>,
     r_type: RadioTypes,
     logger: Logger,
@@ -40,13 +39,15 @@ pub struct SimulatedListener {
 impl Listener for SimulatedListener {
     fn read_message(&self) -> Option<MessageHeader> {
         let mut buffer = [0; MAX_UDP_PAYLOAD_SIZE + 1];
+        let radio_range : String = self.r_type.into();
 
         match self.socket.recv_from(&mut buffer) {
             Ok((bytes_read, _peer_addr)) => {
                 if bytes_read > 0 {
                     let data = buffer[..bytes_read].to_vec();
                     match MessageHeader::from_vec(data) {
-                        Ok(m) => {
+                        Ok(mut m) => {
+                            let ts0 = Utc::now();
                             //The counterpart of this method, SimulatedRadio::broadcast, does a fake
                             //broadcast by getting a list of nodes in range and unicasting to them
                             //one by one. This has an effect on the message propagation, as some
@@ -55,13 +56,25 @@ impl Listener for SimulatedListener {
                             //source. Thus, we try to amortize this by having all read_message sleep
                             //for 10ms. This should be enough time to ensure that *most* messages
                             //in the simulated broadcast have been delivered.
-                            let delay = Duration::from_micros(m.delay);
+                            let delay = std::time::Duration::from_micros(std::cmp::max(m.delay, 0) as u64);
                             std::thread::sleep(delay);
-//                            let now = Instant::now();
-//                            while now.elapsed() < delay { }
+                            //Update the ttl of the header
+                            m.ttl -= 1;
+
+                            //Record in the header the amount of time it took to read the message (including the delay)
+                            //Useful for measuring where do the threads spend their time.
+                            let dur = Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
+
+                            info!(
+                                &self.logger,
+                                "read_from_network";
+                                "msg_id" => m.get_msg_id(),
+                                "duration" => dur,
+                                "radio" => &radio_range,
+                            );
 
                             Some(m)
-                        },
+                        }
                         Err(e) => {
                             //Read bytes but could not form a MessageHeader
                             error!(self.logger, "Failed reading message: {}", e);
@@ -100,14 +113,18 @@ impl SimulatedListener {
     ///Creates a new instance of SimulatedListener
     pub fn new(
         socket: Socket,
-        reliability: f64,
+        timeout: u64,
         rng: Arc<Mutex<StdRng>>,
         r_type: RadioTypes,
         logger: Logger,
     ) -> SimulatedListener {
+        let read_time = std::time::Duration::from_micros(timeout);
+        socket
+            .set_read_timeout(Some(read_time))
+            // .set_nonblocking(true)
+            .expect("Coult not set socket on non-blocking mode");
         SimulatedListener {
             socket,
-            reliability,
             rng,
             r_type,
             logger,
@@ -119,7 +136,6 @@ impl SimulatedListener {
 #[derive(Debug)]
 pub struct WifiListener {
     socket: Socket,
-    mdns_handler: Option<Child>,
     rng: Arc<Mutex<StdRng>>,
     r_type: RadioTypes,
     logger: Logger,
@@ -173,14 +189,17 @@ impl WifiListener {
     ///Creates a new instance of DeviceListener
     pub fn new(
         socket: Socket,
-        h: Option<Child>,
+        timeout: u64,
         rng: Arc<Mutex<StdRng>>,
         r_type: RadioTypes,
         logger: Logger,
     ) -> WifiListener {
+        let read_time = std::time::Duration::from_millis(timeout);
+        socket
+            .set_read_timeout(Some(read_time))
+            .expect("Coult not set socket on non-blocking mode");
         WifiListener {
             socket,
-            mdns_handler: h,
             rng,
             r_type,
             logger,

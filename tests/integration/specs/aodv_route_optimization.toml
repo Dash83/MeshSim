@@ -15,6 +15,7 @@ actions = ["Add_Source node21 node43 1 64 8000 1000",
            ]
 width = 400.0
 height = 400.0
+random_seed = 12345
 [protocol]
 Protocol = "AODV"
 
@@ -2044,3 +2045,13 @@ interface_name = "wlan1"
 range = 60.0
 
 [available_nodes]
+
+[metadata]
+RD_PATTERN = "SENT.*RREQ"
+RT_PATTERN = "SENT.*RERR"
+RE_PATTERN = "SENT.*RREP"
+DATA_PATTERN = "SENT.*DATA"
+OK_PKT_PATTERN = "ACCEPTED.*DATA"
+ROUTE_BREAK_PATTERN = "BROKEN_LINK detected"
+RD_FAIL_PATTERN = "RREQ retries exceeded"
+MAINTENANCE_PATTERN = "SENT.*HELLO"

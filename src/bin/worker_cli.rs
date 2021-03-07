@@ -6,7 +6,7 @@ use clap::{App, Arg, ArgMatches};
 use mesh_simulator::worker::worker_config::WorkerConfig;
 use mesh_simulator::{logging, worker};
 use mesh_simulator::{MeshSimError, MeshSimErrorKind};
-use slog::Logger;
+// use slog::Logger;
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::{env, error, fmt};
@@ -19,7 +19,7 @@ const ARG_ACCEPT_COMMANDS: &str = "accept_commands";
 const ARG_TERMINAL_LOG: &str = "term_log";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const CONFIG_FILE_NAME: &str = "worker.toml";
-const ERROR_EXECUTION_FAILURE: i32 = 1;
+// const ERROR_EXECUTION_FAILURE: i32 = 1;
 const ERROR_INITIALIZATION: i32 = 2;
 
 // *****************************************
@@ -39,16 +39,16 @@ enum CLIError {
 }
 
 impl error::Error for CLIError {
-    fn description(&self) -> &str {
-        match *self {
-            CLIError::SetLogger(ref desc) => &desc,
-            CLIError::IO(ref err) => err.description(),
-            CLIError::Worker(ref err) => err.description(),
-            CLIError::Serialization(ref err) => err.description(),
-            CLIError::TOML(ref err) => err.description(),
-            CLIError::Configuration(ref err) => err.as_str(),
-        }
-    }
+    // fn description(&self) -> &str {
+    //     match *self {
+    //         CLIError::SetLogger(ref desc) => &desc,
+    //         CLIError::IO(ref err) => err.description(),
+    //         CLIError::Worker(ref err) => err.description(),
+    //         CLIError::Serialization(ref err) => err.description(),
+    //         CLIError::TOML(ref err) => err.description(),
+    //         CLIError::Configuration(ref err) => err.as_str(),
+    //     }
+    // }
 
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
@@ -106,8 +106,22 @@ impl From<toml::de::Error> for CLIError {
 }
 // ***************End Errors****************
 
-fn run(config: WorkerConfig, logger: Logger) -> Result<(), MeshSimError> {
-    debug!(logger, "Worker Config: {:?}", &config);
+fn run(config: WorkerConfig) -> Result<(), MeshSimError> {
+    let log_file_name = format!(
+        "{}{}{}{}{}.log",
+        &config.work_dir,
+        std::path::MAIN_SEPARATOR,
+        logging::LOG_DIR_NAME,
+        std::path::MAIN_SEPARATOR,
+        &config.worker_name
+    );
+    let logger = logging::create_logger(&log_file_name, config.term_log.unwrap_or(false))
+        .unwrap_or_else(|e| {
+            println!("worker_cli failed with the following error: {}", e);
+            ::std::process::exit(ERROR_INITIALIZATION);
+        });
+
+    info!(logger, "Worker Config: {:?}", &config);
     let ac = config.accept_commands.unwrap_or(false);
     let mut obj = config.create_worker(logger)?;
     //debug!("Worker Obj: {:?}", obj);
@@ -264,26 +278,13 @@ fn main() {
     //Initialization
     let config = init(&matches).unwrap_or_else(|e| {
         println!("worker_cli failed with the following error: {}", e);
-        ::std::process::exit(ERROR_INITIALIZATION);
+        std::process::exit(ERROR_INITIALIZATION);
     });
 
-    let log_file_name = format!(
-        "{}{}{}{}{}.log",
-        &config.work_dir,
-        std::path::MAIN_SEPARATOR,
-        logging::LOG_DIR_NAME,
-        std::path::MAIN_SEPARATOR,
-        &config.worker_name
-    );
-    let logger = logging::create_logger(&log_file_name, config.term_log.unwrap_or(false))
-        .unwrap_or_else(|e| {
-            println!("worker_cli failed with the following error: {}", e);
-            ::std::process::exit(ERROR_INITIALIZATION);
-        });
     //Main loop
-    if let Err(ref e) = run(config, logger.clone()) {
-        error!(logger, "worker_cli failed with the following error: {}", e);
-        ::std::process::exit(ERROR_EXECUTION_FAILURE);
+    if let Err(ref e) = run(config) {
+        eprintln!("worker_cli failed with the following error: {}", e);
+        // std::process::exit(ERROR_EXECUTION_FAILURE);
     }
 }
 

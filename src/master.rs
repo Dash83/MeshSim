@@ -18,20 +18,32 @@
     unused_qualifications
 )]
 
-use crate::worker::mobility::*;
-use crate::worker::radio::SimulatedRadio;
+use crate::backend::*;
 use crate::worker::worker_config::WorkerConfig;
+use crate::worker::commands::Commands;
 use crate::{MeshSimError, MeshSimErrorKind};
+use crate::mobility::*;
+use crate::logging::log_node_state;
 use libc::{c_int, nice};
-use rand::distributions::{Normal, Uniform};
-use rand::{thread_rng, Rng, RngCore};
-use rusqlite::Connection;
+
+use rand::{RngCore, thread_rng};
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use std::{net::{IpAddr, Ipv6Addr, SocketAddr}};
+use serde_cbor::de::*;
+use crossbeam_channel::unbounded;
+use std::sync::atomic::{AtomicBool, Ordering};
+use sysinfo::{self, ProcessExt, SystemExt, Signal};
+use std::path::Path;
+
+// use rusqlite::Connection;
+
+use diesel::pg::PgConnection;
 use slog::Logger;
 use std::collections::{HashMap, HashSet};
 use std::error;
 use std::fmt;
 use std::io;
-use std::io::{BufRead, BufReader, Write};
+
 use std::iter;
 use std::ops::DerefMut;
 use std::path::PathBuf;
@@ -41,30 +53,53 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use test_specification::{Area, TestActions};
-use chrono::{Utc, DateTime};
 use workloads::SourceProfiles;
+use serde_cbor::ser::*;
 
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
 pub mod test_specification;
 mod workloads;
 
-const RANDOM_WAYPOINT_WAIT_TIME: u64 = 1000;
+/// Port on which the Master listens for workers to register
+pub const REG_SERVER_LISTEN_PORT: u16 = 12345;
+//Size of the threadpool to handle worker registration.
+//A certain level of parallelism is required since most nodes are expected to be started almost
+//simultaneously during a simulation.
+const REG_SERVER_POOL_SIZE: usize = 2;
+const REG_SERVER_PERIOD: u64 = 100; //microseconds
+/// Maximum number of backlog connections for the registration server. 
+/// Ideally, this should be the number of expected nodes, to avoid any registration issues,
+/// but this is a sane default for now.
+const REG_SERVER_BACKLOG: i32 = 256;
+const RANDOM_WAYPOINT_WAIT_TIME: i64 = 1000;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
-
-type PendingWorker = (DateTime<Utc>, Velocity);
+const CLEANUP_SLEEP: u64 = 500;
+/// Default random seed used for the master process
+pub const DEFAULT_RANDOM_SEED: u64 = 0;
 
 ///Different supported mobility models
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 #[serde(tag = "Model")]
 pub enum MobilityModels {
     /// Random waypoint model
-    RandomWaypoint{
+    RandomWaypoint {
         /// The amount of time a node will wait once it reaches its destination.
-        pause_time : u64
+        pause_time: i64,
     },
     /// No movement
     Stationary,
+    /// Increased mobility model
+    IncreasedMobility {
+        /// The mean velocity used for nodes
+        vel_mean: f64,
+        /// The standard deviation of the velocity
+        vel_std: f64,
+        /// The percentage increase of velocity used each time a node reaches its destination. Between 0 and 1.
+        vel_increase: f64,
+        /// The time a node will pause each it reaches its destination.
+        pause_time: i64,
+    },
 }
 
 impl FromStr for MobilityModels {
@@ -72,7 +107,7 @@ impl FromStr for MobilityModels {
 
     fn from_str(s: &str) -> Result<MobilityModels, MeshSimError> {
         let parts: Vec<&str> = s.split_whitespace().collect();
-        
+
         if parts.is_empty() {
             let msg = String::from("Empty mobility model");
             let err = MeshSimError {
@@ -84,10 +119,55 @@ impl FromStr for MobilityModels {
 
         match parts[0].to_uppercase().as_str() {
             "RANDOMWAYPOINT" => {
-                let pause_time = parts[1].parse::<u64>().unwrap_or(RANDOM_WAYPOINT_WAIT_TIME);
-                Ok(MobilityModels::RandomWaypoint{pause_time})
-            },
+                let pause_time = parts[1].parse::<i64>().unwrap_or(RANDOM_WAYPOINT_WAIT_TIME);
+                Ok(MobilityModels::RandomWaypoint { pause_time })
+            }
             "STATIONARY" => Ok(MobilityModels::Stationary),
+            "INCREASEDMOBILITY" => {
+                if parts.len() < 5 {
+                    let err_msg = String::from("Wrong number of arguments for Increased Mobility. \nExpected: VEL_MEAN VEL_STD VEL_INCREASE PAUSE_TIME");
+                    let e = MeshSimError{
+                        kind: MeshSimErrorKind::Configuration(err_msg),
+                        cause: None,
+                    };
+                    return Err(e);
+                }
+                let vel_mean = parts[1].parse::<f64>()
+                    .map_err(|e| { 
+                        let err_msg = String::from("Failed to parse VEL_MEAN for IncreasedMobility model");
+                        MeshSimError{
+                            kind: MeshSimErrorKind::Configuration(err_msg),
+                            cause: Some(Box::new(e)),
+                        }
+                    })?;
+                let vel_std = parts[2].parse::<f64>()
+                    .map_err(|e| { 
+                        let err_msg = String::from("Failed to parse VEL_STD for IncreasedMobility model");
+                        MeshSimError{
+                            kind: MeshSimErrorKind::Configuration(err_msg),
+                            cause: Some(Box::new(e)),
+                        }
+                    })?;
+                let vel_increase = parts[3].parse::<f64>()
+                    .map_err(|e| { 
+                        let err_msg = String::from("Failed to parse VEL_INCREASE for IncreasedMobility model");
+                        MeshSimError{
+                            kind: MeshSimErrorKind::Configuration(err_msg),
+                            cause: Some(Box::new(e)),
+                        }
+                    })?;
+
+                let pause_time = parts[4].parse::<i64>()
+                    .map_err(|e| { 
+                        let err_msg = String::from("Failed to parse PAUSE_TIME for IncreasedMobility model");
+                        MeshSimError{
+                            kind: MeshSimErrorKind::Configuration(err_msg),
+                            cause: Some(Box::new(e)),
+                        }
+                    })?;
+
+                Ok(MobilityModels::IncreasedMobility { vel_mean, vel_std, vel_increase, pause_time })
+            },
             _ => {
                 let err_msg = String::from("Invalid mobility model");
                 let err = MeshSimError {
@@ -101,7 +181,7 @@ impl FromStr for MobilityModels {
 }
 
 /// Represents a child process that the master controls.
-type Process = (i64, Arc<Mutex<Child>>);
+type Process = (i32, String);
 
 /// Master struct.
 /// Main data type of the master module and the starting point for creating a new mesh.
@@ -123,12 +203,22 @@ pub struct Master {
     pub test_area: Area,
     /// Current mobility model (if any)
     pub mobility_model: Option<MobilityModels>,
+    /// Name of the experiment DB that will be created for this run.
+    db_name: String,
+    /// DB-connection file
+    env_file: String,
     /// The logger to be usef by the Master
     pub logger: Logger,
     /// The log file to which the master will log
     pub log_file: String,
     /// Has the sleep_time for workers been overriden in the passed params?
     pub sleep_time_override: Option<u64>,
+    /// Registration server handle
+    rs_handle: JoinHandle<()>,
+    /// Signal across the Master threads that the test has ended so they can wrap up and finish.
+    finish_test: Arc<AtomicBool>,
+    /// Random seed used to initialise all rngs in the master process.
+    random_seed: u64,
 }
 
 //region Errors
@@ -187,16 +277,16 @@ impl fmt::Display for MasterError {
 }
 
 impl error::Error for MasterError {
-    fn description(&self) -> &str {
-        match *self {
-            MasterError::Serialization(ref err) => err.description(),
-            MasterError::IO(ref err) => err.description(),
-            MasterError::Worker(ref err) => err.description(),
-            MasterError::TOML(ref err) => err.description(),
-            MasterError::TestParsing(ref err) => err.as_str(),
-            MasterError::Sync(ref err) => err.as_str(),
-        }
-    }
+    // fn description(&self) -> &str {
+    //     match *self {
+    //         MasterError::Serialization(ref err) => err.description(),
+    //         MasterError::IO(ref err) => err.description(),
+    //         MasterError::Worker(ref err) => err.description(),
+    //         MasterError::TOML(ref err) => err.description(),
+    //         MasterError::TestParsing(ref err) => err.as_str(),
+    //         MasterError::Sync(ref err) => err.as_str(),
+    //     }
+    // }
 
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
@@ -214,15 +304,30 @@ impl error::Error for MasterError {
 
 impl Master {
     /// Constructor for the struct.
-    pub fn new(logger: Logger, log_file: String) -> Master {
+    pub fn new(work_dir: String, worker_path: String, log_file: String, db_name: String, random_seed: Option<u64>, logger: Logger) -> Result<Master, MeshSimError> {
         let workers = Arc::new(Mutex::new(HashMap::new()));
-        let wb = String::from("./worker_cli");
         let an = HashMap::new();
+        let env_file = create_db_objects(&work_dir, &db_name, &logger)?;
+        let finish_test = Arc::new(AtomicBool::new(false));
 
-        Master {
+        debug!(&logger, "Using connection file: {}", &env_file);
+        debug!(&logger, "Using DB name: {}", &db_name);
+
+        // Master::start_registration_server(port)?;
+        let handle = Master::start_registration_server(
+            REG_SERVER_LISTEN_PORT,
+            env_file.clone(),
+            Arc::clone(&workers),
+            Arc::clone(&finish_test),
+            logger.clone(),
+        )?;
+
+        info!(&logger, "Regisration server started");
+
+        let m = Master {
             workers,
-            work_dir: String::from("."),
-            worker_binary: wb,
+            work_dir,
+            worker_binary: worker_path,
             available_nodes: Arc::new(an),
             duration: 0,
             test_area: Area {
@@ -230,10 +335,272 @@ impl Master {
                 height: 0.0,
             },
             mobility_model: None,
+            db_name,
+            env_file,
             logger,
             log_file,
             sleep_time_override: None,
+            rs_handle: handle,
+            finish_test,
+            random_seed: random_seed.unwrap_or(DEFAULT_RANDOM_SEED),
+        };
+
+
+        Ok(m)
+    }
+
+    fn start_registration_server(
+        listening_port: u16,
+        env_file: String,
+        workers: Arc<Mutex<HashMap<String, (i32, String)>>>,
+        finish_test: Arc<AtomicBool>,
+        logger: Logger,
+    ) -> Result<JoinHandle<()>, MeshSimError> {
+        //Do all socket operatons before spawning the threads, so that we can both fail earlier if there's an issue,
+        //and can propagate the error back since it gets hairy to do so inside the threads.
+        let sock = Master::new_registration_socket()?;
+        let base_addr = SocketAddr::new(
+            IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+                listening_port
+        );
+        // The API requires that we first bind the socket to the listen adddress...
+        let _ = sock.bind(&SockAddr::from(base_addr))
+        .map_err(|e| {
+            let err_msg = format!("Could not bind socket to address {}", &base_addr);
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        // and then mark it as ready to listen. Can't call accept on it before these 2 things.
+        let _ = sock.listen(REG_SERVER_BACKLOG)
+        .map_err(|e| {
+            let err_msg = format!("Could not bind socket to address {}", &base_addr);
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        //Finally, set the server socket into nonblocking mode, otherwise it is very likely this thread will hang
+        //on the accept() call even if the finish_test signal has been set.
+        sock.set_nonblocking(true)
+        .map_err(|e| {
+            let err_msg = "Failed to set RegistrationServer socket into nonblocking mode".to_string();
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        //Create the queues for the clients
+        let (client_queue_sender, client_queue_receiver) = unbounded();
+
+        // start the listener thread
+        let j = thread::Builder::new()
+        .name(String::from("RegistrationServer"))
+        .spawn(move || {
+            //Start the workers
+            let mut worker_threads = Vec::new();
+            let log = logger.clone();
+            let conn_file = env_file.clone();
+
+            for i in 0..REG_SERVER_POOL_SIZE {
+                //Resources for each thread
+                let thread_name = format!("RegWorker{}", i);
+                let client_queue = client_queue_receiver.clone();
+                let finish_test = Arc::clone(&finish_test);
+                let w = Arc::clone(&workers);
+                let l = log.clone();
+                let cf = conn_file.clone();
+                let j = thread::Builder::new()
+                    .name(thread_name.clone())
+                    .spawn(move || {
+                        //Local-scope resources for this worker thread
+                        let conn = match get_db_connection_by_file(cf, &l) {
+                            Ok(c) => { c } ,
+                            Err(_e) => {
+                                error!(l, "RegServerWorker failed to obtain database connection and will terminate"; "thread"=>&thread_name);
+                                return;
+                            }
+                        };
+                        let read_timeout = Duration::from_millis(100);
+                        while !finish_test.load(Ordering::SeqCst) {
+                            match client_queue.recv_timeout(read_timeout) {
+                                Ok((client, client_address)) => {
+                                    match Master::handle_client(
+                                        client,
+                                        client_address,
+                                        &conn,
+                                        Arc::clone(&w),
+                                        &l)
+                                    {
+                                        Ok(_) => {
+                                            /* All good */
+                                        },
+                                        Err(e) => {
+                                            error!(l, "Error handling client: {}", e);
+                                        },
+                                    }
+                                },
+                                Err(e) => {
+                                    if e.is_timeout() {
+                                        /* The read operation timed out, which is totally fine. Moving on. */
+                                        continue;
+                                    }
+                                    error!(l, "{} - Failed to get client from queue {}", &thread_name, &e);
+                                },
+                            }
+                        }
+                    })
+                    .expect("Failed to spawn RegWorker thread");
+                    // .map_err(|e| {
+                    //     let err_msg = String::from("Failed to spawn RegWorker thread");
+                    //     MeshSimError {
+                    //         kind: MeshSimErrorKind::Master(err_msg),
+                    //         cause: Some(Arc::new(e)),
+                    //     }
+                    // })?;
+                worker_threads.push(j);
+            }
+
+            //Start the listeneing loop
+            let sleep_time = Duration::from_micros(REG_SERVER_PERIOD);
+            while !finish_test.load(Ordering::SeqCst) {
+                let l = log.clone();
+                
+                let (client, client_address) = match sock.accept() {
+                    Ok(data) => {
+                        data
+                    },
+                    Err(e) => {
+                        /* If it's a timeout error, just continue to the next iteration. */
+                        //Log all other errors though.
+                        if e.kind() == std::io::ErrorKind::WouldBlock {
+                            thread::sleep(sleep_time);
+                        } else {
+                            error!(l, "[RegistrationServer] - Error accepting new client connection: {}", &e);
+                        }
+                        continue;
+                    }
+                };
+                match client_queue_sender.send((client, client_address)) {
+                    Ok(_) => {
+                        /* All good! */
+                    },
+                    Err(e) => {
+                        error!(l, "[RegistrationServer] - Failed to queue new client connection {}", &e);
+                    }
+                }
+
+            };
+
+            //Wait for the worker threads to finish and log any errors
+            for h in worker_threads {
+                match h.join() {
+                    Ok(_) => {
+                        /* All good! */
+                    },
+                    Err(e) => {
+                        error!(log, "RegWorker thread exited with the following error: {:?}", &e);
+                    }
+                }
+            }
+
+        })
+        .map_err(|e| {
+            let err_msg = String::from("Failed to spawn RegistrationServer thread");
+            MeshSimError {
+                kind: MeshSimErrorKind::Master(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
+        // info!(&logger, "Master has been initialised");
+        Ok(j)
+    }
+
+    fn handle_client(
+        client: Socket,
+        client_addr: SockAddr,
+        conn: &PgConnection,
+        workers: Arc<Mutex<HashMap<String, (i32, String)>>>,
+        log: &Logger,
+    ) -> Result<(), MeshSimError> {
+        //64kb buffer
+        let mut buffer = [0; 65536];
+        //Set the client socket to non-blocking, otherwise the receive operation would fail.
+        client.set_nonblocking(false)
+        .map_err(|e| {
+            let err_msg = "Failed to set client socket into blocking mode".to_string();
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        //Also set a read timeout, otherwise this thread might hand, and the entire Master would wait on it to finish.
+        let read_timeout = Duration::from_millis(200);
+        client.set_read_timeout(Some(read_timeout))
+        .map_err(|e| {
+            let err_msg = "Failed to set client read timeout".to_string();
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        let bytes_read = client.recv(&mut buffer)
+        .map_err(|e| {
+            let err_msg = format!("Failed to read data from client {}", client_addr.as_inet6().unwrap());
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        debug!(log, "Connection received from {}", client_addr.as_inet6().unwrap(); "bytes_read" => bytes_read);
+
+        //Attempt to parse the read data into a Command
+        let data = buffer[..bytes_read].to_vec();
+        let cmd: Commands = from_slice(&data)
+        .map_err(|e| {
+            let err_msg = "Could not deserialise message from client".to_string();
+            MeshSimError {
+                kind: MeshSimErrorKind::Serialization(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+
+        match cmd {
+            Commands::RegisterWorker{
+                w_name,
+                w_id,
+                pos,
+                vel,
+                dest,
+                sr_address,
+                lr_address,
+                cmd_address,} => {
+
+                info!(
+                    &log,
+                    "Registration command received";
+                    "worker" => &w_name,
+                );
+                let vel = vel.unwrap_or_default();
+                let id = register_worker(&conn, w_name.clone(), w_id, pos, vel, &dest, sr_address, lr_address, &log)?;
+
+                //Save the db_id of the worker as well as the handle to its process.
+                let mut workers = workers
+                    .lock()
+                    .expect("Failed to lock workers list");
+                workers.insert(w_name.clone(), (id, cmd_address));
+                let ns = NodeState { id, name: w_name, pos, vel, dest };
+                log_node_state("Worker registered successfully!", ns, &log);
+            },
+            _ => {
+                /* The master does  not support any other commands*/
+                warn!(log, "Unsupported command received {:?}", cmd);
+            }
         }
+
+        Ok(())
     }
 
     /// Adds a single worker to the worker vector with a specified name and starts the worker process
@@ -242,6 +609,7 @@ impl Master {
         work_dir: &'a str,
         listen_for_commands: bool,
         config: &WorkerConfig,
+        conn_str: &String,
         logger: &Logger,
     ) -> Result<Child, MeshSimError> {
         let worker_name = config.worker_name.clone();
@@ -255,27 +623,26 @@ impl Master {
         config.write_to_file(file_dir.as_path())?;
 
         //Constructing the external process call
-        let mut command = Command::new(worker_binary);
-        command.arg("--config");
-        command.arg(format!("{}", &file_dir.display()));
-        command.arg("--work_dir");
-        command.arg(work_dir.to_string());
-        command.arg("--register_worker");
-        command.arg(format!("{}", false));
-        command.arg("--accept_commands");
-        command.arg(format!("{}", listen_for_commands));
-        command.stdin(Stdio::piped());
-        command.stdout(Stdio::piped());
-
-        //Starting the worker process
-        //debug!("with command {:?}", command);
-        let child = command.spawn().map_err(|e| {
-            let err_msg = String::from("Failed to spawn worker process");
-            MeshSimError {
-                kind: MeshSimErrorKind::Master(err_msg),
-                cause: Some(Box::new(e)),
-            }
-        })?;
+        let child = Command::new(worker_binary)
+            .env(DB_CONN_ENV_VAR, conn_str)
+            .arg("--config")
+            .arg(format!("{}", &file_dir.display()))
+            .arg("--work_dir")
+            .arg(work_dir.to_string())
+            .arg("--register_worker")
+            .arg(format!("{}", false))
+            .arg("--accept_commands")
+            .arg(format!("{}", listen_for_commands))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                let err_msg = String::from("Failed to spawn worker process");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Master(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
         debug!(logger, "Worker process {} started", &worker_name);
 
         Ok(child)
@@ -283,10 +650,9 @@ impl Master {
 
     ///Runs the test defined in the specification passed to the master.
     pub fn run_test(
-        &mut self,
+        mut self,
         mut spec: test_specification::TestSpec,
         sleep_time_override: Option<&str>,
-        logger: &Logger,
     ) -> Result<(), MeshSimError> {
         info!(self.logger, "Running test {}", &spec.name);
         info!(
@@ -302,13 +668,12 @@ impl Master {
 
         //Check if the sleep_time needs to be overriden
         if let Some(st) = sleep_time_override {
-            let new_sleep_time = st.parse::<u64>()
-                .map_err(|e| {
-                    let err_msg = String::from("Failed to parse new worker sleep_time");
-                    MeshSimError {
-                        kind: MeshSimErrorKind::Master(err_msg),
-                        cause: Some(Box::new(e)),
-                    }
+            let new_sleep_time = st.parse::<u64>().map_err(|e| {
+                let err_msg = String::from("Failed to parse new worker sleep_time");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Master(err_msg),
+                    cause: Some(Box::new(e)),
+                }
             })?;
             self.sleep_time_override = Some(new_sleep_time);
         }
@@ -317,104 +682,39 @@ impl Master {
         let mut action_handles = Vec::new();
 
         //First of all, schedule the End_test action, so that the test will finish even if things go wrong
-        let end_test_handle = self.testaction_end_test(self.duration)?;
+        let end_test_handle = self.testaction_end_test(self.duration, Arc::clone(&self.finish_test))?;
         action_handles.push(end_test_handle);
 
-        //Obtain database connection
-        let conn = get_db_connection(&self.work_dir, logger)?;
+        //Start all workers
+        let conn_str = get_connection_string_from_file(&self.env_file)?;
+        for (_, val) in spec.initial_nodes.iter_mut() {
+            //Assign a protocol for the worker
+            val.protocol = Some(spec.protocol);
 
-        //Create the DB objects
-        let _rows = create_db_objects(&conn, &logger)?;
+            //Start the child process
+            let listen_for_commands = active_nodes.contains(&val.worker_name);
 
-        //Start all workers and add save their child process handle.
-        {
-            let workers = Arc::clone(&self.workers);
-            let mut workers = workers
-                .lock()
-                .expect("Failed to lock workers list");
-
-            for (_, val) in spec.initial_nodes.iter_mut() {
-                //Assign a protocol for the worker
-                val.protocol = Some(spec.protocol.clone());
-
-                //Start the child process
-                let listen_for_commands = active_nodes.contains(&val.worker_name);
-
-                let res = Master::run_worker(
-                    &self.worker_binary,
-                    &self.work_dir,
-                    listen_for_commands,
-                    &val,
-                    &self.logger,
-                );
-
-                match res {
-                    Ok(mut child_handle) => {
-                        //Get it's listen address from stdout
-                        let mut output = String::new();
-                        {
-                            let mut child_out =
-                                BufReader::new(child_handle.stdout.as_mut().unwrap());
-                            let _num_bytes = child_out.read_line(&mut output).map_err(|e| {
-                                let err_msg = String::from("Failed to read from child's stdout");
-                                MeshSimError {
-                                    kind: MeshSimErrorKind::Master(err_msg),
-                                    cause: Some(Box::new(e)),
-                                }
-                            })?;
-                        }
-
-                        // debug!(&self.logger, "Read from worker's stdout successful: {}", &output);
-
-                        //Register the worker in the DB
-                        let worker_id = match val.worker_id {
-                            Some(ref id) => id.clone(),
-                            None => WorkerConfig::gen_id(val.random_seed),
-                        };
-
-                        debug!(&self.logger, "WorkerID: {}", &worker_id);
-
-                        // let sr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::ShortRange);
-                        // let lr_addr = SimulatedRadio::format_address(&self.work_dir, &worker_id, RadioTypes::LongRange);
-                        let (sr_addr, lr_addr) = SimulatedRadio::extract_radio_addresses(output, &self.logger)?;
-//                        let (sr_addr, lr_addr) = (None, None);
-
-                        debug!(&self.logger, "Extracted radio addresses");
-
-                        let res = register_worker(
-                            &conn,
-                            val.worker_name.clone(),
-                            &worker_id,
-                            &val.position,
-                            &val.velocity,
-                            &val.destination,
-                            sr_addr,
-                            lr_addr,
-                            &logger,
-                        );
-
-                        match res {
-                            Ok(id) => {
-                                //Save the db_id of the worker as well as the handle to its process.
-                                workers.insert(
-                                    val.worker_name.clone(),
-                                    (id, Arc::new(Mutex::new(child_handle))),
-                                );
-                            }
-                            Err(e) => {
-                                error!(&self.logger, "Error registering new worker: {}", e);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!(&self.logger, "Error starting new worker: {}", &e);
-                        if let Some(cause) = e.cause {
-                            error!(&self.logger, "Cause: {}", cause);
-                        }
+            match Master::run_worker(
+                &self.worker_binary,
+                &self.work_dir,
+                listen_for_commands,
+                &val,
+                &conn_str,
+                &self.logger,
+            ) {
+                Ok(_child_handle) => {
+                    /* All good */
+                },
+                Err(e) => {
+                    error!(&self.logger, "Error starting new worker: {}", &e);
+                    if let Some(cause) = e.cause {
+                        error!(&self.logger, "Cause: {}", cause);
                     }
                 }
             }
-        } // LOCK : RELEASE : WORKERS
+        }
+
+        info!(&self.logger, "All initial nodes started");
 
         //Start mobility thread
         match self.start_mobility_thread() {
@@ -439,19 +739,53 @@ impl Master {
             action_handles.len()
         );
 
-        //let cl = self.start_command_loop_thread()?;
-
         //All actions have been scheduled. Wait for all actions to be executed and then exit.
         for h in action_handles {
             match h.join() {
-                Ok(_) => {}
-                Err(_) => {
-                    warn!(self.logger, "Couldn't join on thread");
+                Ok(_) => {
+                    /* All good */
+                },
+                Err(e) => {
+                    /* The thread exited with an error */
+                    error!(self.logger, "Thread exited with the following error: {:?}", &e);
                 }
             }
         }
 
-        //cl.join();
+        //Check if the regisration server had any errors
+        match self.rs_handle.join() {
+            Ok(_) => {
+                /* All good */
+            },
+            Err(e) => {
+                error!(self.logger, "RegistrationServer thread exited with the following error: {:?}", &e);
+            },
+        }
+
+        // Now that all Master threads have finished, perform any cleanup required.
+        // Firstly, we'll give the worker processes a little time to process the Finish command, in case they were overloaded
+        // and have not yet processed it.
+        let cleanup_sleep = Duration::from_millis(CLEANUP_SLEEP);
+        thread::sleep(cleanup_sleep);
+
+        //Now check if any worker processes are lingering.
+        let mut system = sysinfo::System::new_all();
+        //Refresh the system to get new info about running processes
+        system.refresh_all();
+        let worker_path = Path::new(&self.worker_binary);
+        let worker_program_name = worker_path.file_name().unwrap_or_default();
+        let logger = self.logger.clone();
+        system.get_processes()
+            .iter()
+            .filter(|(_pid, p)| p.name() == worker_program_name)
+            .for_each(|(pid, p)| { 
+                error!(&logger, "Process {} did not exit on time", pid; "cmd" => p.cmd().join(" "));
+                if p.kill(Signal::Kill) {
+                    info!(&logger, "Kill signal sent to process {}", pid);
+                } else {
+                    error!(&logger, "Failed to send kill signal to process {}", pid);
+                }
+            });
 
         Ok(())
     }
@@ -492,7 +826,7 @@ impl Master {
 
         for action in actions {
             let action_handle = match action {
-                TestActions::EndTest(time) => self.testaction_end_test(time)?,
+                TestActions::EndTest(time) => self.testaction_end_test(time, Arc::clone(&self.finish_test))?,
                 TestActions::AddNode(name, time) => {
                     self.testaction_add_node(name.clone(), active_nodes.contains(&name), time)?
                 }
@@ -507,7 +841,7 @@ impl Master {
         Ok(thread_handles)
     }
 
-    fn testaction_end_test(&self, time: u64) -> Result<JoinHandle<()>, MeshSimError> {
+    fn testaction_end_test(&self, time: u64, finish_test: Arc<AtomicBool>) -> Result<JoinHandle<()>, MeshSimError> {
         let workers_handle = Arc::clone(&self.workers);
         let logger = self.logger.clone();
 
@@ -526,10 +860,10 @@ impl Master {
             };
             let workers_handle = workers_handle.deref_mut();
             let mut i = 0;
-            for (_id, handle) in workers_handle.values_mut() {
-                let mut h = handle.lock().expect("Could not get lock to worker handle");
-                info!(logger, "Killing worker pid {}", h.id());
-                match h.kill() {
+            for (_id, addr) in workers_handle.values() {
+                // let mut h = handle.lock().expect("Could not get lock to worker handle");
+                // info!(logger, "Killing worker pid {}", h.id());
+                match Master::send_command(addr, Commands::Finish, &logger) {
                     Ok(_) => {
                         info!(logger, "Process killed.");
                         i += 1;
@@ -537,12 +871,52 @@ impl Master {
                     Err(_) => info!(logger, "Process was not running."),
                 }
             }
+            //Signal the end to other threads
+            finish_test.store(true, Ordering::SeqCst);
             info!(
                 logger,
                 "End_Test action: Finished. {} processes terminated.", i
             );
         });
         Ok(handle)
+    }
+
+    fn send_command(addr: &str, cmd: Commands, logger: &Logger) -> Result<(), MeshSimError> {
+        let socket = Socket::new(Domain::unix(), Type::dgram(), None)
+            .map_err(|e| {
+                let err_msg = String::from("Could not create socket");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Networking(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+        })?;
+        let worker_addr = SockAddr::unix(addr)
+        .map_err(|e| {
+            let err_msg = format!("Could not create a UDS to {}", &addr);
+            MeshSimError {
+                kind: MeshSimErrorKind::Configuration(err_msg),
+                cause: Some(Box::new(e)),
+            }
+        })?;
+        let data = to_vec(&cmd)
+            .map_err(|e| {
+                let err_msg = String::from("Could not serialise command");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+        })?;
+        let _res = socket.send_to(&data, &worker_addr)
+            .map_err(|e| {
+                let err_msg = String::from("Failed to send command");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Networking(err_msg),
+                    cause: Some(Box::new(e)),
+            }
+        })?;
+        debug!(logger," Command sent to {}", addr);
+
+        Ok(())
     }
 
     fn testaction_add_node(
@@ -552,11 +926,10 @@ impl Master {
         time: u64,
     ) -> Result<JoinHandle<()>, MeshSimError> {
         let available_nodes = Arc::clone(&self.available_nodes);
-        let workers = Arc::clone(&self.workers);
         let worker_binary = self.worker_binary.clone();
         let work_dir = self.work_dir.clone();
         let logger = self.logger.clone();
-        let conn = get_db_connection(&work_dir, &logger)?;
+        let conn_str = get_connection_string_from_file(&self.env_file)?;
 
         let handle = thread::spawn(move || {
             let test_endtime = Duration::from_millis(time);
@@ -567,83 +940,33 @@ impl Master {
             thread::sleep(test_endtime);
             info!(logger, "Add_Node ({}) action: Starting", &name);
 
-            match available_nodes.get(&name) {
+            let config = match available_nodes.get(&name) {
                 Some(config) => {
-                    let worker_id = match config.worker_id {
-                        Some(ref id) => id.clone(),
-                        None => WorkerConfig::gen_id(config.random_seed),
-                    };
-                    match Master::run_worker(
-                        &worker_binary,
-                        &work_dir,
-                        accept_commands,
-                        config,
-                        &logger,
-                    ) {
-                        Ok(mut child_handle) => {
-                            //Get it's listen address from stdout
-                            let mut output = String::new();
-                            {
-                                let mut child_out =
-                                    BufReader::new(child_handle.stdout.as_mut().unwrap());
-                                // eprintln!("stdout acquired");
-                                let _num_bytes = match child_out.read_line(&mut output) {
-                                    Ok(bytes) => bytes,
-                                    Err(e) => {
-                                        let msg =
-                                            format!("Could not read stdout from worker: {}", e);
-                                        error!(logger, "{}", msg);
-                                        return;
-                                    }
-                                };
-                                // eprintln!("stdout read: {}", &output);
-                            }
-
-                            //The process was started correctly. Now register it to the DB.
-                            // let sr_addr = SimulatedRadio::format_address(&work_dir, &worker_id, RadioTypes::ShortRange);
-                            // let lr_addr = SimulatedRadio::format_address(&work_dir, &worker_id, RadioTypes::LongRange);
-                            let (sr_addr, lr_addr) =
-                                match SimulatedRadio::extract_radio_addresses(output, &logger) {
-                                    Ok(addresses) => addresses,
-                                    Err(e) => {
-                                        let msg = format!(
-                                            "Could not extract addresses from output: {}",
-                                            e
-                                        );
-                                        error!(logger, "{}", msg);
-                                        return;
-                                    }
-                                };
-                            let id = register_worker(
-                                &conn,
-                                config.worker_name.clone(),
-                                &worker_id,
-                                &config.position,
-                                &config.velocity,
-                                &config.destination,
-                                sr_addr,
-                                lr_addr,
-                                &logger,
-                            )
-                            .expect("Failed to register worker in the DB.");
-                            let mut w = match workers.lock() {
-                                Ok(h) => h,
-                                Err(e) => {
-                                    let msg =
-                                        format!("Could not acquire lock to list of workers: {}", e);
-                                    error!(logger, "{}", msg);
-                                    return;
-                                }
-                            };
-                            w.insert(name, (id, Arc::new(Mutex::new(child_handle))));
-                        }
-                        Err(e) => {
-                            error!(logger, "Error running worker: {:?}", e);
-                        }
-                    }
+                    config
                 }
                 None => {
-                    warn!(logger, "Add_Node ({}) action Failed. Worker configuration not found in available_workers pool.", &name);
+                    error!(
+                        logger, 
+                        "Add_Node ({}) action Failed. Worker configuration not found in available_workers pool.",
+                        &name
+                    );
+                    return 
+                }
+            };
+
+            match Master::run_worker(
+                &worker_binary,
+                &work_dir,
+                accept_commands,
+                config,
+                &conn_str,
+                &logger,
+            ) {
+                Ok(_child_handle) => {
+                    /* All good */
+                }
+                Err(e) => {
+                    error!(logger, "Error running worker: {:?}", e);
                 }
             }
         });
@@ -670,17 +993,15 @@ impl Master {
             let workers = workers.lock();
             match workers {
                 Ok(mut w) => {
-                    if let Some(child) = w.get_mut(&name) {
-                        let mut c = child.1.lock().expect("Could not get lock to worker handle");
-                        match c.kill() {
+                    if let Some((_w_name, (_id, addr))) = w.remove_entry(&name) {
+                        // let mut c = child.1.lock().expect("Could not get lock to worker handle");
+                        match Master::send_command(&addr, Commands::Finish, &logger) {
                             Ok(_) => {
-                                let exit_status = c.wait();
+                                // let exit_status = c.wait();
                                 info!(
                                     logger,
-                                    "Kill_Node ({}) action: Process {} killed. Exit status: {:?}",
+                                    "Kill_Node ({}) action: Worker killed.",
                                     &name,
-                                    c.id(),
-                                    exit_status
                                 );
                             }
                             Err(e) => error!(
@@ -727,23 +1048,9 @@ impl Master {
                 "Ping {}->{} action: Starting", &source, &destination
             );
 
-            let workers = workers.lock();
-            match workers {
-                Ok(mut w) => {
-                    if let Some(child) = w.get_mut(&source) {
-                        let mut c = child.1.lock().expect("Could not get lock to worker handle");
-                        let ping_data = base64::encode(b"PING");
-                        let payload = format!("SEND {} {}\n", &destination, &ping_data);
-                        let _res = c.stdin.as_mut().unwrap().write_all(payload.as_bytes());
-                    } else {
-                        error!(
-                            logger,
-                            "Ping {}->{} action: Process {} not found in Master's collection.",
-                            &source,
-                            &destination,
-                            &source
-                        );
-                    }
+            let workers = match workers.lock() {
+                Ok(w) => {
+                    w
                 }
                 Err(_e) => {
                     error!(
@@ -752,8 +1059,43 @@ impl Master {
                         &source,
                         &destination
                     );
+                    return;
                 }
+            };
+
+            let (_id, addr) = match workers.get(&source) {
+                Some(data) => { 
+                    data 
+                },
+                None => {
+                    error!(
+                        logger,
+                        "Ping {}->{} action: Process {} not found in active worker pool",
+                        &source,
+                        &destination,
+                        &source
+                    );
+                    return;
+                }
+            };
+
+            let mut rng = thread_rng();
+            let r: u64 = rng.next_u64() % 1024;
+            let payload = format!("PING{}", r);
+            let cmd = Commands::Send(destination.clone(), payload.as_bytes().to_vec());
+
+            match Master::send_command(addr, cmd, &logger) {
+                Ok(_) => { 
+                    info!(
+                        logger,
+                        "Ping {}->{} action: completed", &source, &destination
+                    );
+                },
+                Err(_e) => { 
+                    error!(logger, "Failed to send PING command to {}", &source);
+                },
             }
+
         });
         Ok(handle)
     }
@@ -785,10 +1127,7 @@ impl Master {
                 match profile {
                     SourceProfiles::CBR(dest, pps, size, dur) => {
                         let total_packets: f64 = (dur * pps as u64) as f64 / 1000.0;
-                        info!(
-                            logger,
-                            "[Source]: Will transmit {} packets", total_packets
-                        );
+                        info!(logger, "[Source]: Will transmit {} packets", total_packets);
                         match Master::start_cbr_source(
                             source, dest, pps, size, dur, workers, &logger,
                         ) {
@@ -844,10 +1183,10 @@ impl Master {
         let mut data: Vec<u8> = iter::repeat(0u8).take(packet_size).collect();
         let iter_threshold = 1_000_000_000u32 / packets_per_second as u32; //In nanoseconds
         let mut packet_counter: u64 = 0;
-        let source_handle = {
+        let addr = {
             let worker_list = workers.lock().expect("Could not lock workers list");
-            if let Some(w) = worker_list.get(&source) {
-                Arc::clone(&w.1)
+            if let Some((_id, addr)) = worker_list.get(&source) {
+                addr.clone()
             } else {
                 let err_msg = format!("Could not find process for {}", &source);
                 let error = MeshSimError {
@@ -862,49 +1201,24 @@ impl Master {
         let mut iteration = Instant::now();
 
         while trans_time.elapsed() < dur {
-            //            let iteration_start = Instant::now();
-            //            let e = trans_time.elapsed();
-            //            info!(logger, "[Source]:{}: Running for {}.{} seconds", &source, &e.as_secs(), &e.subsec_nanos());
-
             packet_counter += 1;
 
             rng.fill_bytes(&mut data[..]);
-            let encoded_data = base64::encode(&data);
-            let payload = format!("SEND {} {}\n", &destination, &encoded_data);
+            let cmd = Commands::Send(destination.clone(), data.clone());
 
-            //            info!(logger, "[Source]:{}: acquiring lock", &source);
-            match source_handle.lock() {
-                Ok(mut h) => {
-                    //                    info!(logger, "[Source]:{}: lock acquired", &source);
-                    match h.stdin.as_mut() {
-                        Some(stdin) => {
-                            match stdin.write_all(payload.as_bytes()) {
-                                Ok(()) => {
-                                    /* All good */
-                                    info!(
-                                        logger,
-                                        "Send command {} written successfully", packet_counter
-                                    );
-                                }
-                                Err(e) => error!(logger, "Error: {}", e),
-                            }
-                        }
-                        None => {
-                            error!(logger, "Could not get mutable reference to stdin"; "node" => &source);
-                        }
-                    }
-                }
-                Err(_e) => {
-                    let err_msg = format!(
-                        "Process {} is not in the Master list. Can't send data. Aborting CBR.",
-                        &source
+            match Master::send_command(&addr, cmd, &logger) {
+                Ok(_) => { 
+                    /* All good */
+                    info!(
+                        logger,
+                        "[Source:{}] - Send command {} written successfully",
+                        source,
+                        packet_counter,
                     );
-                    let error = MeshSimError {
-                        kind: MeshSimErrorKind::Master(err_msg),
-                        cause: None,
-                    };
-                    return Err(error);
-                }
+                },
+                Err(_e) => { 
+                    error!(logger, "Could not send SEND command to worker"; "node" => &source);
+                },
             }
             //Calculating pause time
             let iter_duration = iteration.elapsed().subsec_nanos();
@@ -928,314 +1242,137 @@ impl Master {
         Ok(())
     }
 
-    fn start_mobility_thread(&self) -> io::Result<JoinHandle<()>> {
+    fn start_mobility_thread(&self) -> Result<JoinHandle<()>, MeshSimError> {
         let tb = thread::Builder::new();
         let update_time = Duration::from_millis(1000); //All velocities are expresed in meters per second.
         let sim_start_time = Instant::now();
         let sim_end_time = Duration::from_millis(self.duration);
-        let width = self.test_area.width;
-        let height = self.test_area.height;
-        let duration = self.duration;
-        let mut initialized: bool = Default::default();
         let m_model = self.mobility_model.clone();
         let logger = self.logger.clone();
-        let mut paused_workers: HashMap<i64, PendingWorker> = HashMap::new();
-        let sleep_time_override = self.sleep_time_override.clone();
-        let conn = get_db_connection(&self.work_dir, &logger).map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                MasterError::Sync(String::from("Could not connect to DB")),
-            )
-        })?;
+        // let mut paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
+        let _sleep_time_override = self.sleep_time_override;
+        let conn = get_db_connection(&self.logger)?;
+        let test_area = self.test_area;
+        let random_seed = self.random_seed;
+        
         tb.name(String::from("MobilityThread")).spawn(move || {
-            let mut rng = thread_rng();
-            let width_sample = Uniform::new(0.0, width);
-            let height_sample = Uniform::new(0.0, height);
-            let walking_sample = Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV);
 
-            let model = match m_model {
-                Some(m) => m,
-                None => {
-                    info!(
-                        logger,
-                        "No mobility model defined. Setting Stationary model"
-                    );
-                    MobilityModels::Stationary
-                },
-            };
+            let model = m_model.unwrap_or_else(|| { 
+                info!(
+                    logger,
+                    "No mobility model defined. Setting Stationary model"
+                );
+                MobilityModels::Stationary
+            });
 
-            let sleep_time = match sleep_time_override {
-                Some(time) => time,
-                None => {
-                    match &model {
-                        MobilityModels::RandomWaypoint{pause_time} => *pause_time,
-                        MobilityModels::Stationary => duration,
-                    }
+            let mut mobility_handler = match Master::build_mobility_handler(model, random_seed, test_area, logger.clone()) {
+                Ok(mh) => mh,
+                Err(e) => {
+                    //The mobility thread can't function without a handler. Exit the thread.
+                    error!(logger, "{}", e);
+                    return;
                 },
             };
 
             while Instant::now().duration_since(sim_start_time) < sim_end_time {
-                //Restart movement for workers whose pause has ended.
-                let mut restarted_workers: Vec<i64> = Vec::new();
-                for (key, val) in paused_workers.iter() {
-                    let worker_id = key;
-                    let restart_time = &val.0;
-                    let velocity = &val.1;
-                    if *restart_time <= Utc::now() {
-                        match update_worker_vel(&conn, velocity, *worker_id, &logger) {
-                            Ok(_r) =>  restarted_workers.push(*worker_id),
-                            Err(e) => {
-                                error!(
-                                    logger,
-                                    "Failed updating target for worker_id {}: {}", worker_id, &e
-                                );
-                                if let Some(cause) = e.cause {
-                                    error!(logger, "Cause: {}", cause);
-                                }
-                            }
-                        } 
-                    }
-                }
 
-                //Remove the workers that were succesfully updated from the pending list
-                paused_workers.retain(|&k, _| !restarted_workers.contains(&k));
-
-                //Wait times will be uniformly sampled from the remain simulation time.
-                let mut lower_bound: u64 = sim_start_time.elapsed().as_secs() * 1000;
-                lower_bound += u64::from(sim_start_time.elapsed().subsec_millis());
-                let wait_sample = Uniform::new(lower_bound, duration);
-
+                // Let one second elapse
                 thread::sleep(update_time);
 
-                // ****** DEBUG ******* //
-                // let workers = get_all_worker_positions(&conn)?;
-                // for w in workers {
-                //     debug!(logger, "{}({}): ({}, {})", w.1, w.0, w.2, w.3);
-                // }
-
-                match model {
-                    MobilityModels::RandomWaypoint{pause_time: _} => {
-                        Master::handle_random_waypoint(
-                            &conn,
-                            &width_sample,
-                            &height_sample,
-                            &walking_sample,
-                            &wait_sample,
-                            sleep_time,
-                            &mut paused_workers,
-                            &mut rng,
-                            &logger,
-                        );
-                    },
-                    MobilityModels::Stationary => {
-                        if !initialized {
-                            Master::handle_stationary(&conn, &logger);
-                            initialized = true;
-                        }
-                    },
-                }
-
-                //Update worker positions
-                match update_worker_positions(&conn) {
-                    Ok(rows) => {
-                        debug!(logger, "The position of {} workers has been updated", rows);
-                    }
+                //Update all worker positions
+                let _res = match update_worker_positions(&conn) {
+                    Ok(v) => { v },
                     Err(e) => {
                         error!(logger, "Error updating worker positions: {}", e);
+                        continue;
                     }
+                };
+
+                //Pass control to mobility model
+                let new_nodes_state = match mobility_handler.handle_iteration() {
+                    Ok(npn) => {
+                        /* All good! */
+                        npn
+                    },
+                    Err(e) => {
+                        warn!(logger, "Mobility error: {}", e);
+                        continue;
+                    }
+                };
+
+                for n in new_nodes_state {
+                    log_node_state("A node reached its destination", n, &logger);
                 }
+            }
+
+            //Before exiting the mobility loop, log the final destinations of all nodes.
+            let all_worker_positions = select_all_workers_state(&conn).expect("whoops");
+            for node in all_worker_positions {
+                log_node_state("Final position reached", node, &logger);
+                
+            }
+
+        })
+        .map_err(|e| { 
+            let err_msg = String::from("Failed to start mobility thread");
+            MeshSimError {
+                kind: MeshSimErrorKind::Worker(err_msg),
+                cause: Some(Box::new(e)),
             }
         })
     }
 
-    fn handle_stationary(
-        conn: &Connection,
-        logger: &Logger,
-    ) {
-        let _rows = match stop_all_workers(conn) {
-            Ok(rows) => rows,
-            Err(e) => {
-                error!(logger, "{}", e);
-                0
-            }
+    fn build_mobility_handler(model: MobilityModels, random_seed: u64, test_area: Area, logger: Logger) -> Result<Box<dyn MobilityHandler>, MeshSimError> {
+        let conn = get_db_connection(&logger)?;
+
+        let handler: Box<dyn MobilityHandler> = match model {
+            MobilityModels::Stationary => { 
+                let _ = Stationary::new(&conn, &logger);
+                let err_msg = "Exiting thread since Stationary model is selected".to_string();
+                let e = MeshSimError{
+                    kind: MeshSimErrorKind::Configuration(err_msg),
+                    cause: None
+                };
+                return Err(e);
+            },
+            MobilityModels::RandomWaypoint{ pause_time } => { 
+                let h = RandomWaypoint::new(
+                    HUMAN_SPEED_MEAN,
+                    HUMAN_SPEED_STD_DEV,
+                    random_seed,
+                    test_area,
+                    pause_time,
+                    conn,
+                    logger
+                )?;
+                Box::new(h)
+            },
+            MobilityModels::IncreasedMobility{vel_mean: _, vel_std: _, vel_increase, pause_time } => { 
+                let h = IncreasedMobility::new(
+                    vel_increase,
+                    random_seed,
+                    test_area,
+                    pause_time,
+                    conn,
+                    logger
+                );
+                Box::new(h)                
+            },
         };
+
+        Ok(handler)
     }
 
-    fn handle_random_waypoint(
-        conn: &Connection,
-        width_sample: &Uniform<f64>,
-        height_sample: &Uniform<f64>,
-        walking_sample: &Normal,
-        _wait_sample: &Uniform<u64>,
-        pause_time: u64,
-        paused_workers: &mut HashMap<i64, PendingWorker>,
-        rng: &mut dyn RngCore,
-        // db_path: &str,
-        logger: &Logger,
-    ) {
-        debug!(logger, "Entered function handle_random_waypoint");
-
-        //Select workers that reached their destination
-        let rows = match select_final_positions(&conn) {
-            Ok(rows) => rows,
-            Err(e) => {
-                error!(logger, "Error updating worker positions: {}", e);
-                vec![]
+    /// Creates a new socket for the Master/worker registration
+    pub fn new_registration_socket() -> Result<Socket, MeshSimError> {
+        Socket::new(Domain::ipv6(), Type::stream(), Some(Protocol::tcp())).map_err(|e| {
+            let err_msg = String::from("Failed to create new socket");
+            MeshSimError {
+                kind: MeshSimErrorKind::Networking(err_msg),
+                cause: Some(Box::new(e)),
             }
-        };
-
-        if !rows.is_empty() {
-            info!(
-                logger,
-                "{} workers have reached their destinations",
-                rows.len()
-            );
-            //Stop workers that have reached their destination
-            match stop_workers(&conn, &rows, logger) {
-                Ok(r) => {
-                    info!(logger, "{} workers have been stopped", r);
-                }
-                Err(e) => {
-                    error!(logger, "Could not stop workers: {}", e);
-                }
-            }
-
-            for w in rows {
-                let w_id = w.0;
-                let current_x = w.1;
-                let current_y = w.2;
-
-                //Calculate parameters
-                // let pause_time :u64 = rng.sample(wait_sample); RANDOM_WAYPOINT_WAIT_TIME
-                // let pause_time = RANDOM_WAYPOINT_WAIT_TIME;
-                let next_x: f64 = rng.sample(width_sample);
-                let next_y: f64 = rng.sample(height_sample);
-                let vel: f64 = rng.sample(walking_sample);
-                let distance: f64 = euclidean_distance(current_x, current_y, next_x, next_y);
-                let time: f64 = distance / vel;
-                let x_vel = (next_x - current_x) / time;
-                let y_vel = (next_y - current_y) / time;
-
-                //Update worker target position
-                let _res = update_worker_target(
-                    &conn,
-                    w_id,
-                    Position {
-                        x: next_x,
-                        y: next_y,
-                    },
-                    &logger,
-                );
-
-                // //Schedule thread
-                // let _h = Master::schedule_new_worker_velocity(
-                //     pause_time,
-                //     w_id,
-                //     db_path.to_string(),
-                //     Velocity { x: x_vel, y: y_vel },
-                //     &logger,
-                // );
-                let restart_time = Utc::now() + chrono::Duration::milliseconds(pause_time as i64);
-                paused_workers.insert(
-                    w_id, 
-                    (restart_time, Velocity { x: x_vel, y: y_vel })
-                );
-            }
-        }
+        })
     }
-
-    // fn schedule_new_worker_velocity(
-    //     pause_time: u64,
-    //     worker_id: i64,
-    //     db_path: String,
-    //     velocity: Velocity,
-    //     logger: &Logger,
-    // ) -> JoinHandle<()> {
-    //     let the_logger = logger.clone();
-    //     thread::spawn(move || {
-    //         let dur = Duration::from_millis(pause_time);
-    //         info!(
-    //             the_logger,
-    //             "Worker_id {} will wait for {}ms", worker_id, pause_time
-    //         );
-    //         thread::sleep(dur);
-    //         match get_db_connection(&db_path, &the_logger) {
-    //             Ok(conn) => {
-    //                 let _res = match update_worker_vel(&conn, &velocity, worker_id, &the_logger) {
-    //                     Ok(r) => r,
-    //                     Err(e) => {
-    //                         error!(
-    //                             the_logger,
-    //                             "Failed updating target for worker_id {}: {}", worker_id, &e
-    //                         );
-    //                         if let Some(cause) = e.cause {
-    //                             error!(the_logger, "Cause: {}", cause);
-    //                         }
-    //                         0
-    //                     }
-    //                 };                   
-    //             },
-    //             Err(e) => {
-    //                 error!(
-    //                     the_logger,
-    //                     "Failed updating target for worker {}", &e
-    //                 );
-    //                 if let Some(cause) = e.cause {
-    //                     error!(the_logger, "Cause: {}", cause);
-    //                 }
-    //             }
-    //         }
-    //     })
-    // }
-
-    //region command_loop
-    // fn start_command_loop_thread(&self) -> io::Result<JoinHandle<Result<(), MasterError>>> {
-    //     let tb = thread::Builder::new();
-    //     let workers = Arc::clone(&self.workers);
-
-    //     tb.name(String::from("CommandLoop"))
-    //     .spawn(move || {
-    //         let mut input = String::new();
-    //         debug!("Command loop started");
-    //         loop {
-    //             match io::stdin().read_line(&mut input) {
-    //                 Ok(_bytes) => {
-    //                     //debug!("Read {} bytes from stdin: {}", _bytes, &input);
-    //                     // match input.parse::<commands::Commands>() {
-    //                     //     Ok(command) => {
-    //                     //         info!("Command received: {:?}", &command);
-    //                     //         match Worker::process_command(command, Arc::clone(&protocol_handler)) {
-    //                     //             Ok(_) => { /* All good! */ },
-    //                     //             Err(e) => {
-    //                     //                 error!("Error executing command: {}", e);
-    //                     //             }
-    //                     //         }
-    //                     //     },
-    //                     //     Err(e) => {
-    //                     //         error!("Error parsing command: {}", e);
-    //                     //     },
-    //                     // }
-    //                     let workers = workers.lock();
-    //                     match workers {
-    //                         Ok(mut w_list) => {
-    //                             for (name, mut handle) in w_list.iter_mut() {
-    //                                 let res = handle.stdin.as_mut().unwrap().write_all(&input.as_bytes());
-    //                             }
-    //                         },
-    //                         Err(e) => {
-    //                             error!("Could not obtain lock to workers.");
-    //                         },
-    //                     }
-    //                 }
-    //                 Err(error) => {
-    //                     error!("{}", error);
-    //                 }
-    //             }
-    //         }
-    //         Ok(())
-    //     })
-    // }
-    //endregion command_loop
 }
 
 // *****************************

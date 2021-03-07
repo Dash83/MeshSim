@@ -7,8 +7,9 @@ width = 200
 height = 200
 #AddSource source destination Packets_Per_Sec Packet_Size duration start_time
 actions = [ "Add_Source node1 node3 3 32 5000 1000"]
+random_seed = 12345
 [protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node1]
     worker_name = "node1"
@@ -19,7 +20,7 @@ Protocol = "NaiveRouting"
         x = -60.0
         y = 0.0
     [initial_nodes.node1.protocol]
-        Protocol="NaiveRouting"
+        Protocol="Flooding"
     [initial_nodes.node1.velocity]
         x = 0.0
         y = 0.0
@@ -37,7 +38,7 @@ Protocol = "NaiveRouting"
         x = 0.0
         y = 0.0
     [initial_nodes.node2.protocol]
-        Protocol="NaiveRouting"
+        Protocol="Flooding"
     [initial_nodes.node2.velocity]
         x = 0.0
         y = 0.0
@@ -54,7 +55,7 @@ Protocol = "NaiveRouting"
         x = 60.0
         y = 0.0
     [initial_nodes.node3.protocol]
-        Protocol="NaiveRouting"
+        Protocol="Flooding"
     [initial_nodes.node3.velocity]
         x = 0.0
         y = 0.0
@@ -63,3 +64,13 @@ Protocol = "NaiveRouting"
         range = 100.0
 
 [available_nodes]
+
+[metadata]
+OK_PKT_PATTERN = "ACCEPTED.*DATA"
+DATA_PATTERN = "SENT.*DATA"
+RD_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+RE_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+RT_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+MAINTENANCE_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+ROUTE_BREAK_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+RD_FAIL_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"

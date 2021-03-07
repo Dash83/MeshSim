@@ -3,10 +3,12 @@ duration = 6000
 actions = ["ping node7 node25 3000 "]
 width = 300.0
 height = 300.0
+random_seed = 12345
 [protocol]
-Protocol = "ReactiveGossip"
+Protocol = "RGRII"
 k = 1
-p = 0.7
+p = 0.5
+q = 0.2
 
 [initial_nodes.node8]
 worker_name = "node8"
@@ -87,7 +89,7 @@ range = 160.0
 worker_name = "node24"
 worker_id = "a83487435c13220eea09ec7d88a50607"
 work_dir = "/tmp/rgr_route_teardown1141351916"
-random_seed = 2640706197
+random_seed = 264070619
 operation_mode = "Simulated"
 
 [initial_nodes.node24.position]
@@ -634,3 +636,13 @@ interface_name = "wlan1"
 range = 160.0
 
 [available_nodes]
+
+[metadata]
+OK_PKT_PATTERN = "ACCEPTED.*DATA"
+DATA_PATTERN = "SENT.*DATA"
+RD_PATTERN = "SENT.*ROUTE_DISCOVERY"
+RE_PATTERN = "SENT.*ROUTE_ESTABLISH"
+RT_PATTERN = "SENT.*ROUTE_TEARDOWN"
+MAINTENANCE_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+ROUTE_BREAK_PATTERN = "Route Teardown initiated"
+RD_FAIL_PATTERN = "ROUTE_DISCOVERY retries exceeded"

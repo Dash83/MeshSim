@@ -1,6 +1,6 @@
 [package]
 name = "mesh_simulator"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Marco Caballero <marco.caballero@cl.cam.ac.uk>"]
 repository = "https://github.com/Dash83/mesh_simulator.git"
 homepage = "https://github.com/Dash83/mesh_simulator.git"
@@ -11,7 +11,8 @@ description = "Simulation platform for a mesh network."
 edition = "2018"
 
 [dependencies]
-rand = "0.6.5"
+rand = "0.8.1"
+rand_distr = "0.4.0"
 rustc-serialize = "0.3"
 serde_derive = "1.0.10"
 serde = "1.0.10"
@@ -28,7 +29,7 @@ toml = "0.4.2"
 byteorder = "1.0.0"
 pnet_datalink = "0.22.0"
 ipnetwork = "0.14.0"
-socket2 = { version = "0.3.8", features = ["unix"] }
+socket2 = { version = "0.3.19", features = ["unix"] }
 pretty_assertions = "0.6.1"
 lazy_static = "1.3.0"
 md5 = "0.6.1"
@@ -44,6 +45,8 @@ diesel = { version = "1.4.3", features = ["postgres", "numeric"] }
 dotenv = "0.15.0"
 strfmt = "0.1.6"
 diesel_migrations = "1.4.0"
+crossbeam-channel = "0.5.0"
+sysinfo = "0.15.6"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 linux-embedded-hal = "0.2.2"

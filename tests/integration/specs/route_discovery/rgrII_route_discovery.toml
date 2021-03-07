@@ -28,7 +28,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node44.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -58,7 +58,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node49.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -88,7 +88,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node5.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -118,7 +118,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node17.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -148,7 +148,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node26.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -178,7 +178,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node34.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -208,7 +208,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node54.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -238,7 +238,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node59.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -268,7 +268,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node37.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -298,7 +298,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node60.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -328,7 +328,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node8.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -358,7 +358,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node64.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -388,7 +388,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node11.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -418,7 +418,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node73.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -448,7 +448,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node12.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -478,7 +478,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node22.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -508,7 +508,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node36.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -538,7 +538,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node55.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -568,7 +568,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node2.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -598,7 +598,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node24.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -628,7 +628,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node51.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -658,7 +658,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node53.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -688,7 +688,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node63.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -718,7 +718,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node66.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -748,7 +748,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node75.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -778,7 +778,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node79.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -808,7 +808,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node81.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -838,7 +838,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node85.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -868,7 +868,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node9.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -898,7 +898,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node62.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -928,7 +928,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node20.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -958,7 +958,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node89.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -988,7 +988,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node10.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1018,7 +1018,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node65.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1048,7 +1048,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node90.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1078,7 +1078,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node86.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1108,7 +1108,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node94.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1138,7 +1138,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node100.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1168,7 +1168,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node16.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1198,7 +1198,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node57.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1228,7 +1228,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node15.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1258,7 +1258,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node1.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1288,7 +1288,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node21.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1318,7 +1318,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node82.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1348,7 +1348,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node23.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1378,7 +1378,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node97.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1408,7 +1408,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node92.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1438,7 +1438,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node4.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1468,7 +1468,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node91.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1498,7 +1498,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node39.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1528,7 +1528,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node25.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1558,7 +1558,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node70.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1588,7 +1588,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node67.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1618,7 +1618,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node40.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1648,7 +1648,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node50.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1678,7 +1678,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node35.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1708,7 +1708,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node80.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1738,7 +1738,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node19.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1768,7 +1768,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node56.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1798,7 +1798,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node38.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1828,7 +1828,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node61.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1858,7 +1858,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node43.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1888,7 +1888,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node46.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1918,7 +1918,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node18.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1948,7 +1948,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node14.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -1978,7 +1978,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node27.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2008,7 +2008,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node74.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2038,7 +2038,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node13.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2068,7 +2068,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node6.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2098,7 +2098,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node52.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2128,7 +2128,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node72.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2158,7 +2158,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node87.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2188,7 +2188,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node3.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2218,7 +2218,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node28.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2248,7 +2248,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node88.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2278,7 +2278,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node96.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2308,7 +2308,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node83.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2338,7 +2338,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node32.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2368,7 +2368,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node45.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2398,7 +2398,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node69.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2428,7 +2428,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node71.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2458,7 +2458,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node98.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2488,7 +2488,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node99.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2518,7 +2518,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node78.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2548,7 +2548,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node58.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2578,7 +2578,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node33.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2608,7 +2608,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node29.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2638,7 +2638,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node68.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2668,7 +2668,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node95.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2698,7 +2698,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node84.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2728,7 +2728,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node77.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2758,7 +2758,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node31.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2788,7 +2788,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node48.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2818,7 +2818,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node7.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2848,7 +2848,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node93.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2878,7 +2878,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node41.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2908,7 +2908,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node47.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2938,7 +2938,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node76.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2968,7 +2968,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node30.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 
@@ -2998,7 +2998,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node42.protocol]
-Protocol = "ReactiveGossipII"
+Protocol = "RGRII"
 k = 2
 p = 0.55
 

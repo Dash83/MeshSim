@@ -1,11 +1,13 @@
 extern crate mesh_simulator;
 
 use super::super::*;
+
 use mesh_simulator::tests::common::*;
+use mesh_simulator::master::test_specification::TestSpec;
 
 #[test]
-fn test_cbr_basic() {
-    let test_name = String::from("CBR");
+fn one_node() {
+    let test_name = String::from("increased_mobility");
     let data = setup(&test_name, false, false);
 
     println!(
@@ -37,26 +39,34 @@ fn test_cbr_basic() {
     );
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
     let master_node_num = logging::find_record_by_msg(
-        "End_Test action: Finished. 3 processes terminated.",
+        "End_Test action: Finished. 1 processes terminated.",
         &master_log_records,
     );
     assert!(master_node_num.is_some());
 
-    let node3_log_file = &format!("{}/log/node3.log", &data.work_dir);
-    let node3_log_records = logging::get_log_records_from_file(&node3_log_file).unwrap();
-    let mut received_packets = 0;
+    let test_spec = TestSpec::parse_test_spec(&data.test_file).expect("Could not parse test file");
+    let mobility_records = logging::get_mobility_records(&master_log_file).expect("Could not load mobility records");
 
-    for record in node3_log_records.iter() {
-        if let Some(status) = &record.status {
-            if status == "ACCEPTED" {
-                received_packets += 1;
-            }
-        }
-    }
+    //Initial position
+    let (pos0, vel0) = mobility_records["node1"]
+        .iter()
+        .find(|_x| true)
+        .map(|(_ts, (pos, vel))| (*pos, *vel))
+        .unwrap();
 
-    //Since the CBR source is configured to transmit 3 packets per second for 5 seconds,
-    //we expect to count 15 received packets.
-    assert_eq!(received_packets, 15);
+    let dist = mobility_records["node1"].iter()
+    .scan(pos0, |prev, (_ts, (pos, _vel))| { 
+        let dist = prev.distance(pos);
+        *prev = *pos;
+        Some(dist)
+    })
+    .fold(0., |acc, d| acc + d ); 
+
+    let no_accel_dist = (test_spec.duration as f64 / 1000.0 )* vel0.magnitude();
+    println!("Distance traveled by node: {}", dist);
+    println!("Distance without increase: {}", no_accel_dist);
+
+    assert!(dist > no_accel_dist);
 
     //Test passed. Results are not needed.
     teardown(data, true);

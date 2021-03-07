@@ -3,8 +3,9 @@ duration = 6000
 actions = ["ping node7 node25 3000 "]
 width = 300.0
 height = 300.0
+random_seed = 12345
 [protocol]
-Protocol = "ReactiveGossipIII"
+Protocol = "RGRIII"
 k = 1
 p = 0.5
 q = 0.2
@@ -635,3 +636,13 @@ interface_name = "wlan1"
 range = 160.0
 
 [available_nodes]
+
+[metadata]
+OK_PKT_PATTERN = "ACCEPTED.*DATA"
+DATA_PATTERN = "SENT.*DATA"
+RD_PATTERN = "SENT.*ROUTE_DISCOVERY"
+RE_PATTERN = "SENT.*ROUTE_ESTABLISH"
+RT_PATTERN = "SENT.*ROUTE_TEARDOWN"
+MAINTENANCE_PATTERN = "SENT.*BEACON"
+ROUTE_BREAK_PATTERN = "Route Teardown initiated"
+RD_FAIL_PATTERN = "ROUTE_DISCOVERY retries exceeded"

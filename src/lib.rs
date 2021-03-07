@@ -26,8 +26,10 @@ extern crate diesel_migrations;
 //*****************
 pub mod logging;
 pub mod master;
+pub mod backend;
+pub mod tests;
 pub mod worker;
-pub mod mobility2;
+pub mod mobility;
 
 //*****************
 //Errors
@@ -63,6 +65,8 @@ pub enum MeshSimErrorKind {
     Master(String),
     /// Errors from parsing test specifications
     TestParsing(String),
+    ///An error related to network contentiopn
+    NetworkContention(String),
 }
 
 impl Error for MeshSimError {
@@ -92,6 +96,7 @@ impl fmt::Display for MeshSimErrorKind {
             MeshSimErrorKind::Worker(msg) => write!(f, "{}", msg),
             MeshSimErrorKind::Master(msg) => write!(f, "{}", msg),
             MeshSimErrorKind::TestParsing(msg) => write!(f, "{}", msg),
+            MeshSimErrorKind::NetworkContention(msg) => write!(f, "{}", msg),
         }
     }
 }

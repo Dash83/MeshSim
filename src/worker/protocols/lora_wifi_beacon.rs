@@ -1,19 +1,20 @@
 //! Module for the test protocol that uses Lora and Wifi radios
 
-use crate::worker::protocols::Protocol;
-use crate::worker::radio::{Radio, RadioTypes};
-use crate::worker::{MessageHeader, Peer};
+use crate::worker::protocols::{Transmission, HandleMessageOutcome, Protocol, ProtocolMessages};
+use crate::worker::radio::{self, RadioTypes};
+use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
-use md5::Digest;
-use rand::thread_rng;
-use rand::RngCore;
+
+use chrono::{DateTime, Utc};
+use std::sync::{Arc, Mutex};
+use rand::{rngs::StdRng, Rng};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
-use slog::Logger;
-use std::sync::Arc;
+use slog::{Logger, Record, Serializer, KV};
+
 use std::thread;
 use std::time::Duration;
-use rand::{rngs::StdRng, Rng};
+use crossbeam_channel::Sender;
 
 const WIFI_BEACON_TIMEOUT: u64 = 2_000;
 const LORA_BEACON_TIMEOUT: u64 = 2_000;
@@ -23,71 +24,96 @@ const LORA_BEACON_TIMEOUT: u64 = 2_000;
 pub struct LoraWifiBeacon {
     worker_name: String,
     worker_id: String,
-    wifi_radio: Arc<dyn Radio>,
-    lora_radio: Arc<dyn Radio>,
-    rng : StdRng,
+    wifi_tx_queue: Sender<Transmission>,
+    lora_tx_queue: Sender<Transmission>,
+    rng: Arc<Mutex<StdRng>>,
     logger: Logger,
 }
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub struct BeaconMessage(pub u64);
 
 ///Messages used in this protocol
-#[derive(Debug, Serialize, Deserialize)]
-enum Messages {
-    Beacon(u64),
-    BeaconResponse(u64),
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum Messages {
+    Beacon(BeaconMessage),
+    BeaconResponse(BeaconMessage),
+}
+
+impl KV for Messages {
+    fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
+        match *self {
+            Messages::Beacon(msg) => {
+                let _ = serializer.emit_str("msg_type", "BEACON")?;
+                serializer.emit_u64("id", msg.0)
+            }
+            Messages::BeaconResponse(msg) => {
+                let _ = serializer.emit_str("msg_type", "BEACON_RESPONSE")?;
+                serializer.emit_u64("id", msg.0)
+            }
+        }
+    }
 }
 
 impl Protocol for LoraWifiBeacon {
     fn handle_message(
         &self,
-        mut hdr: MessageHeader,
+        hdr: MessageHeader,
+        _ts: DateTime<Utc>,
         r_type: RadioTypes,
-    ) -> Result<Option<MessageHeader>, MeshSimError> {
-        let msg_hash = hdr.get_hdr_hash();
-
-        let data = match hdr.payload.take() {
-            Some(d) => d,
-            None => {
-                warn!(
-                    self.logger,
-                    "Messaged received from {:?} had empty payload", hdr.sender
-                );
-                return Ok(None);
-            }
-        };
-
+    ) -> Result<(), MeshSimError> {
         //Filter out packets coming from this node, as we get many from the multicast.
-        if hdr.sender.name == self.worker_name {
-            return Ok(None);
+        if hdr.sender == self.worker_name {
+            return Ok(());
         }
 
-        let msg = LoraWifiBeacon::deserialize_message(data)?;
+        let msg = deserialize_message(hdr.get_payload())?;
         let self_peer = self.get_self_peer();
-        let wifi_radio = Arc::clone(&self.wifi_radio);
-        let lora_radio = Arc::clone(&self.lora_radio);
-        let logger = self.logger.clone();
-        let link = match r_type {
+
+        // let logger = self.logger.clone();
+        let _link = match r_type {
             RadioTypes::ShortRange => String::from("wifi"),
             RadioTypes::LongRange => String::from("lora"),
         };
-        LoraWifiBeacon::handle_message_internal(
-            hdr, msg, link, self_peer, msg_hash, wifi_radio, lora_radio, logger,
-        )
+        let resp = LoraWifiBeacon::handle_message_internal(
+            hdr,
+            msg,
+            r_type,
+            self_peer,
+            &self.logger,
+        )?;
+
+        let tx_queue = match r_type {
+            RadioTypes::ShortRange => self.wifi_tx_queue.clone(),
+            RadioTypes::LongRange => self.lora_tx_queue.clone(),
+        };
+        if let Some((resp_hdr, md)) = resp {
+            tx_queue.send((resp_hdr, md, Utc::now()))
+            .map_err(|e| { 
+                let msg = "Failed to queue response into tx_queue".to_string();
+                MeshSimError {
+                    kind: MeshSimErrorKind::Contention(msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
+        }
+
+        Ok(())
     }
 
     /// Function to initialize the protocol.
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
         //Random startup delay to avoid high collisions
-        let mut rng = thread_rng();
-        let startup_delay: u64 = rng.gen_range(0, 50);
+        let mut rng = self.rng.lock().expect("Failed to lock rng");
+        let startup_delay: u64 = rng.gen_range(0..50);
         std::thread::sleep(Duration::from_millis(startup_delay));
 
-        let wifi_radio = Arc::clone(&self.wifi_radio);
+        let wifi_tx_queue = self.wifi_tx_queue.clone();
         let self_peer = self.get_self_peer();
         let logger = self.logger.clone();
         let link = String::from("wifi");
         let _wifi_beacon_handle = thread::spawn(move || {
             let _ = LoraWifiBeacon::beacon_loop(
-                wifi_radio,
+                wifi_tx_queue,
                 WIFI_BEACON_TIMEOUT,
                 self_peer,
                 link,
@@ -95,15 +121,15 @@ impl Protocol for LoraWifiBeacon {
             );
         });
 
-        let lora_radio = Arc::clone(&self.lora_radio);
+        let lora_tx_queue = self.lora_tx_queue.clone();
         let self_peer = self.get_self_peer();
         let logger = self.logger.clone();
         let link = String::from("lora");
         let _lora_beacon_handle = thread::spawn(move || {
-            let initial_offset: u64 = thread_rng().next_u64() % 3_000u64;
-            thread::sleep(Duration::from_millis(initial_offset));
+            // let initial_offset: u64 = thread_rng().next_u64() % 3_000u64;
+            // thread::sleep(Duration::from_millis(initial_offset));
             let _ = LoraWifiBeacon::beacon_loop(
-                lora_radio,
+                lora_tx_queue,
                 LORA_BEACON_TIMEOUT,
                 self_peer,
                 link,
@@ -117,6 +143,11 @@ impl Protocol for LoraWifiBeacon {
     fn send(&self, _destination: String, _data: Vec<u8>) -> Result<(), MeshSimError> {
         unimplemented!("LoraWifiBeacon does not support send commands");
     }
+
+    fn do_maintenance(&self) -> Result<(), MeshSimError> {
+        // Nothing to do
+        Ok(())
+    }
 }
 
 impl LoraWifiBeacon {
@@ -124,27 +155,27 @@ impl LoraWifiBeacon {
     pub fn new(
         worker_name: String,
         worker_id: String,
-        wifi_radio: Arc<dyn Radio>,
-        lora_radio: Arc<dyn Radio>,
-        rng : StdRng,
+        wifi_tx_queue: Sender<Transmission>,
+        lora_tx_queue: Sender<Transmission>,
+        rng: StdRng,
         logger: Logger,
     ) -> LoraWifiBeacon {
         LoraWifiBeacon {
             worker_name,
             worker_id,
-            wifi_radio,
-            lora_radio,
-            rng : rng,
+            wifi_tx_queue,
+            lora_tx_queue,
+            rng: Arc::new(Mutex::new(rng)),
             logger,
         }
     }
 
     fn beacon_loop(
-        radio: Arc<dyn Radio>,
+        tx_queue: Sender<Transmission>,
         timeout: u64,
-        self_peer: Peer,
-        link: String,
-        logger: Logger,
+        self_peer: String,
+        _link: String,
+        _logger: Logger,
     ) -> Result<(), MeshSimError> {
         let mut counter: u64 = 0;
         let sleep_time = Duration::from_millis(timeout);
@@ -152,102 +183,86 @@ impl LoraWifiBeacon {
         loop {
             thread::sleep(sleep_time);
             counter += 1;
-            let msg = Messages::Beacon(counter);
-            let mut hdr = MessageHeader::new();
-            hdr.sender = self_peer.clone();
-            hdr.payload = Some(to_vec(&msg).map_err(|e| {
-                let err_msg = String::from("Error serializing payload");
+            let msg = Messages::Beacon(BeaconMessage(counter));
+            let log_data = ProtocolMessages::LoraWifi(msg.clone());
+            let hdr = MessageHeader::new(self_peer.clone(), String::new(), serialize_message(msg)?);
+
+            tx_queue.send((hdr, log_data, Utc::now()))
+            .map_err(|e| { 
+                let msg = "Failed to queue response into tx_queue".to_string();
                 MeshSimError {
-                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    kind: MeshSimErrorKind::Contention(msg),
                     cause: Some(Box::new(e)),
                 }
-            })?);
-
-            radio.broadcast(hdr)?;
-            info!(logger, "Beacon sent over {}:{}", &link, counter);
+            })?;
         }
     }
 
-    fn get_self_peer(&self) -> Peer {
-        Peer {
-            name: self.worker_name.clone(),
-            id: self.worker_id.clone(),
-            short_address: None,
-            long_address: None,
-        }
-    }
-
-    fn deserialize_message(data: Vec<u8>) -> Result<Messages, MeshSimError> {
-        from_slice(data.as_slice()).map_err(|e| {
-            let err_msg = String::from("Error deserializing data into message");
-            MeshSimError {
-                kind: MeshSimErrorKind::Serialization(err_msg),
-                cause: Some(Box::new(e)),
-            }
-        })
-    }
-
-    #[allow(unused)]
-    fn serialize_message(msg: MessageHeader) -> Result<Vec<u8>, MeshSimError> {
-        to_vec(&msg).map_err(|e| {
-            let err_msg = String::from("Error serializing message");
-            MeshSimError {
-                kind: MeshSimErrorKind::Serialization(err_msg),
-                cause: Some(Box::new(e)),
-            }
-        })
+    fn get_self_peer(&self) -> String {
+        self.worker_name.clone()
     }
 
     fn handle_message_internal(
         hdr: MessageHeader,
         msg: Messages,
-        link: String,
-        self_peer: Peer,
-        _msg_hash: Digest,
-        _wifi_radio: Arc<dyn Radio>,
-        _lora_radio: Arc<dyn Radio>,
-        logger: Logger,
-    ) -> Result<Option<MessageHeader>, MeshSimError> {
+        r_type: RadioTypes,
+        self_peer: String,
+        logger: &Logger,
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
         match msg {
-            Messages::Beacon(counter) => {
-                LoraWifiBeacon::process_beacon_msg(hdr, counter, link, self_peer, logger)
+            Messages::Beacon(msg) => {
+                LoraWifiBeacon::process_beacon_msg(hdr, msg, self_peer, r_type, logger)
             }
-            Messages::BeaconResponse(counter) => {
-                LoraWifiBeacon::process_beacon_response_msg(hdr, counter, link, self_peer, logger)
+            Messages::BeaconResponse(msg) => {
+                LoraWifiBeacon::process_beacon_response_msg(hdr, msg, self_peer, r_type, logger)
             }
         }
     }
 
     fn process_beacon_msg(
-        mut hdr: MessageHeader,
-        counter: u64,
-        link: String,
-        me : Peer,
-        logger: Logger,
-    ) -> Result<Option<MessageHeader>, MeshSimError> {
-        info!(
+        hdr: MessageHeader,
+        msg: BeaconMessage,
+        me: String,
+        r_type: RadioTypes,
+        logger: &Logger,
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
+        radio::log_handle_message(
             logger,
-            "Beacon received over {} from {}:{}", link, hdr.sender.name, counter
+            &hdr,
+            MessageStatus::ACCEPTED,
+            None,
+            Some("Replying to message"),
+            r_type,
+            &Messages::Beacon(msg),
         );
-        hdr.destination = hdr.sender.clone();
-        hdr.sender = me.clone();
-        hdr.payload = Some(serialize_message(Messages::BeaconResponse(counter))?);
 
-        Ok(Some(hdr))
+        let sender = hdr.sender;
+        let resp_msg = Messages::BeaconResponse(msg);
+        let log_data = ProtocolMessages::LoraWifi(resp_msg.clone());
+        let response_hdr = MessageHeader::new(me, sender, serialize_message(resp_msg)?);
+        Ok(Some((response_hdr, log_data)))
     }
 
     fn process_beacon_response_msg(
         hdr: MessageHeader,
-        counter: u64,
-        link: String,
-        me: Peer,
-        logger: Logger,
-    ) -> Result<Option<MessageHeader>, MeshSimError> {
-
-        if hdr.destination.name == me.name {
-            info!(
+        msg: BeaconMessage,
+        me: String,
+        r_type: RadioTypes,
+        logger: &Logger,
+    ) -> Result<HandleMessageOutcome, MeshSimError> {
+        if hdr.destination == me {
+            // info!(
+            //     logger,
+            //     "BeaconResponse received over {} from {}:{}", link, hdr.sender, counter
+            // );
+            radio::log_handle_message(
                 logger,
-                "BeaconResponse received over {} from {}:{}", link, hdr.sender.name, counter
+                &hdr,
+                MessageStatus::ACCEPTED,
+                None,
+                None,
+                r_type,
+                &Messages::BeaconResponse(msg),
             );
         }
 
@@ -255,8 +270,8 @@ impl LoraWifiBeacon {
     }
 }
 
-fn deserialize_message(data: Vec<u8>) -> Result<Messages, MeshSimError> {
-    from_slice(data.as_slice()).map_err(|e| {
+fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
+    from_slice(data).map_err(|e| {
         let err_msg = String::from("Error deserializing data into message");
         MeshSimError {
             kind: MeshSimErrorKind::Serialization(err_msg),

@@ -2,12 +2,14 @@ extern crate mesh_simulator;
 
 use mesh_simulator::master::test_specification::*;
 use mesh_simulator::master::MobilityModels;
+use mesh_simulator::backend::*;
 use mesh_simulator::worker;
-use mesh_simulator::worker::mobility::*;
 use mesh_simulator::worker::protocols::Protocols;
 use mesh_simulator::worker::worker_config::*;
+use crate::mesh_simulator::mobility::{Position, Velocity};
 
-use rand::distributions::{Normal, Uniform};
+use rand::distributions::Uniform;
+use rand_distr::Normal;
 use rand::{thread_rng, Rng, RngCore};
 use std::error;
 use std::fmt;
@@ -19,6 +21,7 @@ use std::str::FromStr;
 
 const DEFAULT_FILE_NAME: &str = "untitled";
 const DEFAULT_NODE_NAME: &str = "node";
+const STARTUP_TIME_PER_NODE: u64 = 15; //ms
 
 #[derive(Debug)]
 struct TestBasics {
@@ -36,7 +39,7 @@ impl TestBasics {
         TestBasics {
             test_name: String::from(""),
             end_time: 0,
-            protocol: Protocols::NaiveRouting,
+            protocol: Protocols::Flooding,
             width: 0.0,
             height: 0.0,
             m_model: None,
@@ -165,17 +168,6 @@ enum Errors {
 }
 
 impl error::Error for Errors {
-    fn description(&self) -> &str {
-        match *self {
-            // CLIError::SetLogger(ref err) => err.description(),
-            // CLIError::IO(ref err) => err.description(),
-            // CLIError::Master(ref err) => err.description(),
-            Errors::TestParsing(ref err_str) => err_str,
-            Errors::IO(ref err) => err.description(),
-            Errors::Serialization(ref err) => err.description(),
-        }
-    }
-
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             // CLIError::SetLogger(ref err) => Some(err),
@@ -191,9 +183,6 @@ impl error::Error for Errors {
 impl fmt::Display for Errors {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            // CLIError::SetLogger(ref err) => write!(f, "SetLogger error: {}", err),
-            // CLIError::IO(ref err) => write!(f, "IO error: {}", err),
-            // CLIError::Master(ref err) => write!(f, "Error in Master layer: {}", err),
             Errors::TestParsing(ref err_str) => {
                 write!(f, "Error creating test specification: {}", err_str)
             }
@@ -272,12 +261,14 @@ fn process_command(com: Commands, spec: &mut TestSpec, data: &TestBasics) -> Res
     match com {
         Commands::Finish => command_finish(spec, data),
         Commands::AddNodes(node_type, num) => command_add_nodes(node_type, num, spec, data),
-        Commands::AddAction(parts) => command_add_action(parts, spec),
+        Commands::AddAction(parts) => {
+            Ok(command_add_action(parts, spec))
+        },
         Commands::AddSources(num_sources, s_type, params) => {
             command_add_sources(num_sources, s_type, params, spec)
         }
         Commands::AddGrid(x, y, sr_range, lr_range) => {
-            command_add_grid(x, y, sr_range, lr_range, spec, &data)
+            Ok(command_add_grid(x, y, sr_range, lr_range, spec, &data))
         }
     }
 }
@@ -294,6 +285,8 @@ fn command_finish(spec: &mut TestSpec, data: &TestBasics) -> Result<bool, Errors
         }
     };
     spec.protocol = data.protocol;
+    //Add the data analysis patterns for this protocol to the metadata section
+    spec.metadata.extend(spec.protocol.get_data_analysis_patterns());
 
     p.push(file_name);
     //let canon = p.canonicalize().expect("Invalid file path");
@@ -324,11 +317,33 @@ fn command_add_nodes(
     spec: &mut TestSpec,
     data: &TestBasics,
 ) -> Result<bool, Errors> {
+    let model = data.m_model.clone().unwrap_or(MobilityModels::Stationary);
     let mut rng = rand::thread_rng();
-    let width_sample = Uniform::new(0.0, data.width);
-    let height_sample = Uniform::new(0.0, data.height);
-    let walking_sample = Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV);
-
+    let width_distribution = Uniform::new(0.0, data.width);
+    let height_distribution = Uniform::new(0.0, data.height);
+    let vel_distribution = match model {
+        MobilityModels::RandomWaypoint { pause_time: _ } => {
+            Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV)
+            .map_err(|_e| { 
+                let err_msg = "Could not create Normal distribution from the provided values".into();
+                Errors::TestParsing(err_msg)
+            })?
+        },
+        MobilityModels::Stationary => { 
+            Normal::new(0., 0.)
+            .map_err(|_e| { 
+                let err_msg = "Could not create Normal distribution from the provided values".into();
+                Errors::TestParsing(err_msg)
+            })?
+        },
+        MobilityModels::IncreasedMobility {vel_mean, vel_std, vel_increase:_, pause_time:_ } => { 
+            Normal::new(vel_mean, vel_std)
+            .map_err(|_e| { 
+                let err_msg = "Could not create Normal distribution from the provided values".into();
+                Errors::TestParsing(err_msg)
+            })?
+        },
+    };
     let nodes = match node_type.to_uppercase().as_str() {
         "AVAILABLE" => &mut spec.available_nodes,
         "INITIAL" => &mut spec.initial_nodes,
@@ -347,43 +362,40 @@ fn command_add_nodes(
         w.operation_mode = worker::OperationMode::Simulated; //All test files are for simulated mode.
         w.random_seed = rng.next_u32();
         w.work_dir = data.work_dir.clone();
-//        w.protocol = data.protocol;
+        //        w.protocol = data.protocol;
         w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
 
         //Calculate the position
-        let x = rng.sample(width_sample);
-        let y = rng.sample(height_sample);
+        let x = rng.sample(width_distribution);
+        let y = rng.sample(height_distribution);
         w.position = Position { x, y };
 
-        if let Some(model) = &data.m_model {
-            match model {
-                MobilityModels::RandomWaypoint{pause_time: _} => {
-                    let target_x = rng.sample(width_sample);
-                    let target_y = rng.sample(height_sample);
-                    w.destination = Some(Position {
-                        x: target_x,
-                        y: target_y,
-                    });
 
-                    //Velocity vector should point to destination
-                    let vel = rng.sample(walking_sample);
-                    let distance: f64 =
-                        euclidean_distance(w.position.x, w.position.y, target_x, target_y);
-                    let time: f64 = distance / vel;
-                    let x_vel = (target_x - w.position.x) / time;
-                    let y_vel = (target_y - w.position.y) / time;
-                    w.velocity = Velocity { x: x_vel, y: y_vel };
-                }
-                MobilityModels::Stationary => { /* Nothing else to do */ }
-            }
-        } else {
-            //Calculate velocity
-            // let x_vel = rng.sample(walking_sample);
-            // let y_vel = rng.sample(walking_sample);
-            //Since no mobility model is provided, assume velocity of 0
-            let x_vel = 0.0f64;
-            let y_vel = 0.0f64;
-            w.velocity = Velocity { x: x_vel, y: y_vel };
+        match model {
+            //Random waypoint and Increased Mobility only differ in the velocitry distribution used
+            MobilityModels::RandomWaypoint { pause_time: _ } | 
+            MobilityModels::IncreasedMobility {vel_mean:_, vel_std:_, vel_increase:_, pause_time:_ } => {
+                let target_x = rng.sample(width_distribution);
+                let target_y = rng.sample(height_distribution);
+                w.destination = Some(Position {
+                    x: target_x,
+                    y: target_y,
+                });
+
+                //Velocity vector should point to destination
+                let vel = rng.sample(vel_distribution);
+                let distance: f64 =
+                    euclidean_distance(w.position.x, w.position.y, target_x, target_y);
+                let time: f64 = distance / vel;
+                let x_vel = (target_x - w.position.x) / time;
+                let y_vel = (target_y - w.position.y) / time;
+                w.velocity = Velocity { x: x_vel, y: y_vel };
+            },
+            MobilityModels::Stationary => { 
+                let x_vel = 0.0f64;
+                let y_vel = 0.0f64;
+                w.velocity = Velocity { x: x_vel, y: y_vel };
+            },
         }
 
         //Create the radio configurations
@@ -404,9 +416,9 @@ fn command_add_nodes(
     Ok(false)
 }
 
-fn command_add_action(parts: String, spec: &mut TestSpec) -> Result<bool, Errors> {
+fn command_add_action(parts: String, spec: &mut TestSpec) -> bool {
     spec.actions.push(parts);
-    Ok(false)
+    false
 }
 
 fn command_add_sources(
@@ -439,29 +451,57 @@ fn add_cbr_sources(
     spec: &mut TestSpec,
 ) -> Result<bool, Errors> {
     let mut rng = thread_rng();
-    //Warm-up time estimated at 10 ms per node.
-    let warm_up_period: u64 = (spec.initial_nodes.len() * 10) as u64;
-    let cool_off_period: u64 = (spec.duration as f64 * 0.05) as u64;
-    let duration: u64 = (spec.duration as f64 * 0.10) as u64;
-    let sources_start_time_limit: u64 = spec.duration - cool_off_period - duration;
-    let start_times_sample = Uniform::new(warm_up_period, sources_start_time_limit);
-    
-    assert!(warm_up_period < sources_start_time_limit);
+    let param_parts: Vec<&str> = params.trim().split_whitespace().collect();
 
-    let param_parts: Vec<&str> = params.split_whitespace().collect();
+    assert!(param_parts.len() >= 2);
+
     //get packet-rate
     let packet_rate: usize = match param_parts[0].parse() {
         Ok(n) => n,
-        Err(e) => return Err(Errors::TestParsing(format!("{}", e))),
+        Err(e) => {
+            return Err(Errors::TestParsing(format!(
+                "Failed to parse packet_rate: {}",
+                e
+            )))
+        }
     };
     //select packet-size
     let packet_size: usize = match param_parts[1].parse() {
         Ok(n) => n,
-        Err(e) => return Err(Errors::TestParsing(format!("{}", e))),
+        Err(e) => {
+            return Err(Errors::TestParsing(format!(
+                "Failed to parse packet_size: {}",
+                e
+            )))
+        }
+    };
+    //Get a duration for each source
+    let duration = if param_parts.len() > 2 {
+        let d: u64 = match param_parts[2].parse() {
+            Ok(n) => n,
+            Err(e) => {
+                return Err(Errors::TestParsing(format!(
+                    "Failed to parse source duration: {}",
+                    e
+                )))
+            }
+        };
+        d
+    } else {
+        (spec.duration as f64 * 0.10).floor() as u64
     };
 
+    //Warm-up time estimated at STARTUP_TIME_PER_NODE ms per node.
+    let warm_up_period: u64 = spec.initial_nodes.len() as u64 * STARTUP_TIME_PER_NODE;
+    let cool_off_period: u64 = (spec.duration as f64 * 0.10).floor() as u64;
+    //The cutoff time at which a source can start, execute for the specified duration
+    //and finish transmitting its packets before the cool-off period starts.
+    let sources_start_time_limit: u64 = spec.duration - cool_off_period - duration;
+    assert!(warm_up_period < sources_start_time_limit);
+    let start_times_sample = Uniform::new(warm_up_period, sources_start_time_limit);
+
     assert!(num_sources <= (spec.initial_nodes.len() / 2));
-    let mut nodes : Vec<&String> = spec.initial_nodes.keys().clone().collect();
+    let mut nodes: Vec<&String> = spec.initial_nodes.keys().clone().collect();
     for _i in 0..num_sources {
         //select source
         let source_index = rng.next_u32() as usize % nodes.len();
@@ -579,7 +619,7 @@ fn command_add_grid(
     lr_range: f64,
     spec: &mut TestSpec,
     data: &TestBasics,
-) -> Result<bool, Errors> {
+) -> bool {
     let start_x: usize = 0;
     let start_y: usize = 0;
     let effective_range = sr_range * 0.90;
@@ -598,7 +638,7 @@ fn command_add_grid(
             w.operation_mode = worker::OperationMode::Simulated; //All test files are for simulated mode.
             w.random_seed = rng.next_u32();
             w.work_dir = data.work_dir.clone();
-//            w.protocol = data.protocol;
+            //            w.protocol = data.protocol;
             w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
             w.position = Position { x, y };
             w.velocity = Velocity { x: 0.0, y: 0.0 };
@@ -618,7 +658,7 @@ fn command_add_grid(
         }
     }
 
-    Ok(false)
+    false
 }
 
 fn main() {

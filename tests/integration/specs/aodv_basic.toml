@@ -4,8 +4,14 @@ actions = [ "Ping node1 node25 1500",
             "Ping node7 node25 2500"]
 width = 200.0
 height = 200.0
+random_seed = 12345
 [protocol]
 Protocol = "AODV"
+active_route_timeout = 3000
+net_diameter =  15
+node_traversal_time = 40
+allowed_hello_loss = 2
+rreq_retries = 2
 
 [initial_nodes.node2]
 worker_name = "node2"
@@ -23,7 +29,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node2.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node2.radio_short]
 reliability = 1.0
@@ -51,7 +57,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node7.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node7.radio_short]
 reliability = 1.0
@@ -79,7 +85,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node8.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node8.radio_short]
 reliability = 1.0
@@ -107,7 +113,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node16.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node16.radio_short]
 reliability = 1.0
@@ -135,7 +141,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node22.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node22.radio_short]
 reliability = 1.0
@@ -163,7 +169,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node12.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node12.radio_short]
 reliability = 1.0
@@ -191,7 +197,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node15.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node15.radio_short]
 reliability = 1.0
@@ -219,7 +225,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node20.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node20.radio_short]
 reliability = 1.0
@@ -247,7 +253,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node6.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node6.radio_short]
 reliability = 1.0
@@ -275,7 +281,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node14.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node14.radio_short]
 reliability = 1.0
@@ -303,7 +309,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node4.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node4.radio_short]
 reliability = 1.0
@@ -331,7 +337,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node17.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node17.radio_short]
 reliability = 1.0
@@ -359,7 +365,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node21.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node21.radio_short]
 reliability = 1.0
@@ -387,7 +393,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node5.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node5.radio_short]
 reliability = 1.0
@@ -415,7 +421,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node23.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node23.radio_short]
 reliability = 1.0
@@ -443,7 +449,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node11.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node11.radio_short]
 reliability = 1.0
@@ -471,7 +477,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node24.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node24.radio_short]
 reliability = 1.0
@@ -499,7 +505,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node25.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node25.radio_short]
 reliability = 1.0
@@ -527,7 +533,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node10.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node10.radio_short]
 reliability = 1.0
@@ -555,7 +561,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node13.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node13.radio_short]
 reliability = 1.0
@@ -583,7 +589,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node18.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node18.radio_short]
 reliability = 1.0
@@ -611,7 +617,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node19.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node19.radio_short]
 reliability = 1.0
@@ -639,7 +645,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node9.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node9.radio_short]
 reliability = 1.0
@@ -667,7 +673,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node1.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node1.radio_short]
 reliability = 1.0
@@ -695,7 +701,7 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node3.protocol]
-Protocol = "NaiveRouting"
+Protocol = "Flooding"
 
 [initial_nodes.node3.radio_short]
 reliability = 1.0
@@ -708,3 +714,13 @@ interface_name = "wlan1"
 range = 60.0
 
 [available_nodes]
+
+[metadata]
+RD_PATTERN = "SENT.*RREQ"
+RT_PATTERN = "SENT.*RERR"
+RE_PATTERN = "SENT.*RREP"
+DATA_PATTERN = "SENT.*DATA"
+OK_PKT_PATTERN = "ACCEPTED.*DATA"
+ROUTE_BREAK_PATTERN = "BROKEN_LINK detected"
+RD_FAIL_PATTERN = "RREQ retries exceeded"
+MAINTENANCE_PATTERN = "SENT.*HELLO"

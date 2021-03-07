@@ -1,13 +1,16 @@
 name = "route_discovery_retry"
 duration = 9000
+random_seed = 12345
 width = 200 
 height = 200 
 actions = ["ping node2 node6 1000"]
+
 [mobility]
 Model = "RandomWaypoint"
 pause_time = 1
+
 [protocol]
-Protocol = "ReactiveGossip"
+Protocol = "RGR"
 k = 2
 p = 0.70
 
@@ -75,13 +78,13 @@ random_seed = 78
 operation_mode = "Simulated"
 [initial_nodes.node4.position]
 x = 50.0
-y = 115.0
+y = 110.0
 [initial_nodes.node4.destination]
 x = 50.0 
 y = 100.0 
 [initial_nodes.node4.velocity]
 x = 0.0
-y = -2.5
+y = -3.5
 [initial_nodes.node4.radio_short]
 reliability = 1
 range = 100.0
@@ -113,7 +116,7 @@ random_seed = 123
 operation_mode = "Simulated"
 [initial_nodes.node6.position]
 x = 50.0
-y = 200.0
+y = 210.0
 [initial_nodes.node6.destination]
 x = 100.0 #Doesn't matter for this test
 y = 100.0 #Doesn't matter for this test
@@ -131,7 +134,7 @@ interface_name = "wlan0"
 # random_seed = 234
 # operation_mode = "Simulated"
 # [initial_nodes.node7.protocol]
-# Protocol = "ReactiveGossip"
+# Protocol = "RGR"
 # k = 2
 # p = 0.70
 # [initial_nodes.node7.position]
@@ -195,3 +198,13 @@ interface_name = "wlan0"
 # interface_name = "wlan0"
 
 [available_nodes]
+
+[metadata]
+OK_PKT_PATTERN = "ACCEPTED.*DATA"
+DATA_PATTERN = "SENT.*DATA"
+RD_PATTERN = "SENT.*ROUTE_DISCOVERY"
+RE_PATTERN = "SENT.*ROUTE_ESTABLISH"
+RT_PATTERN = "SENT.*ROUTE_TEARDOWN"
+MAINTENANCE_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+ROUTE_BREAK_PATTERN = "Route Teardown initiated"
+RD_FAIL_PATTERN = "ROUTE_DISCOVERY retries exceeded"

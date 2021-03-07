@@ -1,4 +1,4 @@
-//! Gossip-based flooding protocol
+//! Protocol that naively routes data by relaying all messages it receives.
 
 use crate::worker::protocols::{Transmission, HandleMessageOutcome, Protocol, ProtocolMessages};
 use crate::worker::radio::{self, *};
@@ -6,7 +6,7 @@ use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 
 use chrono::{DateTime, Utc};
-use rand::{rngs::StdRng, Rng, RngCore};
+use rand::{rngs::StdRng, RngCore};
 use serde_cbor::de::*;
 use serde_cbor::ser::*;
 use slog::{Logger, Record, Serializer, KV};
@@ -16,10 +16,6 @@ use std::sync::{Arc, Mutex};
 use crossbeam_channel::Sender;
 
 const MSG_CACHE_SIZE: usize = 10000;
-/// The default number of hops messages are guaranteed to be propagated
-pub const DEFAULT_MIN_HOPS: usize = 2;
-/// The default gossip-probability value
-pub const DEFAULT_GOSSIP_PROB: f64 = 0.70;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct CacheEntry {
@@ -28,14 +24,11 @@ struct CacheEntry {
 
 ///The main struct for this protocol. Implements the worker::protocol::Protocol trait.
 #[derive(Debug)]
-pub struct GossipRouting {
-    k: usize,
-    p: f64,
+pub struct Flooding {
     worker_name: String,
     worker_id: String,
     msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
     tx_queue: Sender<Transmission>,
-    /// RNG used for gossip calculations
     rng: Arc<Mutex<StdRng>>,
     logger: Logger,
 }
@@ -44,6 +37,11 @@ pub struct DataMessage {
     payload: Vec<u8>,
 }
 
+impl DataMessage {
+    pub fn new(payload: Vec<u8>) -> Self {
+        DataMessage { payload }
+    }
+}
 /// This enum represents the types of network messages supported in the protocol as well as the
 /// data associated with them.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -54,11 +52,13 @@ pub enum Messages {
 
 impl KV for Messages {
     fn serialize(&self, _rec: &Record, serializer: &mut dyn Serializer) -> slog::Result {
-        serializer.emit_str("msg_type", "DATA")
+        match *self {
+            Messages::Data(ref _m) => serializer.emit_str("msg_type", "DATA"),
+        }
     }
 }
 
-impl Protocol for GossipRouting {
+impl Protocol for Flooding {
     fn init_protocol(&self) -> Result<Option<MessageHeader>, MeshSimError> {
         //No initialization needed
         Ok(None)
@@ -79,12 +79,10 @@ impl Protocol for GossipRouting {
         })?;
         let msg_cache = Arc::clone(&self.msg_cache);
         let rng = Arc::clone(&self.rng);
-        let resp = GossipRouting::handle_message_internal(
+        let resp = Flooding::handle_message_internal(
             hdr,
             msg,
             self.get_self_peer(),
-            self.k,
-            self.p,
             msg_cache,
             r_type,
             rng,
@@ -108,7 +106,7 @@ impl Protocol for GossipRouting {
     fn send(&self, destination: String, data: Vec<u8>) -> Result<(), MeshSimError> {
         let perf_out_queued_start = Utc::now();
         let msg = Messages::Data(DataMessage { payload: data });
-        let log_data = ProtocolMessages::Gossip(msg.clone());
+        let log_data = ProtocolMessages::Flooding(msg.clone());
         let mut hdr =
             MessageHeader::new(self.get_self_peer(), destination, serialize_message(msg)?);
         hdr.delay = perf_out_queued_start.timestamp_nanos();
@@ -141,28 +139,24 @@ impl Protocol for GossipRouting {
     }
 
     fn do_maintenance(&self) -> Result<(), MeshSimError> {
-        // Gossip requires no maintenance
+        // No maintenance required for this protocol!
         Ok(())
     }
 }
 
-impl GossipRouting {
+impl Flooding {
     /// Creates a new instance of the NaiveRouting protocol handler
     pub fn new(
         worker_name: String,
         worker_id: String,
-        k: usize,
-        p: f64,
         tx_queue: Sender<Transmission>,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
-    ) -> GossipRouting {
+    ) -> Flooding {
         let v = HashSet::with_capacity(MSG_CACHE_SIZE);
-        GossipRouting {
+        Flooding {
             worker_name,
             worker_id,
-            k,
-            p,
             msg_cache: Arc::new(Mutex::new(v)),
             tx_queue,
             rng,
@@ -173,48 +167,47 @@ impl GossipRouting {
     fn process_data_message(
         hdr: MessageHeader,
         msg: DataMessage,
-        k: usize,
-        p: f64,
         me: String,
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
-        r_type: RadioTypes,
         rng: Arc<Mutex<StdRng>>,
+        r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
+        let msg_id = hdr.get_msg_id().to_string();
         {
             // LOCK:ACQUIRE:MSG_CACHE
             let mut cache = msg_cache.lock().map_err(|_e| {
                 let err_msg = String::from("Failed to lock message cache");
-
                 radio::log_handle_message(
                     logger,
                     &hdr,
                     MessageStatus::DROPPED,
-                    None,
+                    Some(&err_msg),
                     None,
                     r_type,
                     &Messages::Data(msg.clone()),
                 );
                 MeshSimError {
                     kind: MeshSimErrorKind::Contention(err_msg),
-                    // cause: Some(Box::new(e.clone())),
+                    // cause: Some(Box::new(e)),
                     cause: None,
                 }
             })?;
 
-            for entry in cache.iter() {
-                if entry.msg_id == hdr.get_msg_id() {
-                    radio::log_handle_message(
-                        logger,
-                        &hdr,
-                        MessageStatus::DROPPED,
-                        Some("DUPLICATE"),
-                        None,
-                        r_type,
-                        &Messages::Data(msg),
-                    );
-                    return Ok(None);
-                }
+            let entry = CacheEntry {
+                msg_id: msg_id.clone(),
+            };
+            if cache.contains(&entry) {
+                radio::log_handle_message(
+                    logger,
+                    &hdr,
+                    MessageStatus::DROPPED,
+                    Some("DUPLICATE"),
+                    None,
+                    r_type,
+                    &Messages::Data(msg),
+                );
+                return Ok(None);
             }
 
             //Have not seen this message yet.
@@ -227,9 +220,7 @@ impl GossipRouting {
                 cache.remove(&e);
             }
             //Log message
-            cache.insert(CacheEntry {
-                msg_id: hdr.get_msg_id().to_string(),
-            });
+            cache.insert(CacheEntry { msg_id });
         } // LOCK:RELEASE:MSG_CACHE
 
         //Check if this node is the intended recipient of the message.
@@ -246,41 +237,15 @@ impl GossipRouting {
             return Ok(None);
         }
 
-        //Gossip?
-        let s: f64 = {
-            let mut rng = rng.lock().expect("Could not obtain lock for RNG");
-            rng.gen_range(0f64..1f64)
-        };
-        debug!(logger, "Gossip prob {}", s);
-        if hdr.hops as usize > k && s > p {
-            radio::log_handle_message(
-                logger,
-                &hdr,
-                MessageStatus::DROPPED,
-                Some("Gossip failed"),
-                None,
-                r_type,
-                &Messages::Data(msg),
-            );
-            //Not gossiping this message.
-            return Ok(None);
-        }
-
         let msg = Messages::Data(msg);
-        radio::log_handle_message(
-            logger,
-            &hdr,
-            MessageStatus::FORWARDING,
-            Some("Gossip succeeded"),
-            None,
-            r_type,
-            &msg,
-        );
+
+        //Message is not meant for this node
+        radio::log_handle_message(logger, &hdr, MessageStatus::FORWARDING, None, None, r_type, &msg);
         //The payload of the incoming header is still valid, so just build a new header with this node as the sender
         //and leave the rest the same.
         let fwd_hdr = hdr.create_forward_header(me).build();
         //Box the message to log it
-        let log_data = ProtocolMessages::Gossip(msg);
+        let log_data = ProtocolMessages::Flooding(msg);
 
         Ok(Some((fwd_hdr, log_data)))
     }
@@ -289,8 +254,6 @@ impl GossipRouting {
         hdr: MessageHeader,
         msg: Messages,
         me: String,
-        k: usize,
-        p: f64,
         msg_cache: Arc<Mutex<HashSet<CacheEntry>>>,
         r_type: RadioTypes,
         rng: Arc<Mutex<StdRng>>,
@@ -298,7 +261,7 @@ impl GossipRouting {
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         match msg {
             Messages::Data(data) => {
-                GossipRouting::process_data_message(hdr, data, k, p, me, msg_cache, r_type, rng, logger)
+                Flooding::process_data_message(hdr, data, me, msg_cache, rng, r_type, logger)
             }
         }
     }
@@ -308,7 +271,7 @@ impl GossipRouting {
     }
 }
 
-fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
+pub fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
     from_slice(data).map_err(|e| {
         let err_msg = String::from("Error deserializing data into message");
         MeshSimError {
@@ -318,7 +281,7 @@ fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
     })
 }
 
-fn serialize_message(msg: Messages) -> Result<Vec<u8>, MeshSimError> {
+pub fn serialize_message(msg: Messages) -> Result<Vec<u8>, MeshSimError> {
     to_vec(&msg).map_err(|e| {
         let err_msg = String::from("Error serializing message");
         MeshSimError {

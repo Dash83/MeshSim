@@ -1,8 +1,9 @@
 name = "lora_wifi_beacon_placement"
-duration = 12000
+duration = 11500
 actions = []
 width = 200.0
 height = 200.0
+random_seed = 0
 [protocol]
 Protocol = "LoraWifiBeacon"
 
@@ -567,3 +568,5 @@ interface_name = "wlan1"
 range = 38.0
 
 [available_nodes]
+
+[metadata]

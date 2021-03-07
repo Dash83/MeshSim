@@ -1,0 +1,113 @@
+name = "random_waypoint_test"
+duration = 10000
+random_seed = 1
+actions = []
+width = 20.0
+height = 20.0
+
+[mobility]
+Model = "RandomWaypoint"
+pause_time = 0
+
+[protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node2]
+worker_name = "node2"
+worker_id = "de40c187094fd700761f22d7a2eaa1d8"
+work_dir = "/tmp/random_waypoint_test144017320"
+random_seed = 1658816333
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000
+
+[initial_nodes.node2.position]
+x = 2.452417674053404
+y = 6.60803706305855
+
+[initial_nodes.node2.destination]
+x = 10.07455870945735
+y = 5.4753663202882175
+
+[initial_nodes.node2.velocity]
+x = 1.6444294920951097
+y = -0.24436666359140616
+
+[initial_nodes.node2.radio_short]
+timeout = 10000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+
+[initial_nodes.node1]
+worker_name = "node1"
+worker_id = "cc7ff070a2b17cb5964c564ff34b6833"
+work_dir = "/tmp/random_waypoint_test144017320"
+random_seed = 886027408
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000
+
+[initial_nodes.node1.position]
+x = 8.470385704513097
+y = 14.918601791008705
+
+[initial_nodes.node1.destination]
+x = 12.486206652602609
+y = 2.368397721269397
+
+[initial_nodes.node1.velocity]
+x = 0.4636926374300167
+y = -1.4491276629628849
+
+[initial_nodes.node1.radio_short]
+timeout = 10000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+
+[initial_nodes.node3]
+worker_name = "node3"
+worker_id = "4bb5096558cf9d74bb6a59e8961a7dcf"
+work_dir = "/tmp/random_waypoint_test144017320"
+random_seed = 3742434003
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000
+
+[initial_nodes.node3.position]
+x = 1.560412589652902
+y = 0.7585533543441247
+
+[initial_nodes.node3.destination]
+x = 16.763522726062554
+y = 7.655493992768028
+
+[initial_nodes.node3.velocity]
+x = 1.2227672699167933
+y = 0.5547123713211086
+
+[initial_nodes.node3.radio_short]
+timeout = 10000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+
+
+[available_nodes]
+
+[metadata]
+RD_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+MAINTENANCE_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+RD_FAIL_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+OK_PKT_PATTERN = "ACCEPTED.*DATA"
+ROUTE_BREAK_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+RT_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+DATA_PATTERN = "SENT.*DATA"
+RE_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
