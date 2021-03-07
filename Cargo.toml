@@ -1,6 +1,6 @@
 [package]
 name = "mesh_simulator"
-version = "0.3.0"
+version = "0.6.0"
 authors = ["Marco Caballero <marco.caballero@cl.cam.ac.uk>"]
 repository = "https://github.com/Dash83/mesh_simulator.git"
 homepage = "https://github.com/Dash83/mesh_simulator.git"
