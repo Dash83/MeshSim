@@ -8,3 +8,4 @@ Cargo.lock
 .idea
 results
 .env_root
+.DS_Store
