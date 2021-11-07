@@ -3,267 +3,218 @@ extern crate chrono;
 extern crate mesh_simulator;
 extern crate socket2;
 
+
+use std::collections::HashMap;
 use std::env;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use super::super::*;
+use diesel::PgConnection;
 use mesh_simulator::logging;
+use chrono::Duration;
+use peroxide::fuga::*;
+use slog::*;
+use rand::{self, prelude::*};
 
 use mesh_simulator::backend::*;
+// use mesh_simulator::master::Master;
 use mesh_simulator::mobility::*;
 use mesh_simulator::tests::common::*;
+use mesh_simulator::worker::listener::Listener;
 use mesh_simulator::worker::radio::*;
 use mesh_simulator::worker::worker_config::*;
 use mesh_simulator::worker::*;
+use mesh_simulator::worker::radio::RadioTypes;
 
-//**** Radio unit tests ****
-//TODO: Implement test
-// //Unit test for: Radio::new
-// #[test]
-// fn test_radio_new() {
-//     let radio = Radio::new();
-//     let radio_string = "Radio { delay: 0, reliability: 1, broadcast_groups: [], radio_name: \"\" }";
+struct TestWorker {
+    pub name: String,
+    pub short_radio: Arc<dyn Radio>,
+    pub short_listener: Box<dyn Listener>,
+    pub short_radio_range: f64,
+    pub long_radio: Arc<dyn Radio>,
+    pub long_listener: Box<dyn Listener>,
+    pub long_radio_range: f64,
+}
 
-//     assert_eq!(format!("{:?}", radio), String::from(radio_string));
-// }
+impl TestWorker {
+    fn read_message_sync(&self, r_type: RadioTypes, timeout: i64, pauses : i64) -> Option<MessageHeader>{
+        // Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
+        let start = Utc::now();
+        let listener  = match r_type {
+            RadioTypes::ShortRange => &self.short_listener,
+            RadioTypes::LongRange => &self.long_listener,
+        };
+        let pause = timeout / pauses;
+        let dur = Duration::nanoseconds(pause).to_std().expect("Could not create std duration");
+        loop {
+            match listener.read_message() {
+                Some(m) => return Some(m),
+                None => { 
+                    std::thread::sleep(dur);
+                },
+            }
+            if Utc::now().timestamp_nanos() - start.timestamp_nanos() > timeout {
+                break;
+            }
+        }
 
-//TODO: Review if this test is still needed.
-// //Unit test for: Radio::scan_for_peers
-// #[test]
-// fn test_scan_for_peers_simulated() {
-//     use self::mesh_simulator::worker::mobility::*;
+        return None;
+    }
 
-//     //Setup
-//     //Get general test settings
-//     let test_path = create_test_dir("sim_scan");
-//     println!("Test results placed in {}", &test_path);
+    fn add_neighbour(data : &TestSetup, conn: &PgConnection, w1: &Self, name: Option<String>) -> Self {
+        let name = name.unwrap_or_else(|| { 
+            let n: usize = rand::random();
+            format!("worker{}", n)
+        });
+        let sr_range = w1.short_radio_range;
+        let lr_range = w1.long_radio_range;
+        let min_distance = sr_range / 10.0;
+        let max_distance = sr_range * 0.85;
+        let dist: f64 = (rand::random::<f64>() % max_distance) + min_distance;
+        let theta: f64 = rand::random::<f64>() % 90.0;
+        let y = theta.sin() * dist;
+        let x = theta.cos() * dist;
+        let pos = Position{x, y};
 
-//     let conn = get_db_connection(&test_path).expect("Could not create DB file");
-//     let _res = create_positions_db(&conn).expect("Could not create positions table");
+        return add_worker_to_test(data, conn, Some(name), Some(sr_range), Some(lr_range), Some(pos), None);
+    }
 
-//     //Worker1
-//     let mut sr_config1 = RadioConfig::new();
-//     sr_config1.range = 100.0;
-//     let work_dir = test_path.clone();
-//     let worker_name = String::from("worker1");
-//     let worker_id = String::from("416d77337e24399dc7a5aa058039f72a"); //arbitrary
-//     let random_seed = 1;
-//     let r1 = sr_config1.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(),
-//                                      worker_id.clone(), random_seed, None);
-//     let _listener1 = r1.init().unwrap();
-//     let pos = Position{ x : -60.0, y : 0.0};
-//     let _worker_db_id = register_worker(&conn, worker_name,
-//                                                &worker_id,
-//                                                &pos,
-//                                                Some(r1.get_address().into()),
-//                                                None).expect("Could not register Worker1");
+    fn add_neighbours(data : &TestSetup, conn: &PgConnection, w1: &Self, num: usize) -> HashMap<String, Self> {
+        let mut workers = HashMap::with_capacity(num);
+        for n in 0..num {
+            let w = TestWorker::add_neighbour(data, conn, w1, None);
+            workers.insert(w.name.clone(), w);
+        }
 
-//     //Worker2
-//     let mut sr_config2 = RadioConfig::new();
-//     sr_config2.range = 100.0;
-//     sr_config2.broadcast_groups.clear();
-//     sr_config2.broadcast_groups.push(String::from("group1"));
-//     sr_config2.broadcast_groups.push(String::from("group2"));
-//     let work_dir = test_path.clone();
-//     let worker_name = String::from("worker2");
-//     let worker_id = String::from("416d77337e24399dc7a5aa058039f72b"); //arbitrary
-//     let random_seed = 1;
-//     let r2 = sr_config2.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(),
-//                                      worker_id.clone(), random_seed, None);
-//     let _listener2 = r2.init().unwrap();
-//     let pos = Position{ x : 0.0, y : 0.0};
-//     let _worker_db_id = register_worker(&conn, worker_name,
-//                                                &worker_id,
-//                                                &pos,
-//                                                Some(r2.get_address().into()),
-//                                                None).expect("Could not register Worker2");
+        return workers;
+    }
+}
+fn add_worker_to_test(
+    data : &TestSetup, 
+    conn: &PgConnection,
+    w_name: Option<String>,
+    w_sr_range: Option<f64>,
+    w_lr_range: Option<f64>,
+    pos: Option<Position>,
+    vel: Option<Velocity>,) -> TestWorker {
+    
+    let mut sr_config = RadioConfig::new();
+    let short_radio_range = w_sr_range.unwrap_or(100.0);
+    sr_config.range = short_radio_range;
 
-//     //Worker3
-//     let mut sr_config3= RadioConfig::new();
-//     sr_config3.range = 100.0;
-//     sr_config3.broadcast_groups.clear();
-//     sr_config3.broadcast_groups.push(String::from("group2"));
-//     sr_config3.broadcast_groups.push(String::from("group3"));
-//     let work_dir = test_path.clone();
-//     let worker_name = String::from("worker3");
-//     let worker_id = String::from("416d77337e24399dc7a5aa058039f72c"); //arbitrary
-//     let random_seed = 1;
-//     let r3 = sr_config3.create_radio(OperationMode::Simulated, RadioTypes::ShortRange, work_dir, worker_name.clone(),
-//                                      worker_id.clone(), random_seed, None);
-//     let _listener3 = r3.init().unwrap();
-//     let pos = Position{ x : 60.0, y : 0.0};
-//     let _worker_db_id = register_worker(&conn, worker_name,
-//                                                &worker_id,
-//                                                &pos,
-//                                                Some(r3.get_address().into()),
-//                                                None).expect("Could not register Worker3");
-//     //Test checks
-//     let peers1 = r1.scan_for_peers().unwrap();
-//     assert_eq!(peers1.len(), 1); //Should detect worker2
+    let mut lr_config = RadioConfig::new();
+    let long_radio_range = w_lr_range.unwrap_or(500.0);
+    lr_config.range = long_radio_range;
 
-//     let peers2 = r2.scan_for_peers().unwrap();
-//     assert_eq!(peers2.len(), 2); //Should detect worker1 and worker 3
+    let work_dir = data.work_dir.clone();
+    let worker_name = w_name.unwrap_or(String::from("worker1"));
+    let worker_id = String::from("416d77337e24399dc7a5aa058039f72a"); //arbitrary
+    let random_seed = 1;
+    let (r1, l1) = sr_config
+        .create_radio(
+            OperationMode::Simulated,
+            RadioTypes::ShortRange,
+            work_dir.clone(),
+            worker_name.clone(),
+            worker_id.clone(),
+            random_seed,
+            None,
+            data.logger.clone(),
+        )
+        .expect("Could not create short-range radio");
 
-//     let peers3 = r3.scan_for_peers().unwrap();
-//     assert_eq!(peers3.len(), 1); //Should detect worker2
+    let (r2, l2) = lr_config
+    .create_radio(
+        OperationMode::Simulated,
+        RadioTypes::LongRange,
+        work_dir,
+        worker_name.clone(),
+        worker_id.clone(),
+        random_seed,
+        None,
+        data.logger.clone(),
+    )
+    .expect("Could not create long-range radio");
 
-//     //Teardown
-//     //If test checks fail, this section won't be reached and not cleaned up for investigation.
-//     let _res = std::fs::remove_dir_all(&test_path).unwrap();
-// }
+    // let listener1 = r1.init().unwrap();
+    let pos = pos.unwrap_or(Position { x: 0.0, y: 0.0 });
+    let vel = vel.unwrap_or(Velocity { x: 0.0, y: 0.0 });
+    let _worker_db_id = register_worker(
+        &conn,
+        worker_name.clone(),
+        worker_id,
+        pos,
+        vel,
+        &None,
+        Some(r1.get_address().into()),
+        Some(r2.get_address().into()),
+        &data.logger,
+    )
+    .expect("Could not register worker");
 
-//TODO: Implement
-// //Unit test for: Radio::scan_for_peers
-// #[test]
-// fn test_scan_for_peers_device() {
+    return TestWorker{
+        name: worker_name,
+        short_radio: r1,
+        short_listener: l1,
+        short_radio_range,
+        long_radio: r2,
+        long_listener: l2,
+        long_radio_range,
+    };
+}
 
-// }
 
 #[test]
 fn test_broadcast_simulated() {
     use mesh_simulator::worker::protocols::flooding;
 
     //Setup
-    //Get general test settings
-    // let test_path = create_test_dir("sim_bcast");
-    // let logger = logging::create_discard_logger();
-    // println!("Test results placed in {}", &test_path);
-
-    let data = setup("sim_bcast", false, true);
+    let mut data = setup("sim_bcast", false, true);
     // let _res = create_db_objects(&logger).expect("Could not create database objects");
-    let conn = get_db_connection_by_file(data.db_env_file.unwrap(), &data.logger)
+    let env_file = data.db_env_file.take().expect("Failed to unwrap env_file");
+    let conn = get_db_connection_by_file(env_file, &data.logger)
         .expect("Could not get DB connection");
 
-    //Worker1
-    let mut sr_config1 = RadioConfig::new();
-    sr_config1.range = 100.0;
-
-    let work_dir = data.work_dir.clone();
-    let worker_name = String::from("worker1");
-    let worker_id = String::from("416d77337e24399dc7a5aa058039f72a"); //arbitrary
-    let random_seed = 1;
-    let (r1, l1) = sr_config1
-        .create_radio(
-            OperationMode::Simulated,
-            RadioTypes::ShortRange,
-            work_dir,
-            worker_name.clone(),
-            worker_id.clone(),
-            random_seed,
-            None,
-            data.logger.clone(),
-        )
-        .expect("Could not create radio for worker1");
-
-    // let listener1 = r1.init().unwrap();
-    let pos = Position { x: -60.0, y: 0.0 };
-    let vel = Velocity { x: 0.0, y: 0.0 };
-    let _worker_db_id = register_worker(
+    let worker_1 = add_worker_to_test(
+        &data,
         &conn,
-        worker_name,
-        worker_id,
-        pos,
-        vel,
-        &None,
-        Some(r1.get_address().into()),
-        None,
-        &data.logger,
-    )
-    .expect("Could not register worker");
+        Some(String::from("worker1")), 
+        Some(100.0), 
+        None, 
+        Some(Position { x: 0.0, y: 0.0 }), 
+        Some(Velocity { x: 0.0, y: 0.0 })
+    );
 
-    //Worker2
-    let mut sr_config2 = RadioConfig::new();
-    sr_config2.range = 100.0;
-    let work_dir = data.work_dir.clone();
-    let worker_name = String::from("worker2");
-    let worker_id = String::from("416d77337e24399dc7a5aa058039f72b"); //arbitrary
-    let random_seed = 1;
-    let (r2, _l2) = sr_config2
-        .create_radio(
-            OperationMode::Simulated,
-            RadioTypes::ShortRange,
-            work_dir,
-            worker_name.clone(),
-            worker_id.clone(),
-            random_seed,
-            None,
-            data.logger.clone(),
-        )
-        .expect("Could not create radio for worker2");
-    // let _listener2 = r2.init().unwrap();
+    let worker_2 = TestWorker::add_neighbour(&data, &conn, &worker_1, Some(String::from("worker2")));
+    let worker_3 = TestWorker::add_neighbour(&data, &conn, &worker_1, Some(String::from("worker3")));
 
-    let pos = Position { x: 0.0, y: 0.0 };
-    let _worker_db_id = register_worker(
-        &conn,
-        worker_name,
-        worker_id,
-        pos,
-        vel,
-        &None,
-        Some(r2.get_address().into()),
-        None,
-        &data.logger,
-    )
-    .expect("Could not register worker");
-
-    //Worker3
-    let mut sr_config3 = RadioConfig::new();
-    sr_config3.range = 100.0;
-
-    let work_dir = data.work_dir.clone();
-    let worker_name = String::from("worker3");
-    let worker_id = String::from("416d77337e24399dc7a5aa058039f72c"); //arbitrary
-    let random_seed = 1;
-    let (r3, l3) = sr_config3
-        .create_radio(
-            OperationMode::Simulated,
-            RadioTypes::ShortRange,
-            work_dir,
-            worker_name.clone(),
-            worker_id.clone(),
-            random_seed,
-            None,
-            data.logger.clone(),
-        )
-        .expect("Could not create radio for worker3");
-
-    // let listener3 = r3.init().unwrap();
-    let pos = Position { x: 60.0, y: 0.0 };
-    let _worker_db_id = register_worker(
-        &conn,
-        worker_name,
-        worker_id,
-        pos,
-        vel,
-        &None,
-        Some(r3.get_address().into()),
-        None,
-        &data.logger,
-    )
-    .expect("Could not register worker");
 
     //Test checks
-    let msg = flooding::Messages::Data(flooding::DataMessage::new(vec![]));
-    let log_data = protocols::ProtocolMessages::Flooding(msg.clone());
-    let bcast_msg = MessageHeader::new(
+    let payload = flooding::Messages::Data(flooding::DataMessage::new(vec![]));
+    let log_data = protocols::ProtocolMessages::Flooding(payload.clone());
+    let mut msg = MessageHeader::new(
         String::new(),
         String::new(),
-        flooding::serialize_message(msg).expect("Could not serialize message"),
+        flooding::serialize_message(payload).expect("Could not serialize message"),
     );
-    let tx = r2.broadcast(bcast_msg.clone()).unwrap().unwrap();
+    msg.ttl = 1;
+    let tx = worker_2.short_radio.broadcast(msg.clone()).unwrap().unwrap();
     radio::log_tx(
-        &&data.logger,
+        &data.logger,
         tx,
-        &bcast_msg.get_msg_id(),
+        &msg.get_msg_id(),
         MessageStatus::SENT,
-        &bcast_msg.sender,
-        &bcast_msg.destination,
+        &msg.sender,
+        &msg.destination,
         log_data,
     );
-    let rec_msg1 = l1.read_message();
+    // let rec_msg1 = worker_1.short_listener.read_message();
+    let fifty_ms = 50_000_000;
+    let rec_msg1 = worker_1.read_message_sync(RadioTypes::ShortRange, fifty_ms, 50);
 
     assert!(rec_msg1.is_some());
 
-    let rec_msg3 = l3.read_message();
+    let rec_msg3 = worker_3.read_message_sync(RadioTypes::ShortRange, fifty_ms, 50);
 
     assert!(rec_msg3.is_some());
 
@@ -272,46 +223,207 @@ fn test_broadcast_simulated() {
     let _res = std::fs::remove_dir_all(&data.work_dir).unwrap();
 }
 
-//I currently have no idea how to reliably test the timing of the broadcast across nodes
-//Leaving this test here for debugging purposes.
-#[ignore]
+
+fn test_broadcast_timing_setup_case1(data: &TestSetup, conn: &PgConnection) -> HashMap<String, TestWorker> {
+    let mut workers = HashMap::new();
+    let worker_1 = add_worker_to_test(
+        &data,
+        &conn,
+        Some(String::from("worker1")), 
+        Some(100.0), 
+        None, 
+        Some(Position { x: 0.0, y: 0.0 }), 
+        Some(Velocity { x: 0.0, y: 0.0 })
+    );
+    
+    let w2 = String::from("worker2");
+    let worker_2 = TestWorker::add_neighbour(data, conn, &worker_1, Some(w2.clone()));
+
+    workers.insert(worker_1.name.clone(), worker_1);
+    workers.insert(w2, worker_2);
+
+    return workers;
+}
+
+fn test_broadcast_timing_setup_case2(data: &TestSetup, conn: &PgConnection, workers: HashMap<String, TestWorker>) -> HashMap<String, TestWorker> {
+    let w1 = workers.get("worker1").expect("Could not find worker1");
+    let new_workers = TestWorker::add_neighbours(data, conn, w1, 8);
+    return workers.into_iter().chain(new_workers).collect()
+}
+
+fn test_broadcast_timing_setup_case3(data: &TestSetup, conn: &PgConnection, workers: HashMap<String, TestWorker>) -> HashMap<String, TestWorker> { 
+    let w1 = workers.get("worker1").expect("Could not find worker1");
+    let new_workers = TestWorker::add_neighbours(data, conn, w1, 40);
+    workers.into_iter().chain(new_workers).collect()
+}
+
+/// This test ensures that the timing of a broadcast operation is not affected by simulation artefacts such as the number of receiving nodes.
 #[test]
 fn test_broadcast_timing() {
+    use mesh_simulator::worker::protocols::flooding;
+
     //Setup
-    //Get general test settings
-    let test = get_test_path("radio_broadcast_timing.toml");
-    let data = setup("radio_broadcast_timing", false, false);
-    println!("Test results placed in {}", &data.work_dir);
+    let mut data = setup("tx_timing", false, true);
+    // let _res = create_db_objects(&logger).expect("Could not create database objects");
+    let env_file = data.db_env_file.take().expect("Failed to unwrap env_file");
+    let conn = get_db_connection_by_file(env_file, &data.logger)
+        .expect("Could not get DB connection");
+    println!("Placing test resuls in {}", &data.work_dir);
+    //Timeout for reading a message.
+    let fifty_ms = 50_000_000;
 
-    let program = get_master_path();
-    let worker = get_worker_path();
+    ///////////////////////////////////////////////////
+    // Case 1: Test tx timing with only one receiver.
+    ///////////////////////////////////////////////////
+    let workers = test_broadcast_timing_setup_case1(&data, &conn);
 
-    println!(
-        "Running command: {} -t {} -w {} -d {}",
-        &program, &test, &worker, &data.work_dir
-    );
+    //Tx 10 messages within 10 ms of each other to not clutter the comm channels
+    let mut times = Vec::new();
+    for _n in 0..10 {
+        let payload = flooding::Messages::Data(flooding::DataMessage::new(vec![]));
+        let log_data = protocols::ProtocolMessages::Flooding(payload.clone());
+        let mut msg = MessageHeader::new(
+            String::new(),
+            String::new(),
+            flooding::serialize_message(payload).expect("Could not serialize message"),
+        );
+        msg.ttl = 1;
+        let t0 = Utc::now();
+        let tx = workers["worker1"].short_radio.broadcast(msg.clone()).unwrap().unwrap();
+        let tx_time = (Utc::now().timestamp_nanos() - t0.timestamp_nanos()) as f64;
+        times.push(tx_time);
+        radio::log_tx(
+            &data.logger,
+            tx,
+            &msg.get_msg_id(),
+            MessageStatus::SENT,
+            &msg.sender,
+            &msg.destination,
+            log_data,
+        );
+        let rec_msg1 = workers["worker2"].read_message_sync(RadioTypes::ShortRange, fifty_ms, 50);
+        assert!(rec_msg1.is_some());
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let c1_tx_mean = times.mean() / 1000_000f64;
+    let c1_tx_std= times.sd() / 1000_000f64;
+    let c1_tx_median = times.median() / 1000_000f64;
+    debug!(&data.logger, "[Case1] Tx statistics:";"mean"=>c1_tx_mean, "sd"=>c1_tx_std, "tx_median"=>c1_tx_median);
+    println!("\n[Case1] Tx statistics: mean={:.5}ms, sd={:.5}ms, tx_median={:.5}ms", c1_tx_mean, c1_tx_std, c1_tx_median);
+    
 
-    //Assert the test finished successfully
-    assert_cli::Assert::command(&[&program])
-        .with_args(&["-t", &test, "-w", &worker, "-d", &data.work_dir])
-        .succeeds()
-        .unwrap();
+    ///////////////////////////////////////////////////
+    // Case 2: Test tx timing with 10 receivers.
+    ///////////////////////////////////////////////////
+    let workers = test_broadcast_timing_setup_case2(&data, &conn, workers);
+    
+    //Tx 10 messages within 10 ms of each other to not clutter the comm channels
+    times.clear();
+    let w1 = workers.get("worker1").expect("Could not find worker1");
+    for _n in 0..10 {
+        let payload = flooding::Messages::Data(flooding::DataMessage::new(vec![]));
+        let log_data = protocols::ProtocolMessages::Flooding(payload.clone());
+        let mut msg = MessageHeader::new(
+            String::new(),
+            String::new(),
+            flooding::serialize_message(payload).expect("Could not serialize message"),
+        );
+        msg.ttl = 1;
+        let t0 = Utc::now();
+        let tx = w1.short_radio.broadcast(msg.clone()).unwrap().unwrap();
+        let tx_time = (Utc::now().timestamp_nanos() - t0.timestamp_nanos()) as f64;
+        times.push(tx_time);
+        radio::log_tx(
+            &data.logger,
+            tx,
+            &msg.get_msg_id(),
+            MessageStatus::SENT,
+            &msg.sender,
+            &msg.destination,
+            log_data,
+        );
 
-    //Check the test ended with the correct number of processes.
-    let master_log_file = format!(
-        "{}{}{}{}{}",
-        &data.work_dir,
-        std::path::MAIN_SEPARATOR,
-        LOG_DIR_NAME,
-        std::path::MAIN_SEPARATOR,
-        DEFAULT_MASTER_LOG
-    );
-    let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
-    let master_node_num = logging::find_record_by_msg(
-        "End_Test action: Finished. 5 processes terminated.",
-        &master_log_records,
-    );
-    assert!(master_node_num.is_some());
+        for (k,v) in workers.iter() {
+            if k == "worker1" {
+                continue;
+            }
+            let rec_msg = v.read_message_sync(RadioTypes::ShortRange, fifty_ms, 50);
+            assert!(rec_msg.is_some());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let c2_tx_mean = times.mean() / 1000_000f64;
+    let c2_tx_std= times.sd() / 1000_000f64;
+    let c2_tx_median = times.median() / 1000_000f64;
+    debug!(&data.logger, "[Case2] Tx statistics:";"mean"=>c2_tx_mean, "sd"=>c2_tx_std, "tx_median"=>c2_tx_median);
+    println!("[Case2] Tx statistics: mean={:.5}ms, sd={:.5}ms, tx_median={:.5}ms", c2_tx_mean, c2_tx_std, c2_tx_median);
+
+    ///////////////////////////////////////////////////
+    // Case 3: Test tx timing with 50 receivers.
+    ///////////////////////////////////////////////////
+    let workers = test_broadcast_timing_setup_case3(&data, &conn, workers);
+    
+    //Tx 10 messages within 10 ms of each other to not clutter the comm channels
+    times.clear();
+    let w1 = workers.get("worker1").expect("Could not find worker1");
+    for _n in 0..10 {
+        let payload = flooding::Messages::Data(flooding::DataMessage::new(vec![]));
+        let log_data = protocols::ProtocolMessages::Flooding(payload.clone());
+        let mut msg = MessageHeader::new(
+            String::new(),
+            String::new(),
+            flooding::serialize_message(payload).expect("Could not serialize message"),
+        );
+        msg.ttl = 1;
+        let t0 = Utc::now();
+        let tx = w1.short_radio.broadcast(msg.clone()).unwrap().unwrap();
+        let tx_time = (Utc::now().timestamp_nanos() - t0.timestamp_nanos()) as f64;
+        times.push(tx_time);
+        radio::log_tx(
+            &data.logger,
+            tx,
+            &msg.get_msg_id(),
+            MessageStatus::SENT,
+            &msg.sender,
+            &msg.destination,
+            log_data,
+        );
+
+        for (k,v) in workers.iter() {
+            if k == "worker1" {
+                continue;
+            }
+            let rec_msg = v.read_message_sync(RadioTypes::ShortRange, fifty_ms, 50);
+            assert!(rec_msg.is_some());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let c3_tx_mean = times.mean() / 1000_000f64;
+    let c3_tx_std= times.sd() / 1000_000f64;
+    let c3_tx_median = times.median() / 1000_000f64;
+    debug!(&data.logger, "[Case3] Tx statistics:";"mean"=>c3_tx_mean, "sd"=>c3_tx_std, "tx_median"=>c3_tx_median);
+    println!("[Case3] Tx statistics: mean={:.5}ms, sd={:.5}ms, tx_median={:.5}ms", c3_tx_mean, c3_tx_std, c3_tx_median);
+
+    let c1_c2_diff = (c2_tx_mean - c1_tx_mean).abs();
+    let c1_c3_diff = (c3_tx_mean - c1_tx_mean).abs();
+    let c2_c3_diff = (c3_tx_mean - c2_tx_mean).abs();
+    let max_mean = {
+        let m = if c3_tx_mean > c2_tx_mean {
+            c3_tx_mean
+        } else {
+            c2_tx_mean
+        };
+        if c1_tx_mean > m {
+            c1_tx_mean
+        } else {
+            m
+        }
+    };
+    let threshold = max_mean * 0.15;
+    println!("Threshold: {}, c1_c2_diff={}, c1_c3_diff={}, c2_c3_diff={}", threshold, c1_c2_diff, c1_c3_diff, c2_c3_diff);
+    assert!(c1_c2_diff <= threshold);
+    assert!(c1_c3_diff <= threshold);
+    assert!(c2_c3_diff <= threshold);
 
     //Teardown
     //If test checks fail, this section won't be reached and not cleaned up for investigation.

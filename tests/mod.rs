@@ -9,6 +9,8 @@ extern crate pretty_assertions;
 extern crate lazy_static;
 // #[macro_use]
 extern crate slog;
+#[macro_use]
+extern crate peroxide;
 
 use self::chrono::prelude::*;
 use self::mesh_simulator::logging::{self, *};

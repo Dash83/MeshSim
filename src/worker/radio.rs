@@ -199,7 +199,7 @@ impl Radio for SimulatedRadio {
                     // let cause = e.cause.unwrap_or(Box::new(String::from()));
                     let cause = e
                         .cause
-                        .expect("ERROR: Cause not set for  NetworkContention event");
+                        .expect("ERROR: Cause not set for NetworkContention event");
                     let cause_str = format!("{}", cause);
                     info!(
                         &self.logger,
@@ -288,9 +288,14 @@ impl Radio for SimulatedRadio {
             }
         }
 
+        
+        //Time it took for the actual transmission to execute (e.g. iteratiing through the peers and sending the messages)
+        let perf_end_tx = Utc::now().timestamp_nanos();
+        let perf_tx_duration = perf_end_tx - perf_start_tx.timestamp_nanos();
+        
         //Update last transmission time
         self.last_transmission
-            .store(Utc::now().timestamp_nanos(), Ordering::SeqCst);
+            .store(perf_end_tx, Ordering::SeqCst);
         debug!(
             &self.logger,
             "last_transmission:{}",
@@ -298,11 +303,9 @@ impl Radio for SimulatedRadio {
         );
 
         self.deregister_transmitter(&conn, guard)?;
-        let perf_end_tx = Utc::now();
-        //Time it took for the actual transmission to execute (e.g. iteratiing through the peers and sending the messages)
-        let perf_tx_duration = perf_end_tx.timestamp_nanos() - perf_start_tx.timestamp_nanos();
+        
         //Time it took for the whole function to execute
-        let broadcast_duration = perf_end_tx.timestamp_nanos() - start_ts.timestamp_nanos();
+        let broadcast_duration = Utc::now().timestamp_nanos() - start_ts.timestamp_nanos();
 
         let tx = TxMetadata {
             radio_type: radio_range,
