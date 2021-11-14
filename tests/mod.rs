@@ -1,7 +1,6 @@
 extern crate assert_cli;
 extern crate chrono;
 extern crate mesh_simulator;
-
 #[cfg(test)]
 #[macro_use]
 extern crate pretty_assertions;

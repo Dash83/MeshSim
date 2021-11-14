@@ -34,7 +34,8 @@ pub const DEFAULT_TRANSMISSION_MAX_RETRY: usize = 8;
 const TRANSMISSION_EXP_CAP: u32 = 10;
 const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
 pub const DEFAULT_TRANSMISSION_WAIT_BASE: u64 = 16; //µs
-
+pub const TX_DURATION: i64 = 2_805_900;
+pub const TX_VARIABILITY: i64 = 581_816;
 ///Maximum size the payload of a UDP packet can have.
 pub const MAX_UDP_PAYLOAD_SIZE: usize = 65507; //65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header)
 
@@ -218,8 +219,6 @@ impl Radio for SimulatedRadio {
             }
         };
 
-        //Start measuring how long it takes to perform the actual transmission
-        let perf_start_tx = Utc::now();
 
         //Increase the hop count of the message
         hdr.hops += 1;
@@ -229,19 +228,29 @@ impl Radio for SimulatedRadio {
         info!(
             self.logger,
             "Starting transmission";
+            "msg_id"=>&hdr.get_msg_id(),
             "thread"=>&thread_id,
             "peers_in_range"=>peers.len(),
             "radio"=>&radio_range,
         );
 
         let socket = new_socket()?;
-        let mut acc_delay: i64 = 0;
-        let max_delay = std::cmp::min(MAX_DELAY_PEERS, peers.len() as i64) * self.max_delay_per_node;
-        let delay_per_node = max_delay / std::cmp::max(1, peers.len()) as i64;
+        // let mut acc_delay: i64 = 0;
+        // let max_delay = std::cmp::min(MAX_DELAY_PEERS, peers.len() as i64) * self.max_delay_per_node;
+        // let delay_per_node = max_delay / std::cmp::max(1, peers.len()) as i64;
+        //Start measuring how long it takes to perform the actual transmission
+        let perf_start_tx = Utc::now();
         for p in peers.into_iter() {
             let mut msg = hdr.clone();
-            msg.delay = max_delay - acc_delay;
-            acc_delay += delay_per_node;
+            msg.delay = std::cmp::max(
+                TX_DURATION - 
+                    (Utc::now().timestamp_nanos() - perf_start_tx.timestamp_nanos()) -
+                    TX_VARIABILITY,
+                0
+            );
+            // println!("Delay: {}ns", msg.delay);
+            // msg.delay = max_delay - acc_delay;
+            // acc_delay += delay_per_node;
             let data = to_vec(&msg).map_err(|e| {
                 let err_msg = String::from("Failed to serialize message");
                 MeshSimError {
@@ -296,10 +305,11 @@ impl Radio for SimulatedRadio {
         //Update last transmission time
         self.last_transmission
             .store(perf_end_tx, Ordering::SeqCst);
-        debug!(
+        info!(
             &self.logger,
             "last_transmission:{}",
-            self.last_transmission.load(Ordering::SeqCst)
+            self.last_transmission.load(Ordering::SeqCst);
+            "msg_id"=>&hdr.get_msg_id()
         );
 
         self.deregister_transmitter(&conn, guard)?;
@@ -574,11 +584,6 @@ impl SimulatedRadio {
         };
         Err(err)
     }
-
-    // fn get_wait_base(&self) -> u64 {
-    //     let mut rng = self.rng.lock().expect("Could not lock RNG");
-    //     (rng.next_u64() % WAIT_BASE_SERIES_LIMIT) + MIN_WAIT_BASE
-    // }
 
     fn get_wait_time(&self, i: u32) -> Duration {
         //CSMA-CA algorithm

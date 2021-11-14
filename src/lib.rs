@@ -8,8 +8,6 @@ extern crate lazy_static;
 #[macro_use]
 extern crate slog;
 #[macro_use]
-extern crate pretty_assertions;
-#[macro_use]
 extern crate bitflags;
 #[macro_use]
 extern crate diesel;

@@ -54,9 +54,11 @@ pub struct LogEntry {
     pub msg_id: Option<String>,
 }
 
-///Struct to hold a log record of an incoming message
+///Struct to hold a log record of received messages
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct IncomingMsgLog {
+pub struct ReceivedMsgLog {
+    /// The timestamp of the message
+    pub ts: String,    
     ///The type of message
     pub msg_type: String,
     ///The node that transmitted this message
@@ -75,9 +77,24 @@ pub struct IncomingMsgLog {
     pub action: String,
 }
 
+/// Struct to hold a log record of incoming transmissions
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IncomingTxLog {
+    /// The timestamp of the message
+    pub ts: String,
+    /// The stamp of the message
+    pub radio: String,
+    /// The timestamp of the message
+    pub duration: u64,
+    /// The timestamp of the message
+    pub msg_id: String,
+}
+
 ///Struct to hold a log record of an outgoing message
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OutgoingMsgLog {
+    /// The timestamp of the message
+    pub ts: String,
     ///The type of message
     pub msg_type: String,
     ///The node that transmitted this message
@@ -160,10 +177,10 @@ pub fn get_mobility_records<P: AsRef<Path>>(path: P) -> Result<HashMap<String, B
     Ok(records)
 }
 
-///Creates a Vector that holds all the incoming message logs
-pub fn get_incoming_message_records<P: AsRef<Path>>(
+///Creates a Vector that holds all the logs of received messages
+pub fn get_received_message_records<P: AsRef<Path>>(
     path: P,
-) -> Result<Vec<IncomingMsgLog>, io::Error> {
+) -> Result<Vec<ReceivedMsgLog>, io::Error> {
     let file = File::open(path)?;
     let mut records = Vec::new();
     let reader = io::BufReader::new(file);
@@ -171,7 +188,26 @@ pub fn get_incoming_message_records<P: AsRef<Path>>(
     for line in reader.lines() {
         let data = line?;
         if data.contains("Received message") {
-            let u: IncomingMsgLog = serde_json::from_str(&data)?;
+            let u: ReceivedMsgLog = serde_json::from_str(&data)?;
+            records.push(u);
+        }
+    }
+
+    Ok(records)
+}
+
+///Creates a Vector that holds all logs of incoming transmissions as they are read from the medium
+pub fn get_incoming_transmission_records<P: AsRef<Path>>(
+    path: P,
+) -> Result<Vec<IncomingTxLog>, io::Error> {
+    let file = File::open(path)?;
+    let mut records = Vec::new();
+    let reader = io::BufReader::new(file);
+
+    for line in reader.lines() {
+        let data = line?;
+        if data.contains("read_from_network") {
+            let u: IncomingTxLog = serde_json::from_str(&data)?;
             records.push(u);
         }
     }
@@ -191,6 +227,25 @@ pub fn get_outgoing_message_records<P: AsRef<Path>>(
         let data = line?;
         if data.contains("Message sent") {
             let u: OutgoingMsgLog = serde_json::from_str(&data)?;
+            records.push(u);
+        }
+    }
+
+    Ok(records)
+}
+
+///Creates a Vector that holds all last_tranmission message logs
+pub fn get_last_transmission_records<P: AsRef<Path>>(
+    path: P,
+) -> Result<Vec<Value>, io::Error> {
+    let file = File::open(path)?;
+    let mut records = Vec::new();
+    let reader = io::BufReader::new(file);
+
+    for line in reader.lines() {
+        let data = line?;
+        if data.contains("last_transmission") {
+            let u: Value = serde_json::from_str(&data)?;
             records.push(u);
         }
     }

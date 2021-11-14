@@ -6,22 +6,27 @@ extern crate socket2;
 
 use std::collections::HashMap;
 use std::env;
+use std::iter;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use super::super::*;
 use diesel::PgConnection;
 use mesh_simulator::logging;
 use chrono::Duration;
+use mesh_simulator::worker::protocols::ProtocolMessages;
 use peroxide::fuga::*;
 use slog::*;
 use rand::{self, prelude::*};
+use pretty_assertions::{assert_eq, assert_ne};
+use serde_json;
 
 use mesh_simulator::backend::*;
 // use mesh_simulator::master::Master;
 use mesh_simulator::mobility::*;
 use mesh_simulator::tests::common::*;
 use mesh_simulator::worker::listener::Listener;
-use mesh_simulator::worker::radio::*;
+use mesh_simulator::worker::radio::{self, *};
 use mesh_simulator::worker::worker_config::*;
 use mesh_simulator::worker::*;
 use mesh_simulator::worker::radio::RadioTypes;
@@ -50,6 +55,7 @@ impl TestWorker {
             match listener.read_message() {
                 Some(m) => return Some(m),
                 None => { 
+                    println!("msg not ready to be read");
                     std::thread::sleep(dur);
                 },
             }
@@ -59,6 +65,24 @@ impl TestWorker {
         }
 
         return None;
+    }
+
+    fn send_message(&self, r_type: RadioTypes, msg : MessageHeader, log_data: ProtocolMessages, logger: &Logger) {
+        let radio  = match r_type {
+            RadioTypes::ShortRange => &self.short_radio,
+            RadioTypes::LongRange => &self.long_radio,
+        };
+        let tx = radio.broadcast(msg.clone()).unwrap().unwrap();
+        // let tx_time = (Utc::now().timestamp_nanos() - t0.timestamp_nanos()) as f64;
+        radio::log_tx(
+            logger,
+            tx,
+            &msg.get_msg_id(),
+            MessageStatus::SENT,
+            &msg.sender,
+            &msg.destination,
+            log_data,
+        );        
     }
 
     fn add_neighbour(data : &TestSetup, conn: &PgConnection, w1: &Self, name: Option<String>) -> Self {
@@ -81,7 +105,7 @@ impl TestWorker {
 
     fn add_neighbours(data : &TestSetup, conn: &PgConnection, w1: &Self, num: usize) -> HashMap<String, Self> {
         let mut workers = HashMap::with_capacity(num);
-        for n in 0..num {
+        for _ in 0..num {
             let w = TestWorker::add_neighbour(data, conn, w1, None);
             workers.insert(w.name.clone(), w);
         }
@@ -89,6 +113,25 @@ impl TestWorker {
         return workers;
     }
 }
+
+fn build_dummy_message(payload_size: usize, ttl: usize) -> (MessageHeader, ProtocolMessages) {
+    use mesh_simulator::worker::protocols::flooding;
+
+    let mut rng = thread_rng();
+    let mut data: Vec<u8> = iter::repeat(0u8).take(payload_size).collect();
+    rng.fill_bytes(&mut data[..]);
+    
+    let payload = flooding::Messages::Data(flooding::DataMessage::new(data));
+    let log_data = protocols::ProtocolMessages::Flooding(payload.clone());
+    let mut msg = MessageHeader::new(
+        String::new(),
+        String::new(),
+        flooding::serialize_message(payload).expect("Could not serialize message"),
+    );
+    msg.ttl = ttl;
+    (msg, log_data)
+}
+
 fn add_worker_to_test(
     data : &TestSetup, 
     conn: &PgConnection,
@@ -430,6 +473,139 @@ fn test_broadcast_timing() {
     let _res = std::fs::remove_dir_all(&data.work_dir).unwrap();
 }
 
+fn broadcast_delay_setup(data: &TestSetup, conn: &PgConnection) -> HashMap<String, TestWorker> {
+    let w1 = add_worker_to_test(
+        &data,
+        &conn,
+        Some(String::from("worker1")), 
+        Some(100.0), 
+        None, 
+        Some(Position { x: 0.0, y: 0.0 }), 
+        Some(Velocity { x: 0.0, y: 0.0 })
+    );
+
+    let mut workers = TestWorker::add_neighbours(data, conn, &w1, 29);
+    workers.insert(w1.name.clone(), w1);
+
+    return workers;
+}
+
+/// This test ensures the total TX time of a broadcast is capped and  that all nodes receive a msg simultaneously.
+#[test]
+fn test_broadcast_delay() {
+    //Setup
+    let mut data = setup("tx_delay", false, true);
+    // let _res = create_db_objects(&logger).expect("Could not create database objects");
+    let env_file = data.db_env_file.take().expect("Failed to unwrap env_file");
+    let conn = get_db_connection_by_file(env_file, &data.logger)
+        .expect("Could not get DB connection");
+    println!("Placing test resuls in {}", &data.work_dir);
+    //Timeout for reading a message.
+    let fifty_ms = 50_000_000;
+    let workers = broadcast_delay_setup(&data, &conn);
+
+    let w1 = workers.get("worker1").expect("Could not find worker1");
+    for _n in 0..10 {
+        //Build the message to send
+        let (msg, log_data) = build_dummy_message(0, 1);
+        //Broadcast the message
+        w1.send_message(RadioTypes::ShortRange, msg, log_data, &data.logger);
+
+        //Make sure each neighbour receives it
+        for (k,v) in workers.iter() {
+            if k == "worker1" {
+                continue;
+            }
+            let rec_msg = v.read_message_sync(RadioTypes::ShortRange, fifty_ms, 1000);
+            assert!(rec_msg.is_some());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    //Get all outgoing message records
+    let log_file = Path::new(&data.work_dir)
+        .join("tx_delay.log");
+    let last_tranmission_msgs: HashMap<String, DateTime<Utc>> =  get_last_transmission_records(&log_file)
+            .expect("Could not read last_transmission messages")
+            .drain(0..)
+            .map(|x| { 
+                let msg_id = x["msg_id"].as_str().expect("Log record did not have a msg_id").to_string();
+                let ts = x["ts"]
+                    .as_str()
+                    .expect("Log record did not have a msg_id")
+                    .parse::<DateTime<Utc>>()
+                    .expect("Could not parse string into Datetime");
+
+                (msg_id, ts)
+            })
+            .collect();
+    println!("{} outgoing messages", last_tranmission_msgs.len());
+
+    //Get all incoming message records
+    let incoming_msgs: Vec<(String, IncomingTxLog)> = get_incoming_transmission_records(&log_file)
+        .expect("Could not read incoming packets")
+        .drain(0..)
+        .map(|x| (x.msg_id.clone(), x))
+        .collect();
+    println!("{} incoming messages", incoming_msgs.len());
+
+    //For every transmitted message, find each reception by its neighbours and measure the delay between tx and rx.
+    let mut delays = vec![];
+    let mut times_per_message = HashMap::new();
+    for (tx_id, tx_log) in &last_tranmission_msgs {
+        times_per_message.insert(tx_id.clone(), vec![]);
+        for (rx_id, rx_log) in &incoming_msgs {
+            if tx_id == rx_id {
+                let t = times_per_message.get_mut(rx_id).expect("Message not present");
+                let tx_ts = tx_log.timestamp_nanos();
+                t.push(tx_ts);
+                delays.push(rx_log.duration as f64);
+            }
+        }
+    }
+    
+    //Assert that no message took longer than the upper bound
+    info!(&data.logger, "Rx delay stats"; "mean"=>delays.mean(), "median"=>delays.median(), "sd"=>delays.sd());
+    println!("***Rx delay stats***\nmean:\t{}\nmedian:\t{}\nsd:\t{}", delays.mean(), delays.median(), delays.sd());
+    assert_eq!(
+        0,
+        delays
+        .iter()
+        .filter(|&&x| x >= (radio::TX_DURATION + radio::TX_VARIABILITY) as f64)
+        .count()
+    );
+
+    // //Assert that no message was shorter than the lower bound
+    // assert_eq!(
+    //     0,
+    //     delays
+    //     .iter()
+    //     .filter(|&&x| x < (radio::TX_DURATION - radio::TX_VARIABILITY) as f64)
+    //     .count()
+    // );
+
+    //Assert that the difference in reception times between each receiver of the same message is minimal.
+    for (_msd_id, mut rx_times) in times_per_message {
+        //Assert that difference between all subsequent pairs of elements is less than the expected TX_Variability
+        let res = rx_times
+            .windows(2)
+            .all(|w| {
+                let delta = w[0] - w[1];
+                delta.abs() < radio::TX_VARIABILITY
+            });
+        assert!(res);
+
+        //Assert that the different between the first and last rx event is less than the expected TX_Variability
+        rx_times.sort_by(|&a, &b| a.partial_cmp(&b).unwrap());
+        let diff = rx_times.last().unwrap() - rx_times[0];
+        assert!( diff.abs() < radio::TX_VARIABILITY );
+    }
+
+    //Teardown
+    //If test checks fail, this section won't be reached and not cleaned up for investigation.
+    let _res = std::fs::remove_dir_all(&data.work_dir).unwrap();
+}
+
 #[test]
 fn test_mac_layer_basic() {
     let test_name = String::from("mac_layer_basic");
@@ -470,7 +646,7 @@ fn test_mac_layer_basic() {
     assert!(master_node_num.is_some());
 
     let node4_log_file = &format!("{}/log/node4.log", &data.work_dir);
-    let incoming_messages = logging::get_incoming_message_records(node4_log_file).unwrap();
+    let incoming_messages = logging::get_received_message_records(node4_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
@@ -478,7 +654,7 @@ fn test_mac_layer_basic() {
     assert_eq!(msg_received, 1);
 
     let node5_log_file = &format!("{}/log/node5.log", &data.work_dir);
-    let incoming_messages = logging::get_incoming_message_records(node5_log_file).unwrap();
+    let incoming_messages = logging::get_received_message_records(node5_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
@@ -486,7 +662,7 @@ fn test_mac_layer_basic() {
     assert_eq!(msg_received, 1);
 
     let node19_log_file = &format!("{}/log/node19.log", &data.work_dir);
-    let incoming_messages = logging::get_incoming_message_records(node19_log_file).unwrap();
+    let incoming_messages = logging::get_received_message_records(node19_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
@@ -494,7 +670,7 @@ fn test_mac_layer_basic() {
     assert_eq!(msg_received, 1);
 
     let node20_log_file = &format!("{}/log/node20.log", &data.work_dir);
-    let incoming_messages = logging::get_incoming_message_records(node20_log_file).unwrap();
+    let incoming_messages = logging::get_received_message_records(node20_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
@@ -502,7 +678,7 @@ fn test_mac_layer_basic() {
     assert_eq!(msg_received, 1);
 
     let node22_log_file = &format!("{}/log/node22.log", &data.work_dir);
-    let incoming_messages = logging::get_incoming_message_records(node22_log_file).unwrap();
+    let incoming_messages = logging::get_received_message_records(node22_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
@@ -510,7 +686,7 @@ fn test_mac_layer_basic() {
     assert_eq!(msg_received, 1);
 
     let node24_log_file = &format!("{}/log/node24.log", &data.work_dir);
-    let incoming_messages = logging::get_incoming_message_records(node24_log_file).unwrap();
+    let incoming_messages = logging::get_received_message_records(node24_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")
@@ -518,7 +694,7 @@ fn test_mac_layer_basic() {
     assert_eq!(msg_received, 1);
 
     let node25_log_file = &format!("{}/log/node25.log", &data.work_dir);
-    let incoming_messages = logging::get_incoming_message_records(node25_log_file).unwrap();
+    let incoming_messages = logging::get_received_message_records(node25_log_file).unwrap();
     let msg_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "DATA" && m.status == "ACCEPTED")

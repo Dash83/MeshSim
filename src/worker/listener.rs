@@ -56,7 +56,7 @@ impl Listener for SimulatedListener {
                             //source. Thus, we try to amortize this by having all read_message sleep
                             //for 10ms. This should be enough time to ensure that *most* messages
                             //in the simulated broadcast have been delivered.
-                            let delay = std::time::Duration::from_micros(std::cmp::max(m.delay, 0) as u64);
+                            let delay = std::time::Duration::from_nanos(m.delay as u64);
                             std::thread::sleep(delay);
                             //Update the ttl of the header
                             m.ttl -= 1;

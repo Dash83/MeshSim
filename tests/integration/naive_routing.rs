@@ -48,13 +48,13 @@ fn naive_basic() {
     let node3_log_file = &format!("{}/log/node3.log", &data.work_dir);
     let node1_log_records = logging::get_log_records_from_file(&node1_log_file).unwrap();
     let incoming_node1 =
-        get_incoming_message_records(&node1_log_file).expect("Could not read incoming packets");
+        get_received_message_records(&node1_log_file).expect("Could not read incoming packets");
     let outgoing_node1 =
         get_outgoing_message_records(&node1_log_file).expect("Could not read outgoing packets");
     let incoming_node2 =
-        get_incoming_message_records(&node2_log_file).expect("Could not read incoming packets");
+        get_received_message_records(&node2_log_file).expect("Could not read incoming packets");
     let incoming_node3 =
-        get_incoming_message_records(&node3_log_file).expect("Could not read incoming packets");
+        get_received_message_records(&node3_log_file).expect("Could not read incoming packets");
 
     //node1 receives the command to start transmission
     let node_1_cmd_recv = logging::find_record_by_msg("Send command received", &node1_log_records);

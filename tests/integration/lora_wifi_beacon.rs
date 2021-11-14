@@ -46,7 +46,7 @@ fn test_placement() {
 
     //Check the upper left corner of the grid
     let node1_log_file = format!("{}/log/node1.log", &data.work_dir);
-    let incoming_messages = logging::get_incoming_message_records(node1_log_file).unwrap();
+    let incoming_messages = logging::get_received_message_records(node1_log_file).unwrap();
     let beacons_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "BEACON" && m.status == "ACCEPTED")
@@ -75,7 +75,7 @@ fn test_placement() {
 
     //Check a central node
     let node7_log_file = format!("{}/log/node7.log", &data.work_dir);
-    let incoming_messages = logging::get_incoming_message_records(node7_log_file).unwrap();
+    let incoming_messages = logging::get_received_message_records(node7_log_file).unwrap();
     let beacons_received = incoming_messages
         .iter()
         .filter(|&m| m.msg_type == "BEACON" && m.status == "ACCEPTED")

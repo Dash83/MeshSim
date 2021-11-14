@@ -147,7 +147,7 @@ fn test_route_teardown() {
     let node7_log_file = format!("{}/log/node7.log", &data.work_dir);
     let _node7_log_records = logging::get_log_records_from_file(&node7_log_file).unwrap();
     let node7_incoming =
-        get_incoming_message_records(node7_log_file).expect("Could not read incoming packets");
+        get_received_message_records(node7_log_file).expect("Could not read incoming packets");
     let node7_teardown_recv = node7_incoming
         .iter()
         .filter(|&m| m.msg_type == "ROUTE_TEARDOWN" && m.status == "FORWARDING")
