@@ -178,6 +178,7 @@ pub fn create_database(
     owner: &String,
     _logger: &Logger,
 ) -> Result<(), MeshSimError> {
+    println!("Creating database {}", &db_name);
     //Insert the DB name into the CREATE_DB query
     let mut vars = HashMap::new();
     vars.insert("db_name".to_string(), db_name);
@@ -569,7 +570,7 @@ pub fn get_workers_in_range(
     worker_name: &str,
     range: f64,
     _logger: &Logger,
-) -> Result<Vec<WorkerRecord>, MeshSimError> {
+) -> Result<Vec<WorkerRecordWithDistance>, MeshSimError> {
     let query_str = String::from(
         "
         SELECT
@@ -577,7 +578,8 @@ pub fn get_workers_in_range(
             workers.worker_id,
             workers.Worker_Name, 
             workers.Short_Range_Address,
-            workers.Long_Range_Address
+            workers.Long_Range_Address,
+            distance(b.x, b.y, a.x, a.y)
         FROM worker_positions a
         LEFT JOIN worker_positions b ON a.worker_id <> b.worker_id
         JOIN workers on workers.ID = b.worker_id
@@ -592,7 +594,7 @@ pub fn get_workers_in_range(
     // let debug_q = diesel::debug_query::<diesel::pg::Pg, _>(&q);
     // debug!(logger, "Query: {}", &debug_q);
 
-    let rows: Vec<WorkerRecord> = q.get_results(conn).map_err(|e| {
+    let rows: Vec<WorkerRecordWithDistance> = q.get_results(conn).map_err(|e| {
         let error_msg = String::from("Failed to get workers in range");
         MeshSimError {
             kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),

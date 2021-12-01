@@ -26,10 +26,16 @@ pub const DEFAULT_INTERFACE_NAME: &str = "wlan";
 const DEFAULT_SPREADING_FACTOR: u32 = 0;
 const DEFAULT_LORA_FREQ: LoraFrequencies = LoraFrequencies::Europe;
 const DEFAULT_LORA_TRANS_POWER: u8 = 15;
+const DEFAULT_WIFI_TRANS_POWER: u8 = 30; //In decibels
 const DEFAULT_PACKET_QUEUE_SIZE: usize = 3000; //Max number of queued packets
 const DEFAULT_READ_TIMEOUT: u64 = 1_000_000; //1ms in nanoseconds
 const DEFAULT_STALE_PACKET_THRESHOLD: i64 = 3_000_000_000; //3 seconds in nanoseconds
 const DEFAULT_TX_DELAY_PER_NODE: i64 = 40; //In microseconds
+const DEFAULT_POWER_LOSS_COEFFICIENT: f64 = 30.0f64;
+const DEFAULT_REFERENCE_DISTANCE: f64 = 1.0f64; //In meters
+const DEFAULT_FLOORS: f64 = 1.0f64;
+const DEFAULT_FLOOR_PENETRATION_LOSS_FACTOR: f64 = 14.0f64; //In decibels
+const DEFAULT_FREQUENCY_IN_MHZ: f64 = 2400.0f64; //In mhz
 
 //TODO: Cleanup this struct
 ///Configuration pertaining to a given radio of the worker.
@@ -51,6 +57,18 @@ pub struct RadioConfig {
     pub spreading_factor: Option<u32>,
     ///Transmission power for the Lora radio.
     pub transmission_power: Option<u8>,
+    ///Maximum delay per node in a broadcast.
+    pub max_delay_per_node: Option<i64>,
+    // Power loss coefficient used to calculate the transmission power.
+    pub power_loss_coefficient: Option<f64>,
+    // Reference distance used to calculate the transmission power.
+    pub reference_distance: Option<f64>,
+    // Number of floors used to calculate the transmission power.
+    pub floors: Option<f64>,
+    // Floor penetration factor used to calculate the transmission power.
+    pub floor_penetration_loss_factor: Option<f64>,
+    // Frequency in mhz used to calculate the transmission power.
+    pub frequency_in_mhz: Option<f64>,
 }
 
 impl RadioConfig {
@@ -66,10 +84,17 @@ impl RadioConfig {
             transmission_power: None,
             mac_layer_retries: Some(DEFAULT_TRANSMISSION_MAX_RETRY),
             mac_layer_base_wait: Some(DEFAULT_TRANSMISSION_WAIT_BASE),
+            max_delay_per_node: Some(DEFAULT_TX_DELAY_PER_NODE),
+            power_loss_coefficient: Some(DEFAULT_POWER_LOSS_COEFFICIENT),
+            reference_distance: Some(DEFAULT_REFERENCE_DISTANCE),
+            floors: Some(DEFAULT_FLOORS),
+            floor_penetration_loss_factor: Some(DEFAULT_FLOOR_PENETRATION_LOSS_FACTOR),
+            frequency_in_mhz: Some(DEFAULT_FREQUENCY_IN_MHZ),
         }
     }
 
     /// Consuming the underlying configuration, this method produces a Box<Radio> object that can be started and used.
+    /// Agregar aqui las cosas de transmission power
     pub fn create_radio(
         self,
         operation_mode: OperationMode,
@@ -121,6 +146,27 @@ impl RadioConfig {
                 let mac_layer_base_wait = self
                     .mac_layer_base_wait
                     .unwrap_or(DEFAULT_TRANSMISSION_WAIT_BASE);
+                let max_delay_per_node = self
+                    .max_delay_per_node
+                    .unwrap_or(DEFAULT_TX_DELAY_PER_NODE);
+                let transmission_power = self
+                    .transmission_power
+                    .unwrap_or(DEFAULT_WIFI_TRANS_POWER);
+                let power_loss_coefficient = self
+                    .power_loss_coefficient
+                    .unwrap_or(DEFAULT_POWER_LOSS_COEFFICIENT);
+                let reference_distance = self
+                    .reference_distance
+                    .unwrap_or(DEFAULT_REFERENCE_DISTANCE);
+                let floors = self
+                    .floors
+                    .unwrap_or(DEFAULT_FLOORS);
+                let floor_penetration_loss_factor = self
+                    .floor_penetration_loss_factor
+                    .unwrap_or(DEFAULT_FLOOR_PENETRATION_LOSS_FACTOR);
+                let frequency_in_mhz = self
+                    .frequency_in_mhz
+                    .unwrap_or(DEFAULT_FREQUENCY_IN_MHZ);
                 let (radio, listener) = SimulatedRadio::new(
                     timeout,
                     work_dir,
@@ -130,6 +176,13 @@ impl RadioConfig {
                     self.range,
                     mac_layer_retries,
                     mac_layer_base_wait,
+                    max_delay_per_node,
+                    transmission_power,
+                    power_loss_coefficient,
+                    reference_distance,
+                    floors,
+                    floor_penetration_loss_factor,
+                    frequency_in_mhz,
                     rng,
                     logger,
                 )?;
