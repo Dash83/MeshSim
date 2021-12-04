@@ -20,6 +20,7 @@ use slog::*;
 use rand::{self, prelude::*};
 use pretty_assertions::{assert_eq, assert_ne};
 use serde_json;
+use std::mem;
 
 use mesh_simulator::backend::*;
 // use mesh_simulator::master::Master;
@@ -53,7 +54,10 @@ impl TestWorker {
         let dur = Duration::nanoseconds(pause).to_std().expect("Could not create std duration");
         loop {
             match listener.read_message() {
-                Some(m) => return Some(m),
+                Some(m) => {
+                    // println!("msg read!");
+                    return Some(m)
+                },
                 None => { 
                     println!("msg not ready to be read");
                     std::thread::sleep(dur);
@@ -120,7 +124,8 @@ fn build_dummy_message(payload_size: usize, ttl: usize) -> (MessageHeader, Proto
     let mut rng = thread_rng();
     let mut data: Vec<u8> = iter::repeat(0u8).take(payload_size).collect();
     rng.fill_bytes(&mut data[..]);
-    
+    let size = mem::size_of_val(&*data);
+    // println!("Payload size:{}", size);
     let payload = flooding::Messages::Data(flooding::DataMessage::new(data));
     let log_data = protocols::ProtocolMessages::Flooding(payload.clone());
     let mut msg = MessageHeader::new(
@@ -605,6 +610,76 @@ fn test_broadcast_delay() {
     //If test checks fail, this section won't be reached and not cleaned up for investigation.
     let _res = std::fs::remove_dir_all(&data.work_dir).unwrap();
 }
+
+fn tx_bandwidth_setup(data: &TestSetup, conn: &PgConnection) -> HashMap<String, TestWorker> {
+    let w1 = add_worker_to_test(
+        &data,
+        &conn,
+        Some(String::from("worker1")), 
+        Some(100.0), 
+        None, 
+        Some(Position { x: 0.0, y: 0.0 }), 
+        Some(Velocity { x: 0.0, y: 0.0 })
+    );
+
+    // let mut workers = TestWorker::add_neighbours(data, conn, &w1, 10);
+    let mut workers = HashMap::new();
+    workers.insert(w1.name.clone(), w1);
+
+    return workers;
+}
+#[test]
+fn test_tx_bandwidth() {
+    //Setup
+    let test_name = "tx_bandwidth";
+    let mut data = setup(test_name, false, true);
+    // let _res = create_db_objects(&logger).expect("Could not create database objects");
+    let env_file = data.db_env_file.take().expect("Failed to unwrap env_file");
+    let conn = get_db_connection_by_file(env_file, &data.logger)
+        .expect("Could not get DB connection");
+    println!("Placing test resuls in {}", &data.work_dir);
+    //Timeout for reading a message.
+    let fifty_ms = 50_000_000;
+    let pauses = 1000;
+    let MAX_NODES: usize = 10;
+    let PACKETS_PER_SAMPLE: usize = 1;
+    let MAX_PACKET_SIZE: usize = 50;
+    let PACKET_SIZE_STEP: usize = 10;
+    let mut workers = tx_bandwidth_setup(&data, &conn);
+
+    for _ in 0..MAX_NODES {
+        let w = {
+            let w1 = workers.get("worker1").expect("Could not find worker1");
+            TestWorker::add_neighbour(&data, &conn, &w1, None)
+        };
+        workers.insert(w.name.clone(), w);
+
+        for packet_size in (0..MAX_PACKET_SIZE+PACKET_SIZE_STEP).step_by(PACKET_SIZE_STEP) {
+            for _ in 0..PACKETS_PER_SAMPLE {
+                let w1 = workers.get("worker1").expect("Could not find worker1");
+                let (msg, log_data) = build_dummy_message(packet_size, 1);
+                //Broadcast the message
+                w1.send_message(RadioTypes::ShortRange, msg, log_data, &data.logger);
+        
+                //Make sure each neighbour receives it
+                for (k,v) in workers.iter() {
+                    // println!("k={}", k);
+                    if k == "worker1" {
+                        continue;
+                    }
+                    let rec_msg = v.read_message_sync(RadioTypes::ShortRange, fifty_ms, pauses);
+                    assert!(rec_msg.is_some());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+    }
+
+    //Teardown
+    //If test checks fail, this section won't be reached and not cleaned up for investigation.
+    let _res = std::fs::remove_dir_all(&data.work_dir).unwrap();
+}
+
 
 #[test]
 fn test_mac_layer_basic() {

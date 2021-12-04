@@ -27,8 +27,8 @@ const DEFAULT_SPREADING_FACTOR: u32 = 0;
 const DEFAULT_LORA_FREQ: LoraFrequencies = LoraFrequencies::Europe;
 const DEFAULT_LORA_TRANS_POWER: u8 = 15;
 const DEFAULT_PACKET_QUEUE_SIZE: usize = 3000; //Max number of queued packets
-const DEFAULT_READ_TIMEOUT: u64 = 10000; //microseconds
-const DEFAULT_STALE_PACKET_THRESHOLD: i32 = 3_000; //3 seconds in nanoseconds
+const DEFAULT_READ_TIMEOUT: u64 = 1_000_000; //1ms in nanoseconds
+const DEFAULT_STALE_PACKET_THRESHOLD: i64 = 3_000_000_000; //3 seconds in nanoseconds
 const DEFAULT_TX_DELAY_PER_NODE: i64 = 40; //In microseconds
 
 //TODO: Cleanup this struct
@@ -51,8 +51,6 @@ pub struct RadioConfig {
     pub spreading_factor: Option<u32>,
     ///Transmission power for the Lora radio.
     pub transmission_power: Option<u8>,
-    ///Maximum delay per node in a broadcast.
-    pub max_delay_per_node: Option<i64>,
 }
 
 impl RadioConfig {
@@ -68,7 +66,6 @@ impl RadioConfig {
             transmission_power: None,
             mac_layer_retries: Some(DEFAULT_TRANSMISSION_MAX_RETRY),
             mac_layer_base_wait: Some(DEFAULT_TRANSMISSION_WAIT_BASE),
-            max_delay_per_node: Some(DEFAULT_TX_DELAY_PER_NODE),
         }
     }
 
@@ -124,9 +121,6 @@ impl RadioConfig {
                 let mac_layer_base_wait = self
                     .mac_layer_base_wait
                     .unwrap_or(DEFAULT_TRANSMISSION_WAIT_BASE);
-                let max_delay_per_node = self
-                    .max_delay_per_node
-                    .unwrap_or(DEFAULT_TX_DELAY_PER_NODE);
                 let (radio, listener) = SimulatedRadio::new(
                     timeout,
                     work_dir,
@@ -136,7 +130,6 @@ impl RadioConfig {
                     self.range,
                     mac_layer_retries,
                     mac_layer_base_wait,
-                    max_delay_per_node,
                     rng,
                     logger,
                 )?;
@@ -171,8 +164,8 @@ pub struct WorkerConfig {
     /// The maximum number of queued packets a worker can have
     pub packet_queue_size: Option<usize>,
     ///Threshold after which a packet is considered stale and dropped.
-    ///Expressed in milliseconds.
-    pub stale_packet_threshold: Option<i32>,
+    ///Expressed in nanoseconds.
+    pub stale_packet_threshold: Option<i64>,
     ///NOTE: Due to the way serde_toml works, the following fields must be kept last in the structure.
     /// Initial position of the worker
     //    #[serde(flatten)]
@@ -340,7 +333,7 @@ mod tests {
             accept_commands: None, \
             term_log: None, \
             packet_queue_size: Some(3000), \
-            stale_packet_threshold: Some(3000), \
+            stale_packet_threshold: Some(3000000000), \
             position: Position { x: 0.0, y: 0.0 }, \
             destination: None, \
             velocity: Velocity { x: 0.0, y: 0.0 }, \
@@ -397,7 +390,7 @@ mod tests {
         random_seed = 0\n\
         operation_mode = \"Simulated\"\n\
         packet_queue_size = 3000\n\
-        stale_packet_threshold = 3000\n\
+        stale_packet_threshold = 3000000000\n\
         \n[position]\n\
         x = 0.0\n\
         y = 0.0\n\
@@ -410,20 +403,18 @@ mod tests {
         Protocol = \"Flooding\"\n\
         \n\
         [radio_short]\n\
-        timeout = 10000\n\
+        timeout = 1000000\n\
         interface_name = \"wlan0\"\n\
         range = 0.0\n\
         mac_layer_retries = 8\n\
         mac_layer_base_wait = 16\n\
-        max_delay_per_node = 40\n\
         \n\
         [radio_long]\n\
-        timeout = 10000\n\
+        timeout = 1000000\n\
         interface_name = \"wlan0\"\n\
         range = 0.0\n\
         mac_layer_retries = 8\n\
-        mac_layer_base_wait = 16\n\
-        max_delay_per_node = 40\n";
+        mac_layer_base_wait = 16\n";
 
         let mut file_content = String::new();
         let _res = File::open(path).unwrap().read_to_string(&mut file_content);

@@ -507,7 +507,7 @@ pub struct Worker {
     packet_queue_size: usize,
     ///Threshold after which a packet is considered stale and dropped.
     ///Expressed in milliseconds.
-    stale_packet_threshold: i32,
+    stale_packet_threshold: i64,
     /// Logger for this Worker to use.
     logger: Logger,
 }
@@ -524,7 +524,7 @@ impl Worker {
         id: String,
         protocol: Protocols,
         packet_queue_size: usize,
-        stale_packet_threshold: i32,
+        stale_packet_threshold: i64,
         pos : Position,
         vel: Option<Velocity>,
         dest: Option<Position>,
@@ -712,7 +712,7 @@ impl Worker {
                                         "radio" => &rl,
                                     );
 
-                                    if perf_in_queued_duration > (stale_packet_threshold * 1000) as i64 {
+                                    if perf_in_queued_duration > stale_packet_threshold {
                                         warn!(
                                             log,
                                             "Skipping message";
@@ -759,8 +759,8 @@ impl Worker {
                             let log = logger.clone();
 
                             //Is the packet stale?
-                            if (Utc::now().timestamp_millis() - out_queue_start.timestamp_millis()) > 
-                                stale_packet_threshold as i64 {
+                            if (Utc::now().timestamp_nanos() - out_queue_start.timestamp_nanos()) > 
+                                stale_packet_threshold {
                                 warn!(
                                     log,
                                     "Not transmitting";
