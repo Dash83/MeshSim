@@ -194,7 +194,7 @@ impl WifiListener {
         r_type: RadioTypes,
         logger: Logger,
     ) -> WifiListener {
-        let read_time = std::time::Duration::from_millis(timeout);
+        let read_time = std::time::Duration::from_nanos(timeout * ONE_MILLISECOND_NS);
         socket
             .set_read_timeout(Some(read_time))
             .expect("Coult not set socket on non-blocking mode");

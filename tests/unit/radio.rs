@@ -628,6 +628,8 @@ fn tx_bandwidth_setup(data: &TestSetup, conn: &PgConnection) -> HashMap<String, 
 
     return workers;
 }
+
+#[ignore]
 #[test]
 fn test_tx_bandwidth() {
     //Setup
@@ -641,9 +643,9 @@ fn test_tx_bandwidth() {
     //Timeout for reading a message.
     let fifty_ms = 50_000_000;
     let pauses = 1000;
-    let MAX_NODES: usize = 10;
-    let PACKETS_PER_SAMPLE: usize = 1;
-    let MAX_PACKET_SIZE: usize = 50;
+    let MAX_NODES: usize = 50;
+    let PACKETS_PER_SAMPLE: usize = 20;
+    let MAX_PACKET_SIZE: usize = 5000;
     let PACKET_SIZE_STEP: usize = 10;
     let mut workers = tx_bandwidth_setup(&data, &conn);
 
@@ -670,14 +672,14 @@ fn test_tx_bandwidth() {
                     let rec_msg = v.read_message_sync(RadioTypes::ShortRange, fifty_ms, pauses);
                     assert!(rec_msg.is_some());
                 }
-                std::thread::sleep(std::time::Duration::from_millis(10));
+                std::thread::sleep(std::time::Duration::from_micros(500));
             }
         }
     }
 
     //Teardown
     //If test checks fail, this section won't be reached and not cleaned up for investigation.
-    let _res = std::fs::remove_dir_all(&data.work_dir).unwrap();
+    // let _res = std::fs::remove_dir_all(&data.work_dir).unwrap();
 }
 
 

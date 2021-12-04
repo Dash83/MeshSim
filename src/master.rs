@@ -21,9 +21,10 @@
 use crate::backend::*;
 use crate::worker::worker_config::WorkerConfig;
 use crate::worker::commands::Commands;
-use crate::{MeshSimError, MeshSimErrorKind};
+use crate::*;
 use crate::mobility::*;
 use crate::logging::log_node_state;
+use chrono::Utc;
 use libc::{c_int, nice};
 
 use rand::{RngCore, thread_rng};
@@ -67,16 +68,18 @@ pub const REG_SERVER_LISTEN_PORT: u16 = 12345;
 //A certain level of parallelism is required since most nodes are expected to be started almost
 //simultaneously during a simulation.
 const REG_SERVER_POOL_SIZE: usize = 2;
-const REG_SERVER_PERIOD: u64 = 100; //microseconds
+const REG_SERVER_PERIOD: u64 = 100 * ONE_MICROSECOND_NS;
 /// Maximum number of backlog connections for the registration server. 
 /// Ideally, this should be the number of expected nodes, to avoid any registration issues,
 /// but this is a sane default for now.
 const REG_SERVER_BACKLOG: i32 = 256;
 const RANDOM_WAYPOINT_WAIT_TIME: i64 = 1000;
 const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher priority will use this
-const CLEANUP_SLEEP: u64 = 500;
+const CLEANUP_SLEEP: u64 = 500 * ONE_MILLISECOND_NS;
 /// Default random seed used for the master process
 pub const DEFAULT_RANDOM_SEED: u64 = 0;
+/// The update period for the mobility thread
+pub const MOBILITY_PERIOD: u64 = ONE_SECOND_NS;
 
 ///Different supported mobility models
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -276,7 +279,7 @@ impl fmt::Display for MasterError {
     }
 }
 
-impl error::Error for MasterError {
+impl Error for MasterError {
     // fn description(&self) -> &str {
     //     match *self {
     //         MasterError::Serialization(ref err) => err.description(),
@@ -288,7 +291,7 @@ impl error::Error for MasterError {
     //     }
     // }
 
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             MasterError::Serialization(ref err) => Some(err),
             MasterError::IO(ref err) => Some(err),
@@ -422,7 +425,7 @@ impl Master {
                                 return;
                             }
                         };
-                        let read_timeout = Duration::from_millis(100);
+                        let read_timeout = Duration::from_nanos(100 * ONE_MILLISECOND_NS);
                         while !finish_test.load(Ordering::SeqCst) {
                             match client_queue.recv_timeout(read_timeout) {
                                 Ok((client, client_address)) => {
@@ -537,7 +540,7 @@ impl Master {
             }
         })?;
         //Also set a read timeout, otherwise this thread might hand, and the entire Master would wait on it to finish.
-        let read_timeout = Duration::from_millis(200);
+        let read_timeout = Duration::from_nanos(200 * ONE_MILLISECOND_NS);
         client.set_read_timeout(Some(read_timeout))
         .map_err(|e| {
             let err_msg = "Failed to set client read timeout".to_string();
@@ -765,7 +768,7 @@ impl Master {
         // Now that all Master threads have finished, perform any cleanup required.
         // Firstly, we'll give the worker processes a little time to process the Finish command, in case they were overloaded
         // and have not yet processed it.
-        let cleanup_sleep = Duration::from_millis(CLEANUP_SLEEP);
+        let cleanup_sleep = Duration::from_nanos(CLEANUP_SLEEP);
         thread::sleep(cleanup_sleep);
 
         //Now check if any worker processes are lingering.
@@ -846,7 +849,7 @@ impl Master {
         let logger = self.logger.clone();
 
         let handle = thread::spawn(move || {
-            let test_endtime = Duration::from_millis(time);
+            let test_endtime = Duration::from_nanos(time * ONE_MILLISECOND_NS);
             info!(logger, "End_Test action: Scheduled for {:?}", &test_endtime);
             thread::sleep(test_endtime);
             info!(logger, "End_Test action: Starting");
@@ -932,7 +935,7 @@ impl Master {
         let conn_str = get_connection_string_from_file(&self.env_file)?;
 
         let handle = thread::spawn(move || {
-            let test_endtime = Duration::from_millis(time);
+            let test_endtime = Duration::from_nanos(time * ONE_MILLISECOND_NS);
             info!(
                 logger,
                 "Add_Node ({}) action: Scheduled for {:?}", &name, &test_endtime
@@ -982,7 +985,7 @@ impl Master {
         let logger = self.logger.clone();
 
         let handle = thread::spawn(move || {
-            let killtime = Duration::from_millis(time);
+            let killtime = Duration::from_nanos(time * ONE_MILLISECOND_NS);
             info!(
                 logger,
                 "Kill_Node ({}) action: Scheduled for {:?}", &name, &killtime
@@ -1037,7 +1040,7 @@ impl Master {
         let logger = self.logger.clone();
 
         let handle = thread::spawn(move || {
-            let pingtime = Duration::from_millis(time);
+            let pingtime = Duration::from_nanos(time * ONE_MILLISECOND_NS);
             info!(
                 logger,
                 "Ping {}->{} action: Scheduled for {:?}", &source, &destination, &pingtime
@@ -1107,7 +1110,7 @@ impl Master {
         time: u64,
     ) -> Result<JoinHandle<()>, MeshSimError> {
         let tb = thread::Builder::new();
-        let start_time = Duration::from_millis(time);
+        let start_time = Duration::from_nanos(time * ONE_MILLISECOND_NS);
         let workers = Arc::clone(&self.workers);
         let logger = self.logger.clone();
 
@@ -1163,7 +1166,7 @@ impl Master {
         workers: Arc<Mutex<HashMap<String, Process>>>,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
-        let dur = Duration::from_millis(duration);
+        let dur = Duration::from_nanos(duration * ONE_MILLISECOND_NS);
         info!(
             logger,
             "[Source]:{}: Starting. Will run for {}.{} seconds",
@@ -1181,7 +1184,7 @@ impl Master {
 
         let mut rng = thread_rng();
         let mut data: Vec<u8> = iter::repeat(0u8).take(packet_size).collect();
-        let iter_threshold = 1_000_000_000u32 / packets_per_second as u32; //In nanoseconds
+        let estimated_duration_per_packet = ONE_SECOND_NS / packets_per_second as u64; //In nanoseconds
         let mut packet_counter: u64 = 0;
         let addr = {
             let worker_list = workers.lock().expect("Could not lock workers list");
@@ -1198,9 +1201,9 @@ impl Master {
         };
 
         let trans_time = Instant::now();
-        let mut iteration = Instant::now();
 
         while trans_time.elapsed() < dur {
+            let ts = Utc::now();
             packet_counter += 1;
 
             rng.fill_bytes(&mut data[..]);
@@ -1221,14 +1224,18 @@ impl Master {
                 },
             }
             //Calculating pause time
-            let iter_duration = iteration.elapsed().subsec_nanos();
-            let pause_time = std::cmp::max(
-                iter_threshold
-                    - (std::cmp::max(iter_duration as i32 - iter_threshold as i32, 0i32)) as u32,
-                0u32,
-            );
-            iteration = Instant::now();
-            let pause = Duration::from_nanos(u64::from(pause_time));
+            // println!("Here!");
+            let elapsed = Utc::now().timestamp_nanos() - ts.timestamp_nanos();
+            // println!("Ellapsed: {}ns", elapsed);
+            // debug!(logger, "Ellapsed: {}ns", elapsed);
+
+            /*
+            TODO: If elapsed is larger than estimated_duration_per_packet, perhaps I should capture the 
+            difference and substract it from the sleep time of the next iteration, such that the source does 
+            not drift. 
+            */
+            let pause_time = std::cmp::max(estimated_duration_per_packet - elapsed as u64, 0);
+            let pause = Duration::from_nanos(pause_time);
             debug!(
                 logger,
                 "[Source]:{} sleeping for {}.{} seconds",
@@ -1244,9 +1251,9 @@ impl Master {
 
     fn start_mobility_thread(&self) -> Result<JoinHandle<()>, MeshSimError> {
         let tb = thread::Builder::new();
-        let update_time = Duration::from_millis(1000); //All velocities are expresed in meters per second.
+        let update_time = Duration::from_nanos(MOBILITY_PERIOD); //All velocities are expresed in meters per second.
         let sim_start_time = Instant::now();
-        let sim_end_time = Duration::from_millis(self.duration);
+        let sim_end_time = Duration::from_nanos(self.duration * ONE_MILLISECOND_NS);
         let m_model = self.mobility_model.clone();
         let logger = self.logger.clone();
         // let mut paused_workers: HashMap<i32, PendingWorker> = HashMap::new();

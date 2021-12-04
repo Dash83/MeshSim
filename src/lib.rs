@@ -30,6 +30,13 @@ pub mod worker;
 pub mod mobility;
 
 //*****************
+//Constants
+//*****************
+pub const ONE_SECOND_NS: u64 = 1_000_000_000;
+pub const ONE_MILLISECOND_NS: u64 = 1_000_000;
+pub const ONE_MICROSECOND_NS: u64 = 1_000;
+
+//*****************
 //Errors
 //*****************
 use std::error::Error;
