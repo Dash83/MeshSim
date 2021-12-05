@@ -216,9 +216,9 @@ where
     fn read_message(&self) -> Option<MessageHeader> {
         let mut buffer = [0; sx1276::LORA_MTU];
         loop {
-            if let Ok(bytes_read) = self.receive(&mut buffer) {
-                if bytes_read > 0 {
-                    let data = buffer[..bytes_read].to_vec();
+            if let Ok(md) = self.receive(&mut buffer) {
+                if md.size() > 0 {
+                    let data = buffer[..md.size()].to_vec();
                     if let Ok(m) = MessageHeader::from_vec(data) {
                         return Some(m);
                     }
