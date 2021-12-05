@@ -6,8 +6,8 @@ use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
 
 use rand::{rngs::StdRng, Rng};
-use serde_cbor::de::*;
-use serde_cbor::ser::*;
+// use serde_cbor::de::*;
+// use serde_cbor::ser::*;
 use slog::{Logger, Record, Serializer, KV};
 
 use chrono::{DateTime, Duration, Utc};
@@ -1159,12 +1159,6 @@ impl ReactiveGossipRoutingII {
         Ok(())
     }
 
-    #[allow(unused)]
-    fn build_protocol_message(data: Vec<u8>) -> Result<Messages, serde_cbor::Error> {
-        let res: Result<Messages, serde_cbor::Error> = from_slice(data.as_slice());
-        res
-    }
-
     fn get_self_peer(&self) -> String {
         self.worker_name.clone()
     }
@@ -1598,7 +1592,7 @@ impl ReactiveGossipRoutingII {
 }
 
 fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
-    from_slice(data).map_err(|e| {
+    bincode::deserialize(data).map_err(|e| {
         let err_msg = String::from("Error deserializing data into message");
         MeshSimError {
             kind: MeshSimErrorKind::Serialization(err_msg),
@@ -1608,7 +1602,7 @@ fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
 }
 
 fn serialize_message(msg: Messages) -> Result<Vec<u8>, MeshSimError> {
-    to_vec(&msg).map_err(|e| {
+    bincode::serialize(&msg).map_err(|e| {
         let err_msg = String::from("Error serializing message");
         MeshSimError {
             kind: MeshSimErrorKind::Serialization(err_msg),

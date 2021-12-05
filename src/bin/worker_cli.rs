@@ -32,7 +32,7 @@ enum CLIError {
     SetLogger(String),
     IO(io::Error),
     Worker(worker::WorkerError),
-    Serialization(serde_cbor::Error),
+    Serialization(bincode::Error),
     TOML(toml::de::Error),
     #[allow(unused)]
     Configuration(String),
@@ -87,8 +87,8 @@ impl From<io::Error> for CLIError {
 //     }
 // }
 
-impl From<serde_cbor::Error> for CLIError {
-    fn from(err: serde_cbor::Error) -> CLIError {
+impl From<bincode::Error> for CLIError {
+    fn from(err: bincode::Error) -> CLIError {
         CLIError::Serialization(err)
     }
 }

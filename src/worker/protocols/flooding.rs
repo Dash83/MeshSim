@@ -7,8 +7,8 @@ use crate::{MeshSimError, MeshSimErrorKind};
 
 use chrono::{DateTime, Utc};
 use rand::{rngs::StdRng, RngCore};
-use serde_cbor::de::*;
-use serde_cbor::ser::*;
+// use serde_cbor::de::*;
+// use serde_cbor::ser::*;
 use slog::{Logger, Record, Serializer, KV};
 use std::collections::HashSet;
 use std::iter::Iterator;
@@ -272,7 +272,7 @@ impl Flooding {
 }
 
 pub fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
-    from_slice(data).map_err(|e| {
+    bincode::deserialize(data).map_err(|e| {
         let err_msg = String::from("Error deserializing data into message");
         MeshSimError {
             kind: MeshSimErrorKind::Serialization(err_msg),
@@ -282,7 +282,7 @@ pub fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
 }
 
 pub fn serialize_message(msg: Messages) -> Result<Vec<u8>, MeshSimError> {
-    to_vec(&msg).map_err(|e| {
+    bincode::serialize(&msg).map_err(|e| {
         let err_msg = String::from("Error serializing message");
         MeshSimError {
             kind: MeshSimErrorKind::Serialization(err_msg),
