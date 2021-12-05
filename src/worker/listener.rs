@@ -118,7 +118,7 @@ impl SimulatedListener {
         r_type: RadioTypes,
         logger: Logger,
     ) -> SimulatedListener {
-        let read_time = std::time::Duration::from_micros(timeout);
+        let read_time = std::time::Duration::from_nanos(timeout);
         socket
             .set_read_timeout(Some(read_time))
             // .set_nonblocking(true)
@@ -194,7 +194,7 @@ impl WifiListener {
         r_type: RadioTypes,
         logger: Logger,
     ) -> WifiListener {
-        let read_time = std::time::Duration::from_millis(timeout);
+        let read_time = std::time::Duration::from_nanos(timeout * ONE_MILLISECOND_NS);
         socket
             .set_read_timeout(Some(read_time))
             .expect("Coult not set socket on non-blocking mode");

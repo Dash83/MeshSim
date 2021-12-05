@@ -1,5 +1,5 @@
 use crate::backend::{stop_all_workers, update_worker_vel, select_workers_at_destination, stop_workers, update_worker_target};
-use crate::MeshSimError;
+use crate::*;
 use crate::worker::Worker;
 use crate::master::test_specification::Area;
 use diesel::pg::PgConnection;
@@ -213,7 +213,7 @@ impl MobilityHandler for RandomWaypoint {
                 &self.logger,
             );
 
-            let restart_time = Utc::now() + chrono::Duration::milliseconds(self.pause_time);
+            let restart_time = Utc::now() + chrono::Duration::nanoseconds(self.pause_time * ONE_MILLISECOND_NS);
             self.paused_workers.insert(w.id, (restart_time, Velocity { x: x_vel, y: y_vel }));
         }
 
@@ -324,7 +324,7 @@ impl MobilityHandler for IncreasedMobility {
                 &self.logger,
             );
 
-            let restart_time = Utc::now() + chrono::Duration::milliseconds(self.pause_time);
+            let restart_time = Utc::now() + chrono::Duration::nanoseconds(self.pause_time * ONE_MILLISECOND_NS);
             self.paused_workers.insert(w.id, (restart_time, Velocity { x: x_vel, y: y_vel }));
         }
 

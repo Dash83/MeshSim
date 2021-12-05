@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use std::mem;
 
 #[cfg(target_os = "linux")]
 use self::sx1276::socket::{Link, LoRa};
@@ -29,7 +30,6 @@ use sx1276;
 const SHORT_RANGE_DIR: &str = "SHORT";
 const LONG_RANGE_DIR: &str = "LONG";
 // const DELAY_PER_NODE: i64 = 50; //µs
-const MAX_DELAY_PEERS: i64 = 10; //Maximum number of peers considered when calculating the broadcast delay
 pub const DEFAULT_TRANSMISSION_MAX_RETRY: usize = 8;
 const TRANSMISSION_EXP_CAP: u32 = 10;
 const TRANSMITTER_REGISTER_MAX_RETRY: usize = 10;
@@ -60,6 +60,10 @@ pub struct TxMetadata {
     /// Duration (in nanoseconds) the radio took in the whole broadcast process.
     /// Should be roughly equal to contention_duration + tx_duration
     pub broadcast_duration: i64,
+    /// Size in bytes of the transmitted data
+    pub size: usize,
+    /// Number of peers in range when the tx happened
+    pub peers_in_range: usize,
 }
 
 ///Types of radio supported by the system. Used by Protocols that need to
@@ -138,8 +142,6 @@ pub struct SimulatedRadio {
     transmitting: Arc<Mutex<()>>,
     /// The last time this radio made a transmission
     last_transmission: Arc<AtomicI64>,
-    ///Maximum delay per node in a broadcast.
-    max_delay_per_node: i64,
 }
 
 impl Radio for SimulatedRadio {
@@ -225,14 +227,29 @@ impl Radio for SimulatedRadio {
 
         //Get the list of peers in radio-range
         let peers = get_workers_in_range(&conn, &self.worker_name, self.range, &self.logger)?;
+        let num_peers = peers.len();
         info!(
             self.logger,
             "Starting transmission";
             "msg_id"=>&hdr.get_msg_id(),
             "thread"=>&thread_id,
-            "peers_in_range"=>peers.len(),
+            //"peers_in_range"=>num_peers,
             "radio"=>&radio_range,
         );
+
+        //Adding duration here just for the purposes of getting the size of the packet
+        hdr.delay = TX_DURATION;
+        let packet_size = to_vec(&hdr)
+            .map(|v| mem::size_of_val(&*v))
+            .map_err(|e| {
+                let err_msg = String::from("Failed to obtain packet size");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+            })?;
+
+        debug!(self.logger, "Packet size: {}", packet_size);
 
         let socket = new_socket()?;
         // let mut acc_delay: i64 = 0;
@@ -324,17 +341,10 @@ impl Radio for SimulatedRadio {
             contention_duration: perf_contention_duration,
             tx_duration: perf_tx_duration,
             broadcast_duration,
+            size: packet_size,
+            peers_in_range: num_peers,
         };
 
-        // radio::log_tx(
-        //     &self.logger,
-        //     tx,
-        //     &hdr.msg_id,
-        //     MessageStatus::SENT,
-        //     &hdr.sender,
-        //     &hdr.destination,
-        //     md,
-        // );
         Ok(Some(tx))
     }
 }
@@ -350,7 +360,6 @@ impl SimulatedRadio {
         range: f64,
         mac_layer_retries: usize,
         mac_layer_base_wait: u64,
-        max_delay_per_node: i64,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
     ) -> Result<(SimulatedRadio, Box<dyn Listener>), MeshSimError> {
@@ -371,7 +380,6 @@ impl SimulatedRadio {
             logger,
             transmitting: Arc::new(Mutex::new(())),
             last_transmission: Default::default(),
-            max_delay_per_node,
         };
         Ok((sr, listener))
     }
@@ -663,6 +671,7 @@ impl Radio for WifiRadio {
                 cause: Some(Box::new(e)),
             }
         })?;
+        let packet_size = mem::size_of_val(&*data);
         let _bytes_sent = socket
             .send_to(&data, &socket2::SockAddr::from(sock_addr))
             .map_err(|e| {
@@ -689,6 +698,8 @@ impl Radio for WifiRadio {
             contention_duration: perf_contention_duration,
             tx_duration: perf_tx_duration,
             broadcast_duration,
+            size: packet_size,
+            peers_in_range: 0,
         };
 
         // radio::log_tx(
@@ -846,6 +857,8 @@ pub fn log_tx(
         "Message sent";
         msg_metadata,
         // "debug_ts" => debug_ts,
+        "peers_in_range" => tx.peers_in_range,
+        "size" => tx.size,
         "thread" => tx.thread_id,
         "radio" => tx.radio_type,
         "out_queued_duration" => tx.out_queued_duration,

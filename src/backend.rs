@@ -5,7 +5,7 @@ extern crate chrono;
 extern crate dotenv;
 extern crate strfmt;
 
-use crate::{MeshSimError, MeshSimErrorKind};
+use crate::*;
 // use crate::worker::Peer;
 use crate::worker::radio::RadioTypes;
 use crate::mobility::*;
@@ -57,7 +57,7 @@ CREATE DATABASE {db_name}
     CONNECTION LIMIT = -1;
 ";
 const CONNECTION_RETRIES: usize = 3;
-const CONNECTION_RETRY_SLEEP_BASE: u64 = 10;
+const CONNECTION_RETRY_SLEEP_BASE: u64 = 10 * ONE_MILLISECOND_NS;
 
 /// Struct used for parsing connection files
 pub struct ConnectionParts {
@@ -96,7 +96,7 @@ fn get_db_url(env_file: Option<String>, logger: &Logger) -> Result<String, MeshS
                 if e == env::VarError::NotPresent {
                     /* There seems to be a contention issue with parallel reads of an OS env var, so we retry a couple of times */
                     let r: u64 = rng.next_u64() % CONNECTION_RETRY_SLEEP_BASE;
-                    let sleep = Duration::from_millis(r);
+                    let sleep = Duration::from_nanos(r);
                     let s = format!("{:?}", &sleep);
                     debug!(logger, "Failed to read {} environment variable", DB_CONN_ENV_VAR; "attempts"=>i+1, "retry_in" => &s);
                     std::thread::sleep(sleep);
@@ -1035,9 +1035,6 @@ mod tests {
     #[test]
     fn test_db_02_register_new_workers() {
         use schema::workers::dsl::*;
-
-        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
-        thread::sleep(Duration::from_millis(10));
         let _db = DB.lock().expect("Unable to acquire DB lock");
 
         let mut data = setup("register_new_worker", false, false);
@@ -1125,8 +1122,6 @@ mod tests {
 
     #[test]
     fn test_db_03_update_worker_positions() {
-        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
-        thread::sleep(Duration::from_millis(15));
         let _db = DB.lock().expect("Unable to acquire DB lock");
 
         let mut data = setup("update_worker_positions", false, false);
@@ -1145,8 +1140,6 @@ mod tests {
 
     #[test]
     fn test_db_04_insert_active_wifi_transmitter() {
-        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
-        thread::sleep(Duration::from_millis(20));
         let _db = DB.lock().expect("Unable to acquire DB lock");
 
         let mut data = setup("insert_active_wifi_transmitter", false, false);
@@ -1181,8 +1174,6 @@ mod tests {
 
     #[test]
     fn test_db_05_insert_active_lora_transmitter() {
-        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
-        thread::sleep(Duration::from_millis(25));
         let _db = DB.lock().expect("Unable to acquire DB lock");
 
         let mut data = setup("insert_active_lora_transmitter", false, false);
@@ -1217,8 +1208,6 @@ mod tests {
 
     #[test]
     fn test_db_06_register_if_wifi_free_fail() {
-        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
-        thread::sleep(Duration::from_millis(30));
         let _db = DB.lock().expect("Unable to acquire DB lock");
 
         let mut data = setup("register_if_free_fail", false, false);
@@ -1244,8 +1233,6 @@ mod tests {
 
     #[test]
     fn test_db_07_remove_active_transmitter() {
-        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
-        thread::sleep(Duration::from_millis(35));
         let _db = DB.lock().expect("Unable to acquire DB lock");
 
         let mut data = setup("remove_active_transmitter", false, false);
@@ -1280,8 +1267,6 @@ mod tests {
 
     #[test]
     fn test_db_08_register_if_wifi_free_ok() {
-        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
-        thread::sleep(Duration::from_millis(40));
         let _db = DB.lock().expect("Unable to acquire DB lock");
 
         let mut data = setup("register_if_wifi_free_ok", false, false);
@@ -1307,8 +1292,6 @@ mod tests {
 
     #[test]
     fn test_db_09_get_workers_in_range() {
-        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
-        thread::sleep(Duration::from_millis(45));
         let _db = DB.lock().expect("Unable to acquire DB lock");
 
         let mut data = setup("get_workers_in_range", false, false);
@@ -1330,8 +1313,6 @@ mod tests {
     #[test]
     fn test_db_10_stop_two_workers() {
         use schema::worker_velocities::dsl::*;
-        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
-        thread::sleep(Duration::from_millis(50));
         let _db = DB.lock().expect("Unable to acquire DB lock");
 
         let mut data = setup("stop_two_workers", false, false);
@@ -1360,8 +1341,6 @@ mod tests {
 
     #[test]
     fn test_db_11_destination_reached() {
-        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
-        thread::sleep(Duration::from_millis(55));
         let _db = DB.lock().expect("Unable to acquire DB lock");
 
         let mut data = setup("destination_reached", false, false);
@@ -1380,8 +1359,6 @@ mod tests {
 
     #[test]
     fn test_db_12_stop_all_workers() {
-        //GROSS HACK: Use a thread::sleep and mutex to make sure the tests in this module are run sequentially
-        thread::sleep(Duration::from_millis(60));
         let _db = DB.lock().expect("Unable to acquire DB lock");
 
         let mut data = setup("stop_all_workers", false, false);

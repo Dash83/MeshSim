@@ -24,6 +24,7 @@
     unused_import_braces
 )]
 
+use crate::*;
 use crate::worker::listener::Listener;
 use crate::worker::protocols::*;
 use crate::worker::radio::*;
@@ -68,12 +69,12 @@ pub mod worker_config;
 //const DNS_SERVICE_TYPE : &'static str = "_http._tcp";
 const DNS_SERVICE_PORT: u16 = 23456;
 const WORKER_POOL_SIZE: usize = 1;
-const MAIN_THREAD_PERIOD: u64 = 100; //milliseconds
+const MAIN_THREAD_PERIOD: u64 = ONE_MILLISECOND_NS;
 /// subdirectory name where the command sockets are placed
 pub const SOCKET_DIR: &str = "sockets";
-const COMMAND_PERIOD: u64 = 10; //milliseconds
+const COMMAND_PERIOD: u64 = ONE_MILLISECOND_NS;
 // Period for logging statistics regarding the state of the worker
-const STATS_PERIOD: i64 = 1000;
+const STATS_PERIOD: i64 = ONE_SECOND_NS as i64;
 const REGISTRATION_RETRIES: usize = 5;
 
 // *****************************
@@ -506,8 +507,8 @@ pub struct Worker {
     /// The maximum number of queued packets a worker can have
     packet_queue_size: usize,
     ///Threshold after which a packet is considered stale and dropped.
-    ///Expressed in milliseconds.
-    stale_packet_threshold: i32,
+    ///Expressed in nanoseconds.
+    stale_packet_threshold: i64,
     /// Logger for this Worker to use.
     logger: Logger,
 }
@@ -524,7 +525,7 @@ impl Worker {
         id: String,
         protocol: Protocols,
         packet_queue_size: usize,
-        stale_packet_threshold: i32,
+        stale_packet_threshold: i64,
         pos : Position,
         vel: Option<Velocity>,
         dest: Option<Position>,
@@ -596,7 +597,7 @@ impl Worker {
         })?;
 
         //Finally, set the socket in non-blocking mode
-        let read_time = std::time::Duration::from_micros(COMMAND_PERIOD);
+        let read_time = std::time::Duration::from_nanos(COMMAND_PERIOD);
         socket
             .set_read_timeout(Some(read_time))
             // .set_nonblocking(true)
@@ -661,7 +662,7 @@ impl Worker {
                         /**************************************************
                         ***************  STATISTICS STAGE   ***************
                         **************************************************/
-                        if stats_ts.timestamp_millis() + STATS_PERIOD <= Utc::now().timestamp_millis() {
+                        if stats_ts.timestamp_nanos() + STATS_PERIOD <= Utc::now().timestamp_nanos() {
                             info!(
                                 logger,
                                 "Worker stats";
@@ -712,7 +713,7 @@ impl Worker {
                                         "radio" => &rl,
                                     );
 
-                                    if perf_in_queued_duration > (stale_packet_threshold * 1000) as i64 {
+                                    if perf_in_queued_duration > stale_packet_threshold {
                                         warn!(
                                             log,
                                             "Skipping message";
@@ -759,8 +760,8 @@ impl Worker {
                             let log = logger.clone();
 
                             //Is the packet stale?
-                            if (Utc::now().timestamp_millis() - out_queue_start.timestamp_millis()) > 
-                                stale_packet_threshold as i64 {
+                            if (Utc::now().timestamp_nanos() - out_queue_start.timestamp_nanos()) > 
+                                stale_packet_threshold {
                                 warn!(
                                     log,
                                     "Not transmitting";
@@ -812,9 +813,6 @@ impl Worker {
         After spawning the listener threads for each radio, the main thread remain in this loop
         periodically executing the maintenance operations of the protocol handler.
 
-        Ideally, it would also poll stdin for new commands instead of having a dedicated thread for that, but
-        I'm not sure there's a non-blocking way to read stdin.
-
         Also in the future, it would be great if instead of having a dedicated logger, the log macros pushed the
         log records into an mpsc channel that was the written by this thread when not doing maintenance tasks.
 
@@ -822,7 +820,7 @@ impl Worker {
         point the worker could kill the radio threads, stop doing maintenance work, and focus on flushing the log
         records before exiting.
         */
-        let main_thread_period = Duration::from_millis(MAIN_THREAD_PERIOD);
+        let main_thread_period = Duration::from_nanos(MAIN_THREAD_PERIOD);
         while !finish.load(Ordering::SeqCst) {
             thread::sleep(main_thread_period);
 
@@ -892,7 +890,7 @@ impl Worker {
         This is due to the fact that currently the logging is done asynchronously by a separate thread, 
         and some times the logs are truncated in the middle of a message.
         */
-        // thread::sleep(Duration::from_millis(10));
+        // thread::sleep(Duration::from_nanos(10 * ONE_MILLISECOND_NS));
 
         info!(&self.logger, "Worker exiting");
 
@@ -982,7 +980,7 @@ impl Worker {
     }
 
     fn connect_to_registration_server(logger: &Logger) -> Result<Socket, MeshSimError> {
-        let conn_timeout = Duration::from_millis(10);
+        let conn_timeout = Duration::from_nanos(10 * ONE_MILLISECOND_NS);
         let master_addr = SocketAddr::new(
             IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
             REG_SERVER_LISTEN_PORT
@@ -1007,7 +1005,7 @@ impl Worker {
                         return Err(err);
                     } else {
                         let r: u64 = rng.next_u64() % 10;
-                        let sleep = Duration::from_millis(r);
+                        let sleep = Duration::from_nanos(r * ONE_MILLISECOND_NS);
                         let s = format!("{:?}", &sleep);
                         warn!(&logger, "Connection to registration server timed out"; "attempts"=>i+1, "retry_in" => &s);
                         thread::sleep(sleep);
