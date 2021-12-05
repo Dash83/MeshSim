@@ -30,7 +30,7 @@ use libc::{c_int, nice};
 use rand::{RngCore, thread_rng};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{net::{IpAddr, Ipv6Addr, SocketAddr}};
-use serde_cbor::de::*;
+// use serde_cbor::de::*;
 use crossbeam_channel::unbounded;
 use std::sync::atomic::{AtomicBool, Ordering};
 use sysinfo::{self, ProcessExt, SystemExt, Signal};
@@ -55,7 +55,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use test_specification::{Area, TestActions};
 use workloads::SourceProfiles;
-use serde_cbor::ser::*;
+// use serde_cbor::ser::*;
 
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
@@ -229,7 +229,7 @@ pub struct Master {
 #[derive(Debug)]
 pub enum MasterError {
     /// Errors generated when serializing data using serde.
-    Serialization(serde_cbor::Error),
+    Serialization(bincode::Error),
     /// Errors generated when doing IO operations.
     IO(io::Error),
     ///Errors generated in the worker module.
@@ -248,8 +248,8 @@ impl From<toml::de::Error> for MasterError {
     }
 }
 
-impl From<serde_cbor::Error> for MasterError {
-    fn from(err: serde_cbor::Error) -> MasterError {
+impl From<bincode::Error> for MasterError {
+    fn from(err: bincode::Error) -> MasterError {
         MasterError::Serialization(err)
     }
 }
@@ -561,7 +561,7 @@ impl Master {
 
         //Attempt to parse the read data into a Command
         let data = buffer[..bytes_read].to_vec();
-        let cmd: Commands = from_slice(&data)
+        let cmd: Commands = bincode::deserialize(&data)
         .map_err(|e| {
             let err_msg = "Could not deserialise message from client".to_string();
             MeshSimError {
@@ -901,7 +901,7 @@ impl Master {
                 cause: Some(Box::new(e)),
             }
         })?;
-        let data = to_vec(&cmd)
+        let data = bincode::serialize(&cmd)
             .map_err(|e| {
                 let err_msg = String::from("Could not serialise command");
                 MeshSimError {

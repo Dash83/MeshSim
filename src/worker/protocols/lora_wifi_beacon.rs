@@ -8,8 +8,8 @@ use crate::{MeshSimError, MeshSimErrorKind};
 use chrono::{DateTime, Utc};
 use std::sync::{Arc, Mutex};
 use rand::{rngs::StdRng, Rng};
-use serde_cbor::de::*;
-use serde_cbor::ser::*;
+// use serde_cbor::de::*;
+// use serde_cbor::ser::*;
 use slog::{Logger, Record, Serializer, KV};
 
 use std::thread;
@@ -271,7 +271,7 @@ impl LoraWifiBeacon {
 }
 
 fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
-    from_slice(data).map_err(|e| {
+    bincode::deserialize(data).map_err(|e| {
         let err_msg = String::from("Error deserializing data into message");
         MeshSimError {
             kind: MeshSimErrorKind::Serialization(err_msg),
@@ -281,7 +281,7 @@ fn deserialize_message(data: &[u8]) -> Result<Messages, MeshSimError> {
 }
 
 fn serialize_message(msg: Messages) -> Result<Vec<u8>, MeshSimError> {
-    to_vec(&msg).map_err(|e| {
+    bincode::serialize(&msg).map_err(|e| {
         let err_msg = String::from("Error serializing message");
         MeshSimError {
             kind: MeshSimErrorKind::Serialization(err_msg),

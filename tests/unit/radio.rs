@@ -124,8 +124,6 @@ fn build_dummy_message(payload_size: usize, ttl: usize) -> (MessageHeader, Proto
     let mut rng = thread_rng();
     let mut data: Vec<u8> = iter::repeat(0u8).take(payload_size).collect();
     rng.fill_bytes(&mut data[..]);
-    let size = mem::size_of_val(&*data);
-    // println!("Payload size:{}", size);
     let payload = flooding::Messages::Data(flooding::DataMessage::new(data));
     let log_data = protocols::ProtocolMessages::Flooding(payload.clone());
     let mut msg = MessageHeader::new(
@@ -605,7 +603,7 @@ fn test_broadcast_delay() {
         let diff = rx_times.last().unwrap() - rx_times[0];
         assert!( diff.abs() < radio::TX_VARIABILITY );
     }
-
+ 
     //Teardown
     //If test checks fail, this section won't be reached and not cleaned up for investigation.
     let _res = std::fs::remove_dir_all(&data.work_dir).unwrap();
@@ -657,6 +655,7 @@ fn test_tx_bandwidth() {
         workers.insert(w.name.clone(), w);
 
         for packet_size in (0..MAX_PACKET_SIZE+PACKET_SIZE_STEP).step_by(PACKET_SIZE_STEP) {
+            let num_neighbours = workers.len();
             for _ in 0..PACKETS_PER_SAMPLE {
                 let w1 = workers.get("worker1").expect("Could not find worker1");
                 let (msg, log_data) = build_dummy_message(packet_size, 1);
@@ -674,6 +673,7 @@ fn test_tx_bandwidth() {
                 }
                 std::thread::sleep(std::time::Duration::from_micros(500));
             }
+            println!("Nodes:{}, PacketSize:{} - Done!", num_neighbours-1, packet_size);
         }
     }
 

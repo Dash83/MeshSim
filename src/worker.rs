@@ -39,8 +39,8 @@ use std::io::ErrorKind;
 use chrono::TimeZone;
 use chrono::Utc;
 use rand::{rngs::StdRng, SeedableRng};
-use serde_cbor::de::*;
-use serde_cbor::ser::*;
+// use serde_cbor::de::*;
+// use serde_cbor::ser::*;
 use slog::{Key, Logger, Record, Serializer, Value};
 use std::{collections::{HashMap, HashSet}, path::PathBuf};
 use std::io::Write;
@@ -88,7 +88,7 @@ pub type Channel = (Arc<dyn Radio>, Box<dyn Listener>);
 #[derive(Debug)]
 pub enum WorkerError {
     ///Error while serializing data with Serde.
-    Serialization(serde_cbor::Error),
+    Serialization(bincode::Error),
     ///Error while performing IO operations.
     IO(io::Error),
     ///Error configuring the worker.
@@ -139,8 +139,8 @@ impl error::Error for WorkerError {
     }
 }
 
-impl From<serde_cbor::Error> for WorkerError {
-    fn from(err: serde_cbor::Error) -> WorkerError {
+impl From<bincode::Error> for WorkerError {
+    fn from(err: bincode::Error) -> WorkerError {
         WorkerError::Serialization(err)
     }
 }
@@ -281,9 +281,28 @@ pub struct MessageHeader {
 
 impl MessageHeader {
     ///Creates a MessageHeader from a serialized vector of bytes.
-    pub fn from_vec(data: Vec<u8>) -> Result<MessageHeader, serde_cbor::Error> {
-        let msg: Result<MessageHeader, _> = from_reader(&data[..]);
-        msg
+    pub fn from_vec(data: Vec<u8>) -> Result<MessageHeader, MeshSimError> {
+        let msg = bincode::deserialize(&data[..])
+            .map_err(|e| {
+                let err_msg = String::from("Failed to deserialize message");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+        })?;
+        Ok(msg)
+    }
+
+    pub fn to_vec(&self) -> Result<Vec<u8>, MeshSimError> {
+        let encoded = bincode::serialize(&self)
+            .map_err(|e| {
+                let err_msg = String::from("Failed to serialize message");
+                MeshSimError {
+                    kind: MeshSimErrorKind::Serialization(err_msg),
+                    cause: Some(Box::new(e)),
+                }
+        })?;
+        Ok(encoded)
     }
 
     ///Create new, empty MessageHeader.
@@ -855,7 +874,7 @@ impl Worker {
             };
 
             if bytes_read > 0 {
-                let cmd: Option<commands::Commands> = from_slice(&buffer[..bytes_read]).ok();
+                let cmd: Option<commands::Commands> = bincode::deserialize(&buffer[..bytes_read]).ok();
                 match Worker::process_command(
                     cmd,
                     Arc::clone(&prot_handler),
@@ -940,7 +959,7 @@ impl Worker {
                     lr_address,
                     cmd_address: self.cmd_socket_addr.clone(),
                 };
-                let data = to_vec(&cmd)
+                let data = bincode::serialize(&cmd)
                     .map_err(|e|{
                         let err_msg = String::from("Failed to serialise registration command");
                         MeshSimError {
@@ -1078,14 +1097,12 @@ impl Worker {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
     use rand::RngCore;
     use std::iter;
-
-    // //Unit test for: Worker::init
-    // #[test]
-    // fn test_worker_init() {
-    // }
+    use bincode;
+    use std::mem;
+    use crate::worker::{MessageHeader, Worker};
 
     #[test]
     #[ignore]
@@ -1102,6 +1119,36 @@ mod tests {
         let hash = msg.get_msg_id();
         assert_eq!(hash, "fd8559921846fd7e962ae3e1c3bc6e2d");
 
+    }
+
+    #[test]
+    fn test_header_size() {
+        let mut rng = Worker::rng_from_seed(12345);
+        
+        //Case 1: Empty MessageHeader
+        let sender = String::from("");
+        let destination = String::from("");
+        let mut data: Vec<u8> = iter::repeat(0u8).take(0).collect();
+        let mut msg = MessageHeader::new(sender, destination, data);
+        let empty_header_size = mem::size_of_val(&msg);
+        //Base size of the struct
+        assert_eq!(120, empty_header_size);
+        //Binary encoded version should always be equal or smaller in size
+        let ser_msg = msg.to_vec().expect("Could not serialise message");
+        let empty_encoded_header_size = mem::size_of_val(&*ser_msg);
+        assert!(empty_header_size >= empty_encoded_header_size);
+
+        //Case 2: Increase the payload, ensure the message size grows proportionally
+        data = iter::repeat(0u8).take(50).collect();
+        rng.fill_bytes(&mut data[..]);
+        msg.payload = data;
+        let increased_header_size = mem::size_of_val(&msg);
+        //Struct size shouldn't change
+        assert_eq!(increased_header_size, empty_header_size);
+        //But encoded size should grow proportionally
+        let ser_msg = msg.to_vec().expect("Could not serialise message");
+        let increased_encoded_header_size = mem::size_of_val(&*ser_msg);
+        assert_eq!(increased_encoded_header_size, empty_encoded_header_size + 50);
     }
 }
 

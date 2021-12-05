@@ -239,15 +239,8 @@ impl Radio for SimulatedRadio {
 
         //Adding duration here just for the purposes of getting the size of the packet
         hdr.delay = TX_DURATION;
-        let packet_size = to_vec(&hdr)
-            .map(|v| mem::size_of_val(&*v))
-            .map_err(|e| {
-                let err_msg = String::from("Failed to obtain packet size");
-                MeshSimError {
-                    kind: MeshSimErrorKind::Serialization(err_msg),
-                    cause: Some(Box::new(e)),
-                }
-            })?;
+        let packet_size = hdr.to_vec()
+            .map(|v| mem::size_of_val(&*v))?;
 
         debug!(self.logger, "Packet size: {}", packet_size);
 
@@ -268,13 +261,7 @@ impl Radio for SimulatedRadio {
             // println!("Delay: {}ns", msg.delay);
             // msg.delay = max_delay - acc_delay;
             // acc_delay += delay_per_node;
-            let data = to_vec(&msg).map_err(|e| {
-                let err_msg = String::from("Failed to serialize message");
-                MeshSimError {
-                    kind: MeshSimErrorKind::Serialization(err_msg),
-                    cause: Some(Box::new(e)),
-                }
-            })?;
+            let data = msg.to_vec()?;
 
             let selected_address = match self.r_type {
                 RadioTypes::ShortRange => p.short_range_address.clone(),
@@ -664,7 +651,7 @@ impl Radio for WifiRadio {
                 }
             })?;
 
-        let data = to_vec(&hdr).map_err(|e| {
+        let data = bincode::serialize(&hdr).map_err(|e| {
             let err_msg = String::from("Failed to serialize message");
             MeshSimError {
                 kind: MeshSimErrorKind::Serialization(err_msg),
