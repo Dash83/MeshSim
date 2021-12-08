@@ -918,13 +918,7 @@ where
     }
 
     fn broadcast(&self, hdr: MessageHeader) -> Result<Option<TxMetadata>, MeshSimError> {
-        let data = to_vec(&hdr).map_err(|e| {
-            let err_msg = String::from("Failed to serialize message");
-            MeshSimError {
-                kind: MeshSimErrorKind::Serialization(err_msg),
-                cause: Some(Box::new(e)),
-            }
-        })?;
+        let data = hdr.to_vec()?;
         self.transmit(data.as_slice()).map_err(|_| {
             let err_msg = String::from("Failed to transmit message");
             MeshSimError {
