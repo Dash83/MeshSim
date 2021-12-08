@@ -1,0 +1,2524 @@
+name = "aodv_iscg"
+random_seed = 0
+duration = 10000
+actions = []
+width = 300.0
+height = 300.0
+
+[mobility]
+Model = "RandomWaypoint"
+pause_time = 3
+
+[protocol]
+Protocol = "AODV"
+[initial_nodes.node37]
+worker_name = "node37"
+worker_id = "44117a0f5a64138fbbd9e0d48b26d059"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2089726052
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node37.position]
+x = 109.35923310627255
+y = 79.21357657507497
+
+[initial_nodes.node37.destination]
+x = 73.57347462808168
+y = 145.5647455327013
+
+[initial_nodes.node37.velocity]
+x = -0.6496289182921571
+y = 1.2044913940731996
+
+[initial_nodes.node37.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node37.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node37.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node21]
+worker_name = "node21"
+worker_id = "932de9869a90fa2e5a25bf42d7ee4b32"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1721196026
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node21.position]
+x = 106.02358774958454
+y = 167.69317614657973
+
+[initial_nodes.node21.destination]
+x = 252.60983478498483
+y = 78.2365561281339
+
+[initial_nodes.node21.velocity]
+x = 1.2153321862566062
+y = -0.7416760561165655
+
+[initial_nodes.node21.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node21.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node21.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node48]
+worker_name = "node48"
+worker_id = "f5fcaab27607211dc820c6f47da5a70f"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 16641535
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node48.position]
+x = 188.99295079180666
+y = 194.09188459149692
+
+[initial_nodes.node48.destination]
+x = 227.15130014662705
+y = 68.81848345322912
+
+[initial_nodes.node48.velocity]
+x = 0.4782509205092503
+y = -1.5700920092900372
+
+[initial_nodes.node48.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node48.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node48.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node22]
+worker_name = "node22"
+worker_id = "2ec6561dcce1f2595d3fd286f4a4b62d"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1480106406
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node22.position]
+x = 258.2777248174918
+y = 213.5450493155532
+
+[initial_nodes.node22.destination]
+x = 32.55078973722449
+y = 186.78394181045837
+
+[initial_nodes.node22.velocity]
+x = -1.3138453234464653
+y = -0.15576322751786023
+
+[initial_nodes.node22.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node22.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node22.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node50]
+worker_name = "node50"
+worker_id = "5c7bda729ec1048698cfa2c90460f5f3"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2855827193
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node50.position]
+x = 199.2760388905932
+y = 220.32617515210217
+
+[initial_nodes.node50.destination]
+x = 254.1290393592029
+y = 130.85146219885203
+
+[initial_nodes.node50.velocity]
+x = 0.8539976849464506
+y = -1.3930176484520855
+
+[initial_nodes.node50.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node50.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node50.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node10]
+worker_name = "node10"
+worker_id = "5b870d2f0a9df69e1c916de6047a2168"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2309709286
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node10.position]
+x = 105.25293941092767
+y = 47.63638565562929
+
+[initial_nodes.node10.destination]
+x = 200.5031890411033
+y = 258.7730286196999
+
+[initial_nodes.node10.velocity]
+x = 0.6456661385179802
+y = 1.4312170465858085
+
+[initial_nodes.node10.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node10.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node10.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node25]
+worker_name = "node25"
+worker_id = "333dc7267c904371ec459b1cd8aae37c"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1302607444
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node25.position]
+x = 162.5760086899527
+y = 36.202417036422084
+
+[initial_nodes.node25.destination]
+x = 119.09218354930377
+y = 85.9142264685085
+
+[initial_nodes.node25.velocity]
+x = -0.8979157550727254
+y = 1.0265200165317652
+
+[initial_nodes.node25.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node25.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node25.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node11]
+worker_name = "node11"
+worker_id = "e75f570f872705370505091b52b33c6f"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 3041785715
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node11.position]
+x = 98.6013558722259
+y = 133.33376789331507
+
+[initial_nodes.node11.destination]
+x = 31.916354849632135
+y = 36.83975513003903
+
+[initial_nodes.node11.velocity]
+x = -0.8039582033151886
+y = -1.1633373613588476
+
+[initial_nodes.node11.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node11.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node11.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node18]
+worker_name = "node18"
+worker_id = "7141ba84b3306448bae7567116e7b2f4"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 488894378
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node18.position]
+x = 9.735143469656249
+y = 83.87534458035364
+
+[initial_nodes.node18.destination]
+x = 83.86715810513006
+y = 58.385040280148814
+
+[initial_nodes.node18.velocity]
+x = 1.1448523399340569
+y = -0.3936576480110405
+
+[initial_nodes.node18.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node18.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node18.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node15]
+worker_name = "node15"
+worker_id = "3d136c767d94766b51d970fb01235646"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2746053543
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node15.position]
+x = 258.72865133861274
+y = 192.3677406883766
+
+[initial_nodes.node15.destination]
+x = 187.05776602202457
+y = 197.99668031061114
+
+[initial_nodes.node15.velocity]
+x = -1.5231340444201102
+y = 0.11962499883654042
+
+[initial_nodes.node15.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node15.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node15.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node6]
+worker_name = "node6"
+worker_id = "1ae7c2927610ce3ea9e25da4d1a997d0"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1410812213
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node6.position]
+x = 257.5341740055722
+y = 87.3801271079596
+
+[initial_nodes.node6.destination]
+x = 266.93258600623454
+y = 45.818296149868765
+
+[initial_nodes.node6.velocity]
+x = 0.30833724922678507
+y = -1.3635346726173774
+
+[initial_nodes.node6.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node6.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node6.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node14]
+worker_name = "node14"
+worker_id = "27e43edaff9404e4716d2068809713f6"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2774149727
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node14.position]
+x = 31.046120851969917
+y = 73.2633747433848
+
+[initial_nodes.node14.destination]
+x = 195.60225643924343
+y = 87.83793789735842
+
+[initial_nodes.node14.velocity]
+x = 1.3514627210134573
+y = 0.11969762602504253
+
+[initial_nodes.node14.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node14.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node14.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node28]
+worker_name = "node28"
+worker_id = "3050b3d224f8b1ad9287dc6c51c6640e"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1201836703
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node28.position]
+x = 294.5738467050714
+y = 0.5992096192476204
+
+[initial_nodes.node28.destination]
+x = 184.17022770733968
+y = 111.32864732634917
+
+[initial_nodes.node28.velocity]
+x = -1.0919919663430784
+y = 1.0952146090095607
+
+[initial_nodes.node28.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node28.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node28.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node3]
+worker_name = "node3"
+worker_id = "cc99b038999b892bfc67e71d6296b688"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 3577049504
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node3.position]
+x = 251.6895067455589
+y = 155.20340538753965
+
+[initial_nodes.node3.destination]
+x = 60.36927210867127
+y = 109.15760323975789
+
+[initial_nodes.node3.velocity]
+x = -1.6014885202971223
+y = -0.38543661462417644
+
+[initial_nodes.node3.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node3.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node3.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node43]
+worker_name = "node43"
+worker_id = "2ef05efbb657baff35b662bc8693f34c"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1956092620
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node43.position]
+x = 222.39392575358656
+y = 178.70335272231242
+
+[initial_nodes.node43.destination]
+x = 79.44190227431938
+y = 264.59763353468446
+
+[initial_nodes.node43.velocity]
+x = -1.443526479098204
+y = 0.8673586126169011
+
+[initial_nodes.node43.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node43.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node43.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node24]
+worker_name = "node24"
+worker_id = "bf8382b10db005fae275848f4804b05d"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2534973835
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node24.position]
+x = 70.23817827793293
+y = 126.74359086950078
+
+[initial_nodes.node24.destination]
+x = 38.99843595092025
+y = 148.59209978426955
+
+[initial_nodes.node24.velocity]
+x = -1.3282442446106835
+y = 0.9289499226846505
+
+[initial_nodes.node24.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node24.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node24.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node26]
+worker_name = "node26"
+worker_id = "3e473704db2caeee0d3b22500445dda7"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2858587881
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node26.position]
+x = 179.07502636934547
+y = 212.4761135623384
+
+[initial_nodes.node26.destination]
+x = 161.19932139723406
+y = 124.90005026675539
+
+[initial_nodes.node26.velocity]
+x = -0.2579287012788687
+y = -1.2636357729212222
+
+[initial_nodes.node26.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node26.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node26.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node36]
+worker_name = "node36"
+worker_id = "f87df9b8519abefccc432c5162a2d549"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2945983469
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node36.position]
+x = 281.88679041104217
+y = 76.40134305492339
+
+[initial_nodes.node36.destination]
+x = 188.7185480121292
+y = 12.05949684538723
+
+[initial_nodes.node36.velocity]
+x = -1.3723448908765796
+y = -0.9477392901452198
+
+[initial_nodes.node36.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node36.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node36.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node7]
+worker_name = "node7"
+worker_id = "17a71710076f347338cd69e08e49a130"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2403183052
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node7.position]
+x = 182.3657688499415
+y = 117.58691791142282
+
+[initial_nodes.node7.destination]
+x = 31.654312098935232
+y = 195.84133781193245
+
+[initial_nodes.node7.velocity]
+x = -1.383059460240659
+y = 0.7181306456871077
+
+[initial_nodes.node7.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node7.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node7.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node40]
+worker_name = "node40"
+worker_id = "81d641031f1769ed7a88e679811c8456"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 955557956
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node40.position]
+x = 193.68172451657006
+y = 194.08848852870662
+
+[initial_nodes.node40.destination]
+x = 99.98660280157921
+y = 282.50104546499404
+
+[initial_nodes.node40.velocity]
+x = -1.113930669514711
+y = 1.0511268563279839
+
+[initial_nodes.node40.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node40.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node40.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node5]
+worker_name = "node5"
+worker_id = "58d71ad341cd28e9ceed35156faa29c4"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1729682045
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node5.position]
+x = 168.8774884065786
+y = 284.3588889782867
+
+[initial_nodes.node5.destination]
+x = 43.166953428560184
+y = 89.37320141807272
+
+[initial_nodes.node5.velocity]
+x = -0.6841666402071623
+y = -1.0611895237728621
+
+[initial_nodes.node5.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node5.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node5.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node44]
+worker_name = "node44"
+worker_id = "0c80119c860ab6dbaaa7b4b2bbca7afb"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1334887985
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node44.position]
+x = 85.05761883412148
+y = 47.415939134296536
+
+[initial_nodes.node44.destination]
+x = 155.6708040161922
+y = 173.07314349128418
+
+[initial_nodes.node44.velocity]
+x = 0.7854721771459834
+y = 1.3977593225099505
+
+[initial_nodes.node44.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node44.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node44.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node39]
+worker_name = "node39"
+worker_id = "9eba16f74fbada79210e6c0d485541a2"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 221364108
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node39.position]
+x = 280.99517071208646
+y = 22.440119531049717
+
+[initial_nodes.node39.destination]
+x = 57.438250454495865
+y = 173.45048043775407
+
+[initial_nodes.node39.velocity]
+x = -1.1288064292045972
+y = 0.762496933987024
+
+[initial_nodes.node39.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node39.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node39.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node47]
+worker_name = "node47"
+worker_id = "42f360b485e37f57daa8823982c3867c"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2282491801
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node47.position]
+x = 118.967643675552
+y = 6.754343180422029
+
+[initial_nodes.node47.destination]
+x = 113.27107817719796
+y = 93.08572298346166
+
+[initial_nodes.node47.velocity]
+x = -0.10722924008201684
+y = 1.625057809690191
+
+[initial_nodes.node47.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node47.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node47.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node8]
+worker_name = "node8"
+worker_id = "c2022466c83830f5e78bc0b286bc1e61"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 922583933
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node8.position]
+x = 247.94756219300348
+y = 119.86390396466066
+
+[initial_nodes.node8.destination]
+x = 120.63078093485508
+y = 264.0930858872738
+
+[initial_nodes.node8.velocity]
+x = -0.999470322452548
+y = 1.132237129612758
+
+[initial_nodes.node8.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node8.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node8.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node9]
+worker_name = "node9"
+worker_id = "d55d8bb8a860b6c6776f8464b1f1bcff"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2265931442
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node9.position]
+x = 265.7507556191354
+y = 71.19472881585365
+
+[initial_nodes.node9.destination]
+x = 14.568396817389528
+y = 93.66078644201046
+
+[initial_nodes.node9.velocity]
+x = -1.3726723164202665
+y = 0.12277349217374064
+
+[initial_nodes.node9.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node9.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node9.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node29]
+worker_name = "node29"
+worker_id = "afd722838fed7cd431160ed76a819fbc"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 879748263
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node29.position]
+x = 83.93023926997571
+y = 289.7227387889391
+
+[initial_nodes.node29.destination]
+x = 96.2260205618727
+y = 78.6334260069965
+
+[initial_nodes.node29.velocity]
+x = 0.09432524634890038
+y = -1.6193400774701774
+
+[initial_nodes.node29.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node29.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node29.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node38]
+worker_name = "node38"
+worker_id = "f4b8763ffac712c3113003bcb14297b1"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 3984112444
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node38.position]
+x = 265.39963085229226
+y = 21.55878190407623
+
+[initial_nodes.node38.destination]
+x = 50.84501151260103
+y = 153.077930602879
+
+[initial_nodes.node38.velocity]
+x = -1.4128116041745729
+y = 0.8660348587445014
+
+[initial_nodes.node38.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node38.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node38.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node34]
+worker_name = "node34"
+worker_id = "3b6a0a7aa89ab9bed336732ba41fba38"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 896387533
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node34.position]
+x = 16.097934027020464
+y = 10.639089308009876
+
+[initial_nodes.node34.destination]
+x = 41.02290637871757
+y = 202.30163962732735
+
+[initial_nodes.node34.velocity]
+x = 0.15562444126596522
+y = 1.1966864750813984
+
+[initial_nodes.node34.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node34.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node34.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node4]
+worker_name = "node4"
+worker_id = "51c09002d91be02b295a5b756eee5f25"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1199258712
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node4.position]
+x = 207.73175710851578
+y = 217.0043624582857
+
+[initial_nodes.node4.destination]
+x = 66.96419754734859
+y = 59.19462587151951
+
+[initial_nodes.node4.velocity]
+x = -1.0580232599445045
+y = -1.1861139915689356
+
+[initial_nodes.node4.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node4.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node4.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node42]
+worker_name = "node42"
+worker_id = "a8869226d5504dbeb6923540399147ea"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 521572383
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node42.position]
+x = 117.41965564343613
+y = 28.434335643780862
+
+[initial_nodes.node42.destination]
+x = 134.5499250069037
+y = 254.348213389619
+
+[initial_nodes.node42.velocity]
+x = 0.12805395286989113
+y = 1.6887746736321008
+
+[initial_nodes.node42.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node42.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node42.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node41]
+worker_name = "node41"
+worker_id = "10075d9f2b8b02a5bd6f7bd8b125f84d"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1135036408
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node41.position]
+x = 194.58052125132207
+y = 113.41550289230187
+
+[initial_nodes.node41.destination]
+x = 128.49300622772358
+y = 283.94594430178756
+
+[initial_nodes.node41.velocity]
+x = -0.5788594429736924
+y = 1.4936732950104774
+
+[initial_nodes.node41.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node41.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node41.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node12]
+worker_name = "node12"
+worker_id = "75e79d90bbbe7fa8168ce28e57686f45"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2999398812
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node12.position]
+x = 43.240617884075206
+y = 47.46568929711965
+
+[initial_nodes.node12.destination]
+x = 243.41153088529003
+y = 215.90887518148475
+
+[initial_nodes.node12.velocity]
+x = 0.9167174521601383
+y = 0.7714148168805854
+
+[initial_nodes.node12.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node12.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node12.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node17]
+worker_name = "node17"
+worker_id = "038b5321e07340301adc6f13972e64f7"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1516411016
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node17.position]
+x = 155.65037252098463
+y = 176.0384013475872
+
+[initial_nodes.node17.destination]
+x = 28.921137299350907
+y = 9.43317600519553
+
+[initial_nodes.node17.velocity]
+x = -1.0007920642628685
+y = -1.3156963118714469
+
+[initial_nodes.node17.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node17.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node17.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node30]
+worker_name = "node30"
+worker_id = "61cfecd824972f2c58df9262821ffd41"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 3515674882
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node30.position]
+x = 186.09438789900042
+y = 52.560271011799344
+
+[initial_nodes.node30.destination]
+x = 199.3632605496128
+y = 294.5631155997356
+
+[initial_nodes.node30.velocity]
+x = 0.09558783524630823
+y = 1.743368004707017
+
+[initial_nodes.node30.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node30.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node30.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node20]
+worker_name = "node20"
+worker_id = "7dc1fec7a72ff70e6ce044b1e7bcac48"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 3884427939
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node20.position]
+x = 262.5369378610141
+y = 263.37905317681003
+
+[initial_nodes.node20.destination]
+x = 295.68568801424493
+y = 249.7796663007689
+
+[initial_nodes.node20.velocity]
+x = 1.1715404234733835
+y = -0.48062842146652646
+
+[initial_nodes.node20.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node20.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node20.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node49]
+worker_name = "node49"
+worker_id = "df35b9ae694008a10a7d5636d8d10ccf"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1898073911
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node49.position]
+x = 227.86474843414172
+y = 15.330140291628492
+
+[initial_nodes.node49.destination]
+x = 293.64602900844824
+y = 133.24449198619007
+
+[initial_nodes.node49.velocity]
+x = 0.5722728006598754
+y = 1.0258112291690007
+
+[initial_nodes.node49.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node49.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node49.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node2]
+worker_name = "node2"
+worker_id = "2d1102c70acbf4646201698e7fcf2fb8"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 3144247731
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node2.position]
+x = 182.74791215616176
+y = 26.040912182905807
+
+[initial_nodes.node2.destination]
+x = 87.7891091695635
+y = 213.60233757568122
+
+[initial_nodes.node2.velocity]
+x = -0.713704785884283
+y = 1.4097006569153379
+
+[initial_nodes.node2.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node2.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node2.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node32]
+worker_name = "node32"
+worker_id = "6ae84768555a0c2e9307969f98ffe33d"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 652971556
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node32.position]
+x = 72.94643193040737
+y = 192.70291575855356
+
+[initial_nodes.node32.destination]
+x = 283.4282869648628
+y = 15.110809520003766
+
+[initial_nodes.node32.velocity]
+x = 1.1465618856680837
+y = -0.9674009200237524
+
+[initial_nodes.node32.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node32.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node32.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node33]
+worker_name = "node33"
+worker_id = "bd08f20a4b13520b87f555676929e3f8"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1557845952
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node33.position]
+x = 268.8750779844645
+y = 208.97798282971843
+
+[initial_nodes.node33.destination]
+x = 172.39517533350582
+y = 189.0431187984422
+
+[initial_nodes.node33.velocity]
+x = -1.49785607526829
+y = -0.3094899184021689
+
+[initial_nodes.node33.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node33.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node33.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node45]
+worker_name = "node45"
+worker_id = "25a4a873e5696f2733b0b6d087122939"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 3870213155
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node45.position]
+x = 163.6231193899278
+y = 58.66705794869662
+
+[initial_nodes.node45.destination]
+x = 179.42914738540716
+y = 96.61492530366853
+
+[initial_nodes.node45.velocity]
+x = 0.49818214153764967
+y = 1.1960594926880763
+
+[initial_nodes.node45.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node45.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node45.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node19]
+worker_name = "node19"
+worker_id = "1dc4e0fa370efca0a78b1fa38c63eded"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 4031480410
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node19.position]
+x = 276.5910062447431
+y = 86.50589980621244
+
+[initial_nodes.node19.destination]
+x = 65.81833505703504
+y = 162.8422375560361
+
+[initial_nodes.node19.velocity]
+x = -1.6601523075341662
+y = 0.6012636579019071
+
+[initial_nodes.node19.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node19.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node19.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node27]
+worker_name = "node27"
+worker_id = "2dd68b26f8badde3d4075453ba50def6"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1539624648
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node27.position]
+x = 180.62101036393855
+y = 236.74024916003816
+
+[initial_nodes.node27.destination]
+x = 93.57554365669132
+y = 258.8166507335064
+
+[initial_nodes.node27.velocity]
+x = -1.297917213100945
+y = 0.3291767244111699
+
+[initial_nodes.node27.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node27.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node27.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node1]
+worker_name = "node1"
+worker_id = "3dfd9c01e02628966208ea343c0f1807"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 3795523701
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node1.position]
+x = 280.4635523603574
+y = 29.900834115461407
+
+[initial_nodes.node1.destination]
+x = 51.103564575875104
+y = 43.616935265619986
+
+[initial_nodes.node1.velocity]
+x = -1.4942116267884011
+y = 0.08935629100238081
+
+[initial_nodes.node1.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node1.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node1.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node35]
+worker_name = "node35"
+worker_id = "8b47ac7765ad488038e1f4b706366899"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 814201254
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node35.position]
+x = 76.779481147565
+y = 37.40401485551086
+
+[initial_nodes.node35.destination]
+x = 212.7766961187024
+y = 119.89918687173487
+
+[initial_nodes.node35.velocity]
+x = 1.1934400365777953
+y = 0.723934244752207
+
+[initial_nodes.node35.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node35.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node35.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node13]
+worker_name = "node13"
+worker_id = "586709663b0391bcce27af0c5fa8ad7d"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 2336796540
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node13.position]
+x = 108.78423536516752
+y = 100.84219095226803
+
+[initial_nodes.node13.destination]
+x = 291.79420915175683
+y = 35.644020145495304
+
+[initial_nodes.node13.velocity]
+x = 1.410639119285446
+y = -0.5025468740470769
+
+[initial_nodes.node13.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node13.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node13.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node31]
+worker_name = "node31"
+worker_id = "768e1082ae0e2a41c32739637b2db727"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 3133537393
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node31.position]
+x = 123.92813373686205
+y = 98.73780457961436
+
+[initial_nodes.node31.destination]
+x = 291.20993267128915
+y = 182.05159269946478
+
+[initial_nodes.node31.velocity]
+x = 1.4393671023895915
+y = 0.7168689394724684
+
+[initial_nodes.node31.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node31.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node31.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node16]
+worker_name = "node16"
+worker_id = "8198aacdbc61e0db486dcde4fd5f6ed4"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 4077229797
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node16.position]
+x = 66.21642197276061
+y = 164.13811919590498
+
+[initial_nodes.node16.destination]
+x = 256.7880562840474
+y = 21.582078341013844
+
+[initial_nodes.node16.velocity]
+x = 1.2400068504914898
+y = -0.9275801610131875
+
+[initial_nodes.node16.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node16.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node16.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node23]
+worker_name = "node23"
+worker_id = "66e4cfa264485b983332a525b1b98957"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 4225633473
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node23.position]
+x = 227.48814348013576
+y = 251.39630743654854
+
+[initial_nodes.node23.destination]
+x = 104.79811847275617
+y = 15.612478269950469
+
+[initial_nodes.node23.velocity]
+x = -0.6796367069400362
+y = -1.3061155150539758
+
+[initial_nodes.node23.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node23.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node23.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node46]
+worker_name = "node46"
+worker_id = "c31163ba728032638fa887f44bc5f2f0"
+work_dir = "/tmp/aodv_iscg196054422"
+random_seed = 1134411145
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000000000
+
+[initial_nodes.node46.position]
+x = 264.7745618345964
+y = 5.023550745605121
+
+[initial_nodes.node46.destination]
+x = 188.81498853198482
+y = 57.92506399035007
+
+[initial_nodes.node46.velocity]
+x = -1.2932857299388565
+y = 0.9006997959169396
+
+[initial_nodes.node46.protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node46.radio_short]
+timeout = 1000000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[initial_nodes.node46.radio_long]
+timeout = 1000000
+interface_name = "wlan1"
+range = 500.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+power_loss_coefficient = 30.0
+reference_distance = 1.0
+floors = 1.0
+floor_penetration_loss_factor = 14.0
+frequency_in_mhz = 2400.0
+
+[available_nodes]
+
+[metadata]
+RT_PATTERN = "SENT.*RERR"
+RE_PATTERN = "SENT.*RREP"
+OK_PKT_PATTERN = "ACCEPTED.*DATA"
+DATA_PATTERN = "SENT.*DATA"
+MAINTENANCE_PATTERN = "SENT.*HELLO"
+RD_FAIL_PATTERN = "RREQ retries exceeded"
+ROUTE_BREAK_PATTERN = "BROKEN_LINK detected"
+RD_PATTERN = "SENT.*RREQ"

@@ -58,7 +58,7 @@ fn aodv_basic() {
     assert_eq!(received_packets, 2);
 
     //Test passed. Results are not needed.
-    teardown(data, true);
+    teardown(data, false);
 }
 
 /// This test is designed to evaluate the route error detecting capabilities of AODV.

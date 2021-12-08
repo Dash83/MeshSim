@@ -273,11 +273,11 @@ impl Radio for SimulatedRadio {
             let signal_loss = basic_transmission_loss_at_reference_distance
                 + self.power_loss_coefficient*(p.distance/self.reference_distance).log(10.0)
                 + self.floor_penetration_loss_factor;
-            msg.signal_strength = (self.transmission_power as f64) - signal_loss;
+            msg.signal_loss = (self.transmission_power as f64) - signal_loss;
                 
             info!(self.logger,
-                "Found peer with distance: {} and signal_strength: {}",
-                p.distance, msg.signal_strength);
+                "Found peer with distance: {} and signal_loss: {}",
+                p.distance, msg.signal_loss);
 
             msg.delay = std::cmp::max(
                 TX_DURATION - 

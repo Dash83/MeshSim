@@ -80,7 +80,7 @@ struct RouteTableEntry {
     flags: RTEFlags,
     nic: String,
     next_hop: String,
-    hop_count: u8,
+    route_cost: f64,
     precursors: HashSet<String>,
     lifetime: DateTime<Utc>,
     repairing: bool,
@@ -102,7 +102,7 @@ impl RouteTableEntry {
             flags,
             nic: String::from("DEFAULT"),
             next_hop: next_hop.to_owned(),
-            hop_count: 0,
+            route_cost: 0f64,
             precursors: HashSet::new(),
             lifetime: Utc.ymd(1970, 1, 1).and_hms_nano(0, 0, 0, 0),
             repairing: false,
@@ -183,7 +183,7 @@ bitflags! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RouteRequestMessage {
     flags: RREQFlags,
-    pub hop_count: u8,
+    pub route_cost: f64,
     pub rreq_id: u32,
     pub destination: String,
     pub dest_seq_no: u32,
@@ -205,11 +205,11 @@ pub struct RouteResponseMessage {
     //This field is not used in this implementation. Kept for completeness
     //in accordance to the RFC.
     prefix_size: u8,
-    pub hop_count: u8,
+    pub route_cost: f64,
     pub destination: String,
     pub dest_seq_no: u32,
     pub originator: String,
-    lifetime: u32,
+    lifetime: u32, // In milliseconds
 }
 
 bitflags! {
@@ -711,26 +711,34 @@ impl AODV {
             *cache_entry = Utc::now();
         }
 
-        //Increase msg hop_count
-        msg.hop_count += 1;
-
+        
+        let update_route_strategy
+        = |_hdr: &MessageHeader, msg: &mut RouteRequestMessage, entry: &RouteTableEntry | msg.route_cost += 1.0f64;
+        
+        let update_route_strategy_2
+        = |_hdr: &MessageHeader, msg: &mut RouteRequestMessage, entry: &RouteTableEntry | {
+            msg.route_cost += 1.0f64 / hdr.signal_loss;
+        };
+        
         //Create/update route to msg.originator
         let entry = {
             let mut rt = route_table
-                .lock()
-                .expect("Error trying to acquire lock on route table");
+            .lock()
+            .expect("Error trying to acquire lock on route table");
             let mut entry = rt.entry(msg.originator.clone()).or_insert_with(|| {
                 RouteTableEntry::new(&msg.originator, &hdr.sender, Some(msg.orig_seq_no))
             });
             entry.dest_seq_no = std::cmp::max(entry.dest_seq_no, msg.orig_seq_no);
             entry.flags.insert(RTEFlags::VALID_SEQ_NO); //Should this be done only if the seq_no is updated?
-            entry.hop_count = msg.hop_count;
+            entry.route_cost = msg.route_cost;
             let minimal_lifetime = Utc::now() + Duration::milliseconds(2 * config.net_traversal_time)
-                - Duration::milliseconds(2 * entry.hop_count as i64 * config.node_traversal_time);
+            - Duration::milliseconds(2 * entry.route_cost as i64 * config.node_traversal_time);
             entry.lifetime = std::cmp::max(entry.lifetime, minimal_lifetime);
             entry.clone()
         };
-
+        
+        //Increase msg route cost
+        update_route_strategy(&hdr, &mut msg, &entry);
 
         // debug!(logger, "Route table entry: {:#?}", entry);
 
@@ -754,7 +762,7 @@ impl AODV {
             let response = RouteResponseMessage {
                 flags,
                 prefix_size: 0,
-                hop_count: 0,
+                route_cost: 0f64,
                 destination: me.clone(),
                 dest_seq_no: seq_no.load(Ordering::SeqCst),
                 originator: msg.originator,
@@ -806,7 +814,7 @@ impl AODV {
                     let response = RouteResponseMessage {
                         flags,
                         prefix_size: 0,
-                        hop_count: entry.hop_count,
+                        route_cost: entry.route_cost,
                         destination: msg.destination.clone(),
                         //Uses its own value for the dest_seq_no
                         dest_seq_no: entry.dest_seq_no,
@@ -902,7 +910,22 @@ impl AODV {
         }
 
         //Update hop-count
-        msg.hop_count += 1;
+        msg.route_cost += 1.0f64;
+
+        let update_route_predicate
+            = |_hdr: &MessageHeader, msg: &RouteResponseMessage, entry: &mut RouteTableEntry | msg.route_cost < entry.route_cost;
+
+        let update_route_predicate_2
+            = |_hdr: &MessageHeader, msg: &RouteResponseMessage, entry: &mut RouteTableEntry | (msg.route_cost / hdr.signal_loss) < entry.route_cost;
+
+        let update_route_strategy
+            = |_hdr: &MessageHeader, msg: &RouteResponseMessage, entry: &mut RouteTableEntry | entry.route_cost = msg.route_cost;
+
+        let update_route_strategy_2
+            = |_hdr: &MessageHeader, msg: &RouteResponseMessage, entry: &mut RouteTableEntry | {
+                entry.route_cost = msg.route_cost;
+                entry.route_cost = msg.route_cost / hdr.signal_loss;
+            };
 
         let _repaired = {
             let mut rt = route_table.lock().expect("Could not lock route table");
@@ -914,14 +937,13 @@ impl AODV {
             if !entry.flags.contains(RTEFlags::VALID_SEQ_NO) ||
             // RFC(6.7) - (ii) the Destination Sequence Number in the RREP is greater than the node’s copy of 
             // the destination sequence number and the known value is valid, or
-                entry.dest_seq_no < msg.dest_seq_no ||
+                entry.dest_seq_no < msg.dest_seq_no || // deberia ser <= ???
             // RFC(6.7) - (iii) the sequence numbers are the same, but the route is is marked as inactive, or
                 (entry.dest_seq_no == msg.dest_seq_no &&
                 !entry.flags.contains(RTEFlags::ACTIVE_ROUTE)) ||
             // RFC(6.7) - (iv) the sequence numbers are the same, and the New Hop Count is smaller than the 
             // hop count in route table entry.
-                (entry.dest_seq_no == msg.dest_seq_no &&
-                msg.hop_count < entry.hop_count)
+                (entry.dest_seq_no == msg.dest_seq_no && update_route_predicate(&hdr, &msg, entry))
             {
                 info!(logger, "Updating route to {}", &msg.destination);
                 // -  the route is marked as active,
@@ -934,7 +956,7 @@ impl AODV {
                 //     address field in the IP header,
                 entry.next_hop = hdr.sender.clone();
                 // -  the hop count is set to the value of the New Hop Count,
-                entry.hop_count = msg.hop_count;
+                update_route_strategy(&hdr, &msg, entry);
                 // -  the expiry time is set to the current time plus the value of the
                 //     Lifetime in the RREP message,
                 entry.lifetime = Utc::now() + Duration::milliseconds(msg.lifetime as i64);
@@ -1523,7 +1545,7 @@ impl AODV {
         }
         let msg = RouteRequestMessage {
             flags,
-            hop_count: 0,
+            route_cost: 0f64,
             rreq_id,
             destination: destination.clone(),
             dest_seq_no,
@@ -1651,7 +1673,7 @@ impl AODV {
     ) -> Result<bool, MeshSimError> {
         let mut rt = route_table.lock().expect("Failed to lock route table");
         if let Some(entry) = rt.get_mut(destination) {
-            let current_hop_count = entry.hop_count as usize;
+            let current_hop_count = entry.route_cost as usize;
             if current_hop_count > config.max_repair_ttl {
                 return Ok(false);
             }
@@ -1945,7 +1967,7 @@ impl AODV {
             let msg = RouteResponseMessage {
                 flags,
                 prefix_size: 0,
-                hop_count: 0,
+                route_cost: 0f64,
                 destination: me.clone(),
                 dest_seq_no: seq_no.load(Ordering::SeqCst),
                 originator: String::from("N/A"),

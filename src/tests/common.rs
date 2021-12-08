@@ -97,7 +97,9 @@ pub fn get_test_path<'a>(test: &'a str) -> String {
 
 pub fn setup(base_name: &str, log_to_term: bool, create_db: bool) -> TestSetup {
     let db_name = format!("{}_{}", base_name.to_lowercase(), Utc::now().timestamp());
+    println!("Calling setup for db name {}", &db_name);
     let work_dir = create_test_dir(&db_name);
+    println!("Working directory is {}", &work_dir);
     let log_file = format!("{}{}{}.log", work_dir, std::path::MAIN_SEPARATOR, base_name);
     let logger = logging::create_logger(log_file, log_to_term).expect("Failed to create logger");
     let worker = get_worker_path();
@@ -111,8 +113,7 @@ pub fn setup(base_name: &str, log_to_term: bool, create_db: bool) -> TestSetup {
         let owner: String = root_conn_parts.user_pwd.split(':').collect::<Vec<&str>>()[0].into();
         let root_conn = get_db_connection_by_file(ROOT_ENV_FILE.into(), &logger)
             .expect("Could not connect to root DB");
-        let _ = create_database(&root_conn, &db_name, &owner, &logger).expect("Could not crete DB");
-
+        let _ = create_database(&root_conn, &db_name, &owner, &logger).expect("Could not create DB");
         let exp_conn = get_db_connection_by_file(db_env_file.clone(), &logger)
             .expect("Could not connect to experiment DB");
         let _ = embedded_migrations::run(&exp_conn);
@@ -149,7 +150,7 @@ pub fn teardown(data: TestSetup, delete_db: bool) {
     }
 
     //Remove the leftover logs and files in the work directory
-    fs::remove_dir_all(&data.work_dir).expect("Failed to remove results directory");
+    //fs::remove_dir_all(&data.work_dir).expect("Failed to remove results directory");
 }
 
 //********************************
