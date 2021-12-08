@@ -627,7 +627,7 @@ fn tx_bandwidth_setup(data: &TestSetup, conn: &PgConnection) -> HashMap<String, 
     return workers;
 }
 
-//#[ignore]
+#[ignore]
 #[test]
 fn test_tx_bandwidth() {
     //Setup
