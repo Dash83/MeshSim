@@ -641,10 +641,10 @@ fn test_tx_bandwidth() {
     //Timeout for reading a message.
     let fifty_ms = 50_000_000;
     let pauses = 1000;
-    let MAX_NODES: usize = 50;
-    let PACKETS_PER_SAMPLE: usize = 20;
-    let MAX_PACKET_SIZE: usize = 5000;
-    let PACKET_SIZE_STEP: usize = 10;
+    let MAX_NODES: usize = 75;
+    let PACKETS_PER_SAMPLE: usize = 25;
+    let MAX_PACKET_SIZE: usize = 50000;
+    let PACKET_SIZE_STEP: usize = 500;
     let mut workers = tx_bandwidth_setup(&data, &conn);
 
     for _ in 0..MAX_NODES {
@@ -671,7 +671,7 @@ fn test_tx_bandwidth() {
                     let rec_msg = v.read_message_sync(RadioTypes::ShortRange, fifty_ms, pauses);
                     assert!(rec_msg.is_some());
                 }
-                std::thread::sleep(std::time::Duration::from_micros(500));
+                std::thread::sleep(std::time::Duration::from_micros(100));
             }
             println!("Nodes:{}, PacketSize:{} - Done!", num_neighbours-1, packet_size);
         }
