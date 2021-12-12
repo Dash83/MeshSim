@@ -207,6 +207,7 @@ impl Radio for SimulatedRadio {
                     info!(
                         &self.logger,
                         "{}", m;
+                        "status" => MessageStatus::DROPPED,
                         "msg_id" => hdr.get_msg_id(),
                         "thread"=>&thread_id,
                         "radio"=>&radio_range,
@@ -522,7 +523,7 @@ impl SimulatedRadio {
             std::thread::sleep(sleep_time);
         }
 
-        let err_msg = String::from("Aborting transmission");
+        let err_msg = String::from("Not transmitting");
         let err_cause = String::from("TRANSMISSION_MAX_RETRY reached");
         let cause = MeshSimError {
             kind: MeshSimErrorKind::SQLExecutionFailure(err_cause),
