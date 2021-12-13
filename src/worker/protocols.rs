@@ -115,6 +115,7 @@ pub enum Protocols {
         allowed_hello_loss: Option<usize>,
         rreq_retries: Option<usize>,
         next_hop_wait: Option<i64>,
+        exponent: Option<i32>,
     },
 }
 
@@ -212,7 +213,8 @@ impl Protocols {
                 node_traversal_time: _, 
                 allowed_hello_loss: _, 
                 rreq_retries: _, 
-                next_hop_wait: _ } => {
+                next_hop_wait: _ ,
+                exponent: _} => {
                     let mut data = HashMap::new();
                     data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
                     data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
@@ -632,6 +634,7 @@ impl FromStr for Protocols {
                 let mut allowed_hello_loss: Option<usize> = Default::default();
                 let mut rreq_retries: Option<usize> = Default::default();
                 let mut next_hop_wait: Option<i64> = Default::default();
+                let mut exponent: Option<i32> = Default::default();
 
                 for c in parts[1..].iter() {
                     let c: Vec<&str> = c.split('=').collect();
@@ -695,6 +698,16 @@ impl FromStr for Protocols {
                                 }
                             })?;
                             next_hop_wait = Some(x);
+                        },
+                        "exponent" => {
+                            let x: i32 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid exponent value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            exponent = Some(x);
                         }
                         _ => { /* Unrecognised option, do nothing */ }
                     }
@@ -707,6 +720,7 @@ impl FromStr for Protocols {
                     allowed_hello_loss,
                     rreq_retries,
                     next_hop_wait,
+                    exponent
                 })
             }
             _ => {
@@ -927,6 +941,7 @@ pub fn build_protocol_resources(
             allowed_hello_loss,
             rreq_retries,
             next_hop_wait,
+            exponent
         } => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) =
@@ -944,7 +959,7 @@ pub fn build_protocol_resources(
                 sr_sender.clone(),
                 Arc::new(Mutex::new(rng)),
                 sr.last_transmission(),
-                Box::new(AodvTwo {}),
+                Box::new(AodvTwo { exponent: exponent.unwrap_or(1)}),
                 logger,
             ));
             let mut radio_channels = Vec::new();

@@ -30,6 +30,7 @@ pub struct AodvNormal {
 
 #[derive(Debug)]
 pub struct AodvTwo {
+    pub exponent: i32
 }
 
 impl AodvStrategy for AodvNormal {
@@ -78,8 +79,7 @@ impl AodvStrategy for AodvTwo {
         msg: &mut RouteRequestMessage,
         entry: &RouteTableEntry,
     ) -> () {
-        let power: i32 = 1;
-        msg.route_cost += (1.0f64 / ((100.0f64 - hdr.signal_loss) / 100.0f64)).powi(power);
+        msg.route_cost += (1.0f64 / ((100.0f64 - hdr.signal_loss) / 100.0f64)).powi(self.exponent);
     }
 
     fn update_route_entry(
