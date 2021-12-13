@@ -6,6 +6,7 @@ use crate::worker::listener::*;
 use crate::worker::radio::*;
 use crate::worker::{MessageHeader, Worker};
 use crate::{MeshSimError, MeshSimErrorKind};
+use crate::worker::aodv_strategies::*;
 use aodv::AODV;
 use chrono::{DateTime, Utc};
 use gossip_routing::GossipRouting;
@@ -106,6 +107,15 @@ pub enum Protocols {
         rreq_retries: Option<usize>,
         next_hop_wait: Option<i64>,
     },
+    /// Improved Ad-hoc On-Demand Distance Vector routing protocol.
+    AODV2 {
+        active_route_timeout: Option<i64>,
+        net_diameter: Option<usize>,
+        node_traversal_time: Option<i64>,
+        allowed_hello_loss: Option<usize>,
+        rreq_retries: Option<usize>,
+        next_hop_wait: Option<i64>,
+    },
 }
 
 impl Default for Protocols {
@@ -196,6 +206,24 @@ impl Protocols {
                 data.insert("RD_FAIL_PATTERN".into(), "ROUTE_DISCOVERY retries exceeded".into());
                 data
             },
+            Protocols::AODV2 { 
+                active_route_timeout: _, 
+                net_diameter: _, 
+                node_traversal_time: _, 
+                allowed_hello_loss: _, 
+                rreq_retries: _, 
+                next_hop_wait: _ } => {
+                    let mut data = HashMap::new();
+                    data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
+                    data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
+                    data.insert("RD_PATTERN".into(), "SENT.*RREQ".into());
+                    data.insert("RE_PATTERN".into(), "SENT.*RREP".into());
+                    data.insert("RT_PATTERN".into(), "SENT.*RERR".into());
+                    data.insert("MAINTENANCE_PATTERN".into(), "SENT.*HELLO".into());
+                    data.insert("ROUTE_BREAK_PATTERN".into(), "BROKEN_LINK detected".into());
+                    data.insert("RD_FAIL_PATTERN".into(), "RREQ retries exceeded".into());
+                    data                    
+            }
         }
     }
 }
@@ -597,6 +625,90 @@ impl FromStr for Protocols {
                     next_hop_wait,
                 })
             }
+            "AODV2" => {
+                let mut active_route_timeout: Option<i64> = Default::default();
+                let mut net_diameter: Option<usize> = Default::default();
+                let mut node_traversal_time: Option<i64> = Default::default();
+                let mut allowed_hello_loss: Option<usize> = Default::default();
+                let mut rreq_retries: Option<usize> = Default::default();
+                let mut next_hop_wait: Option<i64> = Default::default();
+
+                for c in parts[1..].iter() {
+                    let c: Vec<&str> = c.split('=').collect();
+                    match c[0].to_uppercase().as_str() {
+                        "active_route_timeout" => {
+                            let x: i64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid active_route_timeout value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            active_route_timeout = Some(x);
+                        },
+                        "net_diameter" => {
+                            let x: usize = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid net_diameter value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            net_diameter = Some(x);
+                        },
+                        "node_traversal_time" => {
+                            let x: i64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid node_traversal_time value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            node_traversal_time = Some(x);
+                        },
+                        "allowed_hello_loss" => {
+                            let x: usize = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid allowed_hello_loss value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            allowed_hello_loss = Some(x);
+                        },
+                        "rreq_retries" => {
+                            let x: usize = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid rreq_retries value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            rreq_retries = Some(x);
+                        },
+                        "next_hop_wait" => {
+                            let x: i64 = c[1].parse().map_err(|e| {
+                                let err_msg = String::from("Invalid next_hop_wait value");
+                                MeshSimError {
+                                    kind: MeshSimErrorKind::Configuration(err_msg),
+                                    cause: Some(Box::new(e)),
+                                }
+                            })?;
+                            next_hop_wait = Some(x);
+                        }
+                        _ => { /* Unrecognised option, do nothing */ }
+                    }
+                }
+
+                Ok(Protocols::AODV2 {
+                    active_route_timeout,
+                    net_diameter,
+                    node_traversal_time,
+                    allowed_hello_loss,
+                    rreq_retries,
+                    next_hop_wait,
+                })
+            }
             _ => {
                 let err_msg = String::from("The specified protocol is not supported.");
                 let error = MeshSimError {
@@ -797,6 +909,42 @@ pub fn build_protocol_resources(
                 sr_sender.clone(),
                 Arc::new(Mutex::new(rng)),
                 sr.last_transmission(),
+                Box::new(AodvNormal {}),
+                logger,
+            ));
+            let mut radio_channels = Vec::new();
+            radio_channels.push((listener, (Arc::clone(&sr), sr_sender, sr_receiver)));
+            let resources = ProtocolResources {
+                handler,
+                radio_channels,
+            };
+            Ok(resources)
+        },
+        Protocols::AODV2 {
+            active_route_timeout,
+            net_diameter,
+            node_traversal_time,
+            allowed_hello_loss,
+            rreq_retries,
+            next_hop_wait,
+        } => {
+            //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
+            let (sr, listener) =
+                short_radio.expect("The AODV2 protocol requires a short_radio to be provided.");
+            let rng = Worker::rng_from_seed(seed);
+            let handler: Arc<dyn Protocol> = Arc::new(AODV::new(
+                name,
+                id,
+                active_route_timeout,
+                net_diameter,
+                node_traversal_time,
+                next_hop_wait,
+                allowed_hello_loss,
+                rreq_retries,
+                sr_sender.clone(),
+                Arc::new(Mutex::new(rng)),
+                sr.last_transmission(),
+                Box::new(AodvTwo {}),
                 logger,
             ));
             let mut radio_channels = Vec::new();

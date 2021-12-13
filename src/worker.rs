@@ -59,6 +59,7 @@ pub mod commands;
 pub mod listener;
 // pub mod mobility;
 pub mod protocols;
+pub mod aodv_strategies;
 pub mod radio;
 pub mod worker_config;
 
@@ -606,7 +607,7 @@ impl Worker {
         })?;
         let sock_addr = SockAddr::unix(&command_address)
         .map_err(|e| {
-                let err_msg = String::from("Failed to create UDS address");
+                let err_msg = String::from(format!("Failed to create UDS address with command {}", command_address.as_path().display().to_string()));
                 MeshSimError {
                     kind: MeshSimErrorKind::Configuration(err_msg),
                     cause: Some(Box::new(e)),

@@ -3,7 +3,7 @@ use crate::worker::protocols::{Transmission, HandleMessageOutcome, Protocol, Pro
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
-
+use crate::worker::aodv_strategies::*;
 use chrono::offset::TimeZone;
 use chrono::{DateTime, Duration, Utc};
 
@@ -74,13 +74,13 @@ bitflags! {
 }
 
 #[derive(Debug, Clone)]
-struct RouteTableEntry {
+pub struct RouteTableEntry {
     destination: String,
     dest_seq_no: u32,
     flags: RTEFlags,
     nic: String,
     next_hop: String,
-    route_cost: f64,
+    pub route_cost: f64,
     precursors: HashSet<String>,
     lifetime: DateTime<Utc>,
     repairing: bool,
@@ -163,6 +163,7 @@ pub struct AODV {
     ts_last_hello_msg: AtomicI64,
     rng: Arc<Mutex<StdRng>>,
     last_transmission: Arc<AtomicI64>,
+    aodv_strategy: Box<dyn AodvStrategy>,
     logger: Logger,
 }
 
@@ -308,6 +309,7 @@ impl Protocol for AODV {
             rreq_seq_no,
             self.tx_queue.clone(),
             r_type,
+            &self.aodv_strategy,
             &self.logger,
         )?;
         
@@ -525,6 +527,7 @@ impl AODV {
         tx_queue: Sender<Transmission>,
         rng: Arc<Mutex<StdRng>>,
         last_transmission: Arc<AtomicI64>,
+        aodv_strategy: Box<dyn AodvStrategy>,
         logger: Logger,
     ) -> Self {
         // let starting_rreq_id: u32 = thread_rng().gen_range(0, std::u32::MAX);
@@ -582,6 +585,7 @@ impl AODV {
             ts_last_hello_msg,
             rng,
             last_transmission,
+            aodv_strategy,
             logger,
         }
     }
@@ -601,6 +605,7 @@ impl AODV {
         rreq_seq_no: Arc<AtomicU32>,
         tx_queue: Sender<Transmission>,
         r_type: RadioTypes,
+        aodv_strategy: &Box<dyn AodvStrategy>,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         AODV::connectivity_update(
@@ -637,6 +642,7 @@ impl AODV {
                 seq_no,
                 me,
                 r_type,
+                aodv_strategy,
                 logger,
             ),
             Messages::RREP(msg) => AODV::process_route_response_msg(
@@ -651,6 +657,7 @@ impl AODV {
                 config,
                 tx_queue,
                 r_type,
+                aodv_strategy,
                 logger,
             ),
             Messages::RERR(msg) => {
@@ -681,6 +688,7 @@ impl AODV {
         seq_no: Arc<AtomicU32>,
         me: String,
         r_type: RadioTypes,
+        aodv_strategy: &Box<dyn AodvStrategy>,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         //Check if this is a duplicate RREQ
@@ -710,16 +718,7 @@ impl AODV {
             //Update the cache to the last time we received this RREQ
             *cache_entry = Utc::now();
         }
-
-        
-        let update_route_strategy
-        = |_hdr: &MessageHeader, msg: &mut RouteRequestMessage, entry: &RouteTableEntry | msg.route_cost += 1.0f64;
-        
-        let update_route_strategy_2
-        = |_hdr: &MessageHeader, msg: &mut RouteRequestMessage, entry: &RouteTableEntry | {
-            msg.route_cost += 1.0f64 / hdr.signal_loss;
-        };
-        
+     
         //Create/update route to msg.originator
         let entry = {
             let mut rt = route_table
@@ -738,8 +737,7 @@ impl AODV {
         };
         
         //Increase msg route cost
-        update_route_strategy(&hdr, &mut msg, &entry);
-
+        aodv_strategy.update_route_request_message(&hdr, &mut msg, &entry);
         // debug!(logger, "Route table entry: {:#?}", entry);
 
         //This node generates an RREP if it is itself the destination
@@ -893,6 +891,7 @@ impl AODV {
         config: Config,
         tx_queue: Sender<Transmission>,
         r_type: RadioTypes,
+        aodv_strategy: &Box<dyn AodvStrategy>,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         //RREPs are UNICASTED. Is this the destination in the header? It not, exit.
@@ -912,21 +911,6 @@ impl AODV {
         //Update hop-count
         msg.route_cost += 1.0f64;
 
-        let update_route_predicate
-            = |_hdr: &MessageHeader, msg: &RouteResponseMessage, entry: &mut RouteTableEntry | msg.route_cost < entry.route_cost;
-
-        let update_route_predicate_2
-            = |_hdr: &MessageHeader, msg: &RouteResponseMessage, entry: &mut RouteTableEntry | (msg.route_cost / hdr.signal_loss) < entry.route_cost;
-
-        let update_route_strategy
-            = |_hdr: &MessageHeader, msg: &RouteResponseMessage, entry: &mut RouteTableEntry | entry.route_cost = msg.route_cost;
-
-        let update_route_strategy_2
-            = |_hdr: &MessageHeader, msg: &RouteResponseMessage, entry: &mut RouteTableEntry | {
-                entry.route_cost = msg.route_cost;
-                entry.route_cost = msg.route_cost / hdr.signal_loss;
-            };
-
         let _repaired = {
             let mut rt = route_table.lock().expect("Could not lock route table");
             // Should we update route to DESTINATON with the RREP data?
@@ -943,7 +927,7 @@ impl AODV {
                 !entry.flags.contains(RTEFlags::ACTIVE_ROUTE)) ||
             // RFC(6.7) - (iv) the sequence numbers are the same, and the New Hop Count is smaller than the 
             // hop count in route table entry.
-                (entry.dest_seq_no == msg.dest_seq_no && update_route_predicate(&hdr, &msg, entry))
+                (entry.dest_seq_no == msg.dest_seq_no && aodv_strategy.should_update_route(&hdr, &msg, entry))
             {
                 info!(logger, "Updating route to {}", &msg.destination);
                 // -  the route is marked as active,
@@ -956,7 +940,7 @@ impl AODV {
                 //     address field in the IP header,
                 entry.next_hop = hdr.sender.clone();
                 // -  the hop count is set to the value of the New Hop Count,
-                update_route_strategy(&hdr, &msg, entry);
+                aodv_strategy.update_route_entry(&hdr, &msg, entry);
                 // -  the expiry time is set to the current time plus the value of the
                 //     Lifetime in the RREP message,
                 entry.lifetime = Utc::now() + Duration::milliseconds(msg.lifetime as i64);
