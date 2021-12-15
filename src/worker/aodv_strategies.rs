@@ -13,7 +13,6 @@ pub trait AodvStrategy: std::fmt::Debug + Send + Sync {
         &self,
         hdr: &MessageHeader,
         msg: &mut RouteRequestMessage,
-        entry: &RouteTableEntry,
     ) -> ();
 
     fn update_route_entry(
@@ -47,7 +46,6 @@ impl AodvStrategy for AodvNormal {
         &self,
         _hdr: &MessageHeader,
         msg: &mut RouteRequestMessage,
-        _entry: &RouteTableEntry,
     ) -> () {
         msg.route_cost += 1.0f64;
     }
@@ -70,19 +68,17 @@ impl AodvStrategy for AodvDistanceAdjusted {
         entry: &mut RouteTableEntry
     ) -> bool {
         msg.route_cost < entry.route_cost
-        // (msg.route_cost / hdr.signal_loss) < entry.route_cost
     }
 
     fn update_route_request_message(
         &self,
         hdr: &MessageHeader,
         msg: &mut RouteRequestMessage,
-        _entry: &RouteTableEntry,
     ) -> () {
         if self.algorithm == 0 {
             msg.route_cost += hdr.signal_loss;
         } else {
-            msg.route_cost += (1.0f64 / ((100.0f64 - hdr.signal_loss) / 100.0f64));
+            msg.route_cost += 1.0f64 / ((100.0f64 - hdr.signal_loss) / 100.0f64);
         }
     }
 

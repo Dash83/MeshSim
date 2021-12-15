@@ -1157,7 +1157,6 @@ impl Master {
         Ok(handle)
     }
 
-    //interesting, hace la transmision
     fn start_cbr_source(
         source: String,
         destination: String,

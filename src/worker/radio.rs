@@ -679,8 +679,6 @@ impl Radio for WifiRadio {
         //Update the hop count for the header
         hdr.hops += 1;
 
-        // todo: add transmission power dummy
-
         socket
             .set_multicast_if_v6(self.interface_index)
             .map_err(|e| {

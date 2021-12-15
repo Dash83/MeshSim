@@ -607,7 +607,7 @@ impl Worker {
         })?;
         let sock_addr = SockAddr::unix(&command_address)
         .map_err(|e| {
-                let err_msg = String::from(format!("Failed to create UDS address with command {}", command_address.as_path().display().to_string()));
+            let err_msg = String::from("Failed to create UDS address");
                 MeshSimError {
                     kind: MeshSimErrorKind::Configuration(err_msg),
                     cause: Some(Box::new(e)),

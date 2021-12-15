@@ -150,7 +150,7 @@ pub fn teardown(data: TestSetup, delete_db: bool) {
     }
 
     //Remove the leftover logs and files in the work directory
-    //fs::remove_dir_all(&data.work_dir).expect("Failed to remove results directory");
+    fs::remove_dir_all(&data.work_dir).expect("Failed to remove results directory");
 }
 
 //********************************

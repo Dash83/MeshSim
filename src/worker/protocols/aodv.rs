@@ -718,12 +718,15 @@ impl AODV {
             //Update the cache to the last time we received this RREQ
             *cache_entry = Utc::now();
         }
-     
+        
+        //Increase msg route cost
+        aodv_strategy.update_route_request_message(&hdr, &mut msg);
+        
         //Create/update route to msg.originator
         let entry = {
             let mut rt = route_table
-            .lock()
-            .expect("Error trying to acquire lock on route table");
+                .lock()
+                .expect("Error trying to acquire lock on route table");
             let mut entry = rt.entry(msg.originator.clone()).or_insert_with(|| {
                 RouteTableEntry::new(&msg.originator, &hdr.sender, Some(msg.orig_seq_no))
             });
@@ -731,13 +734,11 @@ impl AODV {
             entry.flags.insert(RTEFlags::VALID_SEQ_NO); //Should this be done only if the seq_no is updated?
             entry.route_cost = msg.route_cost;
             let minimal_lifetime = Utc::now() + Duration::milliseconds(2 * config.net_traversal_time)
-            - Duration::milliseconds(2 * entry.route_cost as i64 * config.node_traversal_time);
+                - Duration::milliseconds(2 * entry.route_cost as i64 * config.node_traversal_time);
             entry.lifetime = std::cmp::max(entry.lifetime, minimal_lifetime);
             entry.clone()
         };
         
-        //Increase msg route cost
-        aodv_strategy.update_route_request_message(&hdr, &mut msg, &entry);
         // debug!(logger, "Route table entry: {:#?}", entry);
 
         //This node generates an RREP if it is itself the destination
@@ -921,7 +922,7 @@ impl AODV {
             if !entry.flags.contains(RTEFlags::VALID_SEQ_NO) ||
             // RFC(6.7) - (ii) the Destination Sequence Number in the RREP is greater than the node’s copy of 
             // the destination sequence number and the known value is valid, or
-                entry.dest_seq_no < msg.dest_seq_no || // deberia ser <= ???
+                entry.dest_seq_no < msg.dest_seq_no ||
             // RFC(6.7) - (iii) the sequence numbers are the same, but the route is is marked as inactive, or
                 (entry.dest_seq_no == msg.dest_seq_no &&
                 !entry.flags.contains(RTEFlags::ACTIVE_ROUTE)) ||
