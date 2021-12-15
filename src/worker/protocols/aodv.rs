@@ -909,8 +909,8 @@ impl AODV {
             return Ok(None);
         }
 
-        //Update hop-count
-        msg.route_cost += 1.0f64;
+        //Increase msg route cost
+        aodv_strategy.update_route_response_message(&hdr, &mut msg);
 
         let _repaired = {
             let mut rt = route_table.lock().expect("Could not lock route table");
