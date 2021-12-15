@@ -108,14 +108,14 @@ pub enum Protocols {
         next_hop_wait: Option<i64>,
     },
     /// Improved Ad-hoc On-Demand Distance Vector routing protocol.
-    AODV2 {
+    AODVDA {
         active_route_timeout: Option<i64>,
         net_diameter: Option<usize>,
         node_traversal_time: Option<i64>,
         allowed_hello_loss: Option<usize>,
         rreq_retries: Option<usize>,
         next_hop_wait: Option<i64>,
-        exponent: Option<i32>,
+        algorithm: Option<i32>,
     },
 }
 
@@ -207,14 +207,14 @@ impl Protocols {
                 data.insert("RD_FAIL_PATTERN".into(), "ROUTE_DISCOVERY retries exceeded".into());
                 data
             },
-            Protocols::AODV2 { 
+            Protocols::AODVDA { 
                 active_route_timeout: _, 
                 net_diameter: _, 
                 node_traversal_time: _, 
                 allowed_hello_loss: _, 
                 rreq_retries: _, 
                 next_hop_wait: _ ,
-                exponent: _} => {
+                algorithm: _} => {
                     let mut data = HashMap::new();
                     data.insert("OK_PKT_PATTERN".into(), "ACCEPTED.*DATA".into());
                     data.insert("DATA_PATTERN".into(), "SENT.*DATA".into());
@@ -627,14 +627,14 @@ impl FromStr for Protocols {
                     next_hop_wait,
                 })
             }
-            "AODV2" => {
+            "AODVDA" => {
                 let mut active_route_timeout: Option<i64> = Default::default();
                 let mut net_diameter: Option<usize> = Default::default();
                 let mut node_traversal_time: Option<i64> = Default::default();
                 let mut allowed_hello_loss: Option<usize> = Default::default();
                 let mut rreq_retries: Option<usize> = Default::default();
                 let mut next_hop_wait: Option<i64> = Default::default();
-                let mut exponent: Option<i32> = Default::default();
+                let mut algorithm: Option<i32> = Default::default();
 
                 for c in parts[1..].iter() {
                     let c: Vec<&str> = c.split('=').collect();
@@ -699,28 +699,28 @@ impl FromStr for Protocols {
                             })?;
                             next_hop_wait = Some(x);
                         },
-                        "exponent" => {
+                        "algorithm" => {
                             let x: i32 = c[1].parse().map_err(|e| {
-                                let err_msg = String::from("Invalid exponent value");
+                                let err_msg = String::from("Invalid algorithm value");
                                 MeshSimError {
                                     kind: MeshSimErrorKind::Configuration(err_msg),
                                     cause: Some(Box::new(e)),
                                 }
                             })?;
-                            exponent = Some(x);
+                            algorithm = Some(x);
                         }
                         _ => { /* Unrecognised option, do nothing */ }
                     }
                 }
 
-                Ok(Protocols::AODV2 {
+                Ok(Protocols::AODVDA {
                     active_route_timeout,
                     net_diameter,
                     node_traversal_time,
                     allowed_hello_loss,
                     rreq_retries,
                     next_hop_wait,
-                    exponent
+                    algorithm
                 })
             }
             _ => {
@@ -934,18 +934,18 @@ pub fn build_protocol_resources(
             };
             Ok(resources)
         },
-        Protocols::AODV2 {
+        Protocols::AODVDA {
             active_route_timeout,
             net_diameter,
             node_traversal_time,
             allowed_hello_loss,
             rreq_retries,
             next_hop_wait,
-            exponent
+            algorithm
         } => {
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) =
-                short_radio.expect("The AODV2 protocol requires a short_radio to be provided.");
+                short_radio.expect("The AODVDA protocol requires a short_radio to be provided.");
             let rng = Worker::rng_from_seed(seed);
             let handler: Arc<dyn Protocol> = Arc::new(AODV::new(
                 name,
@@ -959,7 +959,7 @@ pub fn build_protocol_resources(
                 sr_sender.clone(),
                 Arc::new(Mutex::new(rng)),
                 sr.last_transmission(),
-                Box::new(AodvTwo { exponent: exponent.unwrap_or(1)}),
+                Box::new(AodvDistanceAdjusted { algorithm: algorithm.unwrap_or(0)}),
                 logger,
             ));
             let mut radio_channels = Vec::new();

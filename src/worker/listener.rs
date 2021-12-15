@@ -72,6 +72,7 @@ impl Listener for SimulatedListener {
                                 "msg_id" => m.get_msg_id(),
                                 "duration" => dur,
                                 "radio" => &radio_range,
+                                "signal_loss" => m.signal_loss,
                             );
 
                             Some(m)

@@ -29,14 +29,14 @@ pub struct AodvNormal {
 }
 
 #[derive(Debug)]
-pub struct AodvTwo {
-    pub exponent: i32
+pub struct AodvDistanceAdjusted {
+    pub algorithm: i32
 }
 
 impl AodvStrategy for AodvNormal {
     fn should_update_route(
         &self,
-        hdr: &MessageHeader,
+        _hdr: &MessageHeader,
         msg: &RouteResponseMessage,
         entry: &mut RouteTableEntry
     ) -> bool {
@@ -45,16 +45,16 @@ impl AodvStrategy for AodvNormal {
 
     fn update_route_request_message(
         &self,
-        hdr: &MessageHeader,
+        _hdr: &MessageHeader,
         msg: &mut RouteRequestMessage,
-        entry: &RouteTableEntry,
+        _entry: &RouteTableEntry,
     ) -> () {
         msg.route_cost += 1.0f64;
     }
 
     fn update_route_entry(
         &self,
-        hdr: &MessageHeader,
+        _hdr: &MessageHeader,
         msg: &RouteResponseMessage,
         entry: &mut RouteTableEntry,
     ) -> () {
@@ -62,10 +62,10 @@ impl AodvStrategy for AodvNormal {
     }
 }
 
-impl AodvStrategy for AodvTwo {
+impl AodvStrategy for AodvDistanceAdjusted {
     fn should_update_route(
         &self,
-        hdr: &MessageHeader,
+        _hdr: &MessageHeader,
         msg: &RouteResponseMessage,
         entry: &mut RouteTableEntry
     ) -> bool {
@@ -77,14 +77,18 @@ impl AodvStrategy for AodvTwo {
         &self,
         hdr: &MessageHeader,
         msg: &mut RouteRequestMessage,
-        entry: &RouteTableEntry,
+        _entry: &RouteTableEntry,
     ) -> () {
-        msg.route_cost += (1.0f64 / ((100.0f64 - hdr.signal_loss) / 100.0f64)).powi(self.exponent);
+        if self.algorithm == 0 {
+            msg.route_cost += hdr.signal_loss;
+        } else {
+            msg.route_cost += (1.0f64 / ((100.0f64 - hdr.signal_loss) / 100.0f64));
+        }
     }
 
     fn update_route_entry(
         &self,
-        hdr: &MessageHeader,
+        _hdr: &MessageHeader,
         msg: &RouteResponseMessage,
         entry: &mut RouteTableEntry,
     ) -> () {
