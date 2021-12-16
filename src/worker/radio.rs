@@ -185,7 +185,7 @@ impl Radio for SimulatedRadio {
         // let msg_id = hdr.get_msg_id().to_string();
 
         //Register this node as an active transmitter if the medium is free
-        let guard = self.register_transmitter(&conn);
+        let guard = self.register_transmitter(&conn, &hdr.msg_id);
 
         //Perf measurement. How long the process stuck in medium-contention?
         //Measured here since it is logged even if the transmission is aborted for profiling purposes.
@@ -461,23 +461,31 @@ impl SimulatedRadio {
     //     Ok((sr_address, lr_address, cmd_address))
     // }
 
-    fn register_transmitter(&self, conn: &PgConnection) -> Result<MutexGuard<()>, MeshSimError> {
+    fn register_transmitter(&self, conn: &PgConnection, msg_id: &str) -> Result<MutexGuard<()>, MeshSimError> {
         // let tx = start_tx(&mut conn)?;
         let mut i = 0;
         // let wait_base = self.get_wait_base();
         let thread_id = format!("{:?}", thread::current().id());
         let radio_range: String = self.r_type.into();
 
-        //Only one thread can transmit simultaneously, as in real life, the NIC can broadcast more 
+        info!(
+            &self.logger,
+            "Attempting to acquire the medium";
+            "thread"=>&thread_id,
+            "radio"=>&radio_range,
+            "msg_id"=>msg_id,
+        );
+
+        //Only one thread can transmit simultaneously, as in real life, the NIC can't broadcast more 
         //than one signal concurrently.
         let guard = self
             .transmitting
             .lock()
             .expect("Could not acquire transmitter lock");
 
-        //The config text mac_base_REtry, so it should retry up to that number (the initial attempt is not a retry.)
+        //The config text mac_base_Retry, so it should retry up to that number (the initial attempt is not a retry.)
         while i <= self.mac_layer_retries {
-
+            let access_start = Utc::now();
             match register_active_transmitter_if_free(
                 conn,
                 &self.worker_name,
@@ -487,15 +495,16 @@ impl SimulatedRadio {
             ) {
                 Ok(rows) => {
                     if rows > 0 {
-                        debug!(
+                        let medium_access_time = Utc::now().timestamp_nanos() - access_start.timestamp_nanos();
+                        info!(
                             &self.logger,
-                            "{} registered as an active transmitter for radio {}",
-                            &self.worker_name,
-                            &radio_range;
-                            "thread"=>&thread_id
+                            "Registered as an active transmitter";
+                            "thread"=>&thread_id,
+                            "medium_access_time"=> medium_access_time,
+                            "msg_id"=>msg_id,
+                            // "name"=>&self.worker_name,
+                            "radio"=>&radio_range,
                         );
-                        //Increase the count of transmitting threads
-                        // self.transmitting.fetch_add(1, Ordering::SeqCst);
 
                         return Ok(guard);
                     }
@@ -509,6 +518,7 @@ impl SimulatedRadio {
             }
 
             //Wait and retry.
+            let medium_access_time = Utc::now().timestamp_nanos() - access_start.timestamp_nanos();
             i += 1;
             let sleep_time = self.get_wait_time(i as u32);
             // let st = format!("{:?}", &sleep_time);
@@ -517,8 +527,10 @@ impl SimulatedRadio {
                 "Medium is busy";
                 "thread"=>&thread_id,
                 "retry"=>i,
+                "medium_access_time"=> medium_access_time,
                 "wait_time"=>sleep_time.as_nanos(),
                 "radio"=>&radio_range,
+                "msg_id"=>msg_id,
             );
             std::thread::sleep(sleep_time);
         }
@@ -586,6 +598,7 @@ impl SimulatedRadio {
         // let mut rng = self.rng.lock().expect("Could not lock RNG");
         // let r = rng.next_u64() % 2u64.pow(i);
         let mut rng = rand::thread_rng();
+        // let x = (rng.next_u64() % 5u64) + 1; //Can't have it be 0, otherwise the iteration is almost certainly wasted
         let x = rng.next_u64() % 5u64;
         let r = 2u64.pow(std::cmp::min(i, TRANSMISSION_EXP_CAP));
         Duration::from_micros(self.mac_layer_base_wait * x * r)

@@ -779,13 +779,14 @@ impl Worker {
                             let log = logger.clone();
 
                             //Is the packet stale?
-                            if (Utc::now().timestamp_nanos() - out_queue_start.timestamp_nanos()) > 
-                                stale_packet_threshold {
+                            let queued_time = Utc::now().timestamp_nanos() - out_queue_start.timestamp_nanos();
+                            if queued_time > stale_packet_threshold {
                                 warn!(
                                     log,
                                     "Not transmitting";
                                     "destination" => &resp_hdr.destination,
                                     "source" => &resp_hdr.sender,
+                                    "out_queued" => queued_time,
                                     "reason" => "stale packet",
                                     "status" => MessageStatus::DROPPED,
                                     "msg_id" => &resp_hdr.msg_id,
