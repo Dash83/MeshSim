@@ -598,8 +598,7 @@ impl SimulatedRadio {
         // let mut rng = self.rng.lock().expect("Could not lock RNG");
         // let r = rng.next_u64() % 2u64.pow(i);
         let mut rng = rand::thread_rng();
-        // let x = (rng.next_u64() % 5u64) + 1; //Can't have it be 0, otherwise the iteration is almost certainly wasted
-        let x = rng.next_u64() % 5u64;
+        let x = (rng.next_u64() % 5u64) + 1; //Can't have it be 0, otherwise the iteration is almost certainly wasted
         let r = 2u64.pow(std::cmp::min(i, TRANSMISSION_EXP_CAP));
         Duration::from_micros(self.mac_layer_base_wait * x * r)
     }
