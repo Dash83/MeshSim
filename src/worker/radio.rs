@@ -171,6 +171,7 @@ impl Radio for SimulatedRadio {
                 "radio"=>&radio_range,
                 "destination" => &hdr.destination,
                 "source" => &hdr.sender,
+                "hops" => hdr.hops,
                 "reason"=>"TTL depleted",
                 "status" => MessageStatus::DROPPED,
                 "msg_id" => &hdr.msg_id,

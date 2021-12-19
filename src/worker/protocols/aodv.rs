@@ -1065,6 +1065,29 @@ impl AODV {
         Ok(Some((fwd_hdr, log_data)))
     }
 
+    /*
+    This function corresponds to handling CASE 3 of the RERR section in the RFC (pages 24 & 25)
+    ### Case 3 - Receive an RERR from a neighbour for one or more active routes
+    1. Make a list of unreachable destinations. This list should consist of:
+        1. The destinations in the RERR for which there exists a corresponding entry in the routing table that has the transmitter of the received RERR (hdr.source) as the next hop.
+        --------------------								Local Routing table
+        |Unreachable_dest_1|								-------------------
+        |Unreachable_dest_2| -----> hdr.src  				| dest | next_hop |
+        |Unreachable_dest_3|								-------------------	
+        --------------------				These guys	----->	| dest2 | hdr.src  |
+                                                ----->	| dest3 | hdr.src  |
+                                                        | destx | nodeY   |
+                                                        | destz | nodeA   |	
+
+    2. Make a list of affected neighbours by this unreachable destinations. The list should consist of:
+        1. The precursor lists of all newly unreachable destinations.
+    3. *For each* of the *unreachable destinations*, if a route entry exists for it and it is *valid*:
+            1. Its dest_seq_no is copied from the incoming RERR.
+                * This make little sense if the local seq_no is larger...
+            2. Mark the entry as invalid.
+            3. Update its lifetime field to current time + /delete_period/.
+    4. If the list of affected neighbours (step#2) is not empty, send an RERR with list of unreachable destinations.
+    */
     fn process_route_err_msg(
         hdr: MessageHeader,
         mut msg: RouteErrorMessage,
@@ -1073,65 +1096,63 @@ impl AODV {
         r_type: RadioTypes,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
-        let affected_neighbours = {
-            let mut affected_neighbours = Vec::new();
+        //1. Make list of affected destinations
+        let (affected_destinations, affected_neighbours) = {
+            let mut affected_destinations = HashMap::new();
+            let mut affected_neighbours = HashSet::new();
             let mut rt = route_table
                 .lock()
                 .expect("Could not lock route table");
             //Invalidate existing routes
             for (destination, seq_no) in msg.destinations.iter() {
                 if let Some(entry) = rt.get_mut(destination) {
-                    if entry.dest_seq_no < *seq_no {
-                        entry
+                    //The third condition is not part of the RFC, but it makes no sense to invalidate
+                    //a route for which this node has fresher information.
+                    if  entry.next_hop == hdr.sender &&
+                        entry.flags.contains(RTEFlags::VALID_SEQ_NO) && 
+                        entry.dest_seq_no <= *seq_no {
+                            //Step 2. Make a list of the affected neighbours
+                            debug!(
+                                logger,
+                                "Dest:{} - Precursors: {:?}", &entry.destination, &entry.precursors
+                            );
+                            affected_neighbours.extend(entry.precursors.iter().cloned());
+
+                            //Step 3. Update the route-table entry.
+                            //3.1 Copy the seq_no from the RERR
+                            entry.dest_seq_no = *seq_no;
+                            //3.2 Invalidate the route entry
+                            entry
                             .flags
                             .remove(RTEFlags::VALID_SEQ_NO | RTEFlags::ACTIVE_ROUTE);
-                        entry.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
-                        let mut precursors: Vec<_> = entry.precursors.iter().cloned().collect();
-                        affected_neighbours.append(&mut precursors);
-                        debug!(logger, "Invalidating route to {}", destination);
+                            //3.3 Update the entry's lifetime
+                            entry.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
+                            affected_destinations.insert(entry.destination.clone(), entry.dest_seq_no);
                     }
-                    debug!(logger, "Current route for {} is fresher", &destination);
                 }
             }
-
-            // Iterate through the node's route table. If any of the entries rely on a node listed
-            // in the RERR msg as its next hop, we mark it as affected, since it can no longer be reached.
-            let mut affected_destinations = Vec::new();
-            for (dest, entry) in rt.iter_mut() {
-                if msg.destinations.contains_key(&entry.next_hop) {
-                    affected_destinations.push(dest.clone());
-                    msg.destinations.insert(dest.clone(), entry.dest_seq_no);
-                }
-            }
-
-            //Get all the precursors for the newly affected destinations
-            for dest in affected_destinations.iter() {
-                if let Some(entry) = rt.get_mut(dest) {
-                    debug!(
-                        logger,
-                        "Dest:{} - Precursors: {:?}", dest, &entry.precursors
-                    );
-                    let mut precursors: Vec<_> = entry.precursors.iter().cloned().collect();
-                    affected_neighbours.append(&mut precursors);
-                }
-            }
-            affected_neighbours
+            (affected_destinations, affected_neighbours)
         };
 
-        //Deliver an appropriate RERR to such neighbours
+        //4. Deliver an appropriate RERR to affected neighbours with the list of unreachable destinations
         if !affected_neighbours.is_empty() {
+            let payload = RouteErrorMessage{ 
+                destinations : affected_destinations,
+                flags : RREPFlags::default(),
+            };
             //Re-tag message
-            let msg = Messages::RERR(msg);
+            let msg = Messages::RERR(payload);
             //Build log data
             let log_data = ProtocolMessages::AODV(msg.clone());
 
-            //Build the response msg
-            let rsp_hdr = hdr
-                .create_forward_header(me)
-                .set_payload(serialize_message(msg)?)
-                .build();
+            //Build the MessageHeader
+            let outgoing_hdr = MessageHeader::new(
+                me, 
+                String::default(), 
+                serialize_message(msg)?
+            );
 
-            Ok(Some((rsp_hdr, log_data)))
+            Ok(Some((outgoing_hdr, log_data)))
         } else {
             radio::log_handle_message(
                 logger,
@@ -1215,20 +1236,15 @@ impl AODV {
             
             match entry {
                 Some(entry) => {
-                    if !entry.flags.contains(RTEFlags::VALID_SEQ_NO) {
-                        //This is considered a route error.
-                        //Proceed to process this route error per RFC section 6.11, case (i)
-                        // (i) if it detects a link break for the next hop of an active
-                        // route in its routing table while transmitting data (and
-                        // route repair, if attempted, was unsuccessful)
-                        // For case (i), the node first makes a list of unreachable destinations
-                        // consisting of the unreachable neighbor and any additional destinations
-                        // (or subnets, see section 7) in the local routing table that use the
-                        // unreachable neighbor as the next hop.
-                        //
-                        // For this particular case, we assume having the route marked as invalid counts
-                        // as a link break.
-                        radio::log_handle_message(
+                    if !entry.flags.contains(RTEFlags::ACTIVE_ROUTE) || entry.repairing {
+                        //Case#2 of RERR (RFC pages 24 & 25) - Received a data message for a non-active route that is not being repaired.
+                        let (rerr_hdr, log_data) = AODV::handle_invalid_data_msg(
+                            hdr.sender.clone(), 
+                            msg.destination.clone(), 
+                            entry.dest_seq_no, 
+                            me)?;
+                        
+                            radio::log_handle_message(
                             logger,
                             &hdr,
                             MessageStatus::DROPPED,
@@ -1238,127 +1254,25 @@ impl AODV {
                             &Messages::DATA(msg.clone()),
                         );
     
-                        //No valid route, so reply with an RERR
-                        let mut dest = HashMap::new();
-                        dest.insert(msg.destination, entry.dest_seq_no);
-                        let rerr_msg = RouteErrorMessage {
-                            flags: Default::default(),
-                            destinations: dest,
-                        };
-    
-                        //Tag response
-                        let rerr_msg = Messages::RERR(rerr_msg);
-                        //Build log data
-                        let log_data = ProtocolMessages::AODV(rerr_msg.clone());
-    
-                        //Build header
-                        let hdr = MessageHeader::new(
-                            me,
-                            hdr.sender,
-                            serialize_message(rerr_msg)?,
-                        );
-    
-                        return Ok(Some((hdr, log_data)));
+                        return Ok(Some((rerr_hdr, log_data)));
                     }
-    
-                    if entry.flags.contains(RTEFlags::ACTIVE_ROUTE) {
-                        //We have an active and valid route to the destination
-                        //Update the lifetime to the destination
-                        let mut rt = route_table.lock().expect("Coult not lock route table");
-                        let e = rt.entry(msg.destination.clone())
-                            .or_insert(entry);
-                        e.lifetime = std::cmp::max(
-                            e.lifetime,
-                            Utc::now() + Duration::milliseconds(active_route_timeout),
-                        );
-                        let confirmed = e.next_hop == msg.destination;
-                        (e.next_hop.clone(), e.dest_seq_no, confirmed)
-                    } else {
-                        //Route is inactive. Attempt to repair it.
-                        //If it's already repairing, just queue the transmission.
-                        //Note: Make sure none of the FOUR tables being passed are currently locked, or it will
-                        //create a deadlock, as it once did.
-                        if entry.repairing
-                            || AODV::route_repair(
-                                &msg.destination,
-                                Arc::clone(&route_table),
-                                Arc::clone(&rreq_seq_no),
-                                Arc::clone(&seq_no),
-                                me.clone(),
-                                config,
-                                tx_queue,
-                                Arc::clone(&pending_routes),
-                                Arc::clone(&rreq_cache),
-                                &logger,
-                            )?
-                        {
-                            AODV::queue_transmission(
-                                queued_transmissions,
-                                msg.destination.clone(),
-                                hdr.clone(),
-                            )?;
-                            radio::log_handle_message(
-                                logger,
-                                &hdr,
-                                MessageStatus::QUEUED,
-                                Some("Route to destination being repaired"),
-                                None,
-                                r_type,
-                                &Messages::DATA(msg),
-                            );
-                        } else {
-                            // This is considered a route error.
-                            // Proceed to process this route error per RFC section 6.11, case (ii).
-                            //
-                            // (ii) if it gets a data packet destined to a node for which it
-                            // does not have an active route and is not repairing (if
-                            // using local repair).
-                            //
-                            // In this case, failing to run route_repair counts as "is not repairing".
-                            radio::log_handle_message(
-                                logger,
-                                &hdr,
-                                MessageStatus::DROPPED,
-                                Some("RouteHealing was not possible"),
-                                Some("Generating RouteError"),
-                                r_type,
-                                &Messages::DATA(msg.clone()),
-                            );
-    
-                            // For case (ii), there is only one unreachable destination, which is the
-                            // destination of the data packet that cannot be delivered.
-                            let mut dest = HashMap::new();
-                            dest.insert(msg.destination, entry.dest_seq_no);
-                            let rerr_msg = RouteErrorMessage {
-                                flags: Default::default(),
-                                destinations: dest,
-                            };
-    
-                            //Tag response
-                            let rerr_msg = Messages::RERR(rerr_msg);
-                            //Build log data
-                            let log_data = ProtocolMessages::AODV(rerr_msg.clone());
-    
-                            //Build header
-                            let resp_hdr = MessageHeader::new(
-                                me,
-                                hdr.sender, //Destination should be hdr.sender, but need to check
-                                serialize_message(rerr_msg)?,
-                            );
-    
-                            return Ok(Some((resp_hdr, log_data)));
-                        }
-    
-                        return Ok(None);
-                    }
+
+                    //We have an active and valid route to the destination
+                    //Update the lifetime to the destination
+                    let mut rt = route_table.lock().expect("Coult not lock route table");
+                    let e = rt.entry(msg.destination.clone())
+                        .or_insert(entry);
+                    e.lifetime = std::cmp::max(
+                        e.lifetime,
+                        Utc::now() + Duration::milliseconds(active_route_timeout),
+                    );
+                    let confirmed = e.next_hop == msg.destination;
+                    (e.next_hop.clone(), e.dest_seq_no, confirmed)
+                    
                 }
                 None => {
+                    //TODO: This case must be addressed as it is not part of the RFC and I see it in the logs.
                     warn!(logger, "This node does not have a route to {}", &msg.destination);
-                    // let err_msg = format!("This node does not have a route to {}", &msg.destination);
-                    // let err = MeshSimError {
-                    //     kind: MeshSimErrorKind::Worker(err_msg),
-                    //     cause: None,
-                    // };
                     radio::log_handle_message(
                         logger,
                         &hdr,
@@ -1404,6 +1318,30 @@ impl AODV {
             .build();
 
         Ok(Some((fwd_hdr, log_data)))
+    }
+
+    fn handle_invalid_data_msg(
+        hdr_dest: String, 
+        unreachable_dest: String, 
+        unreachable_dest_seq_no: u32,
+        me: String) -> Result<(MessageHeader, ProtocolMessages), MeshSimError> {
+        let payload = RouteErrorMessage{
+            destinations : HashMap::from([(unreachable_dest, unreachable_dest_seq_no)]),
+            flags : RREPFlags::default(),
+        };
+        //Re-tag message
+        let msg = Messages::RERR(payload);
+        //Build log data
+        let log_data = ProtocolMessages::AODV(msg.clone());
+
+        //Build the MessageHeader
+        let outgoing_hdr = MessageHeader::new(
+            me, 
+            hdr_dest, 
+            serialize_message(msg)?
+        );
+        
+        Ok((outgoing_hdr, log_data))
     }
 
     fn process_hello_msg(
@@ -1538,6 +1476,7 @@ impl AODV {
         let ttl = ttl.unwrap_or(std::usize::MAX);
         let mut hdr = MessageHeader::new(me.clone(), destination.clone(), serialize_message(msg)?);
         hdr.ttl = ttl;
+        let msg_id = hdr.msg_id.clone();
 
         //Add to the pending-routes list
         {
@@ -1585,7 +1524,7 @@ impl AODV {
         */ 
         //This log is necessary to differentiate the initial RREQ packet from all the other SENT logs in
         //the intermediate nodes.
-        info!(logger, "Initiated RREQ"; "rreq_id" => rreq_id);
+        info!(logger, "Initiated RREQ"; "rreq_id" => rreq_id, "msg_id"=>&msg_id);
 
         Ok(())
     }
@@ -1710,73 +1649,78 @@ impl AODV {
             }
 
             //Routes to nodes that are broken links (e.g. neighbours) that are not being repaired
-            for (k, v) in rt.iter_mut().filter(|(k, v)| {
-                !v.flags.contains(RTEFlags::ACTIVE_ROUTE)
-                    && v.lifetime < Utc::now()
-                    && &v.next_hop == *k
-                    && !v.repairing
-            }) {
+            rt
+            .iter_mut()
+            .filter(|(k, v)| !v.flags.contains(RTEFlags::ACTIVE_ROUTE) && v.lifetime < Utc::now() && &v.next_hop == *k && !v.repairing)
+            .for_each(|(k,v)| { 
                 broken_links.insert(k.clone(), v.dest_seq_no);
-            }
+            });
 
             //Delete inactive routes whose lifetime (delete time) has passed and are not being repaired
             rt.retain(|_, v| {
                 v.flags.contains(RTEFlags::ACTIVE_ROUTE) || v.lifetime > Utc::now() || v.repairing
             });
 
-            //For debugging purposes, print the RouteTable
-            debug!(logger, "RouteTable:");
-            for e in rt.iter() {
-                debug!(logger, "{:?}", e);
-            }
             broken_links
         };
 
-        {
-            //Routes for unconfirmed, expired DATA msgs are marked as broken.
-            let mut dc = data_cache.lock().expect("Could not lock data_cache");
-            for (msg, entry) in dc
-                .iter_mut()
-                .filter(|(_, v)| !v.confirmed && v.ts < Utc::now())
-            {
-                info!(
-                    logger,
-                    "BROKEN_LINK detected";
-                    "reason"=>"Unconfirmed DATA message",
-                    "destination"=>&entry.destination,
-                );
+        //Routes for unconfirmed, expired DATA msgs are marked as broken.
+        data_cache.lock().expect("Could not lock data_cache")
+        .iter_mut()
+        .filter(|(_, v)| !v.confirmed && v.ts < Utc::now())
+        .for_each(|(_, v)| { 
+            broken_links.insert(v.destination.clone(), v.seq_no);
+            //Mark the msg as confirmed so that we don't process it again or
+            //send an RERR for this link due to it again.
+            v.confirmed = true;
+        });
 
-                broken_links.insert(msg.to_string(), entry.seq_no);
-                //Mark the msg as confirmed so that we don't process it again or
-                //send an RERR for this link due to it again.
-                entry.confirmed = true;
-            }
+        // Log the link breaks
+        for (k, _v) in broken_links.iter() {
+            info!(
+                logger,
+                "BROKEN_LINK detected";
+                "reason"=>"Unconfirmed DATA message",
+                "destination"=>k,
+            );
         }
-
+        
         //Affected destinations include those that are no longer reachable due to the detected broken links
-        let affected_destinations: HashMap<String, u32> = {
-            let rt = route_table.lock().expect("Could not lock route table");
-            rt.iter()
-                .filter(|(k, v)| {
-                    //If any route depends on the broken link as their next hop, they are now unreachable
-                    broken_links.contains_key(&v.next_hop) &&
+        let affected_destinations: HashMap<String, u32> = route_table
+            .lock()
+            .expect("Could not lock route table")
+            .iter()
+            .filter(|(k, v)| {
+                //If any route depends on the broken link as their next hop, they are now unreachable
+                broken_links.contains_key(&v.next_hop) &&
                 //but only active routes generate route errors
                 v.flags.contains(RTEFlags::ACTIVE_ROUTE) &&
                 //and if the unreachable route is to the broken link itself, it generates an RERR only of its precursor list is not empty
                 //(e.g. not for routes created by HELLO messages)
                 (**k != v.next_hop || !v.precursors.is_empty())
-                })
-                .map(|(k, v)| (k.clone(), v.dest_seq_no))
-                .collect()
-        };
+            })
+            .map(|(k, v)| (k.clone(), v.dest_seq_no))
+            .collect();
 
+        // Need to update the each of the affected destinations accordingly
+        // 1. Increase the destination_seq_no of the destination.
+		// 2. Mark the entry as invalid.
+		// 3. Update its lifetime field to current time + /delete_period/.
+        route_table
+            .lock()
+            .expect("Could not lock route table")
+            .iter_mut()
+            .filter(|(k,_v)| {
+                affected_destinations.contains_key(*k)
+            })
+            .for_each(|(k,v)| { 
+                v.flags.remove(RTEFlags::ACTIVE_ROUTE | RTEFlags::VALID_SEQ_NO);
+                v.dest_seq_no += 1;
+                v.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
+            });
+
+        // RERR handling, Case 1 (Detecting a link break in an active route while transmitting data) RFC pages 24 & 25
         if !affected_destinations.is_empty() {
-            // info!(
-            //     logger,
-            //     "Broken links detected";
-            //     "num_broken_links" => broken_links.keys().len(),
-            // );
-
             let rerr_msg = RouteErrorMessage {
                 flags: Default::default(),
                 destinations: affected_destinations,
