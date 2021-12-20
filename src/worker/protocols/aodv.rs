@@ -785,9 +785,9 @@ impl AODV {
                 if entry.dest_seq_no >= msg.dest_seq_no &&
                     entry.flags.contains(RTEFlags::VALID_SEQ_NO) &&
                     !msg.flags.contains(RREQFlags::DESTINATION_ONLY) &&
-                    // entry.flags.contains(RTEFlags::ACTIVE_ROUTE) {
-                    entry.lifetime >= Utc::now()
-                {
+                    entry.flags.contains(RTEFlags::ACTIVE_ROUTE) &&
+                    entry.lifetime >= Utc::now() {
+
                     radio::log_handle_message(
                         logger,
                         &hdr,
@@ -1090,7 +1090,7 @@ impl AODV {
     */
     fn process_route_err_msg(
         hdr: MessageHeader,
-        mut msg: RouteErrorMessage,
+        msg: RouteErrorMessage,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         me: String,
         r_type: RadioTypes,
@@ -1109,7 +1109,7 @@ impl AODV {
                     //The third condition is not part of the RFC, but it makes no sense to invalidate
                     //a route for which this node has fresher information.
                     if  entry.next_hop == hdr.sender &&
-                        entry.flags.contains(RTEFlags::VALID_SEQ_NO) && 
+                        entry.flags.contains(RTEFlags::ACTIVE_ROUTE) && 
                         entry.dest_seq_no <= *seq_no {
                             //Step 2. Make a list of the affected neighbours
                             debug!(
@@ -1272,7 +1272,7 @@ impl AODV {
                 }
                 None => {
                     //TODO: This case must be addressed as it is not part of the RFC and I see it in the logs.
-                    warn!(logger, "This node does not have a route to {}", &msg.destination);
+                    // warn!(logger, "This node does not have a route to {}", &msg.destination);
                     radio::log_handle_message(
                         logger,
                         &hdr,
@@ -1637,35 +1637,45 @@ impl AODV {
         tx_queue: Sender<Transmission>,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
-        let mut broken_links = {
-            let mut broken_links = HashMap::new();
-            let mut rt = route_table.lock().expect("Could not lock route table");
-            //Mark expired routes as inactive
-            for (_, v) in rt.iter_mut().filter(|(_, v)| {
+        //Mark expired routes as inactive
+        route_table
+            .lock().expect("Could not lock route table")
+            .iter_mut()
+            .filter(|(_, v)| {
                 v.flags.contains(RTEFlags::ACTIVE_ROUTE) && v.lifetime < Utc::now()
-            }) {
+            })
+            .for_each(|(_k,v)| {
                 v.flags.remove(RTEFlags::ACTIVE_ROUTE);
                 v.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
-            }
-
-            //Routes to nodes that are broken links (e.g. neighbours) that are not being repaired
-            rt
-            .iter_mut()
-            .filter(|(k, v)| !v.flags.contains(RTEFlags::ACTIVE_ROUTE) && v.lifetime < Utc::now() && &v.next_hop == *k && !v.repairing)
-            .for_each(|(k,v)| { 
-                broken_links.insert(k.clone(), v.dest_seq_no);
             });
 
-            //Delete inactive routes whose lifetime (delete time) has passed and are not being repaired
-            rt.retain(|_, v| {
+        //Delete inactive routes whose lifetime (delete time) has passed and are not being repaired
+        route_table
+            .lock().expect("Could not lock route table")
+            .retain(|_, v| {
                 v.flags.contains(RTEFlags::ACTIVE_ROUTE) || v.lifetime > Utc::now() || v.repairing
             });
 
-            broken_links
-        };
+        // Now we build the list of broken links.
+        // This list is built from two different cases:
+        // 1. Links to destination nodes (destination == next_hop) that are both inactive, and their lifetime has expired.
+        // 2. Links for data packets that are unconfirmed (no passive ACK from the link).
+        let mut broken_links = HashMap::new();
+        let expired_destination_links: HashMap<String, u32> = route_table
+            .lock().expect("Could not lock route table")
+            .iter()
+            .filter(|(k, v)|
+                !v.flags.contains(RTEFlags::ACTIVE_ROUTE) &&
+                v.lifetime < Utc::now() &&
+                &v.next_hop == *k &&
+                !v.repairing)
+            .map(|(k,v)| (k.clone(), v.dest_seq_no))
+            .collect();
+        broken_links.extend(expired_destination_links);
 
         //Routes for unconfirmed, expired DATA msgs are marked as broken.
-        data_cache.lock().expect("Could not lock data_cache")
+        data_cache
+        .lock().expect("Could not lock data_cache")
         .iter_mut()
         .filter(|(_, v)| !v.confirmed && v.ts < Utc::now())
         .for_each(|(_, v)| { 
