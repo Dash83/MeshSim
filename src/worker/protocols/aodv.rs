@@ -3,7 +3,7 @@ use crate::worker::protocols::{Transmission, HandleMessageOutcome, Protocol, Pro
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
-
+use crate::worker::aodv_strategies::*;
 use chrono::offset::TimeZone;
 use chrono::{DateTime, Duration, Utc};
 
@@ -74,13 +74,13 @@ bitflags! {
 }
 
 #[derive(Debug, Clone)]
-struct RouteTableEntry {
+pub struct RouteTableEntry {
     destination: String,
     dest_seq_no: u32,
     flags: RTEFlags,
     nic: String,
     next_hop: String,
-    hop_count: u8,
+    pub route_cost: f64,
     precursors: HashSet<String>,
     lifetime: DateTime<Utc>,
     repairing: bool,
@@ -102,7 +102,7 @@ impl RouteTableEntry {
             flags,
             nic: String::from("DEFAULT"),
             next_hop: next_hop.to_owned(),
-            hop_count: 0,
+            route_cost: 0f64,
             precursors: HashSet::new(),
             lifetime: Utc.ymd(1970, 1, 1).and_hms_nano(0, 0, 0, 0),
             repairing: false,
@@ -163,6 +163,7 @@ pub struct AODV {
     ts_last_hello_msg: AtomicI64,
     rng: Arc<Mutex<StdRng>>,
     last_transmission: Arc<AtomicI64>,
+    aodv_strategy: Box<dyn AodvStrategy>,
     logger: Logger,
 }
 
@@ -183,7 +184,7 @@ bitflags! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RouteRequestMessage {
     flags: RREQFlags,
-    pub hop_count: u8,
+    pub route_cost: f64,
     pub rreq_id: u32,
     pub destination: String,
     pub dest_seq_no: u32,
@@ -205,11 +206,11 @@ pub struct RouteResponseMessage {
     //This field is not used in this implementation. Kept for completeness
     //in accordance to the RFC.
     prefix_size: u8,
-    pub hop_count: u8,
+    pub route_cost: f64,
     pub destination: String,
     pub dest_seq_no: u32,
     pub originator: String,
-    lifetime: u32,
+    lifetime: u32, // In milliseconds
 }
 
 bitflags! {
@@ -308,6 +309,7 @@ impl Protocol for AODV {
             rreq_seq_no,
             self.tx_queue.clone(),
             r_type,
+            &self.aodv_strategy,
             &self.logger,
         )?;
         
@@ -525,6 +527,7 @@ impl AODV {
         tx_queue: Sender<Transmission>,
         rng: Arc<Mutex<StdRng>>,
         last_transmission: Arc<AtomicI64>,
+        aodv_strategy: Box<dyn AodvStrategy>,
         logger: Logger,
     ) -> Self {
         // let starting_rreq_id: u32 = thread_rng().gen_range(0, std::u32::MAX);
@@ -582,6 +585,7 @@ impl AODV {
             ts_last_hello_msg,
             rng,
             last_transmission,
+            aodv_strategy,
             logger,
         }
     }
@@ -601,6 +605,7 @@ impl AODV {
         rreq_seq_no: Arc<AtomicU32>,
         tx_queue: Sender<Transmission>,
         r_type: RadioTypes,
+        aodv_strategy: &Box<dyn AodvStrategy>,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         AODV::connectivity_update(
@@ -637,6 +642,7 @@ impl AODV {
                 seq_no,
                 me,
                 r_type,
+                aodv_strategy,
                 logger,
             ),
             Messages::RREP(msg) => AODV::process_route_response_msg(
@@ -651,6 +657,7 @@ impl AODV {
                 config,
                 tx_queue,
                 r_type,
+                aodv_strategy,
                 logger,
             ),
             Messages::RERR(msg) => {
@@ -681,6 +688,7 @@ impl AODV {
         seq_no: Arc<AtomicU32>,
         me: String,
         r_type: RadioTypes,
+        aodv_strategy: &Box<dyn AodvStrategy>,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         //Check if this is a duplicate RREQ
@@ -710,10 +718,10 @@ impl AODV {
             //Update the cache to the last time we received this RREQ
             *cache_entry = Utc::now();
         }
-
-        //Increase msg hop_count
-        msg.hop_count += 1;
-
+        
+        //Increase msg route cost
+        aodv_strategy.update_route_request_message(&hdr, &mut msg);
+        
         //Create/update route to msg.originator
         let entry = {
             let mut rt = route_table
@@ -724,14 +732,13 @@ impl AODV {
             });
             entry.dest_seq_no = std::cmp::max(entry.dest_seq_no, msg.orig_seq_no);
             entry.flags.insert(RTEFlags::VALID_SEQ_NO); //Should this be done only if the seq_no is updated?
-            entry.hop_count = msg.hop_count;
+            entry.route_cost = msg.route_cost;
             let minimal_lifetime = Utc::now() + Duration::milliseconds(2 * config.net_traversal_time)
-                - Duration::milliseconds(2 * entry.hop_count as i64 * config.node_traversal_time);
+                - Duration::milliseconds(2 * entry.route_cost as i64 * config.node_traversal_time);
             entry.lifetime = std::cmp::max(entry.lifetime, minimal_lifetime);
             entry.clone()
         };
-
-
+        
         // debug!(logger, "Route table entry: {:#?}", entry);
 
         //This node generates an RREP if it is itself the destination
@@ -754,7 +761,7 @@ impl AODV {
             let response = RouteResponseMessage {
                 flags,
                 prefix_size: 0,
-                hop_count: 0,
+                route_cost: 0f64,
                 destination: me.clone(),
                 dest_seq_no: seq_no.load(Ordering::SeqCst),
                 originator: msg.originator,
@@ -806,7 +813,7 @@ impl AODV {
                     let response = RouteResponseMessage {
                         flags,
                         prefix_size: 0,
-                        hop_count: entry.hop_count,
+                        route_cost: entry.route_cost,
                         destination: msg.destination.clone(),
                         //Uses its own value for the dest_seq_no
                         dest_seq_no: entry.dest_seq_no,
@@ -885,6 +892,7 @@ impl AODV {
         config: Config,
         tx_queue: Sender<Transmission>,
         r_type: RadioTypes,
+        aodv_strategy: &Box<dyn AodvStrategy>,
         logger: &Logger,
     ) -> Result<HandleMessageOutcome, MeshSimError> {
         //RREPs are UNICASTED. Is this the destination in the header? It not, exit.
@@ -901,8 +909,8 @@ impl AODV {
             return Ok(None);
         }
 
-        //Update hop-count
-        msg.hop_count += 1;
+        //Increase msg route cost
+        aodv_strategy.update_route_response_message(&hdr, &mut msg);
 
         let _repaired = {
             let mut rt = route_table.lock().expect("Could not lock route table");
@@ -920,8 +928,7 @@ impl AODV {
                 !entry.flags.contains(RTEFlags::ACTIVE_ROUTE)) ||
             // RFC(6.7) - (iv) the sequence numbers are the same, and the New Hop Count is smaller than the 
             // hop count in route table entry.
-                (entry.dest_seq_no == msg.dest_seq_no &&
-                msg.hop_count < entry.hop_count)
+                (entry.dest_seq_no == msg.dest_seq_no && aodv_strategy.should_update_route(&hdr, &msg, entry))
             {
                 info!(logger, "Updating route to {}", &msg.destination);
                 // -  the route is marked as active,
@@ -934,7 +941,7 @@ impl AODV {
                 //     address field in the IP header,
                 entry.next_hop = hdr.sender.clone();
                 // -  the hop count is set to the value of the New Hop Count,
-                entry.hop_count = msg.hop_count;
+                aodv_strategy.update_route_entry(&hdr, &msg, entry);
                 // -  the expiry time is set to the current time plus the value of the
                 //     Lifetime in the RREP message,
                 entry.lifetime = Utc::now() + Duration::milliseconds(msg.lifetime as i64);
@@ -1461,7 +1468,7 @@ impl AODV {
         }
         let msg = RouteRequestMessage {
             flags,
-            hop_count: 0,
+            route_cost: 0f64,
             rreq_id,
             destination: destination.clone(),
             dest_seq_no,
@@ -1590,7 +1597,7 @@ impl AODV {
     ) -> Result<bool, MeshSimError> {
         let mut rt = route_table.lock().expect("Failed to lock route table");
         if let Some(entry) = rt.get_mut(destination) {
-            let current_hop_count = entry.hop_count as usize;
+            let current_hop_count = entry.route_cost as usize;
             if current_hop_count > config.max_repair_ttl {
                 return Ok(false);
             }
@@ -1899,7 +1906,7 @@ impl AODV {
             let msg = RouteResponseMessage {
                 flags,
                 prefix_size: 0,
-                hop_count: 0,
+                route_cost: 0f64,
                 destination: me.clone(),
                 dest_seq_no: seq_no.load(Ordering::SeqCst),
                 originator: String::from("N/A"),

@@ -715,6 +715,7 @@ fn test_mac_layer_basic() {
         std::path::MAIN_SEPARATOR,
         DEFAULT_MASTER_LOG
     );
+    println!("Master log file {}", master_log_file);
     let master_log_records = logging::get_log_records_from_file(&master_log_file).unwrap();
     let master_node_num = logging::find_record_by_msg(
         "End_Test action: Finished. 25 processes terminated.",

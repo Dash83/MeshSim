@@ -64,13 +64,13 @@ impl Listener for SimulatedListener {
                             //Record in the header the amount of time it took to read the message (including the delay)
                             //Useful for measuring where do the threads spend their time.
                             let dur = Utc::now().timestamp_nanos() - ts0.timestamp_nanos();
-
                             info!(
                                 &self.logger,
                                 "read_from_network";
                                 "msg_id" => m.get_msg_id(),
                                 "duration" => dur,
                                 "radio" => &radio_range,
+                                "signal_loss" => m.signal_loss,
                             );
 
                             Some(m)

@@ -142,6 +142,20 @@ pub struct SimulatedRadio {
     transmitting: Arc<Mutex<()>>,
     /// The last time this radio made a transmission
     last_transmission: Arc<AtomicI64>,
+    ///Maximum delay per node in a broadcast.
+    max_delay_per_node: i64,
+    // Transmission power used to calculate the signal strength.
+    transmission_power: u8,
+    // Power loss coefficient used to calculate the signal strength.
+    power_loss_coefficient: f64,
+    // Reference distance used to calculate the signal strength.
+    reference_distance: f64,
+    // Number of floors used to calculate the signal strength.
+    floors: f64,
+    // Floor penetration factor used to calculate the signal strength.
+    floor_penetration_loss_factor: f64,
+    // Frequency in mhz used to calculate the signal strength.
+    frequency_in_mhz: f64,
 }
 
 impl Radio for SimulatedRadio {
@@ -254,6 +268,18 @@ impl Radio for SimulatedRadio {
         let perf_start_tx = Utc::now();
         for p in peers.into_iter() {
             let mut msg = hdr.clone();
+
+            let basic_transmission_loss_at_reference_distance = 
+                20.0f64*(self.frequency_in_mhz).log(10.0) - 28.0f64;
+            let signal_loss = basic_transmission_loss_at_reference_distance
+                + self.power_loss_coefficient*(p.distance/self.reference_distance).log(10.0)
+                + self.floor_penetration_loss_factor;
+            msg.signal_loss = signal_loss;
+                
+            info!(self.logger,
+                "Worker {} found peer {} with distance: {} and signal_loss: {}",
+                &self.worker_name, p.worker_name, p.distance, msg.signal_loss);
+
             msg.delay = std::cmp::max(
                 TX_DURATION - 
                     (Utc::now().timestamp_nanos() - perf_start_tx.timestamp_nanos()) -
@@ -349,6 +375,13 @@ impl SimulatedRadio {
         range: f64,
         mac_layer_retries: usize,
         mac_layer_base_wait: u64,
+        max_delay_per_node: i64,
+        transmission_power: u8,
+        power_loss_coefficient: f64,
+        reference_distance: f64,
+        floors: f64,
+        floor_penetration_loss_factor: f64,
+        frequency_in_mhz: f64,
         rng: Arc<Mutex<StdRng>>,
         logger: Logger,
     ) -> Result<(SimulatedRadio, Box<dyn Listener>), MeshSimError> {
@@ -369,6 +402,13 @@ impl SimulatedRadio {
             logger,
             transmitting: Arc::new(Mutex::new(())),
             last_transmission: Default::default(),
+            max_delay_per_node,
+            transmission_power,
+            power_loss_coefficient,
+            reference_distance,
+            floors,
+            floor_penetration_loss_factor,
+            frequency_in_mhz,
         };
         Ok((sr, listener))
     }

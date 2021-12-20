@@ -1,6 +1,7 @@
 //! Definition of all the structs used to load/store into Postgres
 //!
 use super::schema::*;
+use diesel::sql_types::{Double, Varchar, Integer, Nullable};
 
 /// Rows stored in the workers table
 #[derive(Insertable)]
@@ -20,6 +21,22 @@ pub struct WorkerRecord {
     pub worker_id: String,
     pub short_range_address: Option<String>,
     pub long_range_address: Option<String>,
+}
+
+#[derive(Debug, Queryable, QueryableByName)]
+pub struct WorkerRecordWithDistance {
+    #[sql_type = "Integer"]
+    pub id: i32,
+    #[sql_type = "Varchar"]
+    pub worker_name: String,
+    #[sql_type = "Varchar"]
+    pub worker_id: String,
+    #[sql_type = "Nullable<Varchar>"]
+    pub short_range_address: Option<String>,
+    #[sql_type = "Nullable<Varchar>"]
+    pub long_range_address: Option<String>,
+    #[sql_type = "Double"]
+    pub distance: f64,
 }
 
 /// Rows stored in the worker_positions table

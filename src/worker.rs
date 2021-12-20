@@ -59,6 +59,7 @@ pub mod commands;
 pub mod listener;
 // pub mod mobility;
 pub mod protocols;
+pub mod aodv_strategies;
 pub mod radio;
 pub mod worker_config;
 
@@ -271,6 +272,8 @@ pub struct MessageHeader {
     pub delay: i64,
     /// Number of hops until the message is discarded
     pub ttl: usize,
+    // Signal loss used to send this message in decibels.
+    pub signal_loss: f64,
     ///Optional, serialized payload of the message.
     /// It's the responsibility of the underlying protocol to know how to deserialize this payload
     /// into a protocol-specific message.
@@ -314,6 +317,7 @@ impl MessageHeader {
             hops: 0u16,
             delay: Utc::now().timestamp_nanos(),
             ttl: std::usize::MAX,
+            signal_loss: 0f64,
             payload,
             msg_id,
         }
@@ -329,6 +333,7 @@ impl MessageHeader {
             destination: None,
             hops: None,
             ttl: None,
+            signal_loss: None,
             payload: None,
         }
     }
@@ -371,6 +376,8 @@ pub struct MessageHeaderBuilder {
     hops: Option<u16>,
     /// Number of hops until the message is discarded
     ttl: Option<usize>,
+    /// Signal loss used to send the message in decibels.
+    signal_loss: Option<f64>,
     /// It's the responsibility of the underlying protocol to know how to deserialize this payload
     /// into a protocol-specific message.
     payload: Option<Vec<u8>>,
@@ -417,6 +424,7 @@ impl MessageHeaderBuilder {
             hops: self.hops.unwrap_or(self.old_data.hops),
             delay: Utc::now().timestamp_nanos(),
             ttl: self.ttl.unwrap_or(self.old_data.ttl),
+            signal_loss: self.signal_loss.unwrap_or(self.old_data.signal_loss),
             payload,
             msg_id,
         }
@@ -599,7 +607,7 @@ impl Worker {
         })?;
         let sock_addr = SockAddr::unix(&command_address)
         .map_err(|e| {
-                let err_msg = String::from("Failed to create UDS address");
+            let err_msg = String::from("Failed to create UDS address");
                 MeshSimError {
                     kind: MeshSimErrorKind::Configuration(err_msg),
                     cause: Some(Box::new(e)),
