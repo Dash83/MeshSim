@@ -734,7 +734,7 @@ impl AODV {
             entry.flags.insert(RTEFlags::VALID_SEQ_NO); //Should this be done only if the seq_no is updated?
             entry.route_cost = msg.route_cost;
             let minimal_lifetime = Utc::now() + Duration::milliseconds(2 * config.net_traversal_time)
-                - Duration::milliseconds(2 * entry.route_cost as i64 * config.node_traversal_time);
+                - Duration::milliseconds(2 * hdr.hops as i64 * config.node_traversal_time);
             entry.lifetime = std::cmp::max(entry.lifetime, minimal_lifetime);
             entry.clone()
         };
@@ -1583,55 +1583,56 @@ impl AODV {
         Ok(())
     }
 
-    fn route_repair(
-        destination: &str,
-        route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
-        rreq_seq_no: Arc<AtomicU32>,
-        seq_no: Arc<AtomicU32>,
-        me: String,
-        config: Config,
-        tx_queue: Sender<Transmission>,
-        pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
-        rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
-        logger: &Logger,
-    ) -> Result<bool, MeshSimError> {
-        let mut rt = route_table.lock().expect("Failed to lock route table");
-        if let Some(entry) = rt.get_mut(destination) {
-            let current_hop_count = entry.route_cost as usize;
-            if current_hop_count > config.max_repair_ttl {
-                return Ok(false);
-            }
+    // fn route_repair(
+    //     destination: &str,
+    //     route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
+    //     rreq_seq_no: Arc<AtomicU32>,
+    //     seq_no: Arc<AtomicU32>,
+    //     me: String,
+    //     config: Config,
+    //     tx_queue: Sender<Transmission>,
+    //     pending_routes: Arc<Mutex<HashMap<String, PendingRouteEntry>>>,
+    //     rreq_cache: Arc<Mutex<HashMap<(String, u32), DateTime<Utc>>>>,
+    //     logger: &Logger,
+    // ) -> Result<bool, MeshSimError> {
+    //     let mut rt = route_table.lock().expect("Failed to lock route table");
+    //     if let Some(entry) = rt.get_mut(destination) {
+    //         //TODO: To add support for route repair, this metric needs to be fixed as route_cost can't be used instead of hop count
+    //         //let current_hop_count = entry.route_cost as usize;
+    //         if current_hop_count > config.max_repair_ttl {
+    //             return Ok(false);
+    //         }
 
-            //Increase the sequence number of the destination to avoid stale routes
-            entry.dest_seq_no += 1;
+    //         //Increase the sequence number of the destination to avoid stale routes
+    //         entry.dest_seq_no += 1;
 
-            //Start a new route discovery to the destination
-            let ttl = current_hop_count + LOCAL_ADD_TTL;
-            let repair = true;
-            AODV::start_route_discovery(
-                destination.into(),
-                entry.dest_seq_no,
-                rreq_seq_no,
-                seq_no.load(Ordering::SeqCst),
-                Some(ttl),
-                Some(config.rreq_retries),
-                repair,
-                me,
-                config,
-                tx_queue,
-                pending_routes,
-                rreq_cache,
-                logger,
-            )?;
+    //         //Start a new route discovery to the destination
+    //         let ttl = current_hop_count + LOCAL_ADD_TTL;
+    //         let repair = true;
+    //         AODV::start_route_discovery(
+    //             destination.into(),
+    //             entry.dest_seq_no,
+    //             rreq_seq_no,
+    //             seq_no.load(Ordering::SeqCst),
+    //             Some(ttl),
+    //             Some(config.rreq_retries),
+    //             repair,
+    //             me,
+    //             config,
+    //             tx_queue,
+    //             pending_routes,
+    //             rreq_cache,
+    //             logger,
+    //         )?;
 
-            //Mark the route as in repair
-            entry.repairing = true;
+    //         //Mark the route as in repair
+    //         entry.repairing = true;
 
-            return Ok(true);
-        }
+    //         return Ok(true);
+    //     }
 
-        Ok(false)
-    }
+    //     Ok(false)
+    // }
 
     fn get_self_peer(&self) -> String {
         self.worker_name.clone()

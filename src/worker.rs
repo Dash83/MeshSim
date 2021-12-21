@@ -274,7 +274,7 @@ pub struct MessageHeader {
     pub ttl: usize,
     // Signal loss used to send this message in decibels.
     pub signal_loss: f64,
-    ///Optional, serialized payload of the message.
+    ///Serialized payload of the message.
     /// It's the responsibility of the underlying protocol to know how to deserialize this payload
     /// into a protocol-specific message.
     payload: Vec<u8>,
@@ -1141,7 +1141,7 @@ mod tests {
         let mut msg = MessageHeader::new(sender, destination, data);
         let empty_header_size = mem::size_of_val(&msg);
         //Base size of the struct
-        assert_eq!(120, empty_header_size);
+        assert_eq!(128, empty_header_size);
         //Binary encoded version should always be equal or smaller in size
         let ser_msg = msg.to_vec().expect("Could not serialise message");
         let empty_encoded_header_size = mem::size_of_val(&*ser_msg);

@@ -142,16 +142,14 @@ pub struct SimulatedRadio {
     transmitting: Arc<Mutex<()>>,
     /// The last time this radio made a transmission
     last_transmission: Arc<AtomicI64>,
-    ///Maximum delay per node in a broadcast.
-    max_delay_per_node: i64,
     // Transmission power used to calculate the signal strength.
     transmission_power: u8,
+    //Transmission loss at reference distance.
+    tx_loss_at_ref_dist: f64,
     // Power loss coefficient used to calculate the signal strength.
     power_loss_coefficient: f64,
     // Reference distance used to calculate the signal strength.
     reference_distance: f64,
-    // Number of floors used to calculate the signal strength.
-    floors: f64,
     // Floor penetration factor used to calculate the signal strength.
     floor_penetration_loss_factor: f64,
     // Frequency in mhz used to calculate the signal strength.
@@ -269,28 +267,23 @@ impl Radio for SimulatedRadio {
         for p in peers.into_iter() {
             let mut msg = hdr.clone();
 
-            let basic_transmission_loss_at_reference_distance = 
-                20.0f64*(self.frequency_in_mhz).log(10.0) - 28.0f64;
-            let signal_loss = basic_transmission_loss_at_reference_distance
+            msg.signal_loss = self.tx_loss_at_ref_dist
                 + self.power_loss_coefficient*(p.distance/self.reference_distance).log(10.0)
                 + self.floor_penetration_loss_factor;
-            msg.signal_loss = signal_loss;
                 
-            info!(self.logger,
+            debug!(self.logger,
                 "Worker {} found peer {} with distance: {} and signal_loss: {}",
                 &self.worker_name, p.worker_name, p.distance, msg.signal_loss);
 
+            //TODO: review this calculation. Should I be substracting TX_VARIABILITY?
             msg.delay = std::cmp::max(
                 TX_DURATION - 
                     (Utc::now().timestamp_nanos() - perf_start_tx.timestamp_nanos()) -
                     TX_VARIABILITY,
                 0
             );
-            // println!("Delay: {}ns", msg.delay);
-            // msg.delay = max_delay - acc_delay;
-            // acc_delay += delay_per_node;
-            let data = msg.to_vec()?;
 
+            let data = msg.to_vec()?;
             let selected_address = match self.r_type {
                 RadioTypes::ShortRange => p.short_range_address.clone(),
                 RadioTypes::LongRange => p.long_range_address.clone(),
@@ -375,11 +368,9 @@ impl SimulatedRadio {
         range: f64,
         mac_layer_retries: usize,
         mac_layer_base_wait: u64,
-        max_delay_per_node: i64,
         transmission_power: u8,
         power_loss_coefficient: f64,
         reference_distance: f64,
-        floors: f64,
         floor_penetration_loss_factor: f64,
         frequency_in_mhz: f64,
         rng: Arc<Mutex<StdRng>>,
@@ -388,6 +379,7 @@ impl SimulatedRadio {
         // let address = SimulatedRadio::format_address(&work_dir, &id, r_type);
         let listener = SimulatedRadio::init(timeout, &rng, r_type, &logger)?;
         let listen_addres = listener.get_address();
+        let tx_loss_at_ref_dist = 20.0f64*(frequency_in_mhz).log(10.0) - 28.0f64;
         let sr = SimulatedRadio {
             timeout,
             work_dir,
@@ -402,11 +394,10 @@ impl SimulatedRadio {
             logger,
             transmitting: Arc::new(Mutex::new(())),
             last_transmission: Default::default(),
-            max_delay_per_node,
             transmission_power,
+            tx_loss_at_ref_dist,
             power_loss_coefficient,
             reference_distance,
-            floors,
             floor_penetration_loss_factor,
             frequency_in_mhz,
         };
@@ -445,62 +436,6 @@ impl SimulatedRadio {
 
         Ok(Box::new(listener))
     }
-
-    ///Receives the output from a worker that initialized 1 or more radios, and returns
-    ///the respective listen addresses.
-    // pub fn extract_radio_addresses(
-    //     mut input: String,
-    //     logger: &Logger,
-    // ) -> Result<(Option<String>, Option<String>, Option<String>), MeshSimError> {
-    //     let mut sr_address = None;
-    //     let mut lr_address = None;
-    //     let mut cmd_address: Option<String> = None;
-
-    //     // If the last char is a new line, remove it.
-    //     let last_c = input.pop();
-    //     if let Some(c) = last_c {
-    //         if c != '\n' {
-    //             input.push(c);
-    //         }
-    //     }
-
-    //     for v in input.as_str().split(';') {
-    //         if v.is_empty() {
-    //             continue;
-    //         }
-    //         let parts: Vec<&str> = v.split('-').collect();
-    //         debug!(logger, "Parts: {:?}", &parts);
-    //         if parts[0] == "SHORT" {
-    //             // RadioTypes::ShortRange
-    //             sr_address = Some(parts[1].into());
-    //         } else if parts[0] == "LONG" {
-    //             // RadioTypes::LongRange
-    //             lr_address = Some(parts[1].into());
-    //         } else if parts[0] == "Command" {
-    //             cmd_address = Some(parts[1].into());
-    //         } else {
-    //             let err_msg = format!("Could not parse radio-address {}", &input);
-    //             let err = MeshSimError {
-    //                 kind: MeshSimErrorKind::Configuration(err_msg),
-    //                 cause: None,
-    //             };
-    //             return Err(err);
-    //         }
-
-    //         // debug!(logger, "RadioType {:?}", &r_type);
-    //         // match r_type {
-    //         //     RadioTypes::ShortRange => {
-    //         //         sr_address = Some(parts[1].into());
-    //         //     }
-    //         //     RadioTypes::LongRange => {
-    //         //         lr_address = Some(parts[1].into());
-    //         //     }
-    //         // }
-    //     }
-    //     // debug!(logger, "This function did finish!");
-
-    //     Ok((sr_address, lr_address, cmd_address))
-    // }
 
     fn register_transmitter(&self, conn: &PgConnection, msg_id: &str) -> Result<MutexGuard<()>, MeshSimError> {
         // let tx = start_tx(&mut conn)?;

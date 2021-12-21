@@ -25,17 +25,18 @@ pub const DEFAULT_INTERFACE_NAME: &str = "wlan";
 
 const DEFAULT_SPREADING_FACTOR: u32 = 0;
 const DEFAULT_LORA_FREQ: LoraFrequencies = LoraFrequencies::Europe;
+const DEFAULT_WIFI_FREQ: u64 = 2400; //In mhz
 const DEFAULT_LORA_TRANS_POWER: u8 = 15;
-const DEFAULT_WIFI_TRANS_POWER: u8 = 30; //In decibels
+const DEFAULT_WIFI_TRANS_POWER: u8 = 30; //In decibel-milliwatts (dBm)
 const DEFAULT_PACKET_QUEUE_SIZE: usize = 3000; //Max number of queued packets
 const DEFAULT_READ_TIMEOUT: u64 = 1_000_000; //1ms in nanoseconds
 const DEFAULT_STALE_PACKET_THRESHOLD: i64 = 3_000_000_000; //3 seconds in nanoseconds
-const DEFAULT_TX_DELAY_PER_NODE: i64 = 40; //In microseconds
 const DEFAULT_POWER_LOSS_COEFFICIENT: f64 = 30.0f64;
 const DEFAULT_REFERENCE_DISTANCE: f64 = 1.0f64; //In meters
-const DEFAULT_FLOORS: f64 = 1.0f64;
-const DEFAULT_FLOOR_PENETRATION_LOSS_FACTOR: f64 = 14.0f64; //In decibels
-const DEFAULT_FREQUENCY_IN_MHZ: f64 = 2400.0f64; //In mhz
+const DEFAULT_FLOOR_PENETRATION_LOSS_FACTOR: f64 = 14.0f64; //In dBm
+//Default frequency for the Short Radio
+
+
 
 //TODO: Cleanup this struct
 ///Configuration pertaining to a given radio of the worker.
@@ -57,18 +58,12 @@ pub struct RadioConfig {
     pub spreading_factor: Option<u32>,
     ///Transmission power for the Lora radio.
     pub transmission_power: Option<u8>,
-    ///Maximum delay per node in a broadcast.
-    pub max_delay_per_node: Option<i64>,
     // Power loss coefficient used to calculate the transmission power.
     pub power_loss_coefficient: Option<f64>,
     // Reference distance used to calculate the transmission power.
     pub reference_distance: Option<f64>,
-    // Number of floors used to calculate the transmission power.
-    pub floors: Option<f64>,
     // Floor penetration factor used to calculate the transmission power.
     pub floor_penetration_loss_factor: Option<f64>,
-    // Frequency in mhz used to calculate the transmission power.
-    pub frequency_in_mhz: Option<f64>,
 }
 
 impl RadioConfig {
@@ -79,22 +74,18 @@ impl RadioConfig {
             timeout: Some(DEFAULT_READ_TIMEOUT),
             interface_name: Some(format!("{}0", DEFAULT_INTERFACE_NAME)),
             range: 0.0,
-            frequency: None,
+            frequency: Some(DEFAULT_WIFI_FREQ),
             spreading_factor: None,
-            transmission_power: None,
+            transmission_power: Some(DEFAULT_WIFI_TRANS_POWER),
             mac_layer_retries: Some(DEFAULT_TRANSMISSION_MAX_RETRY),
             mac_layer_base_wait: Some(DEFAULT_TRANSMISSION_WAIT_BASE),
-            max_delay_per_node: Some(DEFAULT_TX_DELAY_PER_NODE),
             power_loss_coefficient: Some(DEFAULT_POWER_LOSS_COEFFICIENT),
             reference_distance: Some(DEFAULT_REFERENCE_DISTANCE),
-            floors: Some(DEFAULT_FLOORS),
             floor_penetration_loss_factor: Some(DEFAULT_FLOOR_PENETRATION_LOSS_FACTOR),
-            frequency_in_mhz: Some(DEFAULT_FREQUENCY_IN_MHZ),
         }
     }
 
     /// Consuming the underlying configuration, this method produces a Box<Radio> object that can be started and used.
-    /// Agregar aqui las cosas de transmission power
     pub fn create_radio(
         self,
         operation_mode: OperationMode,
@@ -146,9 +137,6 @@ impl RadioConfig {
                 let mac_layer_base_wait = self
                     .mac_layer_base_wait
                     .unwrap_or(DEFAULT_TRANSMISSION_WAIT_BASE);
-                let max_delay_per_node = self
-                    .max_delay_per_node
-                    .unwrap_or(DEFAULT_TX_DELAY_PER_NODE);
                 let transmission_power = self
                     .transmission_power
                     .unwrap_or(DEFAULT_WIFI_TRANS_POWER);
@@ -158,15 +146,18 @@ impl RadioConfig {
                 let reference_distance = self
                     .reference_distance
                     .unwrap_or(DEFAULT_REFERENCE_DISTANCE);
-                let floors = self
-                    .floors
-                    .unwrap_or(DEFAULT_FLOORS);
                 let floor_penetration_loss_factor = self
                     .floor_penetration_loss_factor
                     .unwrap_or(DEFAULT_FLOOR_PENETRATION_LOSS_FACTOR);
                 let frequency_in_mhz = self
-                    .frequency_in_mhz
-                    .unwrap_or(DEFAULT_FREQUENCY_IN_MHZ);
+                    .frequency
+                    .unwrap_or_else(|| {
+                        match r_type {
+                            RadioTypes::ShortRange => DEFAULT_WIFI_FREQ,
+                            RadioTypes::LongRange => DEFAULT_LORA_FREQ as u64,
+                        }
+                    });
+                let frequency_in_mhz = frequency_in_mhz as f64;
                 let (radio, listener) = SimulatedRadio::new(
                     timeout,
                     work_dir,
@@ -176,11 +167,9 @@ impl RadioConfig {
                     self.range,
                     mac_layer_retries,
                     mac_layer_base_wait,
-                    max_delay_per_node,
                     transmission_power,
                     power_loss_coefficient,
                     reference_distance,
-                    floors,
                     floor_penetration_loss_factor,
                     frequency_in_mhz,
                     rng,
@@ -461,14 +450,24 @@ mod tests {
         range = 0.0\n\
         mac_layer_retries = 8\n\
         mac_layer_base_wait = 16\n\
+        frequency = 2400\n\
+        transmission_power = 30\n\
+        power_loss_coefficient = 30.0\n\
+        reference_distance = 1.0\n\
+        floor_penetration_loss_factor = 14.0\n\
         \n\
         [radio_long]\n\
         timeout = 1000000\n\
         interface_name = \"wlan0\"\n\
         range = 0.0\n\
         mac_layer_retries = 8\n\
-        mac_layer_base_wait = 16\n";
-
+        mac_layer_base_wait = 16\n\
+        frequency = 2400\n\
+        transmission_power = 30\n\
+        power_loss_coefficient = 30.0\n\
+        reference_distance = 1.0\n\
+        floor_penetration_loss_factor = 14.0\n";
+        
         let mut file_content = String::new();
         let _res = File::open(path).unwrap().read_to_string(&mut file_content);
 
