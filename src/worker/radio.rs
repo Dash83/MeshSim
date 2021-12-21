@@ -51,9 +51,18 @@ fn calculate_signal_loss(
     distance: f64,
     reference_dist: f64,
     floor_penetration_loss_factor: f64) -> f64 {
-        assert!(reference_dist > 0f64);
-        assert!(distance > 0f64);
-        assert!(power_loss_coefficient > 0f64);
+        
+    assert!(reference_dist > 0f64);
+    assert!(distance > 0f64);
+    assert!(power_loss_coefficient > 0f64);
+    
+    //Adjust distance if necessary to avoid getting a negative lost
+    let distance = if distance < reference_dist {
+        reference_dist
+    } else {
+        distance
+    };
+
     let loss = tx_loss_at_ref_dist
     + power_loss_coefficient*(distance/reference_dist).log(10.0)
     + floor_penetration_loss_factor;
@@ -1021,4 +1030,154 @@ pub fn new_lora_radio(
     _transmission_power: u8,
 ) -> Result<Channel, MeshSimError> {
     panic!("Lora radio creation is only supported on Linux");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // use crate::logging;
+    // use std::env;
+    // use std::fs::File;
+    // use std::io::Read;
+    use crate::tests::common::*;
+
+    #[test]
+    fn test_signal_loss_calculations() {
+        color_backtrace::install();
+        use crate::worker::worker_config::*;
+        let mut r1 = RadioConfig::new();
+        let freq = r1.frequency.expect("Could not read frequency") as f64;
+        let power_loss_coefficient = r1.power_loss_coefficient.expect("Could not get power_loss_coefficient");
+        let reference_dist = r1.reference_distance.expect("Could not get reference distance");
+        let floor_penetration_loss_factor = r1.floor_penetration_loss_factor.expect("Could not get floor_penetration_loss_factor");
+        let tx_loss_at_ref_dist = 20.0f64*(freq).log(10.0) - 28.0f64;
+
+
+        //Case 1 - Loss at a distance == reference_distance (1m)
+        let distance = reference_dist;
+        let expected_loss = 53.60422483423211;
+        let loss = radio::calculate_signal_loss(
+            tx_loss_at_ref_dist,
+            power_loss_coefficient,
+            distance,
+            reference_dist,
+            floor_penetration_loss_factor
+        );
+        assert_eq!(loss, expected_loss);
+
+        //Case 2 - Loss at the reference distance for the empyrical wifi measurements
+        let distance = 38.0;
+        let expected_loss = 100.99773273273641;
+        let loss = radio::calculate_signal_loss(
+            tx_loss_at_ref_dist,
+            power_loss_coefficient,
+            distance,
+            reference_dist,
+            floor_penetration_loss_factor
+        );
+        assert_eq!(loss, expected_loss);
+
+        //Case 3 - Distance smaller than reference distance.
+        // In this case, dist should be adjusted to the minimum to not create a negative loss (a gain)
+        let distance = 0.5;
+        let expected_loss = 53.60422483423211;
+        let loss = radio::calculate_signal_loss(
+            tx_loss_at_ref_dist,
+            power_loss_coefficient,
+            distance,
+            reference_dist,
+            floor_penetration_loss_factor
+        );
+        assert_eq!(loss, expected_loss);
+
+        //Case 4 - Have a reaaaallly long distance.
+        let distance = f64::MAX;
+        let max_possible_loss = 9301.245691631733;
+        let loss = radio::calculate_signal_loss(
+            tx_loss_at_ref_dist,
+            power_loss_coefficient,
+            distance,
+            reference_dist,
+            floor_penetration_loss_factor
+        );
+        assert_eq!(loss, max_possible_loss);
+    }
+
+    #[test]
+    fn test_max_signal_loss() {
+        color_backtrace::install();
+        use crate::worker::worker_config::*;
+        let data = setup("test_max_signal_loss", false, false);
+        let mut r1 = RadioConfig::new();
+        //Adjust the range to a valid number
+        r1.range = 38.0;
+        let freq = r1.frequency.expect("Could not read frequency") as f64;
+        let power_loss_coefficient = r1.power_loss_coefficient.expect("Could not get power_loss_coefficient");
+        let reference_dist = r1.reference_distance.expect("Could not get reference distance");
+        let floor_penetration_loss_factor = r1.floor_penetration_loss_factor.expect("Could not get floor_penetration_loss_factor");
+        let tx_loss_at_ref_dist = 20.0f64*(freq).log(10.0) - 28.0f64;
+        let seed = 12345;
+
+        let (radio, listener) = r1.create_radio(
+            OperationMode::Simulated,
+            RadioTypes::ShortRange,
+            data.work_dir,
+            String::from("Worker1"),
+            String::from("foobar"),
+            seed,
+            None,
+            data.logger.clone(),
+        ).expect("Could not create radio");
+        let expected_loss = 100.99773273273641;
+
+        assert_eq!(radio.get_max_loss(), expected_loss);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_signal_loss_negative_dist() {
+        color_backtrace::install();
+        use crate::worker::worker_config::*;
+        let r1 = RadioConfig::new();
+        let freq = r1.frequency.expect("Could not read frequency") as f64;
+        let power_loss_coefficient = r1.power_loss_coefficient.expect("Could not get power_loss_coefficient");
+        let reference_dist = r1.reference_distance.expect("Could not get reference distance");
+        let floor_penetration_loss_factor = r1.floor_penetration_loss_factor.expect("Could not get floor_penetration_loss_factor");
+        let tx_loss_at_ref_dist = 20.0f64*(freq).log(10.0) - 28.0f64;
+
+        let distance = -1.0;
+        let expected_loss = 100.99773273273641; //irrelevant
+        let loss = radio::calculate_signal_loss(
+            tx_loss_at_ref_dist,
+            power_loss_coefficient,
+            distance,
+            reference_dist,
+            floor_penetration_loss_factor
+        );
+        assert_eq!(loss, expected_loss);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_signal_loss_negative_ref_dist() {
+        color_backtrace::install();
+        use crate::worker::worker_config::*;
+        let r1 = RadioConfig::new();
+        let freq = r1.frequency.expect("Could not read frequency") as f64;
+        let power_loss_coefficient = r1.power_loss_coefficient.expect("Could not get power_loss_coefficient");
+        let reference_dist = -1.0;
+        let floor_penetration_loss_factor = r1.floor_penetration_loss_factor.expect("Could not get floor_penetration_loss_factor");
+        let tx_loss_at_ref_dist = 20.0f64*(freq).log(10.0) - 28.0f64;
+
+        let distance = 38.0;
+        let expected_loss = 100.99773273273641; //irrelevant
+        let loss = radio::calculate_signal_loss(
+            tx_loss_at_ref_dist,
+            power_loss_coefficient,
+            distance,
+            reference_dist,
+            floor_penetration_loss_factor
+        );
+        assert_eq!(loss, expected_loss);
+    }
 }

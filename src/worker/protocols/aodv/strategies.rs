@@ -40,17 +40,6 @@ pub struct AodvDistanceAdjusted {
     pub max_loss: f64,
 }
 
-impl AodvDistanceAdjusted {
-    pub fn clamp_signal_loss(&self, loss: f64) -> f64 {
-        if loss <= self.max_loss {
-            return loss;
-        }
-        else {
-            return self.max_loss;
-        }
-    }
-}
-
 impl AodvStrategy for AodvNormal {
     fn should_update_route(
         &self,
@@ -103,10 +92,10 @@ impl AodvStrategy for AodvDistanceAdjusted {
         msg: &mut RouteRequestMessage,
     ) -> () {
         if self.algorithm == 0 {
-            let loss = self.clamp_signal_loss(hdr.signal_loss);
+            let loss = hdr.signal_loss.clamp(hdr.signal_loss, self.max_loss);
             msg.route_cost += loss;
         } else {
-            let loss = self.clamp_signal_loss(hdr.signal_loss);
+            let loss = hdr.signal_loss.clamp(hdr.signal_loss, self.max_loss);
             msg.route_cost += 1.0f64 / ((self.max_loss - loss) / self.max_loss);
         }
     }
@@ -117,10 +106,10 @@ impl AodvStrategy for AodvDistanceAdjusted {
         msg: &mut RouteResponseMessage,
     ) -> () {
         if self.algorithm == 0 {
-            let loss = self.clamp_signal_loss(hdr.signal_loss);
+            let loss = hdr.signal_loss.clamp(hdr.signal_loss, self.max_loss);
             msg.route_cost += loss;
         } else {
-            let loss = self.clamp_signal_loss(hdr.signal_loss);
+            let loss = hdr.signal_loss.clamp(hdr.signal_loss, self.max_loss);
             msg.route_cost += 1.0f64 / ((self.max_loss - loss) / self.max_loss);
         }
     }
