@@ -6,6 +6,7 @@ mod random_waypoint;
 
 /****************** Protocols ****************/
 mod aodv;
+mod aodvda;
 mod gossip_routing;
 mod lora_wifi_beacon;
 mod naive_routing;
