@@ -44,6 +44,23 @@ lazy_static! {
     pub static ref SERVICE_ADDRESS: Ipv6Addr = Ipv6Addr::new(0xFF02, 0, 0, 0, 0, 0, 0, 0x0123);
 }
 
+// Helper functions for the whole module
+fn calculate_signal_loss(
+    tx_loss_at_ref_dist: f64,
+    power_loss_coefficient: f64,
+    distance: f64,
+    reference_dist: f64,
+    floor_penetration_loss_factor: f64) -> f64 {
+        assert!(reference_dist > 0f64);
+        assert!(distance > 0f64);
+        assert!(power_loss_coefficient > 0f64);
+    let loss = tx_loss_at_ref_dist
+    + power_loss_coefficient*(distance/reference_dist).log(10.0)
+    + floor_penetration_loss_factor;
+
+    return loss;
+}
+
 /// Metadata referring to a radio transmission
 #[derive(Default)]
 pub struct TxMetadata {
@@ -111,6 +128,8 @@ pub trait Radio: std::fmt::Debug + Send + Sync {
     fn broadcast(&self, hdr: MessageHeader) -> Result<Option<TxMetadata>, MeshSimError>;
     ///Get the time of the last transmission made by this readio
     fn last_transmission(&self) -> Arc<AtomicI64>;
+    /// Get the max signal loss possible for this radio based on its physical configuration
+    fn get_max_loss(&self) -> f64;
 }
 
 /// Represents a radio used by the worker to send a message to the network.
@@ -120,6 +139,8 @@ pub struct SimulatedRadio {
     pub timeout: u64,
     ///The work dir of the worker that owns this radio.
     pub work_dir: String,
+    /// The maximum signal loss for this radio based on its physical properties
+    pub max_loss: f64,
     ///Address that this radio listens on
     address: String,
     ///Name of the node that owns this radio
@@ -154,6 +175,7 @@ pub struct SimulatedRadio {
     floor_penetration_loss_factor: f64,
     // Frequency in mhz used to calculate the signal strength.
     frequency_in_mhz: f64,
+
 }
 
 impl Radio for SimulatedRadio {
@@ -164,6 +186,10 @@ impl Radio for SimulatedRadio {
     fn last_transmission(&self) -> Arc<AtomicI64> {
         // self.last_transmission.load(Ordering::SeqCst)
         Arc::clone(&self.last_transmission)
+    }
+
+    fn get_max_loss(&self) -> f64 {
+        self.max_loss
     }
 
     fn broadcast(&self, mut hdr: MessageHeader) -> Result<Option<TxMetadata>, MeshSimError> {
@@ -380,9 +406,17 @@ impl SimulatedRadio {
         let listener = SimulatedRadio::init(timeout, &rng, r_type, &logger)?;
         let listen_addres = listener.get_address();
         let tx_loss_at_ref_dist = 20.0f64*(frequency_in_mhz).log(10.0) - 28.0f64;
+        let max_loss = calculate_signal_loss(
+            tx_loss_at_ref_dist,
+            power_loss_coefficient,
+            range,
+            reference_distance,
+            floor_penetration_loss_factor
+        );
         let sr = SimulatedRadio {
             timeout,
             work_dir,
+            max_loss,
             id,
             worker_name,
             address: listen_addres,
@@ -608,6 +642,11 @@ pub struct WifiRadio {
 impl Radio for WifiRadio {
     fn get_address(&self) -> &str {
         &self.address
+    }
+
+    fn get_max_loss(&self) -> f64 {
+        //Value only used in simulated mode
+        return -1.0f64;        
     }
 
     fn last_transmission(&self) -> Arc<AtomicI64> {
@@ -917,6 +956,10 @@ where
         })?;
         let tx = Default::default();
         Ok(Some(tx))
+    }
+
+    fn last_transmission(&self) -> Arc<AtomicI64> {
+        unimplemented!("LoraRadio does not yet implement last_transmission")
     }
 
     fn last_transmission(&self) -> Arc<AtomicI64> {

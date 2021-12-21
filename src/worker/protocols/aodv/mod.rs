@@ -3,7 +3,7 @@ use crate::worker::protocols::{Transmission, HandleMessageOutcome, Protocol, Pro
 use crate::worker::radio::{self, *};
 use crate::worker::{MessageHeader, MessageStatus};
 use crate::{MeshSimError, MeshSimErrorKind};
-use crate::worker::aodv_strategies::*;
+use crate::worker::aodv::strategies::*;
 use chrono::offset::TimeZone;
 use chrono::{DateTime, Duration, Utc};
 
@@ -17,6 +17,11 @@ use std::default::Default;
 use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use crossbeam_channel::Sender;
+
+// **************************************************
+// ************ Sub-modules ************
+// **************************************************
+pub mod strategies;
 
 // **************************************************
 // ************ Configuration parameters ************

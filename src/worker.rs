@@ -59,7 +59,7 @@ pub mod commands;
 pub mod listener;
 // pub mod mobility;
 pub mod protocols;
-pub mod aodv_strategies;
+// pub mod aodv_strategies;
 pub mod radio;
 pub mod worker_config;
 

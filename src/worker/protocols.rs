@@ -6,7 +6,7 @@ use crate::worker::listener::*;
 use crate::worker::radio::*;
 use crate::worker::{MessageHeader, Worker};
 use crate::{MeshSimError, MeshSimErrorKind};
-use crate::worker::aodv_strategies::*;
+use aodv::strategies::*;
 use aodv::AODV;
 use chrono::{DateTime, Utc};
 use gossip_routing::GossipRouting;
@@ -946,6 +946,9 @@ pub fn build_protocol_resources(
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) =
                 short_radio.expect("The AODVDA protocol requires a short_radio to be provided.");
+            let max_loss = sr.get_max_loss();
+            assert!(max_loss > 0f64);
+
             let rng = Worker::rng_from_seed(seed);
             let handler: Arc<dyn Protocol> = Arc::new(AODV::new(
                 name,
@@ -959,7 +962,12 @@ pub fn build_protocol_resources(
                 sr_sender.clone(),
                 Arc::new(Mutex::new(rng)),
                 sr.last_transmission(),
-                Box::new(AodvDistanceAdjusted { algorithm: algorithm.unwrap_or(0)}),
+                Box::new(
+                    AodvDistanceAdjusted {
+                        algorithm: algorithm.unwrap_or(0),
+                        max_loss,
+                    }
+                ),
                 logger,
             ));
             let mut radio_channels = Vec::new();

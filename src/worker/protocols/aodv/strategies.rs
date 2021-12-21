@@ -1,5 +1,6 @@
 use crate::worker::protocols::aodv::{RouteResponseMessage, RouteRequestMessage, RouteTableEntry};
 use crate::worker::MessageHeader;
+use std::cmp::min;
 
 pub trait AodvStrategy: std::fmt::Debug + Send + Sync {
     fn should_update_route(
@@ -35,7 +36,19 @@ pub struct AodvNormal {
 
 #[derive(Debug)]
 pub struct AodvDistanceAdjusted {
-    pub algorithm: i32
+    pub algorithm: i32,
+    pub max_loss: f64,
+}
+
+impl AodvDistanceAdjusted {
+    pub fn clamp_signal_loss(&self, loss: f64) -> f64 {
+        if loss <= self.max_loss {
+            return loss;
+        }
+        else {
+            return self.max_loss;
+        }
+    }
 }
 
 impl AodvStrategy for AodvNormal {
@@ -90,9 +103,11 @@ impl AodvStrategy for AodvDistanceAdjusted {
         msg: &mut RouteRequestMessage,
     ) -> () {
         if self.algorithm == 0 {
-            msg.route_cost += hdr.signal_loss;
+            let loss = self.clamp_signal_loss(hdr.signal_loss);
+            msg.route_cost += loss;
         } else {
-            msg.route_cost += 1.0f64 / ((100.0f64 - hdr.signal_loss) / 100.0f64);
+            let loss = self.clamp_signal_loss(hdr.signal_loss);
+            msg.route_cost += 1.0f64 / ((self.max_loss - loss) / self.max_loss);
         }
     }
 
@@ -102,9 +117,11 @@ impl AodvStrategy for AodvDistanceAdjusted {
         msg: &mut RouteResponseMessage,
     ) -> () {
         if self.algorithm == 0 {
-            msg.route_cost += hdr.signal_loss;
+            let loss = self.clamp_signal_loss(hdr.signal_loss);
+            msg.route_cost += loss;
         } else {
-            msg.route_cost += 1.0f64 / ((100.0f64 - hdr.signal_loss) / 100.0f64);
+            let loss = self.clamp_signal_loss(hdr.signal_loss);
+            msg.route_cost += 1.0f64 / ((self.max_loss - loss) / self.max_loss);
         }
     }
 
@@ -116,4 +133,15 @@ impl AodvStrategy for AodvDistanceAdjusted {
     ) -> () {
         entry.route_cost = msg.route_cost;
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::logging;
+    use std::env;
+    use std::fs::File;
+    use std::io::Read;
+
+    
 }
