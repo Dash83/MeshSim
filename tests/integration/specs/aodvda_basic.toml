@@ -13,6 +13,7 @@ net_diameter =  15
 node_traversal_time = 40
 allowed_hello_loss = 2
 rreq_retries = 2
+algorithm = 1
 
 [initial_nodes.node2]
 worker_name = "node2"

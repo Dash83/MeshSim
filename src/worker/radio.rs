@@ -971,8 +971,8 @@ where
         unimplemented!("LoraRadio does not yet implement last_transmission")
     }
 
-    fn last_transmission(&self) -> Arc<AtomicI64> {
-        unimplemented!("LoraRadio does not yet implement last_transmission")
+    fn get_max_loss(&self) -> f64 {
+        unimplemented!("LoraRadio does not yet implement get_max_loss")
     }
 }
 
