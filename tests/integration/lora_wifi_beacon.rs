@@ -1,11 +1,16 @@
 extern crate mesh_simulator;
 
+use std::collections::HashMap;
+use std::path::Path;
+
 use super::super::*;
 
 use mesh_simulator::tests::common::*;
 
 #[test]
 fn test_placement() {
+    color_backtrace::install();
+
     let test_name = String::from("lora_wifi_beacon_placement");
     let data = setup(&test_name, false, false);
 
@@ -39,56 +44,110 @@ fn test_placement() {
     let master_log_records = logging::get_log_records_from_file(&master_log_file)
         .expect("Failed to get log records from Master");
     let master_node_num = logging::find_record_by_msg(
-        "End_Test action: Finished. 20 processes terminated.",
+        "End_Test action: Finished. 12 processes terminated.",
         &master_log_records,
     );
     assert!(master_node_num.is_some());
 
+    //Load all the logs for all nodes
+    let mut all_incoming_messages = HashMap::new();
+    let mut all_outgoing_messages = HashMap::new();
+    for i in 1..21 {
+        let node = format!("node{}", i);
+        let log_file = format!("{}/log/{}.log", &data.work_dir, &node);
+        let path = Path::new(&log_file);
+        if !path.exists() {
+            continue;
+        }
+        let incoming = logging::get_received_message_records(&log_file).expect("Could not get outgoing messages for node");
+        let outgoing = logging::get_outgoing_message_records(&log_file).expect("Could not get outgoing messages for node");
+        all_incoming_messages.insert(node.clone(), incoming);
+        all_outgoing_messages.insert(node.clone(), outgoing);
+    }
+
+    //////////////////////////////////////////
     //Check the upper left corner of the grid
-    let node1_log_file = format!("{}/log/node1.log", &data.work_dir);
-    let incoming_messages = logging::get_received_message_records(node1_log_file).unwrap();
-    let beacons_received = incoming_messages
+    /////////////////////////////////////////
+    let node1_beacons_sent_short = all_outgoing_messages["node1"]
+        .iter()
+        .filter(|&m| m.msg_type == "BEACON" && m.radio == "SHORT")
+        .count();
+    let node1_beacons_sent_long = all_outgoing_messages["node1"]
+        .iter()
+        .filter(|&m| m.msg_type == "BEACON" && m.radio == "LONG")
+        .count();
+    let node1_beacons_received = all_incoming_messages["node1"]
         .iter()
         .filter(|&m| m.msg_type == "BEACON" && m.status == "ACCEPTED")
         .count();
-    let responses_received = incoming_messages
+    let node1_responses_received = all_incoming_messages["node1"]
         .iter()
         .filter(|&m| m.msg_type == "BEACON_RESPONSE" && m.status == "ACCEPTED")
         .count();
 
-    println!("beacons_received: {}", beacons_received);
-    println!("responses_received: {}", responses_received);
-    // Expected beacons per node:
+    // Expected beacons & responses per node:
     // node2:   10
     // node3:   5
     // node6:   10
     // node7:   5
     // node11:  5
-    assert_eq!(beacons_received, 35);
-    // Expected responses per node:
-    // node2:   10
-    // node3:   5
-    // node6:   10
-    // node7:   5
-    // node11:  5
-    assert_eq!(responses_received, 35);
+    let node1_beacons_expected =
+        all_outgoing_messages["node2"].iter().filter(|&m| m.msg_type == "BEACON").count() +
+        all_outgoing_messages["node6"].iter().filter(|&m| m.msg_type == "BEACON").count() +
+        all_outgoing_messages["node3"].iter().filter(|&m| m.msg_type == "BEACON" && m.radio == "SHORT").count() +
+        all_outgoing_messages["node7"].iter().filter(|&m| m.msg_type == "BEACON" && m.radio == "SHORT").count() +
+        all_outgoing_messages["node11"].iter().filter(|&m| m.msg_type == "BEACON" && m.radio == "SHORT").count();
+    assert_eq!(node1_beacons_received, node1_beacons_expected);
 
+    let expected_responses = (node1_beacons_sent_short * 5) + (node1_beacons_sent_long * 2);
+    assert_eq!(node1_responses_received, expected_responses);
+
+    ////////////////////////
     //Check a central node
-    let node7_log_file = format!("{}/log/node7.log", &data.work_dir);
-    let incoming_messages = logging::get_received_message_records(node7_log_file).unwrap();
-    let beacons_received = incoming_messages
+    ////////////////////////
+    let node7_beacons_received = all_incoming_messages["node7"]
         .iter()
         .filter(|&m| m.msg_type == "BEACON" && m.status == "ACCEPTED")
         .count();
-    let responses_received = incoming_messages
+    let node7_responses_received = all_incoming_messages["node7"]
         .iter()
         .filter(|&m| m.msg_type == "BEACON_RESPONSE" && m.status == "ACCEPTED")
         .count();
+    let node7_beacons_sent_short = all_outgoing_messages["node7"]
+        .iter()
+        .filter(|&m| m.msg_type == "BEACON" && m.radio == "SHORT")
+        .count();
+    let node7_beacons_sent_long = all_outgoing_messages["node7"]
+        .iter()
+        .filter(|&m| m.msg_type == "BEACON" && m.radio == "LONG")
+        .count();
 
-    println!("beacons_received: {}", beacons_received);
-    println!("responses_received: {}", responses_received);
-    assert_eq!(beacons_received, 70);
-    assert_eq!(responses_received, 70);
+    // Expected beacons & responses per node:
+    // node1:   5
+    // node3:   5
+    // node9:   5
+    // node11:  5
+    // node13:  5
+    // node17:  5 <-- este no
+    // node2:  10
+    // node6:  10
+    // node8:  10
+    // node12: 10
+    let node7_beacons_expected =
+        all_outgoing_messages["node1"].iter().filter(|&m| m.msg_type == "BEACON" && m.radio == "SHORT").count() +    
+        all_outgoing_messages["node3"].iter().filter(|&m| m.msg_type == "BEACON" && m.radio == "SHORT").count() +
+        all_outgoing_messages["node9"].iter().filter(|&m| m.msg_type == "BEACON" && m.radio == "SHORT").count() +
+        all_outgoing_messages["node11"].iter().filter(|&m| m.msg_type == "BEACON" && m.radio == "SHORT").count() +
+        all_outgoing_messages["node13"].iter().filter(|&m| m.msg_type == "BEACON" && m.radio == "SHORT").count() +
+        // all_outgoing_messages["node17"].iter().filter(|&m| m.msg_type == "BEACON" && m.radio == "SHORT").count() +
+        all_outgoing_messages["node2"].iter().filter(|&m| m.msg_type == "BEACON").count() +
+        all_outgoing_messages["node6"].iter().filter(|&m| m.msg_type == "BEACON").count() +
+        all_outgoing_messages["node8"].iter().filter(|&m| m.msg_type == "BEACON").count() +
+        all_outgoing_messages["node12"].iter().filter(|&m| m.msg_type == "BEACON").count();
+    assert_eq!(node7_beacons_received, node7_beacons_expected);
+    
+    let expected_responses = (node7_beacons_sent_short * 9) + (node7_beacons_sent_long * 4);
+    assert_eq!(node7_responses_received, expected_responses);
 
     //Test passed. Results are not needed.
     teardown(data, true);

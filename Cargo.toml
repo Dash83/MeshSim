@@ -35,7 +35,7 @@ md5 = "0.6.1"
 base64 = "0.10.1"
 rusqlite = { version = "0.16.0",  features = ["bundled", "functions"] }
 threadpool = "1.7.1"
-color-backtrace = "0.1.3"
+color-backtrace = "0.5.1"
 libc = "0.2.55"
 sx1276 = { git = "https://github.com/doctorn/sx1276"}
 chrono = "0.4.10"
