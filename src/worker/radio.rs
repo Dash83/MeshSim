@@ -53,9 +53,12 @@ fn calculate_signal_loss(
     floor_penetration_loss_factor: f64) -> f64 {
         
     assert!(reference_dist > 0f64);
-    assert!(distance > 0f64);
     assert!(power_loss_coefficient > 0f64);
     
+    if distance <= 0f64 {
+        return 0f64;
+    }
+
     //Adjust distance if necessary to avoid getting a negative lost
     let distance = if distance < reference_dist {
         reference_dist

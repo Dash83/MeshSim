@@ -861,72 +861,30 @@ fn test_broadcast_device() -> TestResult {
 
 #[test]
 fn test_last_transmission() {
-    use mesh_simulator::worker::protocols::flooding;
-
     let test_name = "last_transmission";
-    let data = setup(test_name, false, true);
-    let conn = get_db_connection_by_file(data.db_env_file.unwrap(), &data.logger)
+    let mut data = setup(test_name, false, true);
+    let env_file = data.db_env_file.take().expect("Failed to unwrap env_file");
+    let conn = get_db_connection_by_file(env_file, &data.logger)
         .expect("Could not connect");
 
-    let worker_name = String::from("node1");
-    let worker_id = String::from("SOME_UNIQUE_ID");
-    let random_seed = 12345;
-    let config = RadioConfig::new();
-    let (tx, _rx) = config
-        .create_radio(
-            OperationMode::Simulated,
-            RadioTypes::ShortRange,
-            data.work_dir.clone(),
-            worker_name.clone(),
-            worker_id.clone(),
-            random_seed,
-            // Some(Arc::clone(&rng)),
-            None,
-            data.logger.clone(),
-        )
-        .expect("Could not create radio-channels");
-    let radio_address = tx.get_address();
-    let pos = Position { x: 0.0, y: 0.0 };
-    let vel = Velocity { x: 0.0, y: 0.0 };
-    let dest = None;
-    let _db_id = register_worker(
+    let worker_1 = add_worker_to_test(
+        &data,
         &conn,
-        worker_name,
-        worker_id,
-        pos,
-        vel,
-        &dest,
-        Some(radio_address.to_string()),
+        Some(String::from("worker1")),
+        Some(100.0),
         None,
-        &data.logger,
-    )
-    .expect("Could not register worker");
+        Some(Position { x: 0.0, y: 0.0 }),
+        Some(Velocity { x: 0.0, y: 0.0 })
+    );
 
+    //Build the message
+    let (msg, log_data) = build_dummy_message(0, 1);
     //Time before
     let ts1 = Utc::now();
+    worker_1.send_message(RadioTypes::ShortRange, msg, log_data, &data.logger);
 
-    let msg = flooding::Messages::Data(flooding::DataMessage::new(vec![]));
-    let log_data = protocols::ProtocolMessages::Flooding(msg.clone());
-    let hdr = MessageHeader::new(
-        String::new(),
-        String::new(),
-        flooding::serialize_message(msg).expect("Could not serialize message"),
-    );
-    let tx_md = tx
-        .broadcast(hdr.clone())
-        .expect("Could not broadcast message")
-        .unwrap();
-    radio::log_tx(
-        &data.logger,
-        tx_md,
-        &hdr.get_msg_id(),
-        MessageStatus::SENT,
-        &hdr.sender,
-        &hdr.destination,
-        log_data,
-    );
     //Broadcast time
-    let bc_ts = tx.last_transmission().load(Ordering::SeqCst);
+    let bc_ts = worker_1.short_radio.last_transmission().load(Ordering::SeqCst);
 
     //Now
     let ts2 = Utc::now();
@@ -936,6 +894,6 @@ fn test_last_transmission() {
 
     //Teardown
     //If test checks fail, this section won't be reached and not cleaned up for investigation.
-    let _res = std::fs::remove_dir_all(&data.work_dir).unwrap();
+    teardown(data, true);
 
 }
