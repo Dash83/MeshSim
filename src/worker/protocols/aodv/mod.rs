@@ -97,7 +97,7 @@ impl RouteTableEntry {
         let seq = match dest_seq_no {
             Some(seq) => seq,
             None => {
-                flags -= RTEFlags::VALID_SEQ_NO;
+                flags.remove(RTEFlags::VALID_SEQ_NO);
                 0
             }
         };
@@ -805,7 +805,7 @@ impl AODV {
                         &hdr,
                         MessageStatus::ACCEPTED,
                         Some("A valid route to destination has been found!"),
-                        Some("RREP process will be initiated"),
+                        Some("Route response process will be initiated"),
                         r_type,
                         &Messages::RREQ(msg.clone()),
                     );
@@ -1140,6 +1140,13 @@ impl AODV {
                             //3.3 Update the entry's lifetime
                             entry.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
                             affected_destinations.insert(entry.destination.clone(), entry.dest_seq_no);
+                            info!(
+                                logger,
+                                "Broken route detected";
+                                "next_hop"=>&entry.next_hop,
+                                "reason"=>"Link to next hop is broken",
+                                "destination"=>destination,
+                            );
                     }
                 }
             }
@@ -1147,7 +1154,9 @@ impl AODV {
         };
 
         //4. Deliver an appropriate RERR to affected neighbours with the list of unreachable destinations
-        if !affected_neighbours.is_empty() {
+        let num_affected_neighbours = affected_neighbours.len();
+        let reason = format!("{} neighbours affected", num_affected_neighbours);
+        let (status, response) = if num_affected_neighbours > 0 {
             let payload = RouteErrorMessage{ 
                 destinations : affected_destinations,
                 flags : RREPFlags::default(),
@@ -1163,21 +1172,23 @@ impl AODV {
                 String::default(), 
                 serialize_message(msg)?
             );
-
-            Ok(Some((outgoing_hdr, log_data)))
+            (MessageStatus::FORWARDING, Some((outgoing_hdr, log_data)))
         } else {
-            radio::log_handle_message(
-                logger,
-                &hdr,
-                MessageStatus::DROPPED,
-                Some("No routes affected"),
-                None,
-                r_type,
-                &Messages::RERR(msg),
-            );
+            (MessageStatus::DROPPED, None)
+        };
+        
+        //Log the reception of the message before (potentially) forwarding it.
+        radio::log_handle_message(
+            logger,
+            &hdr,
+            status,
+            Some(&reason),
+            None,
+            r_type,
+            &Messages::RERR(msg),
+        );
 
-            Ok(None)
-        }
+        Ok(response)
     }
 
     //TODO: Update lifetime of route to next_hop.
@@ -1672,7 +1683,6 @@ impl AODV {
         // Now we build the list of broken links.
         // This list is built from two different cases:
         // 1. Links to destination nodes (destination == next_hop) that are both inactive, and their lifetime has expired.
-        // 2. Links for data packets that are unconfirmed (no passive ACK from the link).
         let mut broken_links = HashMap::new();
         let expired_destination_links: HashMap<String, u32> = route_table
             .lock().expect("Could not lock route table")
@@ -1686,7 +1696,7 @@ impl AODV {
             .collect();
         broken_links.extend(expired_destination_links);
 
-        //Routes for unconfirmed, expired DATA msgs are marked as broken.
+        // 2. Links for data packets that are unconfirmed (no passive ACK from the link).
         data_cache
         .lock().expect("Could not lock data_cache")
         .iter_mut()
@@ -1740,6 +1750,13 @@ impl AODV {
                 v.flags.remove(RTEFlags::ACTIVE_ROUTE | RTEFlags::VALID_SEQ_NO);
                 v.dest_seq_no += 1;
                 v.lifetime = Utc::now() + Duration::milliseconds(DELETE_PERIOD as i64);
+                info!(
+                    logger,
+                    "Broken route detected";
+                    "next_hop"=>&v.next_hop,
+                    "reason"=>"Link to next hop is broken",
+                    "destination"=>k,
+                );
             });
 
         // RERR handling, Case 1 (Detecting a link break in an active route while transmitting data) RFC pages 24 & 25
