@@ -317,26 +317,26 @@ fn command_add_nodes(
     spec: &mut TestSpec,
     data: &TestBasics,
 ) -> Result<bool, Errors> {
-    let model = data.m_model.clone().unwrap_or(MobilityModels::Stationary);
+    let model = data.m_model.clone().unwrap_or(MobilityModels::Stationary { period: Some(mesh_simulator::mobility::DEFAULT_MOBILITY_PERIOD) });
     let mut rng = rand::thread_rng();
     let width_distribution = Uniform::new(0.0, data.width);
     let height_distribution = Uniform::new(0.0, data.height);
     let vel_distribution = match model {
-        MobilityModels::RandomWaypoint { pause_time: _ } => {
+        MobilityModels::RandomWaypoint { pause_time: _, .. } => {
             Normal::new(HUMAN_SPEED_MEAN, HUMAN_SPEED_STD_DEV)
             .map_err(|_e| { 
                 let err_msg = "Could not create Normal distribution from the provided values".into();
                 Errors::TestParsing(err_msg)
             })?
         },
-        MobilityModels::Stationary => { 
+        MobilityModels::Stationary { .. } => { 
             Normal::new(0., 0.)
             .map_err(|_e| { 
                 let err_msg = "Could not create Normal distribution from the provided values".into();
                 Errors::TestParsing(err_msg)
             })?
         },
-        MobilityModels::IncreasedMobility {vel_mean, vel_std, vel_increase:_, pause_time:_ } => { 
+        MobilityModels::IncreasedMobility {vel_mean, vel_std, vel_increase:_, pause_time:_, .. } => { 
             Normal::new(vel_mean, vel_std)
             .map_err(|_e| { 
                 let err_msg = "Could not create Normal distribution from the provided values".into();
@@ -373,8 +373,8 @@ fn command_add_nodes(
 
         match model {
             //Random waypoint and Increased Mobility only differ in the velocitry distribution used
-            MobilityModels::RandomWaypoint { pause_time: _ } | 
-            MobilityModels::IncreasedMobility {vel_mean:_, vel_std:_, vel_increase:_, pause_time:_ } => {
+            MobilityModels::RandomWaypoint { pause_time: _, .. } | 
+            MobilityModels::IncreasedMobility {vel_mean:_, vel_std:_, vel_increase:_, pause_time:_, .. } => {
                 let target_x = rng.sample(width_distribution);
                 let target_y = rng.sample(height_distribution);
                 w.destination = Some(Position {
@@ -391,7 +391,7 @@ fn command_add_nodes(
                 let y_vel = (target_y - w.position.y) / time;
                 w.velocity = Velocity { x: x_vel, y: y_vel };
             },
-            MobilityModels::Stationary => { 
+            MobilityModels::Stationary { .. } => { 
                 let x_vel = 0.0f64;
                 let y_vel = 0.0f64;
                 w.velocity = Velocity { x: x_vel, y: y_vel };

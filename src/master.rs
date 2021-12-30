@@ -78,8 +78,6 @@ const SYSTEM_THREAD_NICE: c_int = -20; //Threads that need to run with a higher 
 const CLEANUP_SLEEP: u64 = 500 * ONE_MILLISECOND_NS;
 /// Default random seed used for the master process
 pub const DEFAULT_RANDOM_SEED: u64 = 0;
-/// The update period for the mobility thread
-pub const MOBILITY_PERIOD: u64 = ONE_SECOND_NS;
 
 ///Different supported mobility models
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -89,9 +87,14 @@ pub enum MobilityModels {
     RandomWaypoint {
         /// The amount of time a node will wait once it reaches its destination.
         pause_time: i64,
+        /// The time interval in nanoseconds that the master will update the worker positions. Defaults to MOBILITY_PERIOD.
+        period: Option<u64>,
     },
     /// No movement
-    Stationary,
+    Stationary {
+        /// The time interval in nanoseconds that the master will update the worker positions. Defaults to MOBILITY_PERIOD.
+        period: Option<u64>,
+    },
     /// Increased mobility model
     IncreasedMobility {
         /// The mean velocity used for nodes
@@ -102,6 +105,8 @@ pub enum MobilityModels {
         vel_increase: f64,
         /// The time a node will pause each it reaches its destination.
         pause_time: i64,
+        /// The time interval in nanoseconds that the master will update the worker positions. Defaults to MOBILITY_PERIOD.
+        period: Option<u64>,
     },
 }
 
@@ -123,9 +128,19 @@ impl FromStr for MobilityModels {
         match parts[0].to_uppercase().as_str() {
             "RANDOMWAYPOINT" => {
                 let pause_time = parts[1].parse::<i64>().unwrap_or(RANDOM_WAYPOINT_WAIT_TIME);
-                Ok(MobilityModels::RandomWaypoint { pause_time })
+                let mut period = None;
+                if parts.len() > 2 {
+                    period = Some(parts[2].parse::<u64>().unwrap_or(DEFAULT_MOBILITY_PERIOD));
+                }
+                Ok(MobilityModels::RandomWaypoint { pause_time, period })
             }
-            "STATIONARY" => Ok(MobilityModels::Stationary),
+            "STATIONARY" => {
+                let mut period = None;
+                if parts.len() > 1 {
+                    period = Some(parts[1].parse::<u64>().unwrap_or(DEFAULT_MOBILITY_PERIOD));
+                }
+                Ok(MobilityModels::Stationary{ period })
+            }
             "INCREASEDMOBILITY" => {
                 if parts.len() < 5 {
                     let err_msg = String::from("Wrong number of arguments for Increased Mobility. \nExpected: VEL_MEAN VEL_STD VEL_INCREASE PAUSE_TIME");
@@ -169,7 +184,12 @@ impl FromStr for MobilityModels {
                         }
                     })?;
 
-                Ok(MobilityModels::IncreasedMobility { vel_mean, vel_std, vel_increase, pause_time })
+                let mut period = None;
+                if parts.len() > 5 {
+                    period = Some(parts[5].parse::<u64>().unwrap_or(DEFAULT_MOBILITY_PERIOD));
+                }
+
+                Ok(MobilityModels::IncreasedMobility { vel_mean, vel_std, vel_increase, pause_time, period })
             },
             _ => {
                 let err_msg = String::from("Invalid mobility model");
@@ -1251,7 +1271,6 @@ impl Master {
 
     fn start_mobility_thread(&self) -> Result<JoinHandle<()>, MeshSimError> {
         let tb = thread::Builder::new();
-        let update_time = Duration::from_nanos(MOBILITY_PERIOD); //All velocities are expresed in meters per second.
         let sim_start_time = Instant::now();
         let sim_end_time = Duration::from_nanos(self.duration * ONE_MILLISECOND_NS);
         let m_model = self.mobility_model.clone();
@@ -1269,7 +1288,9 @@ impl Master {
                     logger,
                     "No mobility model defined. Setting Stationary model"
                 );
-                MobilityModels::Stationary
+                MobilityModels::Stationary { 
+                    period: Some(DEFAULT_MOBILITY_PERIOD) 
+                }
             });
 
             let mut mobility_handler = match Master::build_mobility_handler(model, random_seed, test_area, logger.clone()) {
@@ -1281,13 +1302,16 @@ impl Master {
                 },
             };
 
+            let update_time = Duration::from_nanos(mobility_handler.get_mobility_period()); //All velocities are expresed in meters per second.
+            let ratio = mobility_handler.get_mobility_period() as f64 / ONE_SECOND_NS as f64;
+
             while Instant::now().duration_since(sim_start_time) < sim_end_time {
 
                 // Let one second elapse
                 thread::sleep(update_time);
 
                 //Update all worker positions
-                let _res = match update_worker_positions(&conn) {
+                let _res = match update_worker_positions(&conn, ratio) {
                     Ok(v) => { v },
                     Err(e) => {
                         error!(logger, "Error updating worker positions: {}", e);
@@ -1333,8 +1357,8 @@ impl Master {
         let conn = get_db_connection(&logger)?;
 
         let handler: Box<dyn MobilityHandler> = match model {
-            MobilityModels::Stationary => { 
-                let _ = Stationary::new(&conn, &logger);
+            MobilityModels::Stationary{ period } => { 
+                let _ = Stationary::new(&conn, &logger, period);
                 let err_msg = "Exiting thread since Stationary model is selected".to_string();
                 let e = MeshSimError{
                     kind: MeshSimErrorKind::Configuration(err_msg),
@@ -1342,7 +1366,7 @@ impl Master {
                 };
                 return Err(e);
             },
-            MobilityModels::RandomWaypoint{ pause_time } => { 
+            MobilityModels::RandomWaypoint{ pause_time, period } => { 
                 let h = RandomWaypoint::new(
                     HUMAN_SPEED_MEAN,
                     HUMAN_SPEED_STD_DEV,
@@ -1350,18 +1374,20 @@ impl Master {
                     test_area,
                     pause_time,
                     conn,
-                    logger
+                    logger,
+                    period
                 )?;
                 Box::new(h)
             },
-            MobilityModels::IncreasedMobility{vel_mean: _, vel_std: _, vel_increase, pause_time } => { 
+            MobilityModels::IncreasedMobility{vel_mean: _, vel_std: _, vel_increase, pause_time, period } => { 
                 let h = IncreasedMobility::new(
                     vel_increase,
                     random_seed,
                     test_area,
                     pause_time,
                     conn,
-                    logger
+                    logger,
+                    period
                 );
                 Box::new(h)                
             },

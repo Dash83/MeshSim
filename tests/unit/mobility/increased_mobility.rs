@@ -1,20 +1,53 @@
 extern crate mesh_simulator;
 
 use core::time;
+use std::time::Duration;
 
 use diesel::PgConnection;
 use mesh_simulator::mobility::*;
 use mesh_simulator::tests::common::*;
 use mesh_simulator::backend::*;
 
-use crate::unit::mobility::common::{MobilityTestWorker, MOBILITY_TEST_AREA};
+use crate::unit::mobility::{common::{MobilityTestWorker, MOBILITY_TEST_AREA}, worker_positions::verify_workers_state};
+
+use super::common::mobility_test_period_to_ratio;
 
 #[test]
-fn test_increased_mobility() {
+/// Basic unit tests for the handle_iteration() method of the IncreasedMobility
+/// mobility handler.
+fn test_increased_mobility_basic() {
+    // Run the test
+    test_increased_mobility("increased_mobility_basic", mesh_simulator::mobility::DEFAULT_MOBILITY_PERIOD);
+}
+
+#[test]
+/// Unit tests for the handle_iteration() method of the IncreasedMobility
+/// mobility handler with a 2 second mobility period (see MOBILITY_PERIOD).
+fn test_increased_mobility_period_1() {
+    let period = Duration::from_secs(2).as_nanos() as u64;
+
+    // Run the test with a 2 second update period
+    test_increased_mobility("increased_mobility_period_1", period);
+}
+
+#[test]
+/// Unit tests for the handle_iteration() method of the IncreasedMobility
+/// mobility handler with a 0.5 second mobility period (see MOBILITY_PERIOD).
+fn test_increased_mobility_period_2() {
+    let period = Duration::from_millis(500).as_nanos() as u64;
+
+    // Run the test with a .5 second update period
+    test_increased_mobility("increased_mobility_period_2", period);
+}
+
+/// Runs the basic tests for increased mobility
+fn test_increased_mobility(base_name: &str, period: u64) {
     // Time in milliseconds that the workers will pause upon reaching their destination
-    let pause_time = 10000;
+    let pause_time: i64 = 10000;
     // Setup the test environment and create a database
-    let mut data = setup("worker_positions_incrmob", false, true);
+    let mut data = setup(base_name, false, true);
+    // Worker update ratio
+    let ratio = mobility_test_period_to_ratio(period);
 
     // Get the postgresql connection
     let env_file = data.db_env_file.take()
@@ -31,63 +64,90 @@ fn test_increased_mobility() {
         MOBILITY_TEST_AREA,
         pause_time,
         conn2,
-        data.logger.clone()
+        data.logger.clone(),
+        Some(period),
     );
     let mut mobility_handler: Box<dyn MobilityHandler> = Box::new(increased_mobility_handler);
+    assert_eq!(mobility_handler.get_mobility_period(), period);
 
     // Add a list of test workers to the mobility system
-    let mut test_workers = MobilityTestWorker::setup(&data, &conn);
+    let mut test_workers = MobilityTestWorker::generate_test_workers_basic();
+    for test_worker in test_workers.iter(){
+        test_worker.add_to_mobility_system(&data, &conn);
+    }
 
-    // Test 1: update the worker's positions once and verify their new position
-    test_increased_mobility_once(&conn, test_workers.as_mut(), &mut mobility_handler);
-
-    // Test 2: continue to update the worker positions until they reach their destination
-    test_increased_mobility_to_dest(&conn, test_workers.as_mut(), &mut mobility_handler);
-
-    println!("----- Pausing");
-    std::thread::sleep(time::Duration::from_millis(pause_time as u64));
-
-    // TODO: Test after pause
-    
-    //Test passed. Results are not needed.
-    teardown(data, true);
-}
-
-/// Updates the worker positions once and verifies their new position with respect to its previous position.
-fn test_increased_mobility_once(conn: &PgConnection, test_workers: &mut Vec<MobilityTestWorker>, mobility_handler: &mut Box<dyn MobilityHandler>) {
-    // Update all worker positions
-    let _res = update_worker_positions(&conn)
-        .expect("Failed to update worker positions.");
-
-    // Pass control to mobility model to recalculate the worker positions
-    let newly_arrived = mobility_handler.handle_iteration()
-        .expect("Mobility iteration failed.");
-
-    verify_positions(&conn, test_workers, &newly_arrived);
-}
-
-/// Updates the worker positions until they reach their destination.
-fn test_increased_mobility_to_dest(conn: &PgConnection, test_workers: &mut Vec<MobilityTestWorker>, mobility_handler: &mut Box<dyn MobilityHandler>) {
-    let steps_to_destination = test_workers[0].get_steps_to_destination();
-
-    for step in 1..steps_to_destination {
-        println!("----- Iteration {}", step);
+    // First, update the worker positions until they reach their destination.
+    let mut workers_at_destination = 0;
+    while workers_at_destination < test_workers.len() {
+        println!("----- Before Pause");
 
         // Update all worker positions
-        let _res = update_worker_positions(&conn)
+        let _res = update_worker_positions(&conn, ratio)
             .expect("Failed to update worker positions.");
+    
+        // Pass control to mobility model to recalculate the worker positions
+        let newly_arrived = mobility_handler.handle_iteration()
+            .expect("Mobility iteration failed.");
+        workers_at_destination += newly_arrived.len();
+    
+        verify_workers_state(&conn, &mut test_workers, Some(&newly_arrived), Some(period));
+    }
 
+    // The workers must be paused after reaching their destination, verify they
+    // don't move during these updates
+    for _step in 0..3 {
+        println!("----- On Pause");
+
+        // Update all worker positions
+        let _res = update_worker_positions(&conn, ratio)
+            .expect("Failed to update worker positions.");
+    
         // Pass control to mobility model to recalculate the worker positions
         let newly_arrived = mobility_handler.handle_iteration()
             .expect("Mobility iteration failed.");
 
-        // Verify the worker's position with respect to its previous position.
-        verify_positions(&conn, test_workers, &newly_arrived);
+        verify_state_on_pause(&conn, &mut test_workers, &newly_arrived);
     }
+
+    std::thread::sleep(time::Duration::from_millis(pause_time as u64));
+
+    // After the pause, the workers remain in the same position and the
+    // mobility system sets a new destination and velocity.
+    {
+        println!("----- On Pause");
+
+        // Update all worker positions
+        let _res = update_worker_positions(&conn, ratio)
+            .expect("Failed to update worker positions.");
+    
+        // Pass control to mobility model to recalculate the worker positions
+        let newly_arrived = mobility_handler.handle_iteration()
+            .expect("Mobility iteration failed.");
+
+        verify_state_on_pause(&conn, &mut test_workers, &newly_arrived);
+    }
+
+    // Verify that workers restart movement after the pause.
+    for _step in 0..3 {
+        println!("----- After pause");
+
+        // Update all worker positions
+        let _res = update_worker_positions(&conn, ratio)
+            .expect("Failed to update worker positions.");
+    
+        // Pass control to mobility model to recalculate the worker positions
+        let newly_arrived = mobility_handler.handle_iteration()
+            .expect("Mobility iteration failed.");
+    
+        verify_workers_state(&conn, &mut test_workers, Some(&newly_arrived), Some(period));
+    }
+
+    //Test passed. Results are not needed.
+    teardown(data, true);
 }
 
-/// Sanity checks the current position of every worker before it reaches its destination
-fn verify_positions(conn: &PgConnection, test_workers: &mut Vec<MobilityTestWorker>, newly_arrived: &Vec<NodeState>) {
+/// Verifies that workers stay at their previous position
+fn verify_state_on_pause(conn: &PgConnection, test_workers: &mut Vec<MobilityTestWorker>, newly_arrived: &Vec<NodeState>) {
     // Get the current position of every worker
     let worker_states = select_all_workers_state(&conn)
         .expect("Failed to select worker positions.");
@@ -100,64 +160,23 @@ fn verify_positions(conn: &PgConnection, test_workers: &mut Vec<MobilityTestWork
         let state = worker_states.iter().find(|&s|s.name.eq(&test_worker.name));
         assert!(state.is_some());
         let worker_state = state.unwrap();
-        println!("Worker {} at {},{} with vel {},{} and dest {},{}",
+        let newly_arrived_state = newly_arrived.iter().find(|&s|s.name.eq(&test_worker.name));
+
+        println!("Worker {} \tat {},{} \tdest {},{} \tvel {},{}",
             worker_state.name,
             worker_state.pos.x, worker_state.pos.y,
-            worker_state.vel.x, worker_state.vel.y,
-            worker_state.dest.unwrap().x, worker_state.dest.unwrap().y);
+            worker_state.dest.unwrap().x, worker_state.dest.unwrap().y,
+            worker_state.vel.x, worker_state.vel.y,);
 
-        // Check if the worker arrived at its destination, according to the mobility model
-        let state = newly_arrived.iter().find(|&s|s.name.eq(&test_worker.name));
-        let is_at_destination = state.is_some();
-        let is_before_destination = !is_at_destination && !test_worker.paused;
- 
-        // Verify the worker's destination and velocity
-        if is_before_destination {
-            // Before reaching its destination, the worker must keep its original destination and velocity regardless of the mobility model.
-            assert_eq!(worker_state.dest.unwrap(), test_worker.destination);
-            assert_eq!(worker_state.vel, test_worker.velocity);
-        }
-        else if is_at_destination {
-            // Upon reaching its destination, the mobility model sets a new destination and velocity.
-            assert_ne!(worker_state.dest.unwrap(), test_worker.destination);
-            assert_eq!(worker_state.vel, Velocity{x: 0.0, y: 0.0});
-        }
+        // Verify the mobility model did not consider this worker as newly arrived.
+        assert!(newly_arrived_state.is_none());
+        
+        // Verify the worker did not move
+        assert_eq!(worker_state.pos, test_worker.previous_position);
 
-        // Verify the worker's new position
-        let expected_position = Position {
-            x: test_worker.previous_position.x + worker_state.vel.x,
-            y: test_worker.previous_position.y + worker_state.vel.y
-        };
-        if is_before_destination {
-            // Before reaching its destination, it must be at the expected position
-            assert_eq!(worker_state.pos, expected_position);
-        }
-        else if is_at_destination {
-            // The mobility model will report the node as being at the
-            // destination if it is close enough, where 'close' means at a
-            // distance smaller than one hop past the destination but not
-            // before. 
-            if test_worker.velocity.magnitude() > 0.0 {
-                assert!(worker_state.pos.distance(&test_worker.destination) < test_worker.velocity.magnitude());
-            } else {
-                // Worker does not move because its velocity is zero, but it
-                // was originally positioned at its destination.
-                assert_eq!(worker_state.pos, test_worker.initial_position);
-            }
-        }
-        else {
-            // The worker is paused after it reaches its destination
-            // Verify it doesn't move further.
-            assert_eq!(worker_state.pos, test_worker.previous_position);
-        }
-
-        // Save the current position as the previous position
-        test_worker.previous_position = worker_state.pos;
-
-        if is_at_destination {
-            // The worker gets paused upon reaching its destination
-            assert_eq!(test_worker.paused, false);
-            test_worker.paused = true;
-        }
+        // Update the destination and velocity, the mobility model sets
+        // these new values once the pause time has elapsed.
+        test_worker.destination = worker_state.dest.unwrap();
+        test_worker.velocity = worker_state.vel;
     }
 }

@@ -13,6 +13,9 @@ use slog::{Key, Value, Record, Serializer};
 use std::num::ParseFloatError;
 use std::str::FromStr;
 
+/// The update period for the mobility thread
+pub const DEFAULT_MOBILITY_PERIOD: u64 = ONE_SECOND_NS;
+
 ///Struct to encapsule the 2D position of the worker
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default, Copy)]
 pub struct Position {
@@ -107,13 +110,17 @@ pub struct NodeState {
 pub type NodeMobilityState = (Position, Position, Velocity);
 pub trait MobilityHandler {
     fn handle_iteration(&mut self, ) -> Result<Vec<NodeState>, MeshSimError>;
+
+    fn get_mobility_period(&self) -> u64;
 }
 
 // Stationary mobility model
-pub struct Stationary;
+pub struct Stationary {
+    period: u64
+}
 
 impl Stationary {
-    pub fn new(conn: &PgConnection, logger: &Logger) -> Self {
+    pub fn new(conn: &PgConnection, logger: &Logger, period: Option<u64>) -> Self {
         info!(logger, "Stationary mobility model selected. Stopping all nodes.");
         let _rows = match stop_all_workers(conn) {
             Ok(rows) => rows,
@@ -122,13 +129,19 @@ impl Stationary {
                 0
             }
         };
-        Stationary
+        Stationary {
+            period: period.unwrap_or(DEFAULT_MOBILITY_PERIOD)
+        }
     }
 }
 
 impl MobilityHandler for Stationary {
     fn handle_iteration(&mut self, ) -> Result<Vec<NodeState>, MeshSimError> {
         Ok(Vec::new())
+    }
+
+    fn get_mobility_period(&self) -> u64 {
+        return self.period;
     }
 }
 
@@ -142,6 +155,7 @@ pub struct RandomWaypoint {
     conn: PgConnection,
     rng: StdRng,
     logger: Logger,
+    period: u64
 }
 
 type PendingWorker = (DateTime<Utc>, Velocity);
@@ -155,7 +169,8 @@ impl RandomWaypoint {
         simulation_area: Area,
         pause_time: i64,
         conn: PgConnection,
-        logger: Logger) -> Result<Self, MeshSimError> {
+        logger: Logger,
+        period: Option<u64>) -> Result<Self, MeshSimError> {
         let paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
         let rng = StdRng::seed_from_u64(random_seed);
         let velocity_distribution = Normal::new(vel_mean, vel_std)
@@ -178,6 +193,7 @@ impl RandomWaypoint {
             conn,
             rng,
             logger,
+            period: period.unwrap_or(DEFAULT_MOBILITY_PERIOD),
         };
         Ok(rwp)
     }
@@ -186,8 +202,10 @@ impl RandomWaypoint {
 impl MobilityHandler for RandomWaypoint {
 
     fn handle_iteration(&mut self,) -> Result<Vec<NodeState>, MeshSimError> {
+        // Ratio at which the mobility model is updated, based on update period
+        let ratio = self.period as f64 / ONE_SECOND_NS as f64;
         //Select workers that reached their destination
-        let workers = select_workers_at_destination(&self.conn)?;
+        let workers = select_workers_at_destination(&self.conn, ratio)?;
 
         // Filther those nodes at their destination that were procssed before and remain there because they are paused or about to be restarted.
         let newly_arrived: Vec<NodeState> = workers.into_iter()
@@ -245,6 +263,10 @@ impl MobilityHandler for RandomWaypoint {
         self.paused_workers.retain(|&k, _| !restarted_workers.contains(&k));
         Ok(newly_arrived)
     }
+
+    fn get_mobility_period(&self) -> u64 {
+        return self.period;
+    }
 }
 
 pub fn euclidean_distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
@@ -263,6 +285,7 @@ pub struct IncreasedMobility {
     conn: PgConnection,
     rng: StdRng,
     logger: Logger,
+    period: u64,
 }
 
 impl IncreasedMobility {
@@ -272,7 +295,8 @@ impl IncreasedMobility {
         simulation_area: Area,
         pause_time: i64,
         conn: PgConnection,
-        logger: Logger) -> Self {
+        logger: Logger,
+        period: Option<u64>) -> Self {
         let paused_workers: HashMap<i32, PendingWorker> = HashMap::new();
         let rng = StdRng::seed_from_u64(random_seed);
         let width_dist = Uniform::new_inclusive(0., simulation_area.width);
@@ -287,14 +311,17 @@ impl IncreasedMobility {
             conn,
             rng,
             logger,
+            period: period.unwrap_or(DEFAULT_MOBILITY_PERIOD),
         }
     }
 }
 
 impl MobilityHandler for IncreasedMobility {
     fn handle_iteration(&mut self,) -> Result<Vec<NodeState>, MeshSimError> {
+        // Ratio at which the mobility model is updated, based on update period
+        let ratio = self.period as f64 / ONE_SECOND_NS as f64;
         //Select workers that reached their destination
-        let workers = select_workers_at_destination(&self.conn)?;
+        let workers = select_workers_at_destination(&self.conn, ratio)?;
 
         // Filther those nodes at their destination that were procssed before and remain there because they are paused or about to be restarted.
         let newly_arrived: Vec<NodeState> = workers.into_iter()
@@ -353,5 +380,9 @@ impl MobilityHandler for IncreasedMobility {
         self.paused_workers.retain(|&k, _| !restarted_workers.contains(&k));
 
         Ok(newly_arrived)
+    }
+
+    fn get_mobility_period(&self) -> u64 {
+        return self.period;
     }
 }

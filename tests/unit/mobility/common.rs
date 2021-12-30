@@ -1,5 +1,5 @@
 use diesel::PgConnection;
-use mesh_simulator::{mobility::{Position, Velocity, NodeState}, tests::common::TestSetup, worker::{worker_config::RadioConfig, OperationMode, radio::RadioTypes}, backend::register_worker, master::test_specification::Area};
+use mesh_simulator::{mobility::{Position, Velocity}, tests::common::TestSetup, worker::{worker_config::RadioConfig, OperationMode, radio::RadioTypes}, backend::register_worker, master::test_specification::Area};
 
 extern crate mesh_simulator;
 
@@ -10,71 +10,58 @@ pub struct MobilityTestWorker {
     pub previous_position: Position,
     pub destination: Position,
     pub velocity: Velocity,
-    pub paused: bool,
 }
 
 // How far workers move in one iteration
-static STEP_DISTANCE: f64 = 10.0;
+pub const STEP_DISTANCE: f64 = 10.0;
 // Total distance workers move to reach their destination
-static TOTAL_DISTANCE: f64 = 100.0;
+pub const TOTAL_DISTANCE: f64 = 100.0;
 // Size of the test area
-pub static MOBILITY_TEST_AREA: Area = Area{width: TOTAL_DISTANCE, height: TOTAL_DISTANCE};
+pub const MOBILITY_TEST_AREA: Area = Area{width: TOTAL_DISTANCE, height: TOTAL_DISTANCE};
 
 impl MobilityTestWorker {
 
-    // Generates a list of test workers and adds them to the mobility system
-    pub fn setup(data : &TestSetup, conn: &PgConnection) -> Vec<MobilityTestWorker> {
-        // Generate a list of test workers
-        let test_workers = MobilityTestWorker::generate_test_workers();
-
-        // Add the workers to the mobility system
-        for worker in test_workers.iter(){
-            worker.add_to_mobility_system(&data, &conn);
-        }
-
-        return test_workers;
+    /// Gets the position the worker is expected to move in the next call to
+    /// update_worker_positions, given its previous position and velocity.
+    pub fn get_next_position(&self, period: Option<u64>) -> Position {
+        // All velocities are expresed in meters per second (see start_mobility_thread).
+        // This is the time period in elapsed in one call to update_worker_positions().
+        let ratio = mobility_test_period_to_ratio(period.unwrap_or(mesh_simulator::mobility::DEFAULT_MOBILITY_PERIOD));
+        return Position {
+            x: self.previous_position.x + (self.velocity.x * ratio),
+            y: self.previous_position.y + (self.velocity.y * ratio)
+        };
     }
 
-    /// Gets the number of test iterations this worker is expected to take to reach its original destination.
-    pub fn get_steps_to_destination(&self) -> i32 {
-        if self.destination == self.initial_position {
-            // Workers that start at their destination will "arrive" at their destination in the 1st iteration.
-            return 1;
-        } else if self.velocity.x == 0.0 && self.velocity.y == 0.0 {
-            // Workers that don't move (worker8) will never reach their destination
-            return i32::MAX;
-        }
+    /// Returns TRUE if the worker is expected to arrive at its destination
+    /// in the next step, i.e. the next call to update_worker_positions().
+    pub fn is_next_at_destination(&self, period: Option<u64>) -> bool {
+        let next_position = self.get_next_position(period);
+        let ratio = mobility_test_period_to_ratio(period.unwrap_or(mesh_simulator::mobility::DEFAULT_MOBILITY_PERIOD));
 
-        // Calculated as ( <final_position> - <initial_position> ) / <velocity>
-        let steps_in_x = ((self.destination.x - self.initial_position.x).abs() / self.velocity.x.abs()).ceil() as i32;
-        let steps_in_y = ((self.destination.y - self.initial_position.y).abs() / self.velocity.y.abs()).ceil() as i32;
-        return steps_in_x.max(steps_in_y);
+        // The mobility model will report the node as being at the
+        // destination if it is close enough to the destination,
+        // where 'close' means at a distance smaller than one hop past
+        // the destination but not before.
+        return  self.destination.eq(&next_position) ||
+                (self.destination.distance(&self.previous_position) > 0.0 &&
+                 self.destination.distance(&self.previous_position) < (self.velocity.magnitude() * ratio) &&
+                 self.destination.distance(&next_position)          < (self.velocity.magnitude() * ratio));
     }
 
-    /// Verifies the worker's current position with respect to its previous position.
-    pub fn verify_move(&mut self, worker_state: &NodeState) {
-        assert!(worker_state.name.eq(&self.name));
+    pub fn get_steps_to_destination(&self, period: Option<u64>) -> u64 {
+        // All velocities are expresed in meters per second (see start_mobility_thread).
+        // This is the time period in elapsed in one call to update_worker_positions().
+        let ratio = mobility_test_period_to_ratio(period.unwrap_or(mesh_simulator::mobility::DEFAULT_MOBILITY_PERIOD));
+        let distance = self.previous_position.distance(&self.destination);
 
-        assert!(worker_state.pos.x == (self.previous_position.x + worker_state.vel.x));
-        assert!(worker_state.pos.y == (self.previous_position.y + worker_state.vel.y));
-
-        // Save the current position as the previous position
-        self.previous_position = worker_state.pos;
+        return (distance / (self.velocity.magnitude() * ratio)).ceil() as u64;
     }
 
-    /// Verifies that the worker moved again after it paused when it reached its destination
-    fn verify_restart_movement(&self, worker_state: &NodeState) {
-        assert!(worker_state.name.eq(&self.name));
-
-        // For workers that reached their destination before the pause, verify they have a new destination and velocity
-        if self.previous_position == self.destination {
-            assert!(worker_state.dest.unwrap() != self.destination);
-            assert!(worker_state.vel != self.velocity);
-        }
-    }
-
-    // Generates a list of test workers where each worker moves in a different direction to test a different scenario.
-    fn generate_test_workers() -> Vec<MobilityTestWorker> {
+    /// Generates a list of workers to run basic mobility tests.
+    /// Each worker moves in a different direction to test a different scenario
+    /// and all reach their destination at the same time.
+    pub fn generate_test_workers_basic() -> Vec<MobilityTestWorker> {
         let mut test_workers = Vec::new();
 
         // This worker moves forward horizontally
@@ -84,7 +71,6 @@ impl MobilityTestWorker {
             previous_position: Position { x: 0.0, y: 0.0 },
             destination: Position { x: TOTAL_DISTANCE, y: 0.0 },
             velocity: Velocity { x: STEP_DISTANCE, y: 0.0 },
-            paused: false
         });
 
         // This worker moves upwards vertically
@@ -94,7 +80,6 @@ impl MobilityTestWorker {
             previous_position: Position { x: 0.0, y: 0.0 },
             destination: Position { x: 0.0, y: TOTAL_DISTANCE },
             velocity: Velocity { x: 0.0, y: STEP_DISTANCE },
-            paused: false
         });
 
         // This worker moves backwards horizontally
@@ -104,7 +89,6 @@ impl MobilityTestWorker {
             previous_position: Position { x: TOTAL_DISTANCE, y: 0.0 },
             destination: Position { x: 0.0, y: 0.0 },
             velocity: Velocity { x: (STEP_DISTANCE * -1.0), y: 0.0 },
-            paused: false
         });
 
         // This worker moves downwards vertically
@@ -114,89 +98,88 @@ impl MobilityTestWorker {
             previous_position: Position { x: 0.0, y: TOTAL_DISTANCE },
             destination: Position { x: 0.0, y: 0.0 },
             velocity: Velocity { x: 0.0, y: (STEP_DISTANCE * -1.0) },
-            paused: false
         });
         
         // This worker moves forward diagonally
         test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_FRWD_DIAG"),
+            name: String::from("WORKER_FRWD_D"),
             initial_position: Position { x: 0.0, y: 0.0 },
             previous_position: Position { x: 0.0, y: 0.0 },
             destination: Position { x: TOTAL_DISTANCE, y: TOTAL_DISTANCE },
             velocity: Velocity { x: STEP_DISTANCE, y: STEP_DISTANCE },
-            paused: false
         });
         
         // This worker moves backwards diagonally
         test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_BACK_DIAG"),
+            name: String::from("WORKER_BACK_D"),
             initial_position: Position { x: TOTAL_DISTANCE, y: TOTAL_DISTANCE },
             previous_position: Position { x: TOTAL_DISTANCE, y: TOTAL_DISTANCE },
             destination: Position { x: 0.0, y: 0.0 },
             velocity: Velocity { x: (STEP_DISTANCE * -1.0), y: (STEP_DISTANCE * -1.0) },
-            paused: false
-        });
-        
-        // This worker will not move
-        test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_STATIC_AT_DEST"),
-            initial_position: Position { x: 0.0, y: 0.0 },
-            previous_position: Position { x: 0.0, y: 0.0 },
-            destination: Position { x: 0.0, y: 0.0 },
-            velocity: Velocity { x: 0.0, y: 0.0 },
-            paused: false
-        });
-
-        // This worker will not move and will never reach its destination
-        test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_STATIC"),
-            initial_position: Position { x: 0.0, y: 0.0 },
-            previous_position: Position { x: 0.0, y: 0.0 },
-            destination: Position { x: TOTAL_DISTANCE, y: TOTAL_DISTANCE },
-            velocity: Velocity { x: 0.0, y: 0.0 },
-            paused: false
         });
 
         // This worker will reach a point near its destination, as opposed to
         // landing at its exact destination coordinates.
         test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_FRWD_X_INEXACT"),
+            name: String::from("WORKER_FRWD_X_NEAR"),
             initial_position: Position { x: 0.0, y: 0.0 },
             previous_position: Position { x: 0.0, y: 0.0 },
             destination: Position { x: (TOTAL_DISTANCE - STEP_DISTANCE), y: 0.0 },
-            velocity: Velocity { x: (STEP_DISTANCE + 0.1), y: 0.0 },
-            paused: false
+            velocity: Velocity { x: (STEP_DISTANCE - 0.1), y: 0.0 },
         });
 
         // This worker will reach a point near its destination, as opposed to
         // landing at its exact destination coordinates, while moving
         // backwards horizontally.
         test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_BACK_X_INEXACT"),
+            name: String::from("WORKER_BACK_X_NEAR"),
             initial_position: Position { x: (TOTAL_DISTANCE - STEP_DISTANCE), y: 0.0 },
             previous_position: Position { x: (TOTAL_DISTANCE - STEP_DISTANCE), y: 0.0 },
             destination: Position { x: 0.0, y: 0.0 },
-            velocity: Velocity { x: ((STEP_DISTANCE + 0.1) * -1.0), y: 0.0 },
-            paused: false
+            velocity: Velocity { x: ((STEP_DISTANCE - 0.1) * -1.0), y: 0.0 },
         });
 
         // This worker will reach a point near its destination, as opposed to
         // landing at its exact destination coordinates, while moving
         // upwards diagonally.
         test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_FRWD_DIAG_INEXACT"),
+            name: String::from("WORKER_FRWD_D_NEAR"),
             initial_position: Position { x: 0.0, y: 0.0 },
             previous_position: Position { x: 0.0, y: 0.0 },
             destination: Position { x: (TOTAL_DISTANCE - STEP_DISTANCE), y: (TOTAL_DISTANCE - STEP_DISTANCE) },
-            velocity: Velocity { x: (STEP_DISTANCE + 0.1), y: (STEP_DISTANCE + 0.1) },
-            paused: false
+            velocity: Velocity { x: (STEP_DISTANCE - 0.1), y: (STEP_DISTANCE - 0.1) },
         });
 
         return test_workers;
     }
 
+    /// Generates a list of workers to test special cases in mobility tests.
+    // pub fn generate_test_workers_special() -> Vec<MobilityTestWorker> {
+    //     let mut test_workers = Vec::new();
+        
+    //     // This worker will not move
+    //     test_workers.push(MobilityTestWorker {
+    //         name: String::from("WORKER_STATIC_AT_DEST"),
+    //         initial_position: Position { x: 0.0, y: 0.0 },
+    //         previous_position: Position { x: 0.0, y: 0.0 },
+    //         destination: Position { x: 0.0, y: 0.0 },
+    //         velocity: Velocity { x: 0.0, y: 0.0 },
+    //     });
+
+    //     // This worker will not move and will never reach its destination
+    //     test_workers.push(MobilityTestWorker {
+    //         name: String::from("WORKER_STATIC"),
+    //         initial_position: Position { x: 0.0, y: 0.0 },
+    //         previous_position: Position { x: 0.0, y: 0.0 },
+    //         destination: Position { x: TOTAL_DISTANCE, y: TOTAL_DISTANCE },
+    //         velocity: Velocity { x: 0.0, y: 0.0 },
+    //     });
+
+    //     return test_workers;
+    // }
+
     /// Adds the worker to the mobility system
-    fn add_to_mobility_system(&self, data : &TestSetup, conn: &PgConnection) {
+    pub fn add_to_mobility_system(&self, data : &TestSetup, conn: &PgConnection) {
         let worker_id = String::from("416d77337e24399dc7a5aa058039f72a"); //arbitrary
         let work_dir = data.work_dir.clone();
         let short_radio_range = 100.0;
@@ -249,4 +232,9 @@ impl MobilityTestWorker {
 
 }
 
-
+/// Calculates the update ration given the mobility period in nanoseconds.
+/// All velocities are expresed in meters per second (see start_mobility_thread).
+/// The period is is the time elapsed in one call to update_worker_positions().
+pub fn mobility_test_period_to_ratio(period: u64) -> f64 {
+    return period as f64 / mesh_simulator::ONE_SECOND_NS as f64;
+}
