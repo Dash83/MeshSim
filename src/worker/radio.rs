@@ -1137,7 +1137,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_signal_loss_negative_dist() {
         color_backtrace::install();
         use crate::worker::worker_config::*;
@@ -1149,7 +1148,7 @@ mod tests {
         let tx_loss_at_ref_dist = 20.0f64*(freq).log(10.0) - 28.0f64;
 
         let distance = -1.0;
-        let expected_loss = 100.99773273273641; //irrelevant
+        let expected_loss = 0f64; //irrelevant
         let loss = radio::calculate_signal_loss(
             tx_loss_at_ref_dist,
             power_loss_coefficient,

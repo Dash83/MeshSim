@@ -167,7 +167,7 @@ impl Protocols {
                     data.insert("RE_PATTERN".into(), "SENT.*RREP".into());
                     data.insert("RT_PATTERN".into(), "SENT.*RERR".into());
                     data.insert("MAINTENANCE_PATTERN".into(), "SENT.*HELLO".into());
-                    data.insert("ROUTE_BREAK_PATTERN".into(), "BROKEN_LINK detected".into());
+                    data.insert("ROUTE_BREAK_PATTERN".into(), "Broken route detected".into());
                     data.insert("RD_FAIL_PATTERN".into(), "RREQ retries exceeded".into());
                     data                    
             }
@@ -222,7 +222,7 @@ impl Protocols {
                     data.insert("RE_PATTERN".into(), "SENT.*RREP".into());
                     data.insert("RT_PATTERN".into(), "SENT.*RERR".into());
                     data.insert("MAINTENANCE_PATTERN".into(), "SENT.*HELLO".into());
-                    data.insert("ROUTE_BREAK_PATTERN".into(), "BROKEN_LINK detected".into());
+                    data.insert("ROUTE_BREAK_PATTERN".into(), "Broken route detected".into());
                     data.insert("RD_FAIL_PATTERN".into(), "RREQ retries exceeded".into());
                     data                    
             }

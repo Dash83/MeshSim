@@ -935,7 +935,7 @@ impl AODV {
             // hop count in route table entry.
                 (entry.dest_seq_no == msg.dest_seq_no && aodv_strategy.should_update_route(&hdr, &msg, entry))
             {
-                info!(logger, "Updating route to {}", &msg.destination);
+                info!(logger, "Updating route"; "node"=>&me, "destination"=>&msg.destination);
                 // -  the route is marked as active,
                 // -  the destination sequence number is marked as valid,
                 entry
@@ -1146,6 +1146,7 @@ impl AODV {
                                 "next_hop"=>&entry.next_hop,
                                 "reason"=>"Link to next hop is broken",
                                 "destination"=>destination,
+                                "node"=>&me,
                             );
                     }
                 }
@@ -1756,6 +1757,7 @@ impl AODV {
                     "next_hop"=>&v.next_hop,
                     "reason"=>"Link to next hop is broken",
                     "destination"=>k,
+                    "node"=>&me,
                 );
             });
 
