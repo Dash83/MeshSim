@@ -352,6 +352,7 @@ pub fn update_worker_target(
 /// Returns ids and positions of all workers that have reached their destination.
 pub fn select_workers_at_destination(
     conn: &PgConnection,
+    ratio: f64,
 ) -> Result<Vec<NodeState>, MeshSimError> {
     use schema::workers;
     use schema::worker_positions;
@@ -405,7 +406,19 @@ pub fn select_workers_at_destination(
     .filter(|ns| { 
         if ns.dest.is_some() {
             let dest = ns.dest.as_ref().unwrap();
-            ns.pos == *dest
+            // Calculate distances using an adjusted velocity based on the
+            // ratio at which the mobility model is updated.
+            let vel = Velocity{ x: ns.vel.x * ratio, y: ns.vel.y * ratio};
+            let next = Position{x: ns.pos.x + vel.x, y: ns.pos.y + vel.y};
+            let prev = Position{x: ns.pos.x - vel.x, y: ns.pos.y - vel.y};
+            
+            // If the worker is near its destination, clamp to the destination
+            // coordinates. Where near is within one hop past the destination,
+            // not before.
+            ns.pos == *dest ||
+            (prev.distance(dest) < vel.magnitude() &&
+             ns.pos.distance(dest) < vel.magnitude() &&
+             ns.pos.distance(dest) < next.distance(dest))
         } else {
             false
         }
@@ -450,7 +463,7 @@ pub fn stop_workers(
 /// Function exported exclusively for the use of the Master module.
 /// Updates the positions of all registered nodes according to their
 /// respective velocity vector. Update happens every 1 second.
-pub fn update_worker_positions(conn: &PgConnection) -> Result<usize, MeshSimError> {
+pub fn update_worker_positions(conn: &PgConnection, ratio: f64) -> Result<usize, MeshSimError> {
     use diesel::pg::upsert::excluded;
     use schema::worker_positions;
     use schema::worker_velocities;
@@ -476,14 +489,10 @@ pub fn update_worker_positions(conn: &PgConnection) -> Result<usize, MeshSimErro
         .into_iter()
         .map(|(id, pos_x, pos_y, vel_x, vel_y, dest_x, dest_y)| { 
             let pos = Position{x: pos_x, y: pos_y};
-            let dest = Position{x: dest_x, y: dest_y};
+            let _dest = Position{x: dest_x, y: dest_y};
             let vel = Velocity{x: vel_x, y: vel_y};
 
-            let new_pos = if pos.distance(&dest) < vel.magnitude() {
-                NewPos{ worker_id: id, x: dest.x, y: dest.y }
-            } else {
-                NewPos{ worker_id: id, x: pos.x + vel.x, y: pos.y + vel.y}
-            };
+            let new_pos = NewPos{ worker_id: id, x: pos.x + (vel.x * ratio), y: pos.y + (vel.y * ratio)};
             new_pos
         })
         .collect();
@@ -1133,7 +1142,7 @@ mod tests {
         );
         let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
-        let positions = update_worker_positions(&conn).expect("Could not update all workers");
+        let positions = update_worker_positions(&conn, 1.0).expect("Could not update all workers");
         debug!(&data.logger, "New Positions: {:?}", positions);
 
         //Test passed. Results are not needed.
@@ -1352,7 +1361,7 @@ mod tests {
         );
         let conn = get_db_connection_by_file(data.db_env_file.clone().unwrap(), &data.logger)
             .expect("Failed to connect to experiment DB");
-        let rows = select_workers_at_destination(&conn).expect("get_workers_in_range Failed");
+        let rows = select_workers_at_destination(&conn, 1.0).expect("get_workers_in_range Failed");
         assert_eq!(rows.len(), 1);
 
         //Test passed. Results are not needed.

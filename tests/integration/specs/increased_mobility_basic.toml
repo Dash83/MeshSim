@@ -1,0 +1,146 @@
+name = "increased_mobility_basic"
+duration = 10000
+actions = []
+width = 100.0
+height = 100.0
+random_seed = 12345
+
+[mobility]
+Model = "IncreasedMobility"
+vel_mean = 10.0
+vel_std = 0.0
+vel_increase = 0.0
+pause_time = 10000
+
+[protocol]
+Protocol = "Flooding"
+
+[initial_nodes.node1]
+worker_name = "node1"
+worker_id = "8fc4154c0ef688925c2a428600a8ced4"
+work_dir = "/tmp/mobility1136496221"
+random_seed = 2764240586
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000
+
+[initial_nodes.node1.position]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node1.destination]
+x = 100.0
+y = 0.0
+
+[initial_nodes.node1.velocity]
+x = 10.0
+y = 0.0
+
+[initial_nodes.node1.radio_short]
+timeout = 10000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+
+[initial_nodes.node2]
+worker_name = "node2"
+worker_id = "8fc4157c0ef688925c2a998600a8ced8"
+work_dir = "/tmp/mobility1136496221"
+random_seed = 2764240581
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000
+
+[initial_nodes.node2.position]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node2.destination]
+x = 0.0
+y = 100.0
+
+[initial_nodes.node2.velocity]
+x = 0.0
+y = 10.0
+
+[initial_nodes.node2.radio_short]
+timeout = 10000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+
+[initial_nodes.node3]
+worker_name = "node3"
+worker_id = "8fc4157c0ef688925c2a998600a8ana8"
+work_dir = "/tmp/mobility1136496221"
+random_seed = 2764223581
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000
+
+[initial_nodes.node3.position]
+x = 100.0
+y = 0.0
+
+[initial_nodes.node3.destination]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node3.velocity]
+x = -10.0
+y = 0.0
+
+[initial_nodes.node3.radio_short]
+timeout = 10000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+
+[initial_nodes.node4]
+worker_name = "node4"
+worker_id = "8fc4285c0ef688925c2a998600a8ana8"
+work_dir = "/tmp/mobility1136496221"
+random_seed = 2781223581
+operation_mode = "Simulated"
+packet_queue_size = 3000
+stale_packet_threshold = 3000
+
+[initial_nodes.node4.position]
+x = 0.0
+y = 100.0
+
+[initial_nodes.node4.destination]
+x = 0.0
+y = 0.0
+
+[initial_nodes.node4.velocity]
+x = 0.0
+y = -10.0
+
+[initial_nodes.node4.radio_short]
+timeout = 10000
+interface_name = "wlan0"
+range = 100.0
+mac_layer_retries = 8
+mac_layer_base_wait = 16
+max_delay_per_node = 40
+
+[available_nodes]
+
+[metadata]
+MAINTENANCE_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+RE_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+RD_FAIL_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+OK_PKT_PATTERN = "ACCEPTED.*DATA"
+ROUTE_BREAK_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+DATA_PATTERN = "SENT.*DATA"
+RD_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+RT_PATTERN = "SOMETHINGTHATWILLNEVERMATCH"
+
+
