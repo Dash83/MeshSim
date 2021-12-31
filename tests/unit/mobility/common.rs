@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use diesel::PgConnection;
 use mesh_simulator::{mobility::{Position, Velocity}, tests::common::TestSetup, worker::{worker_config::RadioConfig, OperationMode, radio::RadioTypes}, backend::register_worker, master::test_specification::Area};
 
@@ -10,14 +12,15 @@ pub struct MobilityTestWorker {
     pub previous_position: Position,
     pub destination: Position,
     pub velocity: Velocity,
+    pub short_radio_range: f64,
+    pub long_radio_range: f64,
 }
 
-// How far workers move in one iteration
-pub const STEP_DISTANCE: f64 = 10.0;
-// Total distance workers move to reach their destination
-pub const TOTAL_DISTANCE: f64 = 100.0;
 // Size of the test area
-pub const MOBILITY_TEST_AREA: Area = Area{width: TOTAL_DISTANCE, height: TOTAL_DISTANCE};
+pub const MOBILITY_TEST_AREA: Area = Area{width: 100.0, height: 100.0};
+
+pub const SHORT_RADIO_RANGE_DEFAULT: f64 = 100.0;
+pub const LONG_RADIO_RANGE_DEFAULT: f64 = 500.0;
 
 impl MobilityTestWorker {
 
@@ -61,94 +64,98 @@ impl MobilityTestWorker {
     /// Generates a list of workers to run basic mobility tests.
     /// Each worker moves in a different direction to test a different scenario
     /// and all reach their destination at the same time.
-    pub fn generate_test_workers_basic() -> Vec<MobilityTestWorker> {
+    pub fn add_basic_mobility_test_workers(data : &TestSetup, conn: &PgConnection) -> Vec<MobilityTestWorker> {
         let mut test_workers = Vec::new();
+        // How far workers move in one iteration
+        let step_distance = 10.0;
+        // Total distance workers move to reach their destination
+        let total_distance = MOBILITY_TEST_AREA.width;
 
         // This worker moves forward horizontally
-        test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_FRWD_X"),
-            initial_position: Position { x: 0.0, y: 0.0 },
-            previous_position: Position { x: 0.0, y: 0.0 },
-            destination: Position { x: TOTAL_DISTANCE, y: 0.0 },
-            velocity: Velocity { x: STEP_DISTANCE, y: 0.0 },
-        });
+        test_workers.push(add_worker_to_test(data, conn,
+            Some(String::from("WORKER_FRWD_X")),
+            None,
+            None,
+            None,
+            Some(Velocity { x: step_distance, y: 0.0 }),
+            Some(Position { x: total_distance, y: 0.0 })));
 
         // This worker moves upwards vertically
-        test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_UP_Y"),
-            initial_position: Position { x: 0.0, y: 0.0 },
-            previous_position: Position { x: 0.0, y: 0.0 },
-            destination: Position { x: 0.0, y: TOTAL_DISTANCE },
-            velocity: Velocity { x: 0.0, y: STEP_DISTANCE },
-        });
+        test_workers.push(add_worker_to_test(data, conn,
+            Some(String::from("WORKER_UP_Y")),
+            None,
+            None,
+            None,
+            Some(Velocity { x: 0.0, y: step_distance }),
+            Some(Position { x: 0.0, y: total_distance })));
 
         // This worker moves backwards horizontally
-        test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_BACK_X"),
-            initial_position: Position { x: TOTAL_DISTANCE, y: 0.0 },
-            previous_position: Position { x: TOTAL_DISTANCE, y: 0.0 },
-            destination: Position { x: 0.0, y: 0.0 },
-            velocity: Velocity { x: (STEP_DISTANCE * -1.0), y: 0.0 },
-        });
+        test_workers.push(add_worker_to_test(data, conn,
+            Some(String::from("WORKER_BACK_X")),
+            None,
+            None,
+            Some(Position { x: total_distance, y: 0.0 }),
+            Some(Velocity { x: (step_distance * -1.0), y: 0.0 }),
+            None));
 
         // This worker moves downwards vertically
-        test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_DOWN_Y"),
-            initial_position: Position { x: 0.0, y: TOTAL_DISTANCE },
-            previous_position: Position { x: 0.0, y: TOTAL_DISTANCE },
-            destination: Position { x: 0.0, y: 0.0 },
-            velocity: Velocity { x: 0.0, y: (STEP_DISTANCE * -1.0) },
-        });
+        test_workers.push(add_worker_to_test(data, conn,
+            Some(String::from("WORKER_DOWN_Y")),
+            None,
+            None,
+            Some(Position { x: 0.0, y: total_distance }),
+            Some(Velocity { x: 0.0, y: (step_distance * -1.0) }),
+            None));
         
         // This worker moves forward diagonally
-        test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_FRWD_D"),
-            initial_position: Position { x: 0.0, y: 0.0 },
-            previous_position: Position { x: 0.0, y: 0.0 },
-            destination: Position { x: TOTAL_DISTANCE, y: TOTAL_DISTANCE },
-            velocity: Velocity { x: STEP_DISTANCE, y: STEP_DISTANCE },
-        });
+        test_workers.push(add_worker_to_test(data, conn,
+            Some(String::from("WORKER_FRWD_D")),
+            None,
+            None,
+            None,
+            Some(Velocity { x: step_distance, y: step_distance }),
+            Some(Position { x: total_distance, y: total_distance })));
         
         // This worker moves backwards diagonally
-        test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_BACK_D"),
-            initial_position: Position { x: TOTAL_DISTANCE, y: TOTAL_DISTANCE },
-            previous_position: Position { x: TOTAL_DISTANCE, y: TOTAL_DISTANCE },
-            destination: Position { x: 0.0, y: 0.0 },
-            velocity: Velocity { x: (STEP_DISTANCE * -1.0), y: (STEP_DISTANCE * -1.0) },
-        });
+        test_workers.push(add_worker_to_test(data, conn,
+            Some(String::from("WORKER_BACK_D")),
+            None,
+            None,
+            Some(Position { x: total_distance, y: total_distance }),
+            Some(Velocity { x: (step_distance * -1.0), y: (step_distance * -1.0) }),
+            None));
 
         // This worker will reach a point near its destination, as opposed to
         // landing at its exact destination coordinates.
-        test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_FRWD_X_NEAR"),
-            initial_position: Position { x: 0.0, y: 0.0 },
-            previous_position: Position { x: 0.0, y: 0.0 },
-            destination: Position { x: (TOTAL_DISTANCE - STEP_DISTANCE), y: 0.0 },
-            velocity: Velocity { x: (STEP_DISTANCE - 0.1), y: 0.0 },
-        });
+        test_workers.push(add_worker_to_test(data, conn,
+            Some(String::from("WORKER_FRWD_X_NEAR")),
+            None,
+            None,
+            None,
+            Some(Velocity { x: (step_distance - 0.1), y: 0.0 }),
+            Some(Position { x: (total_distance - step_distance), y: 0.0 })));
 
         // This worker will reach a point near its destination, as opposed to
         // landing at its exact destination coordinates, while moving
         // backwards horizontally.
-        test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_BACK_X_NEAR"),
-            initial_position: Position { x: (TOTAL_DISTANCE - STEP_DISTANCE), y: 0.0 },
-            previous_position: Position { x: (TOTAL_DISTANCE - STEP_DISTANCE), y: 0.0 },
-            destination: Position { x: 0.0, y: 0.0 },
-            velocity: Velocity { x: ((STEP_DISTANCE - 0.1) * -1.0), y: 0.0 },
-        });
+        test_workers.push(add_worker_to_test(data, conn,
+            Some(String::from("WORKER_BACK_X_NEAR")),
+            None,
+            None,
+            Some(Position { x: (total_distance - step_distance), y: 0.0 }),
+            Some(Velocity { x: ((step_distance - 0.1) * -1.0), y: 0.0 }),
+            None));
 
         // This worker will reach a point near its destination, as opposed to
         // landing at its exact destination coordinates, while moving
         // upwards diagonally.
-        test_workers.push(MobilityTestWorker {
-            name: String::from("WORKER_FRWD_D_NEAR"),
-            initial_position: Position { x: 0.0, y: 0.0 },
-            previous_position: Position { x: 0.0, y: 0.0 },
-            destination: Position { x: (TOTAL_DISTANCE - STEP_DISTANCE), y: (TOTAL_DISTANCE - STEP_DISTANCE) },
-            velocity: Velocity { x: (STEP_DISTANCE - 0.1), y: (STEP_DISTANCE - 0.1) },
-        });
+        test_workers.push(add_worker_to_test(data, conn,
+            Some(String::from("WORKER_FRWD_D_NEAR")),
+            None,
+            None,
+            None,
+            Some(Velocity { x: (step_distance - 0.1), y: (step_distance - 0.1) }),
+            Some(Position { x: (total_distance - step_distance), y: (total_distance - step_distance) })));
 
         return test_workers;
     }
@@ -156,7 +163,7 @@ impl MobilityTestWorker {
     /// Generates a list of workers to test special cases in mobility tests.
     // pub fn generate_test_workers_special() -> Vec<MobilityTestWorker> {
     //     let mut test_workers = Vec::new();
-        
+    //
     //     // This worker will not move
     //     test_workers.push(MobilityTestWorker {
     //         name: String::from("WORKER_STATIC_AT_DEST"),
@@ -165,7 +172,7 @@ impl MobilityTestWorker {
     //         destination: Position { x: 0.0, y: 0.0 },
     //         velocity: Velocity { x: 0.0, y: 0.0 },
     //     });
-
+    //
     //     // This worker will not move and will never reach its destination
     //     test_workers.push(MobilityTestWorker {
     //         name: String::from("WORKER_STATIC"),
@@ -174,21 +181,19 @@ impl MobilityTestWorker {
     //         destination: Position { x: TOTAL_DISTANCE, y: TOTAL_DISTANCE },
     //         velocity: Velocity { x: 0.0, y: 0.0 },
     //     });
-
+    //
     //     return test_workers;
     // }
 
     /// Adds the worker to the mobility system
-    pub fn add_to_mobility_system(&self, data : &TestSetup, conn: &PgConnection) {
+    fn add_to_mobility_system(&self, data : &TestSetup, conn: &PgConnection) {
         let worker_id = String::from("416d77337e24399dc7a5aa058039f72a"); //arbitrary
         let work_dir = data.work_dir.clone();
-        let short_radio_range = 100.0;
-        let long_radio_range = 500.0;
         let random_seed = 1;
 
         // Create the short and long radio configurations
         let mut sr_config = RadioConfig::new();
-        sr_config.range = short_radio_range;
+        sr_config.range = self.short_radio_range;
         let (r1, _l1) = sr_config.create_radio(
                 OperationMode::Simulated,
                 RadioTypes::ShortRange,
@@ -202,7 +207,7 @@ impl MobilityTestWorker {
             .expect("Could not create short-range radio");
 
         let mut lr_config = RadioConfig::new();
-        lr_config.range = long_radio_range;
+        lr_config.range = self.long_radio_range;
         let (r2, _l2) = lr_config.create_radio(
                 OperationMode::Simulated,
                 RadioTypes::LongRange,
@@ -230,6 +235,59 @@ impl MobilityTestWorker {
             .expect("Could not register worker");
     }
 
+    fn add_neighbour(&self, data : &TestSetup, conn: &PgConnection, name: Option<String>) -> Self {
+        let name = name.unwrap_or_else(|| { 
+            let n: usize = rand::random();
+            format!("worker{}", n)
+        });
+        let sr_range = self.short_radio_range;
+        let lr_range = self.long_radio_range;
+        let min_distance = sr_range / 10.0;
+        let max_distance = sr_range * 0.85;
+        let dist: f64 = (rand::random::<f64>() % max_distance) + min_distance;
+        let theta: f64 = rand::random::<f64>() % 90.0;
+        let y = theta.sin() * dist;
+        let x = theta.cos() * dist;
+        let pos = Position{x, y};
+
+        return add_worker_to_test(data, conn, Some(name), Some(sr_range), Some(lr_range), Some(pos), None, None);
+    }
+
+    pub fn add_neighbours(&self, data : &TestSetup, conn: &PgConnection, num: usize) -> HashMap<String, Self> {
+        let mut workers = HashMap::with_capacity(num);
+        for _ in 0..num {
+            let w = self.add_neighbour(data, conn, None);
+            workers.insert(w.name.clone(), w);
+        }
+
+        return workers;
+    }
+}
+
+/// Adds a worker with the given properties to the mobility system.
+pub fn add_worker_to_test(
+    data : &TestSetup, 
+    conn: &PgConnection,
+    name: Option<String>,
+    sr_range: Option<f64>,
+    lr_range: Option<f64>,
+    pos: Option<Position>,
+    vel: Option<Velocity>,
+    dest: Option<Position>) -> MobilityTestWorker {
+
+    let test_worker = MobilityTestWorker {
+        name:               name.unwrap_or(String::from("worker1")),
+        initial_position:   pos.unwrap_or(Position { x: 0.0, y: 0.0 }),
+        previous_position:  pos.unwrap_or(Position { x: 0.0, y: 0.0 }),
+        destination:        dest.unwrap_or(Position { x: 0.0, y: 0.0 }),
+        velocity:           vel.unwrap_or(Velocity { x: 0.0, y: 0.0 }),
+        short_radio_range:  sr_range.unwrap_or(SHORT_RADIO_RANGE_DEFAULT),
+        long_radio_range:   lr_range.unwrap_or(LONG_RADIO_RANGE_DEFAULT),
+    };
+    
+    test_worker.add_to_mobility_system(&data, &conn);
+
+    return test_worker;
 }
 
 /// Calculates the update ration given the mobility period in nanoseconds.

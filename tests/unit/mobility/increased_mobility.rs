@@ -71,10 +71,7 @@ fn test_increased_mobility(base_name: &str, period: u64) {
     assert_eq!(mobility_handler.get_mobility_period(), period);
 
     // Add a list of test workers to the mobility system
-    let mut test_workers = MobilityTestWorker::generate_test_workers_basic();
-    for test_worker in test_workers.iter(){
-        test_worker.add_to_mobility_system(&data, &conn);
-    }
+    let mut test_workers = MobilityTestWorker::add_basic_mobility_test_workers(&data, &conn);
 
     // First, update the worker positions until they reach their destination.
     let mut workers_at_destination = 0;

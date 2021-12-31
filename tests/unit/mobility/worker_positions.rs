@@ -23,10 +23,7 @@ fn test_worker_positions_basic() {
         .expect("Could not get DB connection");
 
     // Add a list of test workers to the mobility system
-    let mut test_workers: Vec<MobilityTestWorker> = MobilityTestWorker::generate_test_workers_basic();
-    for test_worker in test_workers.iter(){
-        test_worker.add_to_mobility_system(&data, &conn);
-    }
+    let mut test_workers: Vec<MobilityTestWorker> = MobilityTestWorker::add_basic_mobility_test_workers(&data, &conn);
 
     // Test 1: update the worker positions until they reach their destination.
     let steps_to_destination = test_workers[0].get_steps_to_destination(None);
@@ -100,10 +97,7 @@ fn test_workers_at_destination(base_name: &str, period: u64) {
         .expect("Could not get DB connection");
 
     // Add a list of test workers to the mobility system
-    let mut test_workers = MobilityTestWorker::generate_test_workers_basic();
-    for test_worker in test_workers.iter(){
-        test_worker.add_to_mobility_system(&data, &conn);
-    }
+    let mut test_workers = MobilityTestWorker::add_basic_mobility_test_workers(&data, &conn);
 
     // Update the worker positions until they reach their destination.
     let mut workers_at_destination = 0;
@@ -133,8 +127,8 @@ pub fn verify_workers_state(conn: &PgConnection, test_workers: &mut Vec<Mobility
     let worker_states = select_all_workers_state(&conn)
         .expect("Failed to select worker positions.");
     
-    // The result must contain every worker in the test
-    assert!(worker_states.len() == test_workers.len());
+    assert_eq!(worker_states.len(), test_workers.len(),
+        "select_all_workers_state returned the wrong number of results.");
 
     for test_worker in test_workers.iter_mut() {
         // Find the worker's state by worker name
@@ -167,13 +161,13 @@ pub fn verify_workers_state(conn: &PgConnection, test_workers: &mut Vec<Mobility
         // Before reaching its destination, the worker must keep its original
         // velocity and destination regardless of the mobility model.
         if !is_at_destination {
-            assert!(worker_state.dest.unwrap() == test_worker.destination);
-            assert!(worker_state.vel == test_worker.velocity);
+            assert_eq!(worker_state.dest.unwrap(), test_worker.destination);
+            assert_eq!(worker_state.vel, test_worker.velocity);
         }
 
         // Verify the worker's new position.
         let expected_position = test_worker.get_next_position(period);
-        assert!(worker_state.pos == expected_position);
+        assert_eq!(worker_state.pos, expected_position);
 
         // Save the current position as the previous position
         test_worker.previous_position = worker_state.pos;
