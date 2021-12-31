@@ -619,6 +619,8 @@ impl AODV {
             config,
             Arc::clone(&route_table),
             Arc::clone(&data_cache),
+            &me,
+            logger,
         )?;
         match msg {
             Messages::DATA(msg) => AODV::process_data_msg(
@@ -1020,6 +1022,7 @@ impl AODV {
                 }
             };
     
+            info!(logger, "Updating route"; "node"=>&me, "destination"=>&msg.originator);
             // RFC(6.7) - At each node the (reverse) route used to forward a RREP has its lifetime changed to be
             // the maximum of (existing-lifetime, (current time + ACTIVE_ROUTE_TIMEOUT).
             entry.lifetime = std::cmp::max(
@@ -1047,6 +1050,7 @@ impl AODV {
             entry.precursors.insert(next_hop_originator.clone());
             let next_hop_destination = entry.next_hop.clone();
 
+            info!(logger, "Updating route"; "node"=>&me, "destination"=>&msg.destination);
             // RFC(6.7) - Finally, the precursor list for the next hop towards the destination
             // is updated to contain the next hop towards the source.
             let entry = rt
@@ -1283,6 +1287,7 @@ impl AODV {
 
                     //We have an active and valid route to the destination
                     //Update the lifetime to the destination
+                    //We do not log this route update as the route is invalid.
                     let mut rt = route_table.lock().expect("Coult not lock route table");
                     let e = rt.entry(msg.destination.clone())
                         .or_insert(entry);
@@ -1962,6 +1967,8 @@ impl AODV {
         config: Config,
         route_table: Arc<Mutex<HashMap<String, RouteTableEntry>>>,
         data_cache: Arc<Mutex<HashMap<String, DataCacheEntry>>>,
+        me: &String,
+        logger: &Logger,
     ) -> Result<(), MeshSimError> {
         //RFC sec. 6.10 - Maintaining local connectivity
         //Passive acknowledgment is used when expecting the next hop to forward a packet.
@@ -1993,6 +2000,7 @@ impl AODV {
                 entry.lifetime,
                 Utc::now() + Duration::milliseconds(config.active_route_timeout),
             );
+            info!(logger, "Updating route"; "node"=>me, "destination"=>&hdr.sender);
         }
 
         Ok(())
