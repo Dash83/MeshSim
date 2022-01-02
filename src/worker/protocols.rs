@@ -964,7 +964,7 @@ pub fn build_protocol_resources(
                 sr.last_transmission(),
                 Box::new(
                     AodvDistanceAdjusted {
-                        algorithm: algorithm.unwrap_or(0),
+                        algorithm: algorithm.unwrap_or(aodv::strategies::DEFAULT_AODVDA_ALGORITHM),
                         max_loss,
                     }
                 ),

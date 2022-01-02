@@ -1,6 +1,7 @@
 use crate::worker::protocols::aodv::{RouteResponseMessage, RouteRequestMessage, RouteTableEntry};
 use crate::worker::MessageHeader;
-use std::cmp::min;
+
+pub const DEFAULT_AODVDA_ALGORITHM: i32 = 1;
 
 pub trait AodvStrategy: std::fmt::Debug + Send + Sync {
     fn should_update_route(
