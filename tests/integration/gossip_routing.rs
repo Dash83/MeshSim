@@ -43,10 +43,16 @@ fn gossip_basic() {
     );
     assert!(master_node_num.is_some());
 
+    //Check the destination received the packet
     let node25_log_file = format!("{}/log/node25.log", &data.work_dir);
     let node25_log_records = logging::get_log_records_from_file(&node25_log_file).unwrap();
     let received_packets = count_data_packets(&node25_log_records);
     assert_eq!(received_packets, 1);
+
+    //Check that the packet arreived through node24
+    let node24_log_file = format!("{}/log/node24.log", &data.work_dir);
+    let outgoing_msgs = logging::get_outgoing_message_records(&node24_log_file).expect("Could not get outgoing messages");
+    assert_eq!(outgoing_msgs.len(), 1);
 
     //Test passed. Results are not needed.
     teardown(data, true);

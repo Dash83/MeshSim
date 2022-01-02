@@ -740,7 +740,7 @@ impl Master {
 
         //Start all workers
         let conn_str = get_connection_string_from_file(&self.env_file)?;
-        for (_, val) in spec.initial_nodes.iter_mut() {
+        for (_, val) in spec.initial_nodes.iter_mut().sorted() {
             //Assign a protocol for the worker
             val.protocol = Some(spec.protocol);
 

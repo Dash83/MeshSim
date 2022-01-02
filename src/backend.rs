@@ -257,6 +257,9 @@ pub fn create_db_objects(
     let exp_conn = get_db_connection_by_file(fpath.clone(), &logger)?;
     let _ = embedded_migrations::run(&exp_conn);
 
+    // Create the extra indices
+    let _ = create_indices(&exp_conn, &logger)?;
+
     Ok(fpath)
 }
 
@@ -373,6 +376,7 @@ pub fn select_workers_at_destination(
             worker_destinations::x.nullable(),
             worker_destinations::y.nullable(),
         ))
+        .order(workers::worker_name.asc())
         .get_results(conn)
         .map_err(|e| {
             let error_msg =
@@ -424,16 +428,6 @@ pub fn select_workers_at_destination(
         }
     })
     .collect();
-
-    // let mut result = HashMap::new();
-    // for (w_id, w_name, pos_x, pos_y, dest_x, dest_y, vel_x, vel_y) in source {
-    //     let vel_magnitude = (vel_x.powi(2) + vel_y.powi(2)).sqrt();
-    //     let remaining_distance = euclidean_distance(pos_x, pos_y, dest_x, dest_y);
-    //     let dist_threshold = vel_magnitude / 2.0;
-    //     if remaining_distance <= dist_threshold {
-    //         result.insert(w_id, (w_name, Position { x: pos_x, y: pos_y }, Velocity { x: vel_x, y: vel_y }));
-    //     }
-    // }
 
     Ok(result)
 }
@@ -537,6 +531,7 @@ pub fn select_all_workers_state(conn: &PgConnection) -> Result<Vec<NodeState>, M
             worker_destinations::x.nullable(),
             worker_destinations::y.nullable(),
         ))
+        .order(workers::worker_name.asc())
         .get_results(conn)
         .map_err(|e| {
             let error_msg =
@@ -594,6 +589,7 @@ pub fn get_workers_in_range(
         JOIN workers on workers.ID = b.worker_id
         WHERE a.worker_id in (SELECT ID FROM workers WHERE worker_name = $1)
         AND distance(b.x, b.y, a.x, a.y) < $2
+        ORDER BY workers.Worker_Name
     ",
     );
 
@@ -738,16 +734,32 @@ pub fn remove_active_transmitter(
     Ok(rows)
 }
 
-// /// Function to get the active transmitters that correspond to the radio-type provided
-// pub fn get_active_transmitters_in_range(
-//     conn : &PgConnection,
-//     worker_name: &String,
-//     r_type: RadioTypes,
-//     range : f64,
-//     _logger: &Logger,
-// ) -> Result<Vec<f64>, MeshSimError> {
-//     unimplemented!()
-// }
+fn create_indices(conn: &PgConnection, logger: &Logger) -> Result<usize, MeshSimError> {
+    let workers_name_index_qry_str = String::from(
+        "
+        CREATE INDEX on workers(worker_name);
+        "
+    );
+    // let vars = HashMap::new();
+    // let qry = strfmt(&workers_name_index_qry_str, &vars).map_err(|e| {
+    //     let error_msg = String::from("Failed to prepare workers_name_index_qry_str");
+    //     MeshSimError {
+    //         kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+    //         cause: Some(Box::new(e)),
+    //     }
+    // })?;
+
+    //Create the experiment DB
+    let rows = sql_query(workers_name_index_qry_str).execute(conn).map_err(|e| {
+        let error_msg = format!("Could not create workers::worker_name index");
+        MeshSimError {
+            kind: MeshSimErrorKind::SQLExecutionFailure(error_msg),
+            cause: Some(Box::new(e)),
+        }
+    })?;
+
+    Ok(rows)
+}
 
 /// Function to get the active transmitters that correspond to the radio-type provided
 pub fn register_active_transmitter_if_free(

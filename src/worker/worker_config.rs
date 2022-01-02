@@ -12,6 +12,7 @@ use rand::SeedableRng;
 use rand::{rngs::StdRng, RngCore};
 use crate::common::*;
 use slog::Logger;
+use std::cmp::Ordering;
 use std::fs::File;
 use std::iter;
 use std::path::Path;
@@ -226,101 +227,21 @@ pub struct WorkerConfig {
     pub radio_long: Option<RadioConfig>,
 }
 
-// impl Ord for WorkerConfig {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         todo!()
-//     }
+impl Eq for WorkerConfig {
+    
+}
 
-//     fn max(self, other: Self) -> Self
-//     where
-//         Self: Sized,
-//     {
-//         std::cmp::max_by(self, other, Ord::cmp)
-//     }
+impl Ord for WorkerConfig {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (&self.worker_name, &self.worker_id).cmp(&(&other.worker_name, &other.worker_id))
+    }
+}
 
-//     fn min(self, other: Self) -> Self
-//     where
-//         Self: Sized,
-//     {
-//         std::cmp::min_by(self, other, Ord::cmp)
-//     }
-
-//     fn clamp(self, min: Self, max: Self) -> Self
-//     where
-//         Self: Sized,
-//     {
-//         assert!(min <= max);
-//         if self < std::cmp::min {
-//             std::cmp::min
-//         } else if self > std::cmp::max {
-//             std::cmp::max
-//         } else {
-//             self
-//         }
-//     }
-// }
-
-// impl PartialOrd for WorkerConfig {
-//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-//         match self.worker_name.partial_cmp(&other.worker_name) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.worker_id.partial_cmp(&other.worker_id) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.work_dir.partial_cmp(&other.work_dir) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.random_seed.partial_cmp(&other.random_seed) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.operation_mode.partial_cmp(&other.operation_mode) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.accept_commands.partial_cmp(&other.accept_commands) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.term_log.partial_cmp(&other.term_log) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.packet_queue_size.partial_cmp(&other.packet_queue_size) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.stale_packet_threshold.partial_cmp(&other.stale_packet_threshold) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.position.partial_cmp(&other.position) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.destination.partial_cmp(&other.destination) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.velocity.partial_cmp(&other.velocity) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.protocol.partial_cmp(&other.protocol) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         match self.radio_short.partial_cmp(&other.radio_short) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         self.radio_long.partial_cmp(&other.radio_long)
-//     }
-// }
+impl PartialOrd for WorkerConfig {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 impl WorkerConfig {
     ///Creates a new configuration for a Worker with default settings.

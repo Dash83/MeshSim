@@ -613,7 +613,7 @@ range = 60.0
 worker_name = "node24"
 worker_id = "f52ad687615bb4bdc910495de15b4070"
 work_dir = "/tmp/gossip_basic3456535979"
-random_seed = 183261240
+random_seed = 183261241
 operation_mode = "Simulated"
 
 [initial_nodes.node24.position]
