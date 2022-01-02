@@ -35,7 +35,7 @@ use crossbeam_channel::unbounded;
 use std::sync::atomic::{AtomicBool, Ordering};
 use sysinfo::{self, ProcessExt, SystemExt, Signal};
 use std::path::Path;
-
+use itertools::Itertools;
 // use rusqlite::Connection;
 
 use diesel::pg::PgConnection;
@@ -56,6 +56,7 @@ use std::time::{Duration, Instant};
 use test_specification::{Area, TestActions};
 use workloads::SourceProfiles;
 // use serde_cbor::ser::*;
+use rand::{rngs::StdRng, SeedableRng};
 
 //Sub-modules declaration
 ///Modules that defines the functionality for the test specification.
@@ -242,6 +243,8 @@ pub struct Master {
     finish_test: Arc<AtomicBool>,
     /// Random seed used to initialise all rngs in the master process.
     random_seed: u64,
+    /// Random number generator used by the Master for all internal operations
+    rng: StdRng,
 }
 
 //region Errors
@@ -332,6 +335,8 @@ impl Master {
         let an = HashMap::new();
         let env_file = create_db_objects(&work_dir, &db_name, &logger)?;
         let finish_test = Arc::new(AtomicBool::new(false));
+        let random_seed = random_seed.unwrap_or(DEFAULT_RANDOM_SEED);
+        let rng = StdRng::seed_from_u64(random_seed);
 
         debug!(&logger, "Using connection file: {}", &env_file);
         debug!(&logger, "Using DB name: {}", &db_name);
@@ -365,7 +370,8 @@ impl Master {
             sleep_time_override: None,
             rs_handle: handle,
             finish_test,
-            random_seed: random_seed.unwrap_or(DEFAULT_RANDOM_SEED),
+            random_seed,
+            rng,
         };
 
 
@@ -841,7 +847,7 @@ impl Master {
     }
 
     fn schedule_test_actions(
-        &self,
+        &mut self,
         actions: Vec<TestActions>,
         active_nodes: HashSet<String>,
     ) -> Result<Vec<JoinHandle<()>>, MeshSimError> {
@@ -854,7 +860,10 @@ impl Master {
                     self.testaction_add_node(name.clone(), active_nodes.contains(&name), time)?
                 }
                 TestActions::KillNode(name, time) => self.testaction_kill_node(name, time)?,
-                TestActions::Ping(src, dst, time) => self.testaction_ping_node(src, dst, time)?,
+                TestActions::Ping(src, dst, time) => {
+                    let num = self.rng.next_u64() % 1024;
+                    self.testaction_ping_node(src, dst, num, time)?
+                },
                 TestActions::AddSource(src, profile, time) => {
                     self.testaction_add_source(src, profile, time)?
                 }
@@ -1054,6 +1063,7 @@ impl Master {
         &self,
         source: String,
         destination: String,
+        num: u64,
         time: u64,
     ) -> Result<JoinHandle<()>, MeshSimError> {
         let workers = Arc::clone(&self.workers);
@@ -1102,9 +1112,7 @@ impl Master {
                 }
             };
 
-            let mut rng = thread_rng();
-            let r: u64 = rng.next_u64() % 1024;
-            let payload = format!("PING{}", r);
+            let payload = format!("PING{}", num);
             let cmd = Commands::Send(destination.clone(), payload.as_bytes().to_vec());
 
             match Master::send_command(addr, cmd, &logger) {
@@ -1133,6 +1141,7 @@ impl Master {
         let start_time = Duration::from_nanos(time * ONE_MILLISECOND_NS);
         let workers = Arc::clone(&self.workers);
         let logger = self.logger.clone();
+        let random_seed = self.random_seed;
 
         let handle = tb
             .name(format!("[Source]:{}", &source))
@@ -1152,7 +1161,7 @@ impl Master {
                         let total_packets: f64 = (dur * pps as u64) as f64 / 1000.0;
                         info!(logger, "[Source]: Will transmit {} packets", total_packets);
                         match Master::start_cbr_source(
-                            source, dest, pps, size, dur, workers, &logger,
+                            source, dest, pps, size, dur, random_seed,  workers, &logger,
                         ) {
                             Ok(_) => { /* Source finished without issues*/ }
                             Err(e) => {
@@ -1183,6 +1192,7 @@ impl Master {
         packets_per_second: usize,
         packet_size: usize,
         duration: u64,
+        random_seed: u64,
         workers: Arc<Mutex<HashMap<String, Process>>>,
         logger: &Logger,
     ) -> Result<(), MeshSimError> {
@@ -1202,7 +1212,7 @@ impl Master {
             packet_size
         );
 
-        let mut rng = thread_rng();
+        let mut rng = StdRng::seed_from_u64(random_seed);
         let mut data: Vec<u8> = iter::repeat(0u8).take(packet_size).collect();
         let estimated_duration_per_packet = ONE_SECOND_NS / packets_per_second as u64; //In nanoseconds
         let mut packet_counter: u64 = 0;
@@ -1406,6 +1416,7 @@ impl Master {
             }
         })
     }
+
 }
 
 // *****************************

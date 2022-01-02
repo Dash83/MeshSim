@@ -7,6 +7,8 @@ use mesh_simulator::worker;
 use mesh_simulator::worker::protocols::Protocols;
 use mesh_simulator::worker::worker_config::*;
 use crate::mesh_simulator::mobility::{Position, Velocity};
+use mesh_simulator::common::*;
+use rand::{rngs::StdRng, SeedableRng};
 
 use rand::distributions::Uniform;
 use rand_distr::Normal;
@@ -318,7 +320,7 @@ fn command_add_nodes(
     data: &TestBasics,
 ) -> Result<bool, Errors> {
     let model = data.m_model.clone().unwrap_or(MobilityModels::Stationary { period: Some(mesh_simulator::mobility::DEFAULT_MOBILITY_PERIOD) });
-    let mut rng = rand::thread_rng();
+    let mut rng = StdRng::seed_from_u64(0);
     let width_distribution = Uniform::new(0.0, data.width);
     let height_distribution = Uniform::new(0.0, data.height);
     let vel_distribution = match model {
@@ -360,10 +362,10 @@ fn command_add_nodes(
         let mut w = WorkerConfig::new();
         w.worker_name = format!("{}{}", DEFAULT_NODE_NAME, i);
         w.operation_mode = worker::OperationMode::Simulated; //All test files are for simulated mode.
-        w.random_seed = rng.next_u32();
+        w.random_seed = rng.next_u64();
         w.work_dir = data.work_dir.clone();
         //        w.protocol = data.protocol;
-        w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
+        w.worker_id = Some(generate_worker_id(&mut rng));
 
         //Calculate the position
         let x = rng.sample(width_distribution);
@@ -623,7 +625,7 @@ fn command_add_grid(
     let start_x: usize = 0;
     let start_y: usize = 0;
     let effective_range = sr_range * 0.90;
-    let mut rng = rand::thread_rng();
+    let mut rng = StdRng::seed_from_u64(0);
     let nodes = &mut spec.initial_nodes;
     let mut count = 0;
 
@@ -636,10 +638,10 @@ fn command_add_grid(
             count += 1;
             w.worker_name = format!("{}{}", DEFAULT_NODE_NAME, count);
             w.operation_mode = worker::OperationMode::Simulated; //All test files are for simulated mode.
-            w.random_seed = rng.next_u32();
+            w.random_seed = rng.next_u64();
             w.work_dir = data.work_dir.clone();
             //            w.protocol = data.protocol;
-            w.worker_id = Some(WorkerConfig::gen_id(w.random_seed));
+            w.worker_id = Some(generate_worker_id(&mut rng));
             w.position = Position { x, y };
             w.velocity = Velocity { x: 0.0, y: 0.0 };
 

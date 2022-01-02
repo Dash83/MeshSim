@@ -8,8 +8,9 @@ use crate::worker::radio::*;
 use crate::worker::radio::{self, LoraFrequencies, SimulatedRadio, WifiRadio};
 use crate::worker::{Channel, OperationMode, Worker, Write};
 use crate::{MeshSimError, MeshSimErrorKind};
+use rand::SeedableRng;
 use rand::{rngs::StdRng, RngCore};
-use rustc_serialize::hex::*;
+use crate::common::*;
 use slog::Logger;
 use std::fs::File;
 use std::iter;
@@ -93,13 +94,13 @@ impl RadioConfig {
         work_dir: String,
         worker_name: String,
         worker_id: String,
-        seed: u32,
+        seed: u64,
         r: Option<Arc<Mutex<StdRng>>>,
         logger: Logger,
     ) -> Result<Channel, MeshSimError> {
         let rng = match r {
             Some(gen) => gen,
-            None => Arc::new(Mutex::new(Worker::rng_from_seed(seed))),
+            None => Arc::new(Mutex::new(StdRng::seed_from_u64(seed))),
         };
 
         match operation_mode {
@@ -196,7 +197,7 @@ pub struct WorkerConfig {
     ///log files will be written here.
     pub work_dir: String,
     ///Random seed used for all RNG operations.
-    pub random_seed: u32,
+    pub random_seed: u64,
     ///Simulated or Device operation.
     pub operation_mode: OperationMode,
     /// Should this worker accept commands
@@ -225,6 +226,102 @@ pub struct WorkerConfig {
     pub radio_long: Option<RadioConfig>,
 }
 
+// impl Ord for WorkerConfig {
+//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+//         todo!()
+//     }
+
+//     fn max(self, other: Self) -> Self
+//     where
+//         Self: Sized,
+//     {
+//         std::cmp::max_by(self, other, Ord::cmp)
+//     }
+
+//     fn min(self, other: Self) -> Self
+//     where
+//         Self: Sized,
+//     {
+//         std::cmp::min_by(self, other, Ord::cmp)
+//     }
+
+//     fn clamp(self, min: Self, max: Self) -> Self
+//     where
+//         Self: Sized,
+//     {
+//         assert!(min <= max);
+//         if self < std::cmp::min {
+//             std::cmp::min
+//         } else if self > std::cmp::max {
+//             std::cmp::max
+//         } else {
+//             self
+//         }
+//     }
+// }
+
+// impl PartialOrd for WorkerConfig {
+//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+//         match self.worker_name.partial_cmp(&other.worker_name) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.worker_id.partial_cmp(&other.worker_id) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.work_dir.partial_cmp(&other.work_dir) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.random_seed.partial_cmp(&other.random_seed) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.operation_mode.partial_cmp(&other.operation_mode) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.accept_commands.partial_cmp(&other.accept_commands) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.term_log.partial_cmp(&other.term_log) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.packet_queue_size.partial_cmp(&other.packet_queue_size) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.stale_packet_threshold.partial_cmp(&other.stale_packet_threshold) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.position.partial_cmp(&other.position) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.destination.partial_cmp(&other.destination) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.velocity.partial_cmp(&other.velocity) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.protocol.partial_cmp(&other.protocol) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         match self.radio_short.partial_cmp(&other.radio_short) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         self.radio_long.partial_cmp(&other.radio_long)
+//     }
+// }
+
 impl WorkerConfig {
     ///Creates a new configuration for a Worker with default settings.
     pub fn new() -> WorkerConfig {
@@ -250,11 +347,11 @@ impl WorkerConfig {
     ///Creates a new Worker object configured with the values of this configuration object.
     pub fn create_worker(self, logger: Logger) -> Result<Worker, MeshSimError> {
         //Create the RNG
-        let gen = Worker::rng_from_seed(self.random_seed);
+        let mut gen = StdRng::seed_from_u64(self.random_seed);
         //Check if a worker_id is present
         let id = match self.worker_id {
             Some(id) => id,
-            None => WorkerConfig::gen_id(self.random_seed),
+            None => generate_worker_id(&mut gen),
         };
         //Wrap the rng in the shared-mutable-state smart pointers
         let rng = Arc::new(Mutex::new(gen));
@@ -340,16 +437,6 @@ impl WorkerConfig {
         Ok(())
     }
 
-    ///Creates a worker_id based on a random seed.
-    pub fn gen_id(seed: u32) -> String {
-        let mut gen = Worker::rng_from_seed(seed);
-
-        //Vector of 16 bytes set to 0
-        let mut key: Vec<u8> = iter::repeat(0u8).take(16).collect();
-        //Fill the vector with 16 random bytes.
-        gen.fill_bytes(&mut key[..]);
-        key.to_hex()
-    }
 }
 
 //**** WorkerConfig unit tests ****

@@ -28,6 +28,7 @@ pub mod backend;
 pub mod tests;
 pub mod worker;
 pub mod mobility;
+pub mod common;
 
 //*****************
 //Constants

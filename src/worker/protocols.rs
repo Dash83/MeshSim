@@ -20,6 +20,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use rand::{rngs::StdRng, SeedableRng};
 
 pub mod aodv;
 pub mod gossip_routing;
@@ -749,7 +750,7 @@ pub fn build_protocol_resources(
     p: Protocols,
     short_radio: Option<(Arc<dyn Radio>, Box<dyn Listener>)>,
     long_radio: Option<(Arc<dyn Radio>, Box<dyn Listener>)>,
-    seed: u32,
+    seed: u64,
     id: String,
     name: String,
     logger: Logger,
@@ -770,7 +771,7 @@ pub fn build_protocol_resources(
             radio_channels.push((sr_listener, (Arc::clone(&sr), sr_sender.clone(), sr_receiver)));
             radio_channels.push((lr_listener, (Arc::clone(&lr), lr_sender.clone(), lr_receiver)));
 
-            let rng = Worker::rng_from_seed(seed);
+            let rng = StdRng::seed_from_u64(seed);
 
             //Build the protocol handler
             let handler: Arc<dyn Protocol> =
@@ -787,7 +788,7 @@ pub fn build_protocol_resources(
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The NaiveRouting protocol requires a short_radio to be provided.");
-            let rng = Worker::rng_from_seed(seed);
+            let rng = StdRng::seed_from_u64(seed);
             let handler: Arc<dyn Protocol> = Arc::new(Flooding::new(
                 name,
                 id,
@@ -807,7 +808,7 @@ pub fn build_protocol_resources(
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The GossipRouting protocol requires a short_radio to be provided.");
-            let rng = Worker::rng_from_seed(seed);
+            let rng = StdRng::seed_from_u64(seed);
             let handler: Arc<dyn Protocol> = Arc::new(GossipRouting::new(
                 name,
                 id,
@@ -829,7 +830,7 @@ pub fn build_protocol_resources(
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");
-            let rng = Worker::rng_from_seed(seed);
+            let rng = StdRng::seed_from_u64(seed);
             let handler: Arc<dyn Protocol> = Arc::new(ReactiveGossipRouting::new(
                 name,
                 id,
@@ -851,7 +852,7 @@ pub fn build_protocol_resources(
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) = short_radio
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");
-            let rng = Worker::rng_from_seed(seed);
+            let rng = StdRng::seed_from_u64(seed);
             let handler: Arc<dyn Protocol> = Arc::new(ReactiveGossipRoutingII::new(
                 name,
                 id,
@@ -876,7 +877,7 @@ pub fn build_protocol_resources(
                 .expect("The ReactiveGossip protocol requires a short_radio to be provided.");
             let (lr, lr_listener) = long_radio
                 .expect("The LoraWifiBeacon protocol requires a Lora radio to be provided.");
-            let rng = Worker::rng_from_seed(seed);
+            let rng = StdRng::seed_from_u64(seed);
             let handler: Arc<dyn Protocol> = Arc::new(ReactiveGossipRoutingIII::new(
                 name,
                 id,
@@ -910,7 +911,7 @@ pub fn build_protocol_resources(
             //Obtain the short-range radio. For this protocol, the long-range radio is ignored.
             let (sr, listener) =
                 short_radio.expect("The AODV protocol requires a short_radio to be provided.");
-            let rng = Worker::rng_from_seed(seed);
+            let rng = StdRng::seed_from_u64(seed);
             let handler: Arc<dyn Protocol> = Arc::new(AODV::new(
                 name,
                 id,
@@ -949,7 +950,7 @@ pub fn build_protocol_resources(
             let max_loss = sr.get_max_loss();
             assert!(max_loss > 0f64);
 
-            let rng = Worker::rng_from_seed(seed);
+            let rng = StdRng::seed_from_u64(seed);
             let handler: Arc<dyn Protocol> = Arc::new(AODV::new(
                 name,
                 id,

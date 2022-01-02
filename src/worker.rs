@@ -524,7 +524,7 @@ pub struct Worker {
     ///Random number generator used for all RNG operations.
     rng: Arc<Mutex<StdRng>>,
     ///Random number seed used for the rng of all processes.
-    seed: u32,
+    seed: u64,
     ///UDS through which the worker receives commands
     cmd_socket: Socket,
     ///Listen address for the cmd sock.
@@ -547,7 +547,7 @@ impl Worker {
         lr_channels: Option<(Arc<dyn Radio>, Box<dyn Listener>)>,
         work_dir: String,
         rng: Arc<Mutex<StdRng>>,
-        seed: u32,
+        seed: u64,
         operation_mode: OperationMode,
         id: String,
         protocol: Protocols,
@@ -1050,23 +1050,6 @@ impl Worker {
         Err(err)
     }
 
-    ///Returns a random number generator seeded with the passed parameter.
-    pub fn rng_from_seed(seed: u32) -> StdRng {
-        //Create RNG from the provided random seed.
-        let mut random_bytes = vec![];
-        //Fill the uper 28 bytes with 0s
-        for _i in 0..7 {
-            random_bytes.write_u32::<NativeEndian>(0).unwrap_or(());
-        }
-        //Write the last 4 bytes from the provided seed
-        random_bytes.write_u32::<NativeEndian>(seed).unwrap_or(());
-
-        // let randomness : Vec<usize> = random_bytes.iter().map(|v| *v as usize).collect();
-        let mut randomness = [0; 32];
-        randomness.copy_from_slice(random_bytes.as_slice());
-        StdRng::from_seed(randomness)
-    }
-
     fn process_command(
         com: Option<commands::Commands>,
         ph: Arc<dyn Protocol>,
@@ -1107,9 +1090,8 @@ impl Worker {
 #[cfg(test)]
 mod tests {
     // use super::*;
-    use rand::RngCore;
+    use rand::{RngCore, rngs::StdRng, SeedableRng};
     use std::iter;
-    use bincode;
     use std::mem;
     use crate::worker::{MessageHeader, Worker};
 
@@ -1120,7 +1102,7 @@ mod tests {
     fn test_message_header_hash() {
         let sender = String::from("SENDER");
         let destination = String::from("DESTINATION");
-        let mut rng = Worker::rng_from_seed(12345);
+        let mut rng = StdRng::seed_from_u64(12345);
         let mut data: Vec<u8> = iter::repeat(0u8).take(64).collect();
         rng.fill_bytes(&mut data[..]);
         let msg = MessageHeader::new(sender, destination, data);
@@ -1132,7 +1114,7 @@ mod tests {
 
     #[test]
     fn test_header_size() {
-        let mut rng = Worker::rng_from_seed(12345);
+        let mut rng = StdRng::seed_from_u64(12345);
         
         //Case 1: Empty MessageHeader
         let sender = String::from("");
