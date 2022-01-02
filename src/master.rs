@@ -131,6 +131,14 @@ impl FromStr for MobilityModels {
                 let mut period = None;
                 if parts.len() > 2 {
                     period = Some(parts[2].parse::<u64>().unwrap_or(DEFAULT_MOBILITY_PERIOD));
+                    if period.unwrap() < MINIMUM_MOBILITY_PERIOD {
+                        let err_msg = format!("Invalid value for mobility update period. \nMinimum allowable value is {}", MINIMUM_MOBILITY_PERIOD);
+                        let e = MeshSimError{
+                            kind: MeshSimErrorKind::Configuration(err_msg),
+                            cause: None,
+                        };
+                        return Err(e);
+                    }
                 }
                 Ok(MobilityModels::RandomWaypoint { pause_time, period })
             }
@@ -138,6 +146,14 @@ impl FromStr for MobilityModels {
                 let mut period = None;
                 if parts.len() > 1 {
                     period = Some(parts[1].parse::<u64>().unwrap_or(DEFAULT_MOBILITY_PERIOD));
+                    if period.unwrap() < MINIMUM_MOBILITY_PERIOD {
+                        let err_msg = format!("Invalid value for mobility update period. \nMinimum allowable value is {}", MINIMUM_MOBILITY_PERIOD);
+                        let e = MeshSimError{
+                            kind: MeshSimErrorKind::Configuration(err_msg),
+                            cause: None,
+                        };
+                        return Err(e);
+                    }
                 }
                 Ok(MobilityModels::Stationary{ period })
             }
@@ -187,6 +203,14 @@ impl FromStr for MobilityModels {
                 let mut period = None;
                 if parts.len() > 5 {
                     period = Some(parts[5].parse::<u64>().unwrap_or(DEFAULT_MOBILITY_PERIOD));
+                    if period.unwrap() < MINIMUM_MOBILITY_PERIOD {
+                        let err_msg = format!("Invalid value for mobility update period. \nMinimum allowable value is {}", MINIMUM_MOBILITY_PERIOD);
+                        let e = MeshSimError{
+                            kind: MeshSimErrorKind::Configuration(err_msg),
+                            cause: None,
+                        };
+                        return Err(e);
+                    }
                 }
 
                 Ok(MobilityModels::IncreasedMobility { vel_mean, vel_std, vel_increase, pause_time, period })
