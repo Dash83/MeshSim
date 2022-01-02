@@ -15,6 +15,10 @@ use std::str::FromStr;
 
 /// The update period for the mobility thread
 pub const DEFAULT_MOBILITY_PERIOD: u64 = ONE_SECOND_NS;
+/// Minimum allowable value for the update period of the mobility thread
+/// is 20 milliseconds.
+/// See unit::mobility::update_period::test_update_period.
+pub const MINIMUM_MOBILITY_PERIOD: u64 = ONE_MILLISECOND_NS * 20;
 
 ///Struct to encapsule the 2D position of the worker
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default, Copy)]
