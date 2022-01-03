@@ -696,7 +696,7 @@ impl Master {
                     cause: Some(Box::new(e)),
                 }
             })?;
-        debug!(logger, "Worker process"; "worker_name"=>&worker_name);
+        debug!(logger, "Worker process started"; "worker_name"=>&worker_name);
 
         Ok(child)
     }

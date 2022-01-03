@@ -2,7 +2,7 @@ extern crate mesh_simulator;
 
 use std::collections::HashMap;
 use std::iter::FromIterator;
-
+use serde_json::Value;
 use chrono::Utc;
 use chrono::DateTime;
 
@@ -20,7 +20,7 @@ const MIN_WORKER_COUNT: usize = 25;
 #[test]
 /// Integration test to verify that the master process consistently starts
 /// worker processes in the same order.
-fn test_start_process() {
+fn test_process_start_sequence() {
     // Run the test once to get a baseline.
     println!("----- Run 1 -----");
     let base_start_sequence = run_master();
@@ -95,8 +95,11 @@ fn run_master() -> Vec<(DateTime<Utc>, String)> {
     );
     
     // Get the Master's log records 
-    let master_log_records = logging::get_log_records_from_file(&master_log_file)
+    let master_log_records = logging::get_raw_log_records(&master_log_file)
         .expect("Failed to get log records from Master");
+    let last = master_log_records[master_log_records.len() - 1].clone();
+    let msg = last["msg"].to_string();
+    println!("Last line: {}", &msg);
 
     // Verify the master ran successfully by checking the number of worker
     // processes that were terminated at the end of the test.
@@ -122,31 +125,36 @@ fn run_master() -> Vec<(DateTime<Utc>, String)> {
 
 /// Verifies that the master ran to completion successfully by checking
 /// the number of processes that were terminated at the end of the test.
-fn verify_process_count(master_log_records: &Vec<LogEntry>, process_count: usize) {
+fn verify_process_count(master_log_records: &Vec<Value>, process_count: usize) {
     // Find this message among the master log records.
     let end_msg = format!("End_Test action: Finished. {} processes terminated.", process_count);
-    let master_node_num = logging::find_record_by_msg(
-        &end_msg,
-        &master_log_records,
-    );
-    assert!(master_node_num.is_some(),
+    let x = master_log_records
+    .iter()
+    .filter(|&entry| entry["msg"].to_string().contains(&end_msg))
+    .count();
+
+    assert_eq!(x, 1,
         "Master did not complete with the expected number of processes: {}", process_count);
 }
 
 /// Given the Master's log records, builds a vector of timestamp to worker
 /// name, sorted by timestamp at which the Master started each worker.
-fn get_start_timestamps(master_log_records: &Vec<LogEntry>) -> Vec<(DateTime<Utc>, String)> {
+fn get_start_timestamps(master_log_records: &Vec<Value>) -> Vec<(DateTime<Utc>, String)> {
     let mut map: HashMap<DateTime<Utc>, String> = HashMap::new();
 
     // For each log record with a message like "Worker process node1 started"
     for entry in master_log_records
         .iter()
-        .filter(|&m| m.msg.starts_with("Worker process ")) {
+        .filter(|&m| m["msg"] == "Worker process started") {
         // Extract the worker name
-        let parts: Vec<&str> = entry.msg.split_whitespace().collect();
-        let worker = parts[2].to_string();
+        // let parts: Vec<&str> = entry.msg.split_whitespace().collect();
+        // let worker = parts[2].to_string();
+        let worker = entry["worker_name"].to_string();
         // Parse the timestamp
-        let ts = entry.ts.parse::<DateTime<Utc>>()
+        let ts = entry["ts"]
+            .to_string()
+            .replace("\"", "")
+            .parse::<DateTime<Utc>>()
             .expect("Failed to parse string into DateTime");
 
         map.insert(ts, worker);

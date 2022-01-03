@@ -253,6 +253,23 @@ pub fn get_last_transmission_records<P: AsRef<Path>>(
     Ok(records)
 }
 
+/// Obtain all log records from a file as native JSON Value struct
+pub fn get_raw_log_records<P: AsRef<Path>>(
+    path: P,
+) -> Result<Vec<Value>, io::Error> {
+    let file = File::open(path)?;
+    let mut records = Vec::new();
+    let reader = io::BufReader::new(file);
+
+    for line in reader.lines() {
+        let data = line?;
+        let u: Value = serde_json::from_str(&data)?;
+        records.push(u);
+    }
+
+    Ok(records)
+}
+
 ///Given a log key (such as ts) will return the first log record that matches the log_value passed.
 pub fn find_record_by_msg<'a>(msg: &str, records: &'a [LogEntry]) -> Option<&'a LogEntry> {
     for rec in records {
