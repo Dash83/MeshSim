@@ -151,7 +151,7 @@ interface_name = "wlan0"
 # y = 0.0
 # [initial_nodes.node7.radio_short]
 # mac_layer_retries = 7
-mac_layer_base_wait = 8
+# mac_layer_base_wait = 8
 # range = 100.0
 # interface_name = "wlan0"
 
@@ -168,7 +168,7 @@ mac_layer_base_wait = 8
 # y = 0.0
 # [initial_nodes.node8.radio_short]
 # mac_layer_retries = 7
-mac_layer_base_wait = 8
+# mac_layer_base_wait = 8
 # delay = 0
 # range = 100.0
 # interface_name = "wlan0"
@@ -186,7 +186,7 @@ mac_layer_base_wait = 8
 # y = 0.0
 # [initial_nodes.node9.radio_short]
 # mac_layer_retries = 7
-mac_layer_base_wait = 8
+# mac_layer_base_wait = 8
 # range = 100.0
 # interface_name = "wlan0"
 
@@ -203,7 +203,7 @@ mac_layer_base_wait = 8
 # y = 0.0
 # [initial_nodes.node10.radio_short]
 # mac_layer_retries = 7
-mac_layer_base_wait = 8
+# mac_layer_base_wait = 8
 # range = 100.0
 # interface_name = "wlan0"
 
