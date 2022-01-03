@@ -666,7 +666,7 @@ impl Master {
         logger: &Logger,
     ) -> Result<Child, MeshSimError> {
         let worker_name = config.worker_name.clone();
-        debug!(logger, "Starting worker process {}", &worker_name);
+        debug!(logger, "Starting worker process"; "worker_name"=>&worker_name);
 
         let file_name = format!("{}.toml", &worker_name);
         let mut file_dir = PathBuf::new();
@@ -690,13 +690,13 @@ impl Master {
             .stdout(Stdio::piped())
             .spawn()
             .map_err(|e| {
-                let err_msg = String::from("Failed to spawn worker process");
+                let err_msg = format!("Failed to spawn worker process {}", &worker_name);
                 MeshSimError {
                     kind: MeshSimErrorKind::Master(err_msg),
                     cause: Some(Box::new(e)),
                 }
             })?;
-        debug!(logger, "Worker process {} started", &worker_name);
+        debug!(logger, "Worker process"; "worker_name"=>&worker_name);
 
         Ok(child)
     }
