@@ -1,19 +1,19 @@
 use std::collections::HashMap;
 
 use diesel::PgConnection;
-use mesh_simulator::{mobility::{Position, Velocity}, tests::common::TestSetup, worker::{worker_config::RadioConfig, OperationMode, radio::RadioTypes}, backend::register_worker, master::test_specification::Area};
+use mesh_simulator::{mobility::{Position, Velocity, NodeState}, tests::common::TestSetup, worker::{worker_config::RadioConfig, OperationMode, radio::RadioTypes}, backend::{register_worker}, master::test_specification::Area};
 
 extern crate mesh_simulator;
 
 /// Helper worker structure
 pub struct MobilityTestWorker {
     pub name: String,
-    pub initial_position: Position,
     pub previous_position: Position,
     pub destination: Position,
     pub velocity: Velocity,
     pub short_radio_range: f64,
     pub long_radio_range: f64,
+    pub paused: bool,
 }
 
 // Size of the test area
@@ -24,32 +24,156 @@ pub const LONG_RADIO_RANGE_DEFAULT: f64 = 500.0;
 
 impl MobilityTestWorker {
 
-    /// Gets the position the worker is expected to move in the next call to
-    /// update_worker_positions, given its previous position and velocity.
-    pub fn get_next_position(&self, period: Option<u64>) -> Position {
-        // All velocities are expresed in meters per second (see start_mobility_thread).
-        // This is the time period in elapsed in one call to update_worker_positions().
-        let ratio = mobility_test_period_to_ratio(period.unwrap_or(mesh_simulator::mobility::DEFAULT_MOBILITY_PERIOD));
-        return Position {
-            x: self.previous_position.x + (self.velocity.x * ratio),
-            y: self.previous_position.y + (self.velocity.y * ratio)
-        };
+    /// Sanity checks the worker's node state with respect to its previous
+    /// position. A worker's behavior before reaching its destination is
+    /// the same regardless of the mobility model.
+    pub fn verify_state(&self, state: &NodeState, period: Option<u64>) {
+        if self.paused {
+            // Verify the worker did not move
+            assert_eq!(state.pos, self.previous_position,
+                "Worker {} moved from {},{} to {},{} when it should be paused.",
+                self.name,
+                self.previous_position.x, self.previous_position.y,
+                state.pos.x, state.pos.y);
+        }
+        else {
+            // All velocities are expresed in meters per second (see start_mobility_thread).
+            // This is the time period in elapsed in one call to update_worker_positions().
+            let ratio = mobility_test_period_to_ratio(
+                period.unwrap_or(mesh_simulator::mobility::DEFAULT_MOBILITY_PERIOD));
+            
+            // Verify the worker's position
+            let expected_position = Position {
+                x: self.previous_position.x + (self.velocity.x * ratio),
+                y: self.previous_position.y + (self.velocity.y * ratio)
+            };
+            assert_eq!(&state.pos, &expected_position,
+                "Worker {} moved to {},{} but {},{} was expected based on previous position: {},{} velocity: {},{}. New velocity: {},{}.",
+                self.name,
+                state.pos.x, state.pos.y,
+                expected_position.x, expected_position.y,
+                self.previous_position.x, self.previous_position.y,
+                self.velocity.x, self.velocity.y,
+                state.vel.x, state.vel.y);
+            
+            // Verify the worker's destination and velocity.
+            // Before reaching its destination, the worker must keep the same
+            // velocity and destination regardless of the mobility model.
+            if !self.is_at_destination(&state.pos, period) {
+                assert_eq!(state.dest.unwrap(), self.destination,
+                    "Worker {} has a new destination {},{} before reaching its original destination {},{}. Previous position: {},{} velocity: {},{}. New position: {},{} velocity: {},{}.",
+                    self.name,
+                    state.dest.unwrap().x, state.dest.unwrap().y,
+                    self.destination.x, self.destination.y,
+                    self.previous_position.x, self.previous_position.y,
+                    self.velocity.x, self.velocity.y,
+                    state.pos.x, state.pos.y,
+                    state.vel.x, state.vel.y);
+    
+                assert_eq!(state.vel, self.velocity,
+                    "Worker {} has a new velocity {},{} before reaching its original destination {},{}. Previous position: {},{} velocity: {},{}. New position: {},{}.",
+                    self.name, state.vel.x, state.vel.y,
+                    self.destination.x, self.destination.y,
+                    self.previous_position.x, self.previous_position.y,
+                    self.velocity.x, self.velocity.y,
+                    state.pos.x, state.pos.y);
+            }
+        }
     }
 
-    /// Returns TRUE if the worker is expected to arrive at its destination
-    /// in the next step, i.e. the next call to update_worker_positions().
-    pub fn is_next_at_destination(&self, period: Option<u64>) -> bool {
-        let next_position = self.get_next_position(period);
+    /// Checks whether this worker was correctly reported as newly arrived at
+    /// its destination. The handle_iteration() method of the mobility model
+    /// will return a node state for every worker considered to be at its
+    /// destination. 
+    pub fn verify_newly_arrived_state(&self, state: &NodeState, newly_arrived_state: Option<&NodeState>, period: Option<u64>) {
+        // The worker is considered to have arrived at its destination in this
+        // update if it is not paused, its new position is at the destination,
+        // and it actually changed to a different position in this update. 
+        if  !self.paused &&
+            self.is_at_destination(&state.pos, period) &&
+            self.previous_position.ne(&state.pos) {
+            assert!(newly_arrived_state.is_some(),
+                "Worker {} moved from {},{} to {},{} considered to be at or near destination {},{} but select_workers_at_destination did not return this worker.",
+                self.name,
+                self.previous_position.x, self.previous_position.y,
+                state.pos.x, state.pos.y,
+                self.destination.x, self.destination.y);
+        }
+        else {
+            assert!(newly_arrived_state.is_none(),
+                "Worker {} wrongly reported as newly arrived when it moved from {},{} to {},{}, with destination {},{}.",
+                self.name,
+                self.previous_position.x, self.previous_position.y,
+                state.pos.x, state.pos.y,
+                self.destination.x, self.destination.y);
+        }
+    }
+
+    /// Validates a proposed destination for this worker.
+    /// The destination must be within the simulation area.
+    pub fn validate_new_destination(&self, new_destination: &Position) {
+        assert!(
+            new_destination.x <= MOBILITY_TEST_AREA.width &&
+            new_destination.y <= MOBILITY_TEST_AREA.height,
+            "New destination {},{} for worker {} is outside of the test area w:{} h:{}. Previous destination: {},{}.",
+            new_destination.x, new_destination.y,
+            self.name,
+            MOBILITY_TEST_AREA.width, MOBILITY_TEST_AREA.height,
+            self.destination.x, self.destination.y);
+    }
+
+    /// Validates a proposed new velocity for this worker.
+    /// Validates the velocity vector actually leads to the new destination.
+    /// For this we calculate the shortest distance between a line P1P2
+    /// and a point Q.
+    /// - The line represents the trayectory that the worker will follow
+    ///   from its current position on to the next positions based on its
+    ///   velocity. This is an infinite line with equation y = mx + b
+    ///   calculated from two points: point P1 at the current position, and
+    ///   point P2 at the next position x: pos.x + vel.x, y: pos.y + vel.y
+    /// - The point Q is the destination
+    /// If the distance between the line and the point is zero it means
+    /// the line intersects the point, i.e. the worker's trayectory will
+    /// eventually reach its destination.
+    pub fn validate_new_velocity(&self, new_velocity: &Velocity, new_destination: &Position) {
+        let p1 = self.previous_position;
+        let p2 = Position{x: self.previous_position.x + new_velocity.x, y: self.previous_position.y + new_velocity.y};
+        let q = new_destination;
+        // Calculate the slope m = (y2 - y1) / (x2 - x1)
+        let m = (p2.y - p1.y) / (p2.x - p1.x);
+        // Rearrange the line equation y = mx + c to form Ax + By + C = 0
+        // as -mx + 1y - c = 0
+        let a = m * -1.0;
+        let b = 1.0;
+        let c = (m * p1.x) - (p1.y);
+        // Calculate the distance between line P1->P2 to point Q(x0,y0) with
+        // equation distance = | Ax0 + By0 + C | / √ (A*A + B*B)
+        let distance = ((a * q.x) + (b * q.y) + (c)).abs() / ((a * a) + (b * b)).sqrt();
+        // Again, we round to 3 decimal places for the assert to make up for
+        // the loss of precision of f64 in rust.
+        let distance_aprox = (distance * 1000.0).round() / 1000.0;
+        assert_eq!(distance_aprox, 0.0, 
+            "New velocity {},{} for worker {} not expected to reach destination {},{} from current position {},{}.",
+            new_velocity.x, new_velocity.y,
+            self.name,
+            new_destination.x, new_destination.y,
+            self.previous_position.x, self.previous_position.y);
+
+    }
+
+    /// Returns TRUE if the given position is the worker's destination,
+    /// based on its previous position and velocity.
+    pub fn is_at_destination(&self, pos: &Position, period: Option<u64>) -> bool {
         let ratio = mobility_test_period_to_ratio(period.unwrap_or(mesh_simulator::mobility::DEFAULT_MOBILITY_PERIOD));
 
         // The mobility model will report the node as being at the
         // destination if it is close enough to the destination,
         // where 'close' means at a distance smaller than one hop past
         // the destination but not before.
-        return  self.destination.eq(&next_position) ||
+        return  self.destination.eq(&pos) ||
                 (self.destination.distance(&self.previous_position) > 0.0 &&
                  self.destination.distance(&self.previous_position) < (self.velocity.magnitude() * ratio) &&
-                 self.destination.distance(&next_position)          < (self.velocity.magnitude() * ratio));
+                 self.destination.distance(&pos)                    < (self.velocity.magnitude() * ratio));
     }
 
     pub fn get_steps_to_destination(&self, period: Option<u64>) -> u64 {
@@ -73,7 +197,7 @@ impl MobilityTestWorker {
 
         // This worker moves forward horizontally
         test_workers.push(add_worker_to_test(data, conn,
-            Some(String::from("WORKER_FRWD_X")),
+            Some(String::from("WORKER_EXACT_FRWD_X")),
             None,
             None,
             None,
@@ -82,7 +206,7 @@ impl MobilityTestWorker {
 
         // This worker moves upwards vertically
         test_workers.push(add_worker_to_test(data, conn,
-            Some(String::from("WORKER_UP_Y")),
+            Some(String::from("WORKER_EXACT_UP_Y")),
             None,
             None,
             None,
@@ -91,7 +215,7 @@ impl MobilityTestWorker {
 
         // This worker moves backwards horizontally
         test_workers.push(add_worker_to_test(data, conn,
-            Some(String::from("WORKER_BACK_X")),
+            Some(String::from("WORKER_EXACT_BACK_X")),
             None,
             None,
             Some(Position { x: total_distance, y: 0.0 }),
@@ -100,7 +224,7 @@ impl MobilityTestWorker {
 
         // This worker moves downwards vertically
         test_workers.push(add_worker_to_test(data, conn,
-            Some(String::from("WORKER_DOWN_Y")),
+            Some(String::from("WORKER_EXACT_DOWN_Y")),
             None,
             None,
             Some(Position { x: 0.0, y: total_distance }),
@@ -109,7 +233,7 @@ impl MobilityTestWorker {
         
         // This worker moves forward diagonally
         test_workers.push(add_worker_to_test(data, conn,
-            Some(String::from("WORKER_FRWD_D")),
+            Some(String::from("WORKER_EXACT_FRWD_D")),
             None,
             None,
             None,
@@ -118,7 +242,7 @@ impl MobilityTestWorker {
         
         // This worker moves backwards diagonally
         test_workers.push(add_worker_to_test(data, conn,
-            Some(String::from("WORKER_BACK_D")),
+            Some(String::from("WORKER_EXACT_BACK_D")),
             None,
             None,
             Some(Position { x: total_distance, y: total_distance }),
@@ -128,7 +252,7 @@ impl MobilityTestWorker {
         // This worker will reach a point near its destination, as opposed to
         // landing at its exact destination coordinates.
         test_workers.push(add_worker_to_test(data, conn,
-            Some(String::from("WORKER_FRWD_X_NEAR")),
+            Some(String::from("WORKER_NEAR_FRWD_X")),
             None,
             None,
             None,
@@ -139,7 +263,7 @@ impl MobilityTestWorker {
         // landing at its exact destination coordinates, while moving
         // backwards horizontally.
         test_workers.push(add_worker_to_test(data, conn,
-            Some(String::from("WORKER_BACK_X_NEAR")),
+            Some(String::from("WORKER_NEAR_BACK_X")),
             None,
             None,
             Some(Position { x: (total_distance - step_distance), y: 0.0 }),
@@ -150,7 +274,7 @@ impl MobilityTestWorker {
         // landing at its exact destination coordinates, while moving
         // upwards diagonally.
         test_workers.push(add_worker_to_test(data, conn,
-            Some(String::from("WORKER_FRWD_D_NEAR")),
+            Some(String::from("WORKER_NEAR_FRWD_D")),
             None,
             None,
             None,
@@ -225,7 +349,7 @@ impl MobilityTestWorker {
                 &conn,
                 self.name.clone(),
                 worker_id,
-                self.initial_position,
+                self.previous_position,
                 self.velocity,
                 &Some(self.destination),
                 Some(r1.get_address().into()),
@@ -277,12 +401,12 @@ pub fn add_worker_to_test(
 
     let test_worker = MobilityTestWorker {
         name:               name.unwrap_or(String::from("worker1")),
-        initial_position:   pos.unwrap_or(Position { x: 0.0, y: 0.0 }),
         previous_position:  pos.unwrap_or(Position { x: 0.0, y: 0.0 }),
         destination:        dest.unwrap_or(Position { x: 0.0, y: 0.0 }),
         velocity:           vel.unwrap_or(Velocity { x: 0.0, y: 0.0 }),
         short_radio_range:  sr_range.unwrap_or(SHORT_RADIO_RANGE_DEFAULT),
         long_radio_range:   lr_range.unwrap_or(LONG_RADIO_RANGE_DEFAULT),
+        paused:             false,
     };
     
     test_worker.add_to_mobility_system(&data, &conn);
