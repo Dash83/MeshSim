@@ -3,7 +3,6 @@ extern crate mesh_simulator;
 use std::time::Duration;
 
 use diesel::PgConnection;
-use mesh_simulator::mobility::NodeState;
 use mesh_simulator::tests::common::*;
 use mesh_simulator::backend::*;
 
@@ -35,7 +34,7 @@ fn test_worker_positions_basic() {
             .expect("Failed to update worker positions.");
 
         // Verify the worker's position with respect to its previous position.
-        verify_workers_state(&conn, &mut test_workers, None, None);
+        verify_workers_state(&conn, &mut test_workers, None);
     }
 
     // Test 2: continue to update the worker positions after they reached their
@@ -49,7 +48,7 @@ fn test_worker_positions_basic() {
             .expect("Failed to update worker positions.");
 
         // Verify the worker's position with respect to its previous position.
-        verify_workers_state(&conn, &mut test_workers, None, None);
+        verify_workers_state(&conn, &mut test_workers, None);
     }
 
     //Test passed. Results are not needed.
@@ -112,17 +111,18 @@ fn test_workers_at_destination(base_name: &str, period: u64) {
             .expect("Failed to select workers at destination.");
         workers_at_destination += newly_arrived.len();
     
-        verify_workers_state(&conn, &mut test_workers, Some(&newly_arrived), Some(period));
+        // Verify the workers positions
+        verify_workers_state(&conn, &mut test_workers, Some(period));
     }
 
     //Test passed. Results are not needed.
     teardown(data, true);
 }
 
-/// Sanity checks the current position of every worker with respect to its
-/// previous position. The worker's behavior before reaching its original
+/// Sanity checks the node state of every worker with respect to its
+/// previous position. A worker's behavior before reaching its original
 /// destination is the same regardless of the mobility model.
-pub fn verify_workers_state(conn: &PgConnection, test_workers: &mut Vec<MobilityTestWorker>, newly_arrived: Option<&Vec<NodeState>>, period: Option<u64>) {
+fn verify_workers_state(conn: &PgConnection, test_workers: &mut Vec<MobilityTestWorker>, period: Option<u64>) {
     // Get the current position of every worker
     let worker_states = select_all_workers_state(&conn)
         .expect("Failed to select worker positions.");
@@ -130,53 +130,23 @@ pub fn verify_workers_state(conn: &PgConnection, test_workers: &mut Vec<Mobility
     assert_eq!(worker_states.len(), test_workers.len(),
         "select_all_workers_state returned the wrong number of results.");
 
-    for test_worker in test_workers.iter_mut() {
+    for worker in test_workers.iter_mut() {
         // Find the worker's state by worker name
-        let state = worker_states.iter().find(|&s|s.name.eq(&test_worker.name));
-        assert!(state.is_some());
-        let worker_state = state.unwrap();
+        let node_state = worker_states.iter().find(|&s|s.name.eq(&worker.name));
+        assert!(node_state.is_some(),
+            "Node state not found for worker {}", worker.name);
+        let state = node_state.unwrap();
     
         println!("Worker {} \tat {},{} \tdest {},{} \tvel {},{}",
-            worker_state.name,
-            worker_state.pos.x, worker_state.pos.y,
-            worker_state.dest.unwrap().x, worker_state.dest.unwrap().y,
-            worker_state.vel.x, worker_state.vel.y,);
-    
-        let is_at_destination = test_worker.is_next_at_destination(period);
-    
-        if newly_arrived.is_some() {
-            // Verify whether this worker was correctly reported as newly
-            // arrived at its destination.
-            let newly_arrived_state = newly_arrived.unwrap().iter().find(|&s|s.name.eq(&test_worker.name));
+            state.name,
+            state.pos.x, state.pos.y,
+            state.dest.unwrap().x, state.dest.unwrap().y,
+            state.vel.x, state.vel.y,);
 
-            if is_at_destination && worker_state.pos.ne(&test_worker.previous_position) {
-                assert!(newly_arrived_state.is_some());
-            } 
-            else {
-                assert!(newly_arrived_state.is_none());
-            }
-        }
-        
-        // Verify the worker's destination and velocity.
-        // Before reaching its destination, the worker must keep its original
-        // velocity and destination regardless of the mobility model.
-        if !is_at_destination {
-            assert_eq!(worker_state.dest.unwrap(), test_worker.destination);
-            assert_eq!(worker_state.vel, test_worker.velocity);
-        }
-
-        // Verify the worker's new position.
-        let expected_position = test_worker.get_next_position(period);
-        assert_eq!(worker_state.pos, expected_position);
+        // Verify the worker's position
+        worker.verify_state(&state, period);
 
         // Save the current position as the previous position
-        test_worker.previous_position = worker_state.pos;
-
-        if is_at_destination {
-            // Update the destination and velocity, the mobility model sets
-            // these new values once the pause time has elapsed.
-            test_worker.destination = worker_state.dest.unwrap();
-            test_worker.velocity = worker_state.vel;
-        }
+        worker.previous_position = state.pos;
     }
 }

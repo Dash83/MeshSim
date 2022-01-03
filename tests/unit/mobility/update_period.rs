@@ -95,8 +95,7 @@ fn measure_update_once(conn: &PgConnection, test_workers: &mut HashMap<String, M
         let worker_state = state.unwrap();
     
         // Verify the worker's new position.
-        let expected_position = test_worker.get_next_position(Some(period));
-        assert_eq!(worker_state.pos, expected_position);
+        test_worker.verify_state(worker_state, Some(period));
 
         // Save the current position as the previous position
         test_worker.previous_position = worker_state.pos;
