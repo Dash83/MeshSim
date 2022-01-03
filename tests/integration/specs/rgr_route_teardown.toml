@@ -32,12 +32,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node8.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node8.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -62,12 +64,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node10.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node10.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -92,12 +96,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node17.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node17.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -122,12 +128,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node24.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node24.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -152,12 +160,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node25.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node25.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -182,12 +192,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node23.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node23.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -212,12 +224,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node2.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node2.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -242,12 +256,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node18.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node18.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -272,12 +288,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node3.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node3.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -302,12 +320,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node15.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node15.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -332,12 +352,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node6.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node6.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -362,12 +384,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node20.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node20.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -392,12 +416,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node1.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node1.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -422,12 +448,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node9.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node9.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -452,12 +480,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node4.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node4.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -482,12 +512,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node13.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node13.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -512,12 +544,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node14.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node14.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -542,12 +576,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node16.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node16.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -572,12 +608,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node21.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node21.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -602,12 +640,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node22.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node22.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -632,12 +672,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node12.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node12.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -662,12 +704,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node5.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node5.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -692,12 +736,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node7.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node7.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -722,12 +768,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node11.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node11.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 
@@ -752,12 +800,14 @@ k = 2
 p = 0.7
 
 [initial_nodes.node19.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 80.0
 
 [initial_nodes.node19.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 160.0
 

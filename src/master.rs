@@ -765,6 +765,11 @@ impl Master {
                     }
                 }
             }
+            //Wait 2 ms before starting the next process.
+            //This measure is taken to enforce 2 behaviours in the simulation:
+            //  1. Decouple periodic behaviour of nodes that can lead to medium collisions.
+            //  2. Further assure that processes are started and registered in a deterministic order.
+            std::thread::sleep(Duration::from_millis(2));
         }
 
         info!(&self.logger, "All initial nodes started");

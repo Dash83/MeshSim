@@ -25,7 +25,8 @@ Protocol = "Flooding"
         x = 0.0
         y = 0.0
     [initial_nodes.node1.radio_short]
-        reliability = 1.0
+        mac_layer_retries = 7
+mac_layer_base_wait = 8
         delay = 0
         range = 100.0
 
@@ -43,7 +44,8 @@ Protocol = "Flooding"
         x = 0.0
         y = 0.0
     [initial_nodes.node2.radio_short]
-        reliability = 1 
+        mac_layer_retries = 7
+mac_layer_base_wait = 8
         range = 100.0
 
 [initial_nodes.node3]
@@ -60,7 +62,8 @@ Protocol = "Flooding"
         x = 0.0
         y = 0.0
     [initial_nodes.node3.radio_short]
-        reliability = 1 
+        mac_layer_retries = 7
+mac_layer_base_wait = 8
         range = 100.0
 
 [available_nodes]

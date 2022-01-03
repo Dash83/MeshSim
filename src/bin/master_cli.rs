@@ -6,12 +6,15 @@ use mesh_simulator::{MeshSimError, MeshSimErrorKind};
 // use slog::DrainExt;
 
 use mesh_simulator::logging;
+use slog::Logger;
 use std::error;
 use std::error::Error;
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
+#[macro_use]
+extern crate slog;
 
 //const ARG_CONFIG : &'static str = "config";
 const ARG_WORK_DIR: &str = "work_dir";
@@ -23,7 +26,7 @@ const ARG_DB_NAME: &str = "database_name";
 const ARG_RANDOM_SEED: &str = "random_seed";
 
 const ERROR_LOG_INITIALIZATION: i32 = 1;
-// const ERROR_EXECUTION_FAILURE: i32 = 2;
+const ERROR_EXECUTION_FAILURE: i32 = 2;
 
 #[derive(Debug)]
 enum CLIError {
@@ -117,7 +120,7 @@ fn run(mut master: Master, matches: &ArgMatches) -> Result<(), MeshSimError> {
     Ok(())
 }
 
-fn init(matches: &ArgMatches) -> Result<Master, MeshSimError> {
+fn init(matches: &ArgMatches) -> Result<(Master, Logger), MeshSimError> {
     //Determine the work_dir
     let work_dir = match matches.value_of(ARG_WORK_DIR) {
         Some(arg) => String::from(arg),
@@ -209,9 +212,9 @@ fn init(matches: &ArgMatches) -> Result<Master, MeshSimError> {
         })?;
 
     let worker_path = matches.value_of(ARG_WORKER_PATH).or(Some("./worker_cli")).unwrap().into();
-    let master = Master::new(work_dir, worker_path, log_file, db_name, random_seed, logger)?;
+    let master = Master::new(work_dir, worker_path, log_file, db_name, random_seed, logger.clone())?;
 
-    Ok(master)
+    Ok((master, logger))
 }
 
 fn get_cli_parameters<'a>() -> ArgMatches<'a> {
@@ -281,7 +284,7 @@ fn main() {
 
     //Build CLI interface
     let matches = get_cli_parameters();
-    let master = init(&matches).unwrap_or_else(|e| {
+    let (master, logger) = init(&matches).unwrap_or_else(|e| {
         eprintln!("master_cli failed with the following error: {}", e);
         if let Some(cause) = e.cause {
             eprintln!("cause: {}", cause);
@@ -290,14 +293,17 @@ fn main() {
     });
 
     if let Err(ref e) = run(master, &matches) {
-        eprintln!("master_cli failed with the following error: {}", e);
-        eprintln!("Error chain: ");
+        error!(&logger, "master_cli failed with the following error: {}", e);
+        error!(&logger, "Error chain: ");
         let mut chain = e.source();
         while let Some(internal) = chain {
-            eprintln!("Internal error: {}", internal);
+            error!(&logger, "Internal error: {}", internal);
             chain = internal.source();
         }
 
-        // ::std::process::exit(ERROR_EXECUTION_FAILURE);
+        // Wait for the logger to flush its messages and then exit with an exit code
+        std::thread::sleep(Duration::from_millis(1000));
+        ::std::process::exit(ERROR_EXECUTION_FAILURE);
     }
+
 }

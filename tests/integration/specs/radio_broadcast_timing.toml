@@ -21,7 +21,8 @@ Protocol = "Flooding"
     [initial_nodes.node1.protocol]
         Protocol = "Flooding"
     [initial_nodes.node1.radio_short]
-        reliability = 1.0
+        mac_layer_retries = 7
+mac_layer_base_wait = 8
         interface_name = "wlan0"
         range = 100.0
 
@@ -39,7 +40,8 @@ Protocol = "Flooding"
     [initial_nodes.node2.protocol]
             Protocol = "Flooding"
     [initial_nodes.node2.radio_short]
-        reliability = 1 
+        mac_layer_retries = 7
+mac_layer_base_wait = 8
         interface_name = "wlan0" 
         range = 100.0
 
@@ -58,7 +60,8 @@ Protocol = "Flooding"
     [initial_nodes.node3.protocol]
             Protocol = "Flooding"
     [initial_nodes.node3.radio_short]
-        reliability = 1 
+        mac_layer_retries = 7
+mac_layer_base_wait = 8
         range = 100.0
         interface_name = "wlan0" 
 
@@ -76,7 +79,8 @@ Protocol = "Flooding"
     [initial_nodes.node4.protocol]
             Protocol = "Flooding"
     [initial_nodes.node4.radio_short]
-        reliability = 1 
+        mac_layer_retries = 7
+mac_layer_base_wait = 8
         range = 100.0
         interface_name = "wlan0" 
 
@@ -94,7 +98,8 @@ Protocol = "Flooding"
     [initial_nodes.node5.protocol]
             Protocol = "Flooding"
     [initial_nodes.node5.radio_short]
-        reliability = 1 
+        mac_layer_retries = 7
+mac_layer_base_wait = 8
         range = 100.0
         interface_name = "wlan0" 
 

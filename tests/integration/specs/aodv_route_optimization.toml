@@ -35,12 +35,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node22.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node22.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -60,12 +62,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node42.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node42.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -85,12 +89,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node26.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node26.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -110,12 +116,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node63.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node63.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -135,12 +143,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node4.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node4.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -160,12 +170,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node39.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node39.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -185,12 +197,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node66.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node66.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -210,12 +224,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node80.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node80.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -235,12 +251,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node55.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node55.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -260,12 +278,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node6.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node6.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -285,12 +305,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node17.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node17.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -310,12 +332,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node20.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node20.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -335,12 +359,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node28.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node28.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -360,12 +386,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node73.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node73.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -385,12 +413,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node30.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node30.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -410,12 +440,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node37.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node37.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -435,12 +467,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node16.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node16.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -460,12 +494,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node50.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node50.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -485,12 +521,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node27.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node27.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -510,12 +548,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node10.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node10.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -535,12 +575,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node19.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node19.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -560,12 +602,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node46.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node46.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -585,12 +629,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node29.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node29.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -610,12 +656,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node48.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node48.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -635,12 +683,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node72.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node72.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -660,12 +710,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node8.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node8.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -685,12 +737,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node47.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node47.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -710,12 +764,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node71.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node71.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -735,12 +791,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node57.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node57.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -760,12 +818,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node15.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node15.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -785,12 +845,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node23.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node23.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -810,12 +872,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node44.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node44.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -835,12 +899,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node53.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node53.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -860,12 +926,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node5.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node5.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -885,12 +953,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node7.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node7.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -910,12 +980,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node25.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node25.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -935,12 +1007,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node36.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node36.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -960,12 +1034,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node59.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node59.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -985,12 +1061,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node49.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node49.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1010,12 +1088,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node69.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node69.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1035,12 +1115,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node81.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node81.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1060,12 +1142,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node9.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node9.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1085,12 +1169,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node38.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node38.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1110,12 +1196,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node43.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node43.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1135,12 +1223,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node24.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node24.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1160,12 +1250,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node76.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node76.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1185,12 +1277,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node56.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node56.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1210,12 +1304,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node79.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node79.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1235,12 +1331,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node41.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node41.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1260,12 +1358,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node2.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node2.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1285,12 +1385,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node58.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node58.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1310,12 +1412,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node11.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node11.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1335,12 +1439,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node12.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node12.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1360,12 +1466,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node13.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node13.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1385,12 +1493,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node3.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node3.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1410,12 +1520,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node33.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node33.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1435,12 +1547,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node35.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node35.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1460,12 +1574,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node51.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node51.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1485,12 +1601,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node78.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node78.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1510,12 +1628,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node54.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node54.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1535,12 +1655,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node45.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node45.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1560,12 +1682,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node64.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node64.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1585,12 +1709,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node67.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node67.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1610,12 +1736,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node52.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node52.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1635,12 +1763,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node31.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node31.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1660,12 +1790,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node65.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node65.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1685,12 +1817,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node60.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node60.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1710,12 +1844,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node62.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node62.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1735,12 +1871,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node74.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node74.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1760,12 +1898,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node61.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node61.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1785,12 +1925,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node1.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node1.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1810,12 +1952,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node68.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node68.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1835,12 +1979,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node18.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node18.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1860,12 +2006,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node21.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node21.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1885,12 +2033,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node32.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node32.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1910,12 +2060,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node40.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node40.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1935,12 +2087,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node70.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node70.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1960,12 +2114,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node14.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node14.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -1985,12 +2141,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node34.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node34.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -2010,12 +2168,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node75.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node75.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
@@ -2035,12 +2195,14 @@ x = 0.0
 y = 0.0
 
 [initial_nodes.node77.radio_short]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan0"
 range = 30.0
 
 [initial_nodes.node77.radio_long]
-reliability = 1.0
+mac_layer_retries = 7
+mac_layer_base_wait = 8
 interface_name = "wlan1"
 range = 60.0
 
